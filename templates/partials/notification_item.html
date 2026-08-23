@@ -1,0 +1,23 @@
+{# Notification item #}
+<div class="notification-item {% if !notification.is_read %}unread{% endif %}" id="notif-{{ notification.id }}">
+    <a href="{{ notification.link_or() }}" class="notification-link">
+        <div class="notif-icon">{{ notification.icon() }}</div>
+        <div class="notif-body">
+            <div class="notif-title">{{ notification.title }}</div>
+            {% if !notification.content_or().is_empty() %}
+            <div class="notif-content">{{ notification.content_or() }}</div>
+            {% endif %}
+            <div class="notif-meta">
+                <span class="notif-type">{{ notification.type_label() }}</span>
+                <span class="notif-time">{{ notification.created_at.to_rfc3339()|time_ago }}</span>
+            </div>
+        </div>
+        {% if !notification.is_read %}
+        <button class="notif-mark-read"
+                hx-post="/notifications/{{ notification.id }}/read"
+                hx-target="closest .notification-item"
+                hx-swap="outerHTML"
+                title="Đánh dấu đã đọc">✓</button>
+        {% endif %}
+    </a>
+</div>

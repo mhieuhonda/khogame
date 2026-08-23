@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lỗi {{ status }} - Kho Game</title>
+    <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="error-page">
+        <div class="error-content">
+            <div class="error-code">{{ status }}</div>
+            <h1>Oops!</h1>
+            <p>{{ message }}</p>
+            <a href="/" class="btn btn-primary">Về trang chủ</a>
+        </div>
+    </div>
+</body>
+</html>

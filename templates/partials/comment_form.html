@@ -1,0 +1,21 @@
+<form class="comment-form"
+      hx-post="/games/{{ game_slug }}/comments"
+      hx-target="#comments-list"
+      hx-swap="afterbegin"
+      hx-on::after-request="if(event.detail.successful) this.reset()">
+    {% match parent_id %}
+    {% when Option::Some with (pid) %}
+    <input type="hidden" name="parent_id" value="{{ pid }}">
+    {% when Option::None %}
+    {% endmatch %}
+    <textarea name="content"
+              placeholder="Viết bình luận của bạn..."
+              required
+              rows="3"
+              minlength="1"
+              maxlength="1000"></textarea>
+    <div class="comment-form-actions">
+        <span class="char-counter"><span id="char-count-{{ game_slug }}">0</span>/1000</span>
+        <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
+    </div>
+</form>

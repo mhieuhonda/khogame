@@ -1,0 +1,21 @@
+pub mod user;
+pub mod game;
+pub mod comment;
+pub mod interaction;
+pub mod notification;
+pub mod report;
+pub mod review;
+pub mod category;
+pub mod tag;
+pub mod session;
+
+pub use user::UserRepo;
+pub use game::GameRepo;
+pub use comment::CommentRepo;
+pub use interaction::InteractionRepo;
+pub use notification::NotificationRepo;
+pub use report::ReportRepo;
+pub use review::ReviewRepo;
+pub use category::CategoryRepo;
+pub use tag::TagRepo;
+pub use session::SessionRepo;

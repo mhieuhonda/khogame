@@ -1,0 +1,67 @@
+{% extends "layout.html" %}
+
+{% block title %}Chỉnh sửa hồ sơ{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>✏️ Chỉnh sửa hồ sơ</h1>
+</section>
+
+{% match current_user %}
+{% when Option::Some with (cu) %}
+<form class="profile-edit-form" method="post" action="/profile">
+    <div class="form-section">
+        <div class="form-group">
+            <label class="form-label">Tên hiển thị</label>
+            <input type="text" name="display_name" class="form-control" required value="{{ cu.display_name }}">
+        </div>
+        <div class="form-group">
+            <label class="form-label">Tiểu sử</label>
+            <textarea name="bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">URL ảnh đại diện</label>
+            <input type="url" name="avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}">
+            <small class="form-hint">Để trống để giữ nguyên ảnh từ Google</small>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h2 class="form-section-title">⚙️ Tùy chọn</h2>
+        <div class="form-group">
+            <label class="form-label">Giao diện</label>
+            <select name="theme" class="form-control">
+                <option value="dark" {% if preferences.theme == "dark" %}selected{% endif %}>Tối</option>
+                <option value="light" {% if preferences.theme == "light" %}selected{% endif %}>Sáng</option>
+                <option value="auto" {% if preferences.theme == "auto" %}selected{% endif %}>Tự động</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Ngôn ngữ</label>
+            <select name="language" class="form-control">
+                <option value="vi" {% if preferences.language == "vi" %}selected{% endif %}>Tiếng Việt</option>
+                <option value="en" {% if preferences.language == "en" %}selected{% endif %}>English</option>
+            </select>
+        </div>
+        <div class="form-check">
+            <input type="checkbox" name="email_notifications" id="email_notif" {% if preferences.email_notifications %}checked{% endif %}>
+            <label for="email_notif">Nhận thông báo qua email</label>
+        </div>
+        <div class="form-check">
+            <input type="checkbox" name="show_online" id="show_online" {% if preferences.show_online %}checked{% endif %}>
+            <label for="show_online">Hiển thị trạng thái online</label>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <a href="/u/{{ cu.username }}" class="btn btn-ghost">Hủy</a>
+        <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+    </div>
+</form>
+{% when Option::None %}
+<div class="empty-state">
+    <p>Bạn cần đăng nhập để chỉnh sửa hồ sơ.</p>
+    <a href="/login" class="btn btn-primary">Đăng nhập</a>
+</div>
+{% endmatch %}
+{% endblock %}

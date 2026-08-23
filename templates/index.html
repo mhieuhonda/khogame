@@ -1,0 +1,253 @@
+{% extends "layout.html" %}
+
+{% block title %}Trang chủ{% endblock %}
+
+{% block content %}
+<section class="hero-section">
+    <div class="hero-content">
+        <h1>Khám phá thế giới game <span class="gradient-text">độc lập</span></h1>
+        <p class="hero-subtitle">
+            Nền tảng chia sẻ game cho cộng đồng Việt Nam. Đăng game của bạn, khám phá hàng nghìn tựa game từ các nhà phát triển độc lập, và kết nối với hàng nghìn game thủ khác.
+        </p>
+        <div class="hero-actions">
+            {% match current_user %}
+            {% when Option::Some with (_) %}
+            <a href="/games/new" class="btn btn-primary btn-lg">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Đăng game của bạn
+            </a>
+            {% when Option::None %}
+            <a href="/login" class="btn btn-primary btn-lg">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+                Đăng nhập bằng Google
+            </a>
+            {% endmatch %}
+            <a href="/games/trending" class="btn btn-outline btn-lg">Khám phá game</a>
+        </div>
+        <div class="hero-stats">
+            <div class="stat">
+                <span class="stat-num">{{ total_games }}</span>
+                <span class="stat-label">Tựa game</span>
+            </div>
+            <div class="stat">
+                <span class="stat-num">{{ categories.len() }}</span>
+                <span class="stat-label">Thể loại</span>
+            </div>
+            <div class="stat">
+                <span class="stat-num">5</span>
+                <span class="stat-label">Nền tảng</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if !featured_games.is_empty() %}
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Game nổi bật
+        </h2>
+        <a href="/games/featured" class="section-more">Xem tất cả →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in featured_games %}
+        <article class="game-card">
+            <a href="/games/{{ game.slug }}" class="game-card-link">
+                <div class="game-card-cover">
+                    {% match game.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                        {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                    {% when Option::None %}
+                    <div class="cover-fallback">{{ game.title|initials }}</div>
+                    {% endmatch %}
+                    {% if !game.platforms.is_empty() %}
+                    <div class="game-platforms">
+                        {% for p in game.platforms %}
+                        <span class="platform-icon platform-{{ p }}">
+                            {% if p == "android" %}🤖{% else if p == "ios" %}🍎{% else if p == "windows" %}🪟{% else if p == "linux" %}🐧{% else if p == "macos" %}💻{% endif %}
+                        </span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    {% if game.rating_count > 0 %}
+                    <div class="game-rating-badge">⭐ {{ game.rating_avg_f64()|fmt_f64 }}</div>
+                    {% endif %}
+                </div>
+                <div class="game-card-body">
+                    <h3 class="game-card-title">{{ game.title }}</h3>
+                    <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
+                    <div class="game-card-meta">
+                        <span class="meta-item">👁️ {{ game.view_count|fmt_num }}</span>
+                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                        <span class="meta-item">💬 {{ game.comment_count|fmt_num }}</span>
+                    </div>
+                    <div class="game-card-author">
+                        {% match game.author_avatar %}
+                        {% when Option::Some with (url) %}
+                        <img src="{{ url }}" alt="" class="avatar avatar-xs">
+                        {% when Option::None %}
+                        <div class="avatar avatar-xs avatar-fallback">{{ game.author_name|initials }}</div>
+                        {% endmatch %}
+                        <span>{{ game.author_name }}</span>
+                    </div>
+                    {% match game.category_slug %}
+                    {% when Option::Some with (cs) %}
+                    <span class="game-card-category">{{ game.category_name.clone().unwrap_or_default() }}</span>
+                    {% when Option::None %}
+                    {% endmatch %}
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Game mới nhất
+        </h2>
+        <a href="/games/latest" class="section-more">Xem tất cả →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in latest_games %}
+        <article class="game-card">
+            <a href="/games/{{ game.slug }}" class="game-card-link">
+                <div class="game-card-cover">
+                    {% match game.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                        {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                    {% when Option::None %}
+                    <div class="cover-fallback">{{ game.title|initials }}</div>
+                    {% endmatch %}
+                </div>
+                <div class="game-card-body">
+                    <h3 class="game-card-title">{{ game.title }}</h3>
+                    <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
+                    <div class="game-card-meta">
+                        <span class="meta-item">👁️ {{ game.view_count|fmt_num }}</span>
+                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                    </div>
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>
+            Đang thịnh hành
+        </h2>
+        <a href="/games/trending" class="section-more">Xem tất cả →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in trending_games %}
+        <article class="game-card">
+            <a href="/games/{{ game.slug }}" class="game-card-link">
+                <div class="game-card-cover">
+                    {% match game.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                        {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                    {% when Option::None %}
+                    <div class="cover-fallback">{{ game.title|initials }}</div>
+                    {% endmatch %}
+                </div>
+                <div class="game-card-body">
+                    <h3 class="game-card-title">{{ game.title }}</h3>
+                    <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
+                    <div class="game-card-meta">
+                        <span class="meta-item">👁️ {{ game.view_count|fmt_num }}</span>
+                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                    </div>
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Đánh giá cao
+        </h2>
+        <a href="/games/top-rated" class="section-more">Xem tất cả →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in top_rated_games %}
+        <article class="game-card">
+            <a href="/games/{{ game.slug }}" class="game-card-link">
+                <div class="game-card-cover">
+                    {% match game.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                        {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                    {% when Option::None %}
+                    <div class="cover-fallback">{{ game.title|initials }}</div>
+                    {% endmatch %}
+                </div>
+                <div class="game-card-body">
+                    <h3 class="game-card-title">{{ game.title }}</h3>
+                    <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
+                    <div class="game-card-meta">
+                        <span class="meta-item">⭐ {{ game.rating_avg_f64()|fmt_f64 }}</span>
+                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                    </div>
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+
+{% if !popular_tags.is_empty() %}
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1" fill="currentColor"/></svg>
+            Tag phổ biến
+        </h2>
+    </div>
+    <div class="tag-cloud">
+        {% for tag in popular_tags %}
+        <a href="/t/{{ tag.slug }}" class="tag-chip">{{ tag.name }} <span class="tag-count">{{ tag.usage_count }}</span></a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Khám phá theo thể loại
+        </h2>
+        <a href="/categories" class="section-more">Tất cả →</a>
+    </div>
+    <div class="category-grid">
+        {% for cat in categories %}
+        <a href="/c/{{ cat.slug }}" class="category-card">
+            <div class="category-icon">{{ cat.name.chars().next().unwrap_or('G') }}</div>
+            <div class="category-info">
+                <h3>{{ cat.name }}</h3>
+                <p>{{ cat.games_count }} game</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+{# Comment list - shown below game detail #}
+<div id="comments-list" class="comments-list">
+    {% for comment in comments %}
+        {% include "partials/comment_item.html" %}
+    {% else %}
+    <div class="empty-comments">
+        <p>Chưa có bình luận nào. Hãy là người đầu tiên bình luận!</p>
+    </div>
+    {% endfor %}
+</div>

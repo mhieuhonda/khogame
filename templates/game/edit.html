@@ -1,0 +1,186 @@
+{% extends "layout.html" %}
+
+{% block title %}Chỉnh sửa: {{ game.title }}{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>✏️ Chỉnh sửa game</h1>
+    <p><a href="/games/{{ game.slug }}">← Quay lại trang game</a></p>
+</section>
+
+<form class="game-form" method="post" action="/games/{{ game.slug }}" enctype="multipart/form-data">
+    <input type="hidden" name="_method" value="put">
+
+    <div class="form-grid">
+        <div class="form-section">
+            <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
+
+            <div class="form-group">
+                <label class="form-label">Tiêu đề game <span class="required">*</span></label>
+                <input type="text" name="title" class="form-control" required maxlength="200"
+                       value="{{ game.title }}">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Mô tả ngắn</label>
+                <textarea name="excerpt" class="form-control" rows="2" maxlength="500">{{ game.excerpt_or() }}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Nội dung chi tiết <span class="required">*</span></label>
+                <textarea name="content" class="form-control" required rows="10">{{ game.content_or() }}</textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Thể loại</label>
+                    <select name="category_id" class="form-control">
+                        <option value="">-- Chọn thể loại --</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if game.category_id.as_ref() == Some(cat.id) %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Trạng thái</label>
+                    <select name="status" class="form-control">
+                        {% match game.status %}
+                        {% when game::GameStatus::Draft %}<option value="draft" selected>Bản nháp</option>
+                        {% when game::GameStatus::Published %}<option value="published" selected>Đã xuất bản</option>
+                        {% when game::GameStatus::Archived %}<option value="archived" selected>Lưu trữ</option>
+                        {% when game::GameStatus::Hidden %}<option value="hidden" selected>Đã ẩn</option>
+                        {% when game::GameStatus::PendingReview %}<option value="pending_review" selected>Chờ duyệt</option>
+                        {% endmatch %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Tags (phân tách bởi dấu phẩy)</label>
+                <input type="text" name="tags" class="form-control" value="{{ tags|join_tags }}">
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h2 class="form-section-title">📱 Link tải về</h2>
+
+            {% for link in links %}
+            <div class="form-group">
+                <label class="form-label">
+                    <span class="platform-icon">
+                        {% if link.platform.label() == "Android" %}🤖{% else if link.platform.label() == "iOS" %}🍎{% else if link.platform.label() == "Windows" %}🪟{% else if link.platform.label() == "Linux" %}🐧{% else if link.platform.label() == "macOS" %}💻{% endif %}
+                    </span>
+                    Link tải {{ link.platform.label() }}
+                </label>
+                <input type="url" name="{{ link.platform.label()|lower }}_link" class="form-control" value="{{ link.url }}">
+            </div>
+            {% endfor %}
+
+            {# Always show all 5 platform inputs (existing links will be pre-filled above, missing ones shown empty below) #}
+            <div class="form-group">
+                <label class="form-label"><span class="platform-icon">🤖</span> Link tải Android</label>
+                <input type="url" name="android_link" class="form-control" placeholder="https://play.google.com/store/apps/...">
+            </div>
+            <div class="form-group">
+                <label class="form-label"><span class="platform-icon">🍎</span> Link tải iOS</label>
+                <input type="url" name="ios_link" class="form-control" placeholder="https://apps.apple.com/...">
+            </div>
+            <div class="form-group">
+                <label class="form-label"><span class="platform-icon">🪟</span> Link tải Windows</label>
+                <input type="url" name="windows_link" class="form-control" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label class="form-label"><span class="platform-icon">🐧</span> Link tải Linux</label>
+                <input type="url" name="linux_link" class="form-control" placeholder="https://...">
+            </div>
+            <div class="form-group">
+                <label class="form-label"><span class="platform-icon">💻</span> Link tải macOS</label>
+                <input type="url" name="macos_link" class="form-control" placeholder="https://...">
+            </div>
+            <p class="form-hint">Nếu link đã tồn tại cho nền tảng nào, nó sẽ được hiển thị ở trên. Để trống các link bạn không muốn cập nhật.</p>
+        </div>
+
+        <div class="form-section">
+            <h2 class="form-section-title">🎨 Hình ảnh</h2>
+
+            <div class="form-group">
+                <label class="form-label">URL ảnh bìa</label>
+                <input type="url" name="cover_image" class="form-control"
+                       value="{{ game.cover_image.clone().unwrap_or_default() }}">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">URL ảnh screenshot (mỗi dòng 1 URL)</label>
+                <textarea name="screenshots" class="form-control" rows="4">{% for s in screenshots %}{{ s.url }}
+{% endfor %}</textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">URL trailer (YouTube)</label>
+                <input type="url" name="trailer_url" class="form-control"
+                       value="{{ game.trailer_url.clone().unwrap_or_default() }}">
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h2 class="form-section-title">ℹ️ Thông tin bổ sung</h2>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Phiên bản</label>
+                    <input type="text" name="version" class="form-control"
+                           value="{{ game.version.clone().unwrap_or_default() }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Ngày phát hành</label>
+                    <input type="date" name="release_date" class="form-control"
+                           value="{{ game.release_date|format_date }}">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Nhà phát triển</label>
+                    <input type="text" name="developer" class="form-control"
+                           value="{{ game.developer.clone().unwrap_or_default() }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nhà phát hành</label>
+                    <input type="text" name="publisher" class="form-control"
+                           value="{{ game.publisher.clone().unwrap_or_default() }}">
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label">Dung lượng</label>
+                    <input type="text" name="file_size" class="form-control"
+                           value="{{ game.file_size.clone().unwrap_or_default() }}">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Độ tuổi</label>
+                    <select name="age_rating" class="form-control">
+                        {% match game.age_rating %}
+                        {% when game::AgeRating::Everyone %}<option value="everyone" selected>E - Mọi lứa tuổi</option>
+                        {% when game::AgeRating::Teen %}<option value="teen" selected>T - Thiếu niên (13+)</option>
+                        {% when game::AgeRating::Mature %}<option value="mature" selected>M - Trưởng thành (17+)</option>
+                        {% when game::AgeRating::Adult %}<option value="adult" selected>A - Người lớn (18+)</option>
+                        {% endmatch %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Ngôn ngữ hỗ trợ</label>
+                <input type="text" name="languages" class="form-control"
+                       value="{{ game.languages|join_tags }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <a href="/games/{{ game.slug }}" class="btn btn-ghost">Hủy</a>
+        <button type="submit" class="btn btn-primary btn-lg">Lưu thay đổi</button>
+    </div>
+</form>
+{% endblock %}

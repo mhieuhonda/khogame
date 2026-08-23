@@ -1,0 +1,65 @@
+{# Single comment item #}
+<div class="comment-item {% if comment.is_pinned %}pinned{% endif %}" id="comment-{{ comment.id }}">
+    <div class="comment-avatar">
+        {% match comment.user_avatar %}
+        {% when Option::Some with (url) %}
+        <img src="{{ url }}" alt="" class="avatar avatar-sm">
+        {% when Option::None %}
+        <div class="avatar avatar-sm avatar-fallback">{{ comment.user_name|initials }}</div>
+        {% endmatch %}
+    </div>
+    <div class="comment-body">
+        <div class="comment-header">
+            <span class="comment-author">{{ comment.user_name }}</span>
+            {% if comment.is_pinned %}<span class="pin-badge">📌 Ghim</span>{% endif %}
+            <span class="comment-time" title="{{ comment.created_at.to_rfc3339() }}">
+                {{ comment.created_at.to_rfc3339()|time_ago }}
+            </span>
+        </div>
+        <div class="comment-content">{{ comment.content|esc|html|safe }}</div>
+        <div class="comment-actions">
+            <button class="comment-action like-comment {% if comment.is_liked %}active{% endif %}"
+                    hx-post="/comments/{{ comment.id }}/like"
+                    hx-target="closest .comment-item .like-count"
+                    hx-swap="innerHTML">
+                ❤️ <span class="like-count">{{ comment.like_count }}</span>
+            </button>
+            <button class="comment-action reply-btn"
+                    onclick="toggleReplyForm('{{ comment.id }}')">
+                💬 Trả lời
+            </button>
+            {% match current_user %}
+            {% when Option::Some with (u) %}
+                {% if u.id == comment.user_id %}
+                <button class="comment-action delete-comment danger"
+                        hx-delete="/comments/{{ comment.id }}"
+                        hx-target="closest .comment-item"
+                        hx-swap="outerHTML"
+                        hx-confirm="Bạn chắc chắn muốn xóa bình luận này?">
+                    🗑️ Xóa
+                </button>
+                {% endif %}
+                {% if u.role.is_staff() %}
+                <button class="comment-action pin-comment"
+                        hx-post="/admin/comments/{{ comment.id }}/pin"
+                        hx-target="closest .comment-item"
+                        hx-swap="outerHTML">
+                    📌 {% if comment.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}
+                </button>
+                {% endif %}
+            {% when Option::None %}
+            {% endmatch %}
+        </div>
+        <div class="reply-form-container" id="reply-form-{{ comment.id }}" style="display:none;">
+            <form hx-post="/games/{{ game_slug }}/comments"
+                  hx-target="#comments-list"
+                  hx-swap="afterbegin"
+                  hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').style.display='none';}">
+                <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                <textarea name="content" placeholder="Trả lời bình luận..." required rows="2"></textarea>
+                <button type="submit" class="btn btn-primary btn-sm">Gửi trả lời</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reply-form-{{ comment.id }}').style.display='none'">Hủy</button>
+            </form>
+        </div>
+    </div>
+</div>

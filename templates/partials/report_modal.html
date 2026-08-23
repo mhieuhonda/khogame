@@ -1,0 +1,41 @@
+{# Report modal - shown as dialog #}
+<div class="modal-overlay" id="report-modal-{{ slug }}" onclick="if(event.target===this) this.remove()">
+    <div class="modal report-modal">
+        <div class="modal-header">
+            <h3>🚩 Báo cáo game</h3>
+            <button class="modal-close" onclick="document.getElementById('report-modal-{{ slug }}').remove()">×</button>
+        </div>
+        <div class="modal-body">
+            <p class="modal-desc">Hãy cho chúng tôi biết vấn đề bạn gặp phải với game này. Báo cáo của bạn sẽ được đội ngũ kiểm duyệt xem xét.</p>
+            <form id="report-form-{{ slug }}"
+                  hx-post="/games/{{ slug }}/report"
+                  hx-target="#report-form-result-{{ slug }}"
+                  hx-swap="innerHTML"
+                  hx-on::after-request="if(event.detail.successful) setTimeout(() => { document.getElementById('report-modal-{{ slug }}').remove(); }, 1500)">
+                <div class="form-group">
+                    <label class="form-label">Lý do báo cáo <span class="required">*</span></label>
+                    <select name="reason" class="form-control" required>
+                        <option value="">-- Chọn lý do --</option>
+                        <option value="spam">Spam / Quảng cáo</option>
+                        <option value="malware">Chứa mã độc / virus</option>
+                        <option value="copyright">Vi phạm bản quyền</option>
+                        <option value="inappropriate">Nội dung không phù hợp</option>
+                        <option value="broken_link">Link hỏng</option>
+                        <option value="misleading">Thông tin sai lệch</option>
+                        <option value="illegal">Nội dung vi phạm pháp luật</option>
+                        <option value="other">Lý do khác</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mô tả chi tiết</label>
+                    <textarea name="description" rows="4" class="form-control" placeholder="Cung cấp thêm thông tin để chúng tôi xử lý báo cáo nhanh hơn..."></textarea>
+                </div>
+                <div id="report-form-result-{{ slug }}"></div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-ghost" onclick="document.getElementById('report-modal-{{ slug }}').remove()">Hủy</button>
+                    <button type="submit" class="btn btn-danger">Gửi báo cáo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

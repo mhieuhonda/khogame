@@ -1,0 +1,8 @@
+{# Follow button - htmx swap target #}
+<button class="btn {% if is_following %}btn-outline{% else %}btn-primary{% endif %} btn-sm follow-btn"
+        hx-post="/u/{{ target_username }}/follow"
+        hx-target="this"
+        hx-swap="outerHTML"
+        hx-disabled-elt="this">
+    {% if is_following %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
+</button>

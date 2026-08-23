@@ -1,0 +1,11 @@
+<div class="game-grid">
+    {% for game in games %}
+        {% include "partials/game_card.html" %}
+    {% else %}
+    <div class="empty-state">
+        <div class="empty-icon">🎮</div>
+        <h3>Chưa có game nào</h3>
+        <p>Hãy quay lại sau hoặc đăng game đầu tiên của bạn!</p>
+    </div>
+    {% endfor %}
+</div>

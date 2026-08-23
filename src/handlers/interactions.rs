@@ -1,0 +1,95 @@
+use crate::error::{AppError, AppResult};
+use crate::middleware::AuthUser;
+use crate::repositories::{GameRepo, InteractionRepo};
+use crate::state::AppState;
+use crate::templates::*;
+use askama::Template;
+use axum::extract::{Path, State};
+use axum::response::Html;
+use axum::Form;
+use serde::Deserialize;
+use std::sync::Arc;
+
+#[derive(Deserialize)]
+pub struct RateForm {
+    pub score: i16,
+}
+
+pub async fn toggle_like(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+) -> AppResult<Html<String>> {
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let is_liked = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
+    let like_count = game.like_count + if is_liked { 1 } else { -1 };
+    let partial = LikeButtonPartial {
+        game_id: game.id,
+        slug: slug.clone(),
+        is_liked,
+        like_count,
+    };
+    Ok(Html(partial.render()?))
+}
+
+pub async fn toggle_bookmark(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+) -> AppResult<Html<String>> {
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let is_bookmarked = InteractionRepo::toggle_bookmark(&state.db, game.id, user.id).await?;
+    let partial = BookmarkButtonPartial {
+        game_id: game.id,
+        slug: slug.clone(),
+        is_bookmarked,
+    };
+    Ok(Html(partial.render()?))
+}
+
+pub async fn rate(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+    Form(form): Form<RateForm>,
+) -> AppResult<Html<String>> {
+    if form.score < 1 || form.score > 5 {
+        return Err(AppError::BadRequest("Điểm phải từ 1 đến 5".into()));
+    }
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
+
+    // Reload game to get updated rating
+    let game = GameRepo::find_by_slug(&state.db, &slug).await?.unwrap();
+    let partial = RatingStarsPartial {
+        game_id: game.id,
+        slug: slug.clone(),
+        user_rating: Some(form.score),
+        rating_avg: game.rating_avg_f64(),
+        rating_count: game.rating_count,
+    };
+    Ok(Html(partial.render()?))
+}
+
+pub async fn toggle_follow(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(username): Path<String>,
+) -> AppResult<Html<String>> {
+    let target = crate::repositories::UserRepo::find_by_username(&state.db, &username)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    let is_following = InteractionRepo::toggle_follow(&state.db, user.id, target.id).await?;
+    let partial = FollowButtonPartial {
+        target_user_id: target.id,
+        target_username: username.clone(),
+        is_following,
+    };
+    Ok(Html(partial.render()?))
+}

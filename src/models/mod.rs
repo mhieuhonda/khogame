@@ -1,0 +1,19 @@
+pub mod user;
+pub mod game;
+pub mod comment;
+pub mod interaction;
+pub mod notification;
+pub mod report;
+pub mod review;
+pub mod category;
+pub mod tag;
+
+pub use user::*;
+pub use game::*;
+pub use comment::*;
+pub use interaction::*;
+pub use notification::*;
+pub use report::*;
+pub use review::*;
+pub use category::*;
+pub use tag::*;

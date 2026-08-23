@@ -1,0 +1,102 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ user.display_name }} (@{{ user.username }}){% endblock %}
+
+{% block content %}
+<section class="profile-page">
+    <div class="profile-header">
+        <div class="profile-cover"></div>
+        <div class="profile-info">
+            <div class="profile-avatar">
+                {% match user.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-xl">
+                {% when Option::None %}
+                <div class="avatar avatar-xl avatar-fallback">{{ user.display_name|initials }}</div>
+                {% endmatch %}
+            </div>
+            <div class="profile-meta">
+                <h1>{{ user.display_name }}</h1>
+                <p class="profile-username">@{{ user.username }}</p>
+                <p class="profile-role">{{ user.role.label() }}</p>
+                {% if !user.bio.clone().unwrap_or_default().is_empty() %}
+                <p class="profile-bio">{{ user.bio.clone().unwrap_or_default() }}</p>
+                {% endif %}
+                <p class="profile-joined">Tham gia: {{ user.created_at|format_datetime_vn }}</p>
+            </div>
+            <div class="profile-actions">
+                {% if !is_self %}
+                <button class="btn {% if is_following %}btn-outline{% else %}btn-primary{% endif %}"
+                        hx-post="/u/{{ user.username }}/follow"
+                        hx-target="this"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this">
+                    {% if is_following %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
+                </button>
+                {% endif %}
+                {% if is_self %}
+                <a href="/profile/edit" class="btn btn-outline">✏️ Chỉnh sửa hồ sơ</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="profile-stats">
+            <div class="profile-stat">
+                <span class="stat-value">{{ stats.games_count }}</span>
+                <span class="stat-label">Game</span>
+            </div>
+            <div class="profile-stat">
+                <span class="stat-value">{{ stats.followers_count }}</span>
+                <span class="stat-label">Người theo dõi</span>
+            </div>
+            <div class="profile-stat">
+                <span class="stat-value">{{ stats.following_count }}</span>
+                <span class="stat-label">Đang theo dõi</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="profile-tabs">
+        <a href="#games" class="profile-tab active">🎮 Game đã đăng</a>
+        {% if is_self %}
+        <a href="/bookmarks" class="profile-tab">🔖 Đã lưu</a>
+        {% endif %}
+    </div>
+
+    <div class="profile-content">
+        {% if games.is_empty() %}
+        <div class="empty-state">
+            <div class="empty-icon">🎮</div>
+            <h3>Chưa có game nào</h3>
+            <p>{% if is_self %}Hãy <a href="/games/new">đăng game</a> đầu tiên của bạn!{% else %}Người dùng này chưa đăng game nào.{% endif %}</p>
+        </div>
+        {% else %}
+        <div class="game-grid">
+            {% for game in games %}
+            <article class="game-card">
+                <a href="/games/{{ game.slug }}" class="game-card-link">
+                    <div class="game-card-cover">
+                        {% match game.cover_image %}
+                        {% when Option::Some with (url) %}
+                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                            {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                        {% when Option::None %}
+                        <div class="cover-fallback">{{ game.title|initials }}</div>
+                        {% endmatch %}
+                    </div>
+                    <div class="game-card-body">
+                        <h3 class="game-card-title">{{ game.title }}</h3>
+                        <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
+                        <div class="game-card-meta">
+                            <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                            <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                            <span class="meta-item">⭐ {{ game.rating_avg_f64()|fmt_f64 }}</span>
+                        </div>
+                    </div>
+                </a>
+            </article>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

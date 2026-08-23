@@ -1,0 +1,20 @@
+{# Rating stars - interactive via htmx #}
+<div class="rating-stars" id="rating-stars-{{ slug }}">
+    <div class="stars-input">
+        {% for i in 1..=5 %}
+        <button class="star {% if user_rating.unwrap_or(0) >= i %}filled{% endif %} {% if user_rating.is_some() %}user-rated{% endif %}"
+                hx-post="/games/{{ slug }}/rate"
+                hx-vals='{"score": {{ i }} }'
+                hx-target="#rating-stars-{{ slug }}"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                title="{{ i }} sao">
+            ★
+        </button>
+        {% endfor %}
+    </div>
+    <div class="rating-info">
+        <span class="rating-avg">{{ rating_avg|fmt("{:.1}") }}</span>
+        <span class="rating-count">({{ rating_count }} đánh giá)</span>
+    </div>
+</div>

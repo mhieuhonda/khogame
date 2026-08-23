@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+
+{% block title %}Thông báo{% endblock %}
+
+{% block content %}
+<section class="notifications-page">
+    <div class="page-header">
+        <h1>🔔 Thông báo</h1>
+        {% if unread_notifications > 0 %}
+        <button class="btn btn-outline btn-sm"
+                hx-post="/notifications/mark-all-read"
+                hx-target=".notifications-list"
+                hx-swap="outerHTML">Đánh dấu tất cả đã đọc</button>
+        {% endif %}
+    </div>
+
+    <div class="notifications-list">
+        {% for n in notifications %}
+        <div class="notification-item {% if !n.is_read %}unread{% endif %}" id="notif-{{ n.id }}">
+            <a href="{{ n.link_or() }}" class="notification-link">
+                <div class="notif-icon">{{ n.icon() }}</div>
+                <div class="notif-body">
+                    <div class="notif-title">{{ n.title }}</div>
+                    {% if !n.content_or().is_empty() %}
+                    <div class="notif-content">{{ n.content_or() }}</div>
+                    {% endif %}
+                    <div class="notif-meta">
+                        <span class="notif-type">{{ n.type_label() }}</span>
+                        <span class="notif-time">{{ n.created_at.to_rfc3339()|time_ago }}</span>
+                    </div>
+                </div>
+                {% if !n.is_read %}
+                <button class="notif-mark-read"
+                        hx-post="/notifications/{{ n.id }}/read"
+                        hx-target="closest .notification-item"
+                        hx-swap="outerHTML"
+                        title="Đánh dấu đã đọc">✓</button>
+                {% endif %}
+            </a>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <h3>Chưa có thông báo</h3>
+            <p>Các thông báo về bình luận, lượt thích, theo dõi... sẽ hiển thị tại đây.</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

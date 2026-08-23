@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+
+{% block title %}Quản trị báo cáo{% endblock %}
+
+{% block content %}
+<section class="admin-reports-page">
+    <div class="page-header">
+        <h1>🚩 Báo cáo</h1>
+        <div class="filter-tabs">
+            <a href="/admin/reports" class="filter-tab {% if status_filter.is_none() %}active{% endif %}">Tất cả</a>
+            <a href="/admin/reports?status=pending" class="filter-tab {% if status_filter.as_deref() == Some("pending") %}active{% endif %}">Chờ xử lý</a>
+            <a href="/admin/reports?status=reviewing" class="filter-tab {% if status_filter.as_deref() == Some("reviewing") %}active{% endif %}">Đang xem xét</a>
+            <a href="/admin/reports?status=resolved" class="filter-tab {% if status_filter.as_deref() == Some("resolved") %}active{% endif %}">Đã xử lý</a>
+            <a href="/admin/reports?status=dismissed" class="filter-tab {% if status_filter.as_deref() == Some("dismissed") %}active{% endif %}">Đã bỏ qua</a>
+        </div>
+    </div>
+
+    {% if reports.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">✅</div>
+        <h3>Không có báo cáo nào</h3>
+        <p>Tuyệt vời! Không có báo cáo nào cần xử lý lúc này.</p>
+    </div>
+    {% else %}
+    <div class="reports-list">
+        {% for r in reports %}
+        <div class="report-row admin-report-row" id="report-{{ r.id }}">
+            <div class="report-info">
+                <a href="/games/{{ r.game_slug }}" class="report-game-title">{{ r.game_title }}</a>
+                <div class="report-meta">
+                    <span class="report-reason">{{ r.reason.label() }}</span>
+                    <span class="report-reporter">bởi {{ r.reporter_name }}</span>
+                    <span class="report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
+                </div>
+                {% match r.description %}
+                {% when Option::Some with (d) %}
+                {% if !d.is_empty() %}<p class="report-desc">{{ d }}</p>{% endif %}
+                {% when Option::None %}
+                {% endmatch %}
+                <span class="status-badge" style="color: {{ r.status.color() }}">{{ r.status.label() }}</span>
+            </div>
+            <div class="report-actions">
+                {% if r.status.label() == "Chờ xử lý" %}
+                <form hx-post="/admin/reports/{{ r.id }}/resolve" hx-vals='{"status": "reviewing"}' hx-target="closest .admin-report-row" hx-swap="outerHTML">
+                    <button type="submit" class="btn btn-outline btn-sm">Đang xem xét</button>
+                </form>
+                {% endif %}
+                {% if r.status.label() == "Chờ xử lý" || r.status.label() == "Đang xem xét" %}
+                <form hx-post="/admin/reports/{{ r.id }}/resolve" hx-vals='{"status": "resolved"}' hx-target="closest .admin-report-row" hx-swap="outerHTML">
+                    <input type="hidden" name="resolution" value="Đã xử lý">
+                    <button type="submit" class="btn btn-success btn-sm">✓ Giải quyết</button>
+                </form>
+                <form hx-post="/admin/reports/{{ r.id }}/resolve" hx-vals='{"status": "dismissed", "resolution": "Báo cáo không hợp lệ"}' hx-target="closest .admin-report-row" hx-swap="outerHTML">
+                    <button type="submit" class="btn btn-ghost btn-sm">Bỏ qua</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

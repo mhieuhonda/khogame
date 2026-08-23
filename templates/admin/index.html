@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+
+{% block title %}Bảng điều khiển quản trị{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>🛡️ Bảng điều khiển quản trị</h1>
+        <p>Quản lý hệ thống, kiểm duyệt nội dung và theo dõi hoạt động.</p>
+    </div>
+
+    <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap purple">🎮</div>
+            <div>
+                <div class="stat-value">{{ total_games }}</div>
+                <div class="stat-label">Tổng số game</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap blue">👥</div>
+            <div>
+                <div class="stat-value">{{ total_users }}</div>
+                <div class="stat-label">Người dùng</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap green">⬇️</div>
+            <div>
+                <div class="stat-value">{{ total_downloads }}</div>
+                <div class="stat-label">Lượt tải</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap red">🚩</div>
+            <div>
+                <div class="stat-value">{{ pending_reports }}</div>
+                <div class="stat-label">Báo cáo chờ xử lý</div>
+            </div>
+        </div>
+    </div>
+
+    {% if !recent_reports.is_empty() %}
+    <section class="admin-section">
+        <div class="section-header">
+            <h2>🚩 Báo cáo gần đây</h2>
+            <a href="/admin/reports" class="section-more">Xem tất cả →</a>
+        </div>
+        <div class="reports-list">
+            {% for r in recent_reports %}
+            <div class="report-row">
+                <div class="report-info">
+                    <a href="/games/{{ r.game_slug }}" class="report-game-title">{{ r.game_title }}</a>
+                    <div class="report-meta">
+                        <span class="report-reason">{{ r.reason.label() }}</span>
+                        <span class="report-reporter">bởi {{ r.reporter_name }}</span>
+                        <span class="report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
+                    </div>
+                    {% match r.description %}
+                    {% when Option::Some with (d) %}
+                    {% if !d.is_empty() %}<p class="report-desc">{{ d|truncate(150) }}</p>{% endif %}
+                    {% when Option::None %}
+                    {% endmatch %}
+                </div>
+                <div class="report-actions">
+                    <span class="status-badge" style="color: {{ r.status.color() }}">{{ r.status.label() }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if !recent_games.is_empty() %}
+    <section class="admin-section">
+        <div class="section-header">
+            <h2>🎮 Game gần đây</h2>
+        </div>
+        <div class="admin-games-list">
+            {% for game in recent_games %}
+            <div class="admin-game-row">
+                <a href="/games/{{ game.slug }}">{{ game.title }}</a>
+                <span class="game-meta">⬇️ {{ game.download_count|fmt_num }} · ❤️ {{ game.like_count|fmt_num }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

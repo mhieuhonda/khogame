@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block title %}Đã lưu{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <h1>🔖 Game đã lưu</h1>
+    <p>Danh sách game bạn đã bookmark.</p>
+</section>
+
+{% if games.is_empty() %}
+<div class="empty-state">
+    <div class="empty-icon">🔖</div>
+    <h3>Chưa lưu game nào</h3>
+    <p>Khi bạn lưu một game, nó sẽ xuất hiện tại đây.</p>
+</div>
+{% else %}
+<div class="game-grid">
+    {% for game in games %}
+    <article class="game-card">
+        <a href="/games/{{ game.slug }}" class="game-card-link">
+            <div class="game-card-cover">
+                {% match game.cover_image %}
+                {% when Option::Some with (url) %}
+                    {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                    {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                {% when Option::None %}
+                <div class="cover-fallback">{{ game.title|initials }}</div>
+                {% endmatch %}
+            </div>
+            <div class="game-card-body">
+                <h3 class="game-card-title">{{ game.title }}</h3>
+                <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
+                <div class="game-card-meta">
+                    <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                    <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                </div>
+            </div>
+        </a>
+    </article>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

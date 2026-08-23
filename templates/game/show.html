@@ -1,0 +1,366 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ game.title }}{% endblock %}
+
+{% block content %}
+<article class="game-detail">
+    <nav class="breadcrumb">
+        <a href="/">Trang chủ</a> ›
+        {% match category %}
+        {% when Option::Some with (cat) %}
+        <a href="/c/{{ cat.slug }}">{{ cat.name }}</a> ›
+        {% when Option::None %}
+        {% endmatch %}
+        <span>{{ game.title }}</span>
+    </nav>
+
+    <header class="game-header">
+        <div class="game-cover">
+            {% match game.cover_image %}
+            {% when Option::Some with (url) %}
+                {% if !url.is_empty() %}
+                <img src="{{ url }}" alt="{{ game.title }}">
+                {% else %}
+                <div class="cover-fallback cover-fallback-lg">{{ game.title|initials }}</div>
+                {% endif %}
+            {% when Option::None %}
+            <div class="cover-fallback cover-fallback-lg">{{ game.title|initials }}</div>
+            {% endmatch %}
+        </div>
+        <div class="game-info">
+            <div class="game-info-top">
+                {% match category %}
+                {% when Option::Some with (cat) %}
+                <a href="/c/{{ cat.slug }}" class="game-category">{{ cat.name }}</a>
+                {% when Option::None %}
+                {% endmatch %}
+                {% if game.is_featured %}<span class="featured-badge">⭐ Nổi bật</span>{% endif %}
+            </div>
+            <h1 class="game-title">{{ game.title }}</h1>
+            {% if !game.excerpt_or().is_empty() %}
+            <p class="game-excerpt">{{ game.excerpt_or() }}</p>
+            {% endif %}
+
+            <div class="game-author-row">
+                <a href="/u/{{ author.username }}" class="author-link">
+                    {% match author.avatar_url %}
+                    {% when Option::Some with (url) %}
+                    <img src="{{ url }}" alt="" class="avatar avatar-sm">
+                    {% when Option::None %}
+                    <div class="avatar avatar-sm avatar-fallback">{{ author.display_name|initials }}</div>
+                    {% endmatch %}
+                    <div class="author-info">
+                        <span class="author-name">{{ author.display_name }}</span>
+                        <span class="author-stats">Đăng {{ game.created_at.to_rfc3339()|time_ago }}</span>
+                    </div>
+                </a>
+                {% if !is_owner %}
+                <button class="btn {% if is_following_author %}btn-outline{% else %}btn-primary{% endif %} btn-sm follow-btn"
+                        hx-post="/u/{{ author.username }}/follow"
+                        hx-target="this"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this">
+                    {% if is_following_author %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
+                </button>
+                {% endif %}
+            </div>
+
+            <div class="game-stats-row">
+                <div class="game-stat">
+                    <span class="stat-icon">👁️</span>
+                    <span class="stat-value">{{ game.view_count|fmt_num }}</span>
+                    <span class="stat-name">Lượt xem</span>
+                </div>
+                <div class="game-stat">
+                    <span class="stat-icon">⬇️</span>
+                    <span class="stat-value">{{ game.download_count|fmt_num }}</span>
+                    <span class="stat-name">Lượt tải</span>
+                </div>
+                <div class="game-stat">
+                    <span class="stat-icon">❤️</span>
+                    <span class="stat-value">{{ game.like_count|fmt_num }}</span>
+                    <span class="stat-name">Lượt thích</span>
+                </div>
+                <div class="game-stat">
+                    <span class="stat-icon">💬</span>
+                    <span class="stat-value">{{ game.comment_count|fmt_num }}</span>
+                    <span class="stat-name">Bình luận</span>
+                </div>
+                <div class="game-stat">
+                    <span class="stat-icon">⭐</span>
+                    <span class="stat-value">{{ game.rating_avg_f64()|fmt_f64 }}</span>
+                    <span class="stat-name">{{ game.rating_count }} đánh giá</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="game-detail-layout">
+        <div class="game-main">
+            <section class="detail-section">
+                <h2 class="section-heading">📋 Giới thiệu</h2>
+                <div class="game-content">{{ game.content_or()|html|safe }}</div>
+            </section>
+
+            {% if !screenshots.is_empty() %}
+            <section class="detail-section">
+                <h2 class="section-heading">🖼️ Ảnh chụp màn hình</h2>
+                <div class="screenshots-grid">
+                    {% for shot in screenshots %}
+                    <a href="{{ shot.url }}" class="screenshot-item" target="_blank">
+                        <img src="{{ shot.url }}" alt="{{ shot.caption.clone().unwrap_or_default() }}" loading="lazy">
+                    </a>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            {% if !game.trailer_url.clone().unwrap_or_default().is_empty() %}
+            <section class="detail-section">
+                <h2 class="section-heading">🎬 Trailer</h2>
+                <div class="trailer-container">
+                    <iframe width="100%" height="450" src="{{ game.trailer_url.clone().unwrap_or_default()|youtube_embed }}" frameborder="0" allowfullscreen></iframe>
+                </div>
+            </section>
+            {% endif %}
+
+            <section class="detail-section">
+                <h2 class="section-heading">📊 Đánh giá</h2>
+                <div class="rating-stars" id="rating-stars-{{ game.slug }}">
+                    <div class="stars-input">
+                        {% for i in 1..=5 %}
+                        <button class="star {% if user_rating.unwrap_or(0) >= i %}filled{% endif %}"
+                                hx-post="/games/{{ game.slug }}/rate"
+                                hx-vals='{"score": {{ i }} }'
+                                hx-target="#rating-stars-{{ game.slug }}"
+                                hx-swap="outerHTML"
+                                hx-disabled-elt="this"
+                                title="{{ i }} sao">★</button>
+                        {% endfor %}
+                    </div>
+                    <div class="rating-info">
+                        <span class="rating-avg">{{ game.rating_avg_f64()|fmt_f64 }}</span>
+                        <span class="rating-count">({{ game.rating_count }} đánh giá)</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="detail-section" id="comments-section">
+                <h2 class="section-heading">💬 Bình luận ({{ game.comment_count }})</h2>
+                {% match current_user %}
+                {% when Option::Some with (_) %}
+                <form class="comment-form"
+                      hx-post="/games/{{ game.slug }}/comments"
+                      hx-target="#comments-list"
+                      hx-swap="afterbegin"
+                      hx-on::after-request="if(event.detail.successful) this.reset()">
+                    <textarea name="content" placeholder="Viết bình luận của bạn..." required rows="3" minlength="1" maxlength="1000"></textarea>
+                    <div class="comment-form-actions">
+                        <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
+                    </div>
+                </form>
+                {% when Option::None %}
+                <div class="login-prompt">
+                    <p>Vui lòng <a href="/login">đăng nhập</a> để bình luận.</p>
+                </div>
+                {% endmatch %}
+                <div id="comments-list" class="comments-list">
+                    {% for comment in comments %}
+                    <div class="comment-item {% if comment.is_pinned %}pinned{% endif %}" id="comment-{{ comment.id }}">
+                        <div class="comment-avatar">
+                            {% match comment.user_avatar %}
+                            {% when Option::Some with (url) %}
+                            <img src="{{ url }}" alt="" class="avatar avatar-sm">
+                            {% when Option::None %}
+                            <div class="avatar avatar-sm avatar-fallback">{{ comment.user_name|initials }}</div>
+                            {% endmatch %}
+                        </div>
+                        <div class="comment-body">
+                            <div class="comment-header">
+                                <span class="comment-author">{{ comment.user_name }}</span>
+                                {% if comment.is_pinned %}<span class="pin-badge">📌 Ghim</span>{% endif %}
+                                <span class="comment-time" title="{{ comment.created_at.to_rfc3339() }}">{{ comment.created_at.to_rfc3339()|time_ago }}</span>
+                            </div>
+                            <div class="comment-content">{{ comment.content|esc|html|safe }}</div>
+                            <div class="comment-actions">
+                                <button class="comment-action {% if comment.is_liked %}active{% endif %}"
+                                        hx-post="/comments/{{ comment.id }}/like"
+                                        hx-target="closest .comment-item .like-count"
+                                        hx-swap="innerHTML">❤️ <span class="like-count">{{ comment.like_count }}</span></button>
+                                <button class="comment-action" onclick="toggleReplyForm('{{ comment.id }}')">💬 Trả lời</button>
+                                {% match current_user %}
+                                {% when Option::Some with (u) %}
+                                    {% if u.id == comment.user_id %}
+                                    <button class="comment-action danger" hx-delete="/comments/{{ comment.id }}" hx-target="closest .comment-item" hx-swap="outerHTML" hx-confirm="Xóa bình luận này?">🗑️ Xóa</button>
+                                    {% endif %}
+                                {% when Option::None %}
+                                {% endmatch %}
+                            </div>
+                            <div class="reply-form-container" id="reply-form-{{ comment.id }}" style="display:none;">
+                                <form hx-post="/games/{{ game.slug }}/comments" hx-target="#comments-list" hx-swap="afterbegin">
+                                    <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                                    <textarea name="content" placeholder="Trả lời..." required rows="2"></textarea>
+                                    <button type="submit" class="btn btn-primary btn-sm">Gửi</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reply-form-{{ comment.id }}').style.display='none'">Hủy</button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="empty-comments"><p>Chưa có bình luận nào. Hãy là người đầu tiên bình luận!</p></div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+
+        <aside class="game-sidebar">
+            <div class="sidebar-card download-card">
+                <h3>⬇️ Tải game</h3>
+                <div id="download-buttons-{{ game.slug }}">
+                    {% if links.is_empty() %}
+                    <div class="no-downloads"><p>⚠️ Chưa có link tải cho game này.</p></div>
+                    {% else %}
+                    <div class="download-grid">
+                        {% for link in links %}
+                        <form hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on::after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
+                            <button type="submit" class="btn btn-download platform-{{ link.platform.label()|lower }}">
+                                <span class="platform-icon">
+                                    {% if link.platform.label() == "Android" %}🤖{% else if link.platform.label() == "iOS" %}🍎{% else if link.platform.label() == "Windows" %}🪟{% else if link.platform.label() == "Linux" %}🐧{% else if link.platform.label() == "macOS" %}💻{% endif %}
+                                </span>
+                                <div class="platform-text">
+                                    <span class="platform-label">Tải về cho</span>
+                                    <span class="platform-name">{{ link.platform.label() }}</span>
+                                </div>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            </button>
+                        </form>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="sidebar-card actions-card">
+                <h3>⚡ Hành động</h3>
+                <div class="actions-list">
+                    {% match current_user %}
+                    {% when Option::Some with (_) %}
+                    <button class="action-btn like-btn {% if is_liked %}active{% endif %}" hx-post="/games/{{ game.slug }}/like" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this" id="like-btn-{{ game.id }}">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="{% if is_liked %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                        <span>{{ game.like_count|fmt_num }}</span>
+                    </button>
+                    <button class="action-btn bookmark-btn {% if is_bookmarked %}active{% endif %}" hx-post="/games/{{ game.slug }}/bookmark" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="{% if is_bookmarked %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                        <span>{% if is_bookmarked %}Đã lưu{% else %}Lưu{% endif %}</span>
+                    </button>
+                    {% when Option::None %}
+                    {% endmatch %}
+                    <div class="share-buttons">
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-facebook" onclick="recordShare('{{ game.slug }}', 'facebook')">f</a>
+                        <a href="https://twitter.com/intent/tweet?url=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-twitter" onclick="recordShare('{{ game.slug }}', 'twitter')">𝕏</a>
+                        <a href="https://t.me/share/url?url=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-telegram" onclick="recordShare('{{ game.slug }}', 'telegram')">✈</a>
+                        <a href="https://wa.me/?text=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-whatsapp" onclick="recordShare('{{ game.slug }}', 'whatsapp')">W</a>
+                        <button class="share-btn share-copy" onclick="copyShareLink('{{ game.slug }}')" title="Sao chép link">📋</button>
+                    </div>
+                    {% if !is_owner %}
+                    <button class="action-btn report-btn" onclick="openReportModal('{{ game.slug }}')">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        <span>Báo cáo</span>
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if is_owner %}
+            <div class="sidebar-card owner-card">
+                <h3>🛠️ Quản lý</h3>
+                <div class="owner-actions">
+                    <a href="/games/{{ game.slug }}/edit" class="btn btn-outline btn-sm btn-block">✏️ Chỉnh sửa</a>
+                    <form action="/games/{{ game.slug }}/delete" method="post" onsubmit="return confirm('Bạn chắc chắn muốn xóa game này?')">
+                        <button type="submit" class="btn btn-danger btn-sm btn-block">🗑️ Xóa game</button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="sidebar-card info-card">
+                <h3>ℹ️ Thông tin</h3>
+                <dl class="info-list">
+                    {% if !game.version.clone().unwrap_or_default().is_empty() %}
+                    <dt>Phiên bản</dt><dd>{{ game.version.clone().unwrap_or_default() }}</dd>
+                    {% endif %}
+                    {% if !game.developer.clone().unwrap_or_default().is_empty() %}
+                    <dt>Nhà phát triển</dt><dd>{{ game.developer.clone().unwrap_or_default() }}</dd>
+                    {% endif %}
+                    {% if !game.publisher.clone().unwrap_or_default().is_empty() %}
+                    <dt>Nhà phát hành</dt><dd>{{ game.publisher.clone().unwrap_or_default() }}</dd>
+                    {% endif %}
+                    {% if let Some(date) = game.release_date %}
+                    <dt>Phát hành</dt><dd>{{ game.release_date|format_date_vn }}</dd>
+                    {% endif %}
+                    {% if !game.file_size.clone().unwrap_or_default().is_empty() %}
+                    <dt>Dung lượng</dt><dd>{{ game.file_size.clone().unwrap_or_default() }}</dd>
+                    {% endif %}
+                    <dt>Độ tuổi</dt><dd>{{ game.age_rating.label() }}</dd>
+                    {% if !game.languages.is_empty() %}
+                    <dt>Ngôn ngữ</dt><dd>{{ game.languages|join_tags }}</dd>
+                    {% endif %}
+                    {% if !tags.is_empty() %}
+                    <dt>Tags</dt>
+                    <dd>
+                        <div class="tag-list">
+                            {% for t in tags %}<a href="/t/{{ t|slugify }}" class="tag-chip-sm">{{ t }}</a>{% endfor %}
+                        </div>
+                    </dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </aside>
+    </div>
+
+    {% if !related_games.is_empty() %}
+    <section class="related-games">
+        <h2 class="section-heading">🎮 Game liên quan</h2>
+        <div class="game-grid">
+            {% for game in related_games %}
+            <article class="game-card">
+                <a href="/games/{{ game.slug }}" class="game-card-link">
+                    <div class="game-card-cover">
+                        {% match game.cover_image %}
+                        {% when Option::Some with (url) %}
+                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                            {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                        {% when Option::None %}
+                        <div class="cover-fallback">{{ game.title|initials }}</div>
+                        {% endmatch %}
+                    </div>
+                    <div class="game-card-body">
+                        <h3 class="game-card-title">{{ game.title }}</h3>
+                        <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
+                        <div class="game-card-meta">
+                            <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
+                            <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                        </div>
+                    </div>
+                </a>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div id="modal-container"></div>
+</article>
+
+<script>
+function openReportModal(slug) {
+    fetch(`/games/${slug}/report-form`).then(r => r.text()).then(html => {
+        document.getElementById('modal-container').innerHTML = html;
+    });
+}
+function toggleReplyForm(id) {
+    const el = document.getElementById('reply-form-' + id);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}
