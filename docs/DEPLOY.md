@@ -1,72 +1,61 @@
 # Hướng dẫn Deploy Production (Coolify)
 
-Kiến trúc: **GitHub Actions → GHCR → Coolify Webhook (POST) → Deploy**
+Kiến trúc production: **1 Coolify Docker Compose Stack = app + PostgreSQL 17**
 
 ```
-git push main
-  └─► GitHub Actions: cargo check → docker build → push ghcr.io/mhieuhonda/khogame:latest
-        └─► POST https://coolify.buppou.com/webhooks/<uuid>   ⚠️ Coolify 4.3.7 bắt buộc POST (GET trả 405)
-              └─► Coolify pull image mới & redeploy tự động
+GitHub push main/tag
+  └─► GitHub Actions: cargo check → docker build → push ghcr.io/mhieuhonda/khogame
+        └─► POST https://coolify.buppou.com/api/v1/deploy?uuid=<stack-uuid>
+              └─► Coolify pull image mới → recreate container khogame-app-v7 (keep DB)
 ```
 
-## 1. Tài nguyên cần tạo trên Coolify
+## Tài nguyên trên Coolify (hiện tại)
 
-| Tài nguyên | Loại | Ghi chú |
+| Tài nguyên | UUID | Chi tiết |
 |---|---|---|
-| `khogame-db` | PostgreSQL 17 | Database của app, cùng server VPS |
-| `khogame` | Docker Image | `ghcr.io/mhieuhonda/khogame:latest` |
-| Domain | `https://louis.vangioitutien.com` + `https://*.louis.vangioitutien.com` | Wildcard cần DNS wildcard trỏ về VPS |
+| Stack `khogame` (Docker Compose) | `mlqvarityzusuzakkgup7tbb` | Project "Vạn Giới Studio" / production |
+| └ `khogame` (app) | container `khogame-app-v7` | ghcr.io/mhieuhonda/khogame:latest, healthcheck /api/v1/health |
+| └ `khogame-db` | container `khogame-db-v7` | postgres:17-alpine, volume `khogame-pgdata` |
 
-## 2. Biến môi trường app (set trong Coolify, KHÔNG commit .env)
+## Domain & TLS
 
-| Biến | Bắt buộc | Mô tả |
-|---|---|---|
-| `DATABASE_URL` | ✅ | Connection string Postgres 17 (internal URL của Coolify) |
-| `SESSION_KEY` | ✅ | `openssl rand -hex 32` |
-| `GOOGLE_CLIENT_ID` | ✅ | Google OAuth |
-| `GOOGLE_CLIENT_SECRET` | ✅ | Google OAuth |
-| `GOOGLE_REDIRECT_URI` | ✅ | `https://louis.vangioitutien.com/auth/google/callback` |
-| `BASE_URL` | ✅ | `https://louis.vangioitutien.com` |
-| `ADMIN_EMAIL` | ✅ | `khongdich.admin@gmail.com` — tự lên admin khi login |
-| `GITHUB_TOKEN` | ⬜ | Tăng rate limit GitHub API cho trang Repos |
-
-## 3. GitHub Secrets (đã tạo tự động)
-
-| Secret | Dùng cho |
+| Domain | Trạng thái |
 |---|---|
-| `COOLIFY_WEBHOOK_URL` | URL webhook deploy của app (gọi POST sau khi push image) |
-| `COOLIFY_URL` | `https://coolify.buppou.com` (phương án dự phòng qua API) |
-| `COOLIFY_API_TOKEN` | Token API Coolify (dự phòng) |
-| `COOLIFY_APP_UUID` | UUID ứng dụng (dự phòng) |
+| `https://louis.vangioitutien.com` | ✅ Let's Encrypt (Host rule) |
+| `https://*.louis.vangioitutien.com` | ✅ Hoạt động qua HostRegexp; HTTPS dùng Traefik default cert (wildcard LE cần DNS-01 — cấu hình Cloudflare token trong Coolify UI nếu cần cert thật) |
 
-## 4. Wildcard domain `*.louis.vangioitutien.com`
+DNS cần: bản ghi A `louis` (và wildcard `*.louis`) trỏ về IP public VPS.
 
-Cần 2 điều kiện:
-1. **DNS**: bản ghi `A` wildcard `*.louis` trỏ về IP public VPS (nếu dùng Cloudflare, bật proxy hoặc DNS-only đều được).
-2. **Chứng chỉ SSL wildcard**: Coolify cần cấu hình DNS challenge (Cloudflare API token) vì HTTP challenge không cấp được wildcard cert. Nếu chưa có, dùng domain chính trước.
+## Biến môi trường (đã set trong compose stack)
 
-## 5. Storage trên VPS
+`DATABASE_URL`, `SESSION_KEY`, `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `BASE_URL`, `ADMIN_EMAIL=khongdich.admin@gmail.com`, `RUST_LOG`, `TZ`.
 
-App gắn persistent storage `/app/storage` (qua Coolify: *Add persistent storage*). Database PostgreSQL 17 chạy trên cùng VPS qua Coolify Stack.
+Secret thật KHÔNG nằm trong repo — chỉ có trong Coolify (env của stack) và GitHub Secrets cho CI:
+`COOLIFY_URL`, `COOLIFY_API_TOKEN`, `COOLIFY_APP_UUID` (= UUID stack).
 
-## 6. Lệnh hữu ích
+## Vận hành
 
 ```bash
-# Xem log app
-curl -s -H "Authorization: Bearer $COOLIFY_TOKEN" https://coolify.buppou.com/api/v1/applications/{uuid}/logs
+# Deploy thủ công (bắt buộc POST — Coolify 4.3.7 webhook GET trả 405)
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://coolify.buppou.com/api/v1/deploy?uuid=mlqvarityzusuzakkgup7tbb"
 
-# Trigger deploy thủ công (POST!)
-curl -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "https://coolify.buppou.com/api/v1/deploy?uuid={uuid}"
+# Xem deployments
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://coolify.buppou.com/api/v1/deployments?uuid=mlqvarityzusuzakkgup7tbb"
 
-# Pull image mới nhất về VPS
-docker pull ghcr.io/mhieuhonda/khogame:latest
+# Hủy deployment kẹt (nếu có)
+curl -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://coolify.buppou.com/api/v1/deployments/<deployment-uuid>/cancel"
 ```
 
-## 7. Khắc phục sự cố
+## Khắc phục sự cố đã gặp
 
-| Triệu chứng | Nguyên nhân & xử lý |
+| Triệu chứng | Nguyên nhân & xử lý đã áp dụng |
 |---|---|
-| Webhook trả **405** | Đang dùng GET — Coolify 4.3.7 chỉ nhận POST cho webhook deploy |
-| App restart loop | Kiểm tra `DATABASE_URL` + log container |
-| Migration fail | Bảng `_sqlx_migrations` conflict — chỉ xảy ra khi đổi file migration cũ |
-| Google OAuth `redirect_uri_mismatch` | Sửa `GOOGLE_REDIRECT_URI` khớp URL Google Console |
+| Deployment kẹt `in_progress` mãi | Container exit ngay (binary dummy / DB không resolve) → docker compose `--wait` treo. Fix: stack chung network cho app+db; image có sanity check binary |
+| App không kết nối được DB khi tách resource | 2 resource trên 2 network khác nhau → gộp vào 1 compose stack |
+| Domain chính 503 sau nhiều lần tạo stack | Container orphan trùng tên `khogame` giữa các stack → đặt container_name phiên bản (`khogame-app-v7`) + restart proxy |
+| HostRegexp không khớp | Traefik v3 cần pure-regex: ``HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`)`` (cú pháp named-group `{sub<...>}` không chạy) |
+| Docker build cho binary rỗng 303KB | Cargo fingerprint cache mount stale → `cargo clean -p khogame` + check binary > 2MB |
+| 405 khi trigger deploy | Coolify 4.3.7 chỉ nhận POST cho webhook/deploy |
