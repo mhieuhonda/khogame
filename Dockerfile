@@ -22,12 +22,17 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cargo build --release || true
 
-# Copy source thật và build lại (chỉ rebuild crate của mình)
+# Copy source thật và build lại
+# ⚠️ cargo clean -p khogame: bắt buộc rebuild crate chính — nếu không cargo sẽ
+# coi fingerprint của bản dummy là còn hợp lệ (mtime ngang nhau) và copy nhầm binary rỗng
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
+    cargo clean -p khogame --release && \
     cargo build --release && \
-    cp target/release/khogame /usr/local/bin/khogame
+    cp target/release/khogame /usr/local/bin/khogame && \
+    stat -c "khogame binary: %s bytes" /usr/local/bin/khogame && \
+    test $(stat -c%s /usr/local/bin/khogame) -gt 2000000 || (echo "!! Binary quá nhỏ — nghi là dummy build"; exit 1)
 
 # ============ Runtime ============
 FROM debian:bookworm-slim AS runtime
