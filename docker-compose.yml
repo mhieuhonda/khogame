@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: khogame
+      POSTGRES_PASSWORD: khogame_local_dev
+      POSTGRES_DB: khogame
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khogame -d khogame"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: khogame:local
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      BASE_URL: http://localhost:3000
+      DATABASE_URL: postgres://khogame:khogame_local_dev@postgres:5432/khogame
+      SESSION_KEY: ${SESSION_KEY:-change_me_64_hex_chars_in_production_0000000000000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-khongdich.admin@gmail.com}
+      RUST_LOG: khogame=info,tower_http=warn
+    ports:
+      - "3000:3000"
+    volumes:
+      - storage:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+  storage:

@@ -1,0 +1,15 @@
+# Build context tối giản cho Docker
+target/
+.git/
+.gitignore
+.env
+.env.*
+!.env.example
+*.md
+docs/
+docker-compose*.yml
+.github/
+rust-toolchain*
+tools/
+scripts/
+examples/

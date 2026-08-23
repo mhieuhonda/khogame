@@ -3,99 +3,88 @@
 > Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam, xây dựng bằng Rust.
 
 ![Rust](https://img.shields.io/badge/Rust-1.98-orange?logo=rust)
-![Axum](https://img.shields.io/badge/Axum-0.8-blue)
+![Axum](https://img.shields.io/badge/Axum-0.8.9-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue?logo=postgresql)
-![HTMX](https://img.shields.io/badge/HTMX-1.9-blue)
-![Askama](https://img.shields.io/badge/Askama-0.12-purple)
-
-## ✨ Tính năng
-
-### Tính năng cốt lõi
-- 🔐 **Đăng nhập bằng Google OAuth 2.0** (đăng nhập duy nhất)
-- 🎮 **Đăng game** với link tải cho 5 nền tảng: Android, iOS, Windows, Linux, macOS
-- 🔒 **Link tải ẩn** - người xem chỉ thấy nút "Tải về cho [nền tảng]", không thấy link thực
-- 💬 **Bình luận** có trả lời (threaded)
-- ❤️ **Like** bài viết và bình luận
-- 📤 **Chia sẻ** qua Facebook, Twitter, Telegram, WhatsApp, copy link, native share
-- 🚩 **Báo cáo** bài viết vi phạm
-
-### 20+ tính năng nâng cao
-1. ⭐ **Đánh giá sao (1-5)** cho game
-2. 🔖 **Bookmark/Lưu** game yêu thích
-3. 👥 **Theo dõi** tác giả
-4. 🔔 **Thông báo** real-time (bình luận, like, follow, báo cáo...)
-5. 🏷️ **Tags** - gắn thẻ cho game
-6. 📁 **Thể loại** (10+ thể loại có sẵn)
-7. 🖼️ **Screenshot gallery** - ảnh chụp màn hình
-8. 🎬 **Trailer YouTube** nhúng
-9. 🔍 **Tìm kiếm** với bộ lọc (thể loại, nền tảng, sắp xếp)
-10. 🔥 **Game thịnh hành** ( Trending)
-11. ⬇️ **Top tải nhiều**
-12. ⭐ **Top đánh giá cao**
-13. 🎯 **Game nổi bật** (Featured)
-14. 📊 **Theo dõi lượt xem/tải/thích/bình luận**
-15. 🌓 **Dark/Light mode** - chuyển đổi giao diện
-16. 🌐 **Đa ngôn ngữ** - Tiếng Việt / English
-17. 👤 **Hồ sơ người dùng** với thống kê
-18. 🛡️ **Admin dashboard** - quản trị, kiểm duyệt
-19. 📋 **Quản lý báo cáo** với workflow (pending → reviewing → resolved/dismissed)
-20. 📌 **Ghim bình luận** (moderator)
-21. 🔗 **Game liên quan** - gợi ý game cùng thể loại
-22. 📈 **Thống kê chi tiết** cho admin
-23. 🍪 **Session bảo mật** - cookie httpOnly, hash SHA-256
-24. 📱 **Responsive** - hoạt động tốt trên mobile/tablet/desktop
+![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
+![Askama](https://img.shields.io/badge/Askama-0.16-purple)
+![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
 
 ## 🛠️ Công nghệ
 
 | Thành phần | Công nghệ |
 |-----------|-----------|
-| Ngôn ngữ | Rust 1.98 |
-| Web framework | Axum 0.8 |
-| Template engine | Askama 0.12 |
-| Frontend interactivity | HTMX 1.9 |
+| Ngôn ngữ | Rust 1.98 (edition 2021) |
+| Web framework | Axum 0.8.9 + axum-extra 0.12 |
+| Template engine | Askama 0.16 |
+| Frontend interactivity | HTMX 2.0.10 (self-hosted) |
 | Database | PostgreSQL 17 |
-| ORM | sqlx 0.8 (compile-time checked) |
-| Auth | Google OAuth 2.0 (oauth2 crate) |
+| ORM | sqlx 0.9 (runtime-tokio + rustls) |
+| Auth | Google OAuth 2.0 |
 | HTTP Client | reqwest 0.12 |
-| Styling | Custom CSS (no framework) |
+| Styling | Custom CSS (dark/light mode) |
 
-## 🚀 Cài đặt
+## ✨ Tính năng cốt lõi
+- 🔐 **Đăng nhập Google OAuth 2.0** (duy nhất)
+- 🎮 **Đăng game** với link tải ẩn cho 5 nền tảng: Android, iOS, Windows, Linux, macOS
+- 💬 **Bình luận** threaded + trả lời + **@mention** (kèm notification)
+- ❤️ Like game & bình luận · ⭐ Đánh giá 1-5 sao · 🔖 Bookmark · 👥 Theo dõi tác giả
+- 🔔 **Thông báo** (comment, like, follow, mention, hệ thống)
+- 🚩 **Báo cáo** nội dung với workflow pending → reviewing → resolved/dismissed
+- 🏷️ Tags · 📁 Thể loại · 🖼️ Screenshot gallery · 🎬 Trailer YouTube nhúng
+- 🔍 Tìm kiếm + lọc (thể loại, nền tảng, sắp xếp) · phân trang
+- 🌓 Dark/Light mode (đồng bộ server-side) · 📱 Responsive
 
-### Yêu cầu
-- Rust 1.98+ (`rustup default 1.98.0`)
-- PostgreSQL 17+
-- Google OAuth credentials
+## 🆕 20 tính năng mới trong v0.1
+1. 📦 **Repo GitHub** — đăng repo mã nguồn, tự fetch stars/forks/ngôn ngữ từ GitHub API, liên kết với game, admin duyệt/ẩn
+2. 🛡️ **Admin dashboard nâng cao** — chart 7 ngày (views/downloads/game mới/user mới)
+3. 👥 **Admin quản lý users** — tìm kiếm, đổi role (user/moderator/admin), ban/unban
+4. 🎮 **Admin quản lý games** — lọc trạng thái, ẩn/hiện, đặt nổi bật, xóa
+5. 💬 **Admin quản lý comments** — ghim, xóa, xem mới nhất
+6. 📁 **Admin quản lý categories** — CRUD đầy đủ
+7. ⚙️ **Admin settings** — tên site, mô tả, footer, auto-approve repo
+8. 🛠️ **Maintenance mode** — chặn truy cập khi bảo trì (admin bypass)
+9. 📜 **Audit log** — ghi mọi hành động quản trị
+10. 📢 **Broadcast** — gửi thông báo hàng loạt tới toàn bộ user
+11. 📢 **Announcement banner** toàn site (4 kiểu màu, tự ẩn được)
+12. 🌐 **Public JSON API v1** — /api/v1/games, /api/v1/repos, /api/v1/stats, /api/v1/health
+13. 📡 **RSS feed** — /rss.xml
+14. 🗺️ **Sitemap + robots.txt** — SEO thân thiện
+15. 🔍 **OG meta tags** — chia sẻ đẹp trên mạng xã hội
+16. 🚦 **Rate limiting** — download 20/phút, comment 10/phút theo IP
+17. 📋 **My Games** — quản lý game của tôi (kể cả draft), xuất bản 1 click
+18. ✏️ **Sửa bình luận** trong 5 phút
+19. ⚠️ **Cảnh báo trùng tiêu đề** khi đăng game (AJAX realtime)
+20. 📥 **Export backup JSON** (admin) + Health check nâng cao kèm DB status
 
-### Bước 1: Clone & cài đặt
+## 🚀 Chạy local
+
 ```bash
+# 1. Clone
 git clone https://github.com/mhieuhonda/khogame.git
 cd khogame
-cp .env.example .env
-```
 
-### Bước 2: Cấu hình environment
-Chỉnh sửa file `.env`:
-```env
-DATABASE_URL=postgres://khogame:khogame@localhost:5432/khogame
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback
-SESSION_KEY=your-64-byte-hex-session-key
-```
+# 2. Cấu hình
+cp .env.example .env   # sửa DATABASE_URL, GOOGLE_*
 
-### Bước 3: Tạo database
-```bash
-# Tạo database và user
-sudo -u postgres psql -c "CREATE USER khogame WITH PASSWORD 'khogame';"
-sudo -u postgres psql -c "CREATE DATABASE khogame OWNER khogame;"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE khogame TO khogame;"
-```
+# 3. Chạy bằng Docker (đã kèm Postgres 17)
+docker compose up -d --build
 
-### Bước 4: Chạy ứng dụng
-```bash
+# Hoặc chạy thường (cần Postgres 17 + Rust 1.98)
 cargo run
 ```
-Migration tự động chạy. Server khởi động tại `http://localhost:3000`.
+
+Server khởi động tại `http://localhost:3000`. Migration tự chạy khi khởi động.
+
+## 🐳 Production với Coolify
+
+Xem hướng dẫn đầy đủ: [docs/DEPLOY.md](docs/DEPLOY.md)
+
+Tóm tắt flow CI/CD:
+```
+git push → GitHub Actions build image → push GHCR
+        → POST webhook Coolify (bản 4.3.7 yêu cầu POST)
+        → Coolify pull image mới → deploy tự động
+```
 
 ## 📁 Cấu trúc dự án
 
@@ -103,48 +92,34 @@ Migration tự động chạy. Server khởi động tại `http://localhost:300
 khogame/
 ├── src/
 │   ├── main.rs              # Entry point
-│   ├── lib.rs               # Library root
-│   ├── config.rs            # App config
-│   ├── state.rs             # AppState
-│   ├── db.rs                # DB connection
+│   ├── lib.rs               # run() + migrations
+│   ├── config.rs            # AppConfig (env)
+│   ├── state.rs             # AppState + rate limiter + maintenance cache
+│   ├── db.rs                # PgPool
 │   ├── auth.rs              # Google OAuth
-│   ├── error.rs             # Error handling
-│   ├── middleware.rs        # Auth middleware
-│   ├── utils.rs             # Utility functions
-│   ├── routes.rs            # Router
-│   ├── templates.rs         # Askama templates + filters
-│   ├── models/              # Data models
-│   ├── repositories/        # Database queries
-│   └── handlers/            # HTTP handlers
-├── templates/               # Askama HTML templates
-│   ├── layout.html
-│   ├── index.html
-│   ├── auth/
-│   ├── game/
-│   ├── profile/
-│   ├── admin/
-│   ├── notifications/
-│   └── partials/            # HTMX partials
-├── static/
-│   ├── css/style.css
-│   ├── js/app.js
-│   └── img/
-├── migrations/
-│   └── 001_init.sql
-├── Cargo.toml
-├── .env.example
-└── README.md
+│   ├── error.rs             # AppError → HTTP
+│   ├── middleware.rs        # CurrentUser/AuthUser + admin + rate limit + maintenance
+│   ├── routes.rs            # Router (60+ routes)
+│   ├── templates.rs         # Askama templates + custom filters
+│   ├── models/              # User, Game, Comment, Repo, Settings...
+│   ├── repositories/        # SQL queries
+│   └── handlers/            # HTTP handlers (games, admin, repos, api, ...)
+├── templates/               # Askama HTML (admin/, repos/, partials/...)
+├── static/                  # CSS + JS (htmx 2.0.10 self-hosted)
+├── migrations/              # SQL migrations (001, 002)
+├── .github/workflows/       # CI + Build & Deploy Coolify
+├── Dockerfile               # Multi-stage Rust 1.98 → debian-slim
+└── docker-compose.yml       # Local: app + Postgres 17
 ```
 
 ## 🔐 Bảo mật
-
-- **Cookie httpOnly** - không thể truy cập bằng JavaScript
-- **Session hash SHA-256** - token không lưu plaintext
-- **CSRF protection** qua OAuth state
-- **SQL injection prevention** - dùng sqlx prepared statements
-- **HTML escaping** - tất cả output được escape tự động
-- **Role-based access control** - admin/moderator/user
+- Cookie httpOnly + session hash SHA-256 trong DB
+- CSRF qua OAuth state
+- SQL injection: 100% prepared statements (sqlx)
+- HTML escaping tự động (Askama) + `Safe` có kiểm soát
+- RBAC: user / moderator / admin
+- Rate limiting theo IP
+- Admin: đăng nhập Google với `ADMIN_EMAIL` được whitelist
 
 ## 📜 License
-
-MIT License - xem file LICENSE để biết chi tiết.
+MIT
