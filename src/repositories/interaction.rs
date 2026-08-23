@@ -1,5 +1,4 @@
 use crate::error::AppResult;
-use crate::models::interaction::{Bookmark, Follow};
 use sqlx::PgPool;
 use uuid::Uuid;
 

@@ -16,7 +16,7 @@
                 {{ comment.created_at.to_rfc3339()|time_ago }}
             </span>
         </div>
-        <div class="comment-content">{{ comment.content|esc|html|safe }}</div>
+        <div class="comment-content">{{ comment.content|nl2br }}</div>
         <div class="comment-actions">
             <button class="comment-action like-comment {% if comment.is_liked %}active{% endif %}"
                     hx-post="/comments/{{ comment.id }}/like"

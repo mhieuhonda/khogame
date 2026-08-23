@@ -2,6 +2,7 @@
 name = "khogame"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.98"
 authors = ["Kho Game Team"]
 description = "Kho Game - Trang chia sẻ game độc lập"
 license = "MIT"
@@ -12,17 +13,17 @@ path = "src/main.rs"
 
 [dependencies]
 # Web framework
-axum = { version = "0.8", features = ["macros", "form"] }
-axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
-tokio = { version = "1.43", features = ["full"] }
+axum = { version = "0.8.9", features = ["macros", "form"] }
+axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
+tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "cors", "trace", "compression-gzip"] }
+tower-http = { version = "0.7", features = ["fs", "cors", "trace", "compression-gzip", "set-header"] }
 
 # Templating
-askama = "0.12"
+askama = "0.16.0"
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate", "bigdecimal"] }
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-ring", "postgres", "uuid", "chrono", "json", "macros", "migrate", "bigdecimal"] }
 bigdecimal = { version = "0.4", features = ["serde"] }
 time = "0.3"
 
@@ -31,10 +32,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_urlencoded = "0.7"
 
-# Authentication
-oauth2 = { version = "5.0", features = ["reqwest"] }
+# Authentication (Google OAuth 2.0 qua reqwest)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
-jsonwebtoken = "9.3"
 rand = "0.8"
 base64 = "0.22"
 sha2 = "0.10"
@@ -42,7 +41,7 @@ hex = "0.4"
 url = "2.5"
 
 # Utils
-uuid = { version = "1.11", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 slug = "0.1"
 anyhow = "1.0"
@@ -50,9 +49,6 @@ thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dotenvy = "0.15"
-async-trait = "0.1"
-once_cell = "1.20"
-validator = { version = "0.19", features = ["derive"] }
 
 [profile.release]
 opt-level = 3

@@ -1,6 +1,5 @@
 use askama::Template;
 use crate::models::*;
-use crate::utils;
 
 /// Implement `axum::response::IntoResponse` for a template type by rendering it.
 macro_rules! impl_template_response {
@@ -338,74 +337,110 @@ pub struct PaginationPartial {
     pub base_url: String,
 }
 
-// Helper functions exposed to templates
+// Helper functions exposed to templates (Askama 0.16 custom filters)
 pub mod filters {
     use crate::utils as u;
     use crate::models::user::User;
+    use askama::filters::Safe;
+    use askama::Values;
+    use std::fmt::Display;
 
-    pub fn time_ago<S: AsRef<str>>(s: S) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn time_ago(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let s = s.as_ref();
         let dt = chrono::DateTime::parse_from_rfc3339(s)
             .map_err(|e| ::askama::Error::Custom(e.into()))?;
         Ok(u::time_ago(dt.with_timezone(&chrono::Utc)))
     }
 
-    pub fn fmt_num(n: &i32) -> ::askama::Result<String> {
-        Ok(u::format_number(*n))
+    /// Định dạng số lớn: 1200 -> 1.2K, 3400000 -> 3.4M
+    #[askama::filter_fn]
+    pub fn fmt_num(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
+        let raw = n.to_string();
+        let v: i64 = raw.trim().parse().unwrap_or(0);
+        Ok(u::format_number_i64(v))
     }
 
-    pub fn fmt_f64(n: f64) -> ::askama::Result<String> {
-        Ok(format!("{:.1}", n))
+    /// Số thập phân 1 chữ số: 4.33333 -> 4.3
+    #[askama::filter_fn]
+    pub fn fmt_f64(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
+        let raw = n.to_string();
+        let v: f64 = raw.trim().parse().unwrap_or(0.0);
+        Ok(format!("{:.1}", v))
     }
 
-    pub fn html<S: AsRef<str>>(s: S) -> ::askama::Result<String> {
-        Ok(u::safe_markdown_to_html(s.as_ref()))
+    /// Markdown an toàn -> HTML (không escape lần 2)
+    #[askama::filter_fn]
+    pub fn html(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
+        Ok(Safe(u::safe_markdown_to_html(s.as_ref())))
     }
 
-    pub fn esc<S: AsRef<str>>(s: S) -> ::askama::Result<String> {
-        Ok(u::html_escape(s.as_ref()))
+    /// Escape HTML thủ công (không escape lần 2)
+    #[askama::filter_fn]
+    pub fn esc(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
+        Ok(Safe(u::html_escape(s.as_ref())))
     }
 
-    pub fn initials<S: AsRef<str>>(name: S) -> ::askama::Result<String> {
+    /// Escape HTML + đổi \\n thành <br> (cho bình luận)
+    #[askama::filter_fn]
+    pub fn nl2br(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
+        Ok(Safe(u::html_escape(s.as_ref()).replace('\n', "<br>")))
+    }
+
+    /// Chữ cái đầu của tên (avatar fallback)
+    #[askama::filter_fn]
+    pub fn initials(name: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(u::initials(name.as_ref()))
     }
 
-    pub fn truncate<S: AsRef<str>>(s: S, max: usize) -> ::askama::Result<String> {
+    /// Cắt chuỗi kèm "…"
+    #[askama::filter_fn]
+    pub fn truncate(s: impl AsRef<str>, _: &dyn Values, max: usize) -> ::askama::Result<String> {
         Ok(u::truncate(s.as_ref(), max))
     }
 
-    pub fn avatar_or(user: &User) -> ::askama::Result<String> {
+    /// Avatar của user hoặc placeholder
+    #[askama::filter_fn]
+    pub fn avatar_or(user: &User, _: &dyn Values) -> ::askama::Result<String> {
         Ok(user.avatar_url.clone().unwrap_or_else(|| {
             "/static/img/avatar-placeholder.svg".to_string()
         }))
     }
 
-    pub fn slugify<S: AsRef<str>>(s: S) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn slugify(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(slug::slugify(s.as_ref()))
     }
 
-    pub fn lower<S: AsRef<str>>(s: S) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn lower(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(s.as_ref().to_lowercase())
     }
 
-    pub fn youtube_embed<S: AsRef<str>>(url: S) -> ::askama::Result<String> {
+    /// URL YouTube -> URL embed
+    #[askama::filter_fn]
+    pub fn youtube_embed(url: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let id = u::extract_youtube_id(url.as_ref()).unwrap_or_default();
         Ok(format!("https://www.youtube.com/embed/{}", id))
     }
 
-    pub fn format_date(date: &Option<chrono::NaiveDate>) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn format_date(date: &Option<chrono::NaiveDate>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default())
     }
 
-    pub fn format_date_vn(date: &Option<chrono::NaiveDate>) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn format_date_vn(date: &Option<chrono::NaiveDate>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(date.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default())
     }
 
-    pub fn format_datetime_vn(dt: &chrono::DateTime<chrono::Utc>) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn format_datetime_vn(dt: &chrono::DateTime<chrono::Utc>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(dt.format("%d/%m/%Y").to_string())
     }
 
-    pub fn join_tags(items: &Vec<String>) -> ::askama::Result<String> {
+    #[askama::filter_fn]
+    pub fn join_tags(items: &Vec<String>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(items.join(", "))
     }
 }

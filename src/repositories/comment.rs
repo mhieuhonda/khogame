@@ -89,7 +89,7 @@ impl CommentRepo {
         // For each top-level comment, load replies
         // (not ideal performance-wise but for simplicity)
         let mut result = Vec::with_capacity(comments.len());
-        for mut c in comments {
+        for c in comments {
             // Don't load replies here; we'll fetch them per-comment via list_replies
             // For listing, just leave empty
             // We won't pre-load replies to keep this simple

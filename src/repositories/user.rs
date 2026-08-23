@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::{User, UserRole, UserPreference, UserStats};
+use crate::models::{User, UserPreference, UserStats};
 use sqlx::PgPool;
 use uuid::Uuid;
 

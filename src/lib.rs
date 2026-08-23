@@ -16,8 +16,7 @@ pub use state::AppState;
 pub use error::{AppError, AppResult};
 
 use std::sync::Arc;
-use tower_http::{services::ServeDir, trace::TraceLayer, compression::CompressionLayer};
-use axum::Router;
+use tower_http::services::ServeDir;
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let state = AppState::new(config.clone()).await?;

@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::report::{Report, ReportReason, ReportStatus, ReportWithGame};
+use crate::models::report::{Report, ReportReason, ReportWithGame};
 use sqlx::PgPool;
 use uuid::Uuid;
 

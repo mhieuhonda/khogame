@@ -99,7 +99,7 @@
         <div class="game-main">
             <section class="detail-section">
                 <h2 class="section-heading">📋 Giới thiệu</h2>
-                <div class="game-content">{{ game.content_or()|html|safe }}</div>
+                <div class="game-content">{{ game.content_or()|html }}</div>
             </section>
 
             {% if !screenshots.is_empty() %}
@@ -181,7 +181,7 @@
                                 {% if comment.is_pinned %}<span class="pin-badge">📌 Ghim</span>{% endif %}
                                 <span class="comment-time" title="{{ comment.created_at.to_rfc3339() }}">{{ comment.created_at.to_rfc3339()|time_ago }}</span>
                             </div>
-                            <div class="comment-content">{{ comment.content|esc|html|safe }}</div>
+                            <div class="comment-content">{{ comment.content|nl2br }}</div>
                             <div class="comment-actions">
                                 <button class="comment-action {% if comment.is_liked %}active{% endif %}"
                                         hx-post="/comments/{{ comment.id }}/like"

@@ -5,7 +5,7 @@ use crate::repositories::{SessionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::LoginTemplate;
 use axum::extract::{Query, State};
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::Redirect;
 use axum_extra::extract::CookieJar;
 use rand::Rng;
 use serde::Deserialize;

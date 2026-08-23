@@ -397,7 +397,8 @@ impl GameRepo {
               LIMIT $1 OFFSET $2"#,
             order
         );
-        let cards = sqlx::query_as::<_, GameCard>(&sql)
+        // order clause là hằng số nội bộ (match ở trên), an toàn injection
+        let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(limit)
             .bind(offset)
             .fetch_all(pool)
@@ -458,7 +459,8 @@ impl GameRepo {
         ));
 
         let pattern = format!("%{}%", query);
-        let mut q = sqlx::query_as::<_, GameCard>(&sql).bind(pattern);
+        // order/where clause được ghép từ hằng số nội bộ, an toàn injection
+        let mut q = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str())).bind(pattern);
         if let Some(cs) = category_slug {
             q = q.bind(cs);
         }

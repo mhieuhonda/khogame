@@ -38,11 +38,16 @@ pub fn time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
 }
 
 pub fn format_number(n: i32) -> String {
-    if n < 1000 {
+    format_number_i64(n as i64)
+}
+
+pub fn format_number_i64(n: i64) -> String {
+    let n_abs = n.unsigned_abs();
+    if n_abs < 1000 {
         n.to_string()
-    } else if n < 1_000_000 {
+    } else if n_abs < 1_000_000 {
         format!("{:.1}K", n as f64 / 1000.0)
-    } else if n < 1_000_000_000 {
+    } else if n_abs < 1_000_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
     } else {
         format!("{:.1}B", n as f64 / 1_000_000_000.0)

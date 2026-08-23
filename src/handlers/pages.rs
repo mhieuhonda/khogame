@@ -1,5 +1,4 @@
-use crate::error::{AppError, AppResult};
-use crate::middleware::CurrentUser;
+use crate::error::AppResult;
 use crate::state::AppState;
 use axum::extract::State;
 use axum::response::Html;

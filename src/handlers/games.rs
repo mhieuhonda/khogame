@@ -14,7 +14,6 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 use serde::Deserialize;
 use std::sync::Arc;
-use uuid::Uuid;
 
 /// Helper to get unread notification count for an optional user
 async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) -> i64 {
