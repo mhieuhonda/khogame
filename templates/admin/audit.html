@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>📜 Audit log</h1><p>Lịch sử 200 hành động quản trị gần nhất.</p></div>
+    {% include "admin/_nav.html" %}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Thời gian</th><th>Quản trị viên</th><th>Hành động</th><th>Đối tượng</th><th>Chi tiết</th><th>IP</th></tr></thead>
+            <tbody>
+            {% for l in logs %}
+            <tr>
+                <td title="{{ l.created_at.to_rfc3339() }}">{{ l.created_at.to_rfc3339()|time_ago }}</td>
+                <td><a href="/u/{{ l.admin_username }}">{{ l.admin_name }}</a></td>
+                <td><span class="admin-chip">{{ l.action }}</span></td>
+                <td>{{ l.target_type.as_deref().unwrap_or("") }} {{ l.target_id.as_deref().unwrap_or("")|truncate(12) }}</td>
+                <td>{{ l.detail.as_deref().unwrap_or("")|truncate(60) }}</td>
+                <td>{{ l.ip.as_deref().unwrap_or("-") }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if logs.is_empty() %}
+    <div class="empty-state"><p>Chưa có log nào.</p></div>
+    {% endif %}
+</section>
+{% endblock %}

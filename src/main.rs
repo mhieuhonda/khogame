@@ -2,8 +2,10 @@ use khogame::{run, AppConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Load .env
-    let _ = dotenvy::dotenv();
+    // Load .env: ưu tiên file .env ở thư mục hiện tại (tránh nhầm .env của thư mục cha)
+    if dotenvy::from_filename(".env").is_err() {
+        let _ = dotenvy::dotenv();
+    }
 
     // Init tracing
     tracing_subscriber::fmt()

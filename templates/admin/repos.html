@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+{% block title %}Quản lý repo GitHub{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>📦 Quản lý repo GitHub</h1><p>Kiểm duyệt các repo do người dùng đăng.</p></div>
+    {% include "admin/_nav.html" %}
+    <div class="admin-chip-row">
+        <a href="/admin/repos" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}">Tất cả</a>
+        <a href="/admin/repos?status=approved" class="admin-chip {% if status_filter.as_deref() == Some("approved") %}chip-active{% endif %}">Đã duyệt</a>
+        <a href="/admin/repos?status=pending" class="admin-chip {% if status_filter.as_deref() == Some("pending") %}chip-active{% endif %}">Chờ duyệt</a>
+        <a href="/admin/repos?status=hidden" class="admin-chip {% if status_filter.as_deref() == Some("hidden") %}chip-active{% endif %}">Đã ẩn</a>
+    </div>
+    <div class="reports-list">
+        {% for r in repos %}
+        <div class="report-row" id="repo-row-{{ r.id }}">
+            <div class="report-info">
+                <a href="{{ r.html_url() }}" class="report-game-title" target="_blank" rel="noopener">📦 {{ r.full_name() }}</a>
+                <div class="report-meta">
+                    <span class="report-reason">⭐ {{ r.stars|fmt_num }} · 🍴 {{ r.forks|fmt_num }} · 🐛 {{ r.open_issues|fmt_num }}</span>
+                    {% if !r.language_or().is_empty() %}<span class="report-reporter">{{ r.language_or() }}</span>{% endif %}
+                    <span class="report-reporter">bởi <a href="/u/{{ r.author_username }}">{{ r.author_name }}</a></span>
+                    <span class="report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
+                </div>
+                {% if !r.description.as_deref().unwrap_or("").is_empty() %}
+                <p class="report-desc">{{ r.description.as_deref().unwrap_or("")|truncate(150) }}</p>
+                {% endif %}
+            </div>
+            <div class="report-actions admin-actions">
+                <span id="repo-status-{{ r.id }}" class="status-badge" style="color: {{ r.status.color() }}">{{ r.status.label() }}</span>
+                {% if r.status.label() != "Đã duyệt" %}
+                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"approved"}' hx-target="#repo-status-{{ r.id }}" hx-swap="innerHTML"><button class="btn btn-primary btn-sm" type="submit">Duyệt</button></form>
+                {% endif %}
+                {% if r.status.label() != "Đã ẩn" %}
+                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"hidden"}' hx-target="#repo-status-{{ r.id }}" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
+                {% endif %}
+                <form hx-post="/repos/{{ r.id }}/refresh" hx-swap="none" title="Làm mới số sao từ GitHub"><button class="btn btn-outline btn-sm" type="submit">↻</button></form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if repos.is_empty() %}
+    <div class="empty-state"><p>Chưa có repo nào.</p></div>
+    {% endif %}
+</section>
+{% endblock %}

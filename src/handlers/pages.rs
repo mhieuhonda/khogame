@@ -32,3 +32,14 @@ pub async fn privacy(State(_state): State<Arc<AppState>>) -> AppResult<Html<Stri
     <p>4. Bạn có thể yêu cầu xóa tài khoản bất cứ lúc nào.</p>
     </div></main></body></html>"#.into()))
 }
+
+pub async fn maintenance(State(_state): State<Arc<AppState>>) -> AppResult<Html<String>> {
+    Ok(Html(r#"
+    <!DOCTYPE html><html lang="vi" data-theme="dark"><head><meta charset="UTF-8"><title>Bảo trì - Kho Game</title><link rel="stylesheet" href="/static/css/style.css"></head>
+    <body><main class="site-main"><div class="container" style="text-align:center;padding:80px 16px">
+    <div style="font-size:72px">🛠️</div>
+    <h1>Hệ thống đang bảo trì</h1>
+    <p>Kho Game tạm thời ngừng phục vụ để nâng cấp. Vui lòng quay lại sau ít phút.</p>
+    <p><a class="btn btn-primary" href="/">Thử lại</a></p>
+    </div></main></body></html>"#.into()))
+}

@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::models::CommentWithGame;
 use crate::models::comment::CommentWithUser;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -194,5 +195,65 @@ impl CommentRepo {
                 .await?;
             Ok(true)
         }
+    }
+
+    /// Sửa bình luận (chỉ trong 5 phút đầu)
+    pub async fn update_content(pool: &PgPool, id: Uuid, user_id: Uuid, content: &str) -> AppResult<CommentWithUser> {
+        sqlx::query(
+            r#"UPDATE comments SET content = $1
+              WHERE id = $2 AND user_id = $3 AND created_at > NOW() - INTERVAL '5 minutes'"#,
+        )
+        .bind(content)
+        .bind(id)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+        let full = Self::find_by_id(pool, id).await?;
+        Ok(full.ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại hoặc đã quá hạn chỉnh sửa".into()))?)
+    }
+
+    /// Tìm user được @mention trong nội dung
+    pub async fn find_mentions(pool: &PgPool, content: &str, exclude_user: Uuid) -> AppResult<Vec<Uuid>> {
+        let mut ids = Vec::new();
+        let words: Vec<&str> = content.split_whitespace().collect();
+        for w in words {
+            if let Some(username) = w.strip_prefix('@') {
+                let username = username.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                if username.is_empty() {
+                    continue;
+                }
+                let uid: Option<Uuid> = sqlx::query_scalar(
+                    "SELECT id FROM users WHERE username = $1 AND id != $2 AND NOT is_banned",
+                )
+                .bind(username)
+                .bind(exclude_user)
+                .fetch_optional(pool)
+                .await?;
+                if let Some(id) = uid {
+                    if !ids.contains(&id) {
+                        ids.push(id);
+                    }
+                }
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Danh sách bình luận mới nhất cho admin
+    pub async fn list_recent(pool: &PgPool, limit: i64) -> AppResult<Vec<CommentWithGame>> {
+        let rows = sqlx::query_as::<_, CommentWithGame>(
+            r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
+                c.like_count, c.is_pinned, c.created_at, c.updated_at,
+                u.display_name as user_name, u.avatar_url as user_avatar,
+                g.title as game_title, g.slug as game_slug
+              FROM comments c
+              JOIN users u ON u.id = c.user_id
+              JOIN games g ON g.id = c.game_id
+              ORDER BY c.created_at DESC LIMIT $1"#,
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
     }
 }

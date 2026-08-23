@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::models::AdminGameRow;
 use crate::models::game::{Game, GameCard, GameForm, GameLink, GameScreenshot, GameStatus, Platform, AgeRating};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -21,10 +22,10 @@ impl GameRepo {
             .as_deref()
             .filter(|s| !s.is_empty())
             .and_then(|s| Uuid::parse_str(s).ok());
-        let languages = if form.languages.is_empty() {
+        let languages = if form.languages_vec().is_empty() {
             vec!["vi".to_string()]
         } else {
-            form.languages.clone()
+            form.languages_vec()
         };
         let published_at = if matches!(status, GameStatus::Published) {
             Some(Utc::now())
@@ -64,7 +65,7 @@ impl GameRepo {
         Self::sync_links(pool, id, form).await?;
 
         // Insert screenshots
-        for (i, url) in form.screenshots.iter().filter(|s| !s.is_empty()).enumerate() {
+        for (i, url) in form.screenshots_vec().iter().enumerate() {
             let _ = sqlx::query(
                 r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
             )
@@ -76,7 +77,7 @@ impl GameRepo {
         }
 
         // Insert tags
-        for tag in &form.tags {
+        for tag in form.tags_vec() {
             let tag = tag.trim();
             if tag.is_empty() {
                 continue;
@@ -121,10 +122,10 @@ impl GameRepo {
             .as_deref()
             .filter(|s| !s.is_empty())
             .and_then(|s| Uuid::parse_str(s).ok());
-        let languages = if form.languages.is_empty() {
+        let languages = if form.languages_vec().is_empty() {
             vec!["vi".to_string()]
         } else {
-            form.languages.clone()
+            form.languages_vec()
         };
 
         sqlx::query(
@@ -166,7 +167,7 @@ impl GameRepo {
             .bind(id)
             .execute(pool)
             .await?;
-        for (i, url) in form.screenshots.iter().filter(|s| !s.is_empty()).enumerate() {
+        for (i, url) in form.screenshots_vec().iter().enumerate() {
             let _ = sqlx::query(
                 r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
             )
@@ -182,7 +183,7 @@ impl GameRepo {
             .bind(id)
             .execute(pool)
             .await?;
-        for tag in &form.tags {
+        for tag in form.tags_vec() {
             let tag = tag.trim();
             if tag.is_empty() {
                 continue;
@@ -347,7 +348,7 @@ impl GameRepo {
     }
 
     pub async fn set_status(pool: &PgPool, id: Uuid, status: &str) -> AppResult<()> {
-        sqlx::query("UPDATE games SET status = $1 WHERE id = $2")
+        sqlx::query("UPDATE games SET status = $1::game_status WHERE id = $2")
             .bind(status)
             .bind(id)
             .execute(pool)
@@ -672,6 +673,98 @@ impl GameRepo {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reports WHERE status = 'pending'")
             .fetch_one(pool)
             .await?;
+        Ok(c)
+    }
+
+    // ===== Admin & quản lý =====
+
+    /// Danh sách game cho admin (mọi trạng thái, kèm filter)
+    pub async fn admin_list(
+        pool: &PgPool,
+        status: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<AdminGameRow>> {
+        let rows = match status {
+            Some(s) if !s.is_empty() => sqlx::query_as::<_, AdminGameRow>(
+                r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                    g.like_count, g.comment_count, g.is_featured, g.created_at,
+                    u.display_name as author_name, c.name as category_name
+                  FROM games g JOIN users u ON u.id = g.user_id
+                  LEFT JOIN categories c ON c.id = g.category_id
+                  WHERE g.status = $1
+                  ORDER BY g.created_at DESC LIMIT $2 OFFSET $3"#,
+            )
+            .bind(s)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?,
+            _ => sqlx::query_as::<_, AdminGameRow>(
+                r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                    g.like_count, g.comment_count, g.is_featured, g.created_at,
+                    u.display_name as author_name, c.name as category_name
+                  FROM games g JOIN users u ON u.id = g.user_id
+                  LEFT JOIN categories c ON c.id = g.category_id
+                  ORDER BY g.created_at DESC LIMIT $1 OFFSET $2"#,
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?,
+        };
+        Ok(rows)
+    }
+
+    pub async fn count_by_status(pool: &PgPool) -> AppResult<Vec<(String, i64)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            "SELECT status::text, COUNT(*)::bigint FROM games GROUP BY status",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Tất cả game của 1 user (kể cả draft/hidden) cho trang "Game của tôi"
+    pub async fn all_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<AdminGameRow>> {
+        let rows = sqlx::query_as::<_, AdminGameRow>(
+            r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                g.like_count, g.comment_count, g.is_featured, g.created_at,
+                u.display_name as author_name, c.name as category_name
+              FROM games g JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.user_id = $1
+              ORDER BY g.created_at DESC"#,
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Slug + updated_at cho sitemap
+    pub async fn sitemap_entries(pool: &PgPool) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
+        let rows: Vec<(String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+            "SELECT slug, updated_at FROM games WHERE status = 'published' ORDER BY updated_at DESC LIMIT 5000",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Game mới nhất cho RSS
+    pub async fn latest_for_rss(pool: &PgPool, limit: i64) -> AppResult<Vec<GameCard>> {
+        Self::list_published(pool, limit, 0, "latest").await
+    }
+
+    /// Đếm game trùng tiêu đề (cảnh báo khi tạo)
+    pub async fn count_similar_title(pool: &PgPool, title: &str) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM games WHERE status = 'published' AND title ILIKE $1",
+        )
+        .bind(format!("%{}%", title))
+        .fetch_one(pool)
+        .await?;
         Ok(c)
     }
 }

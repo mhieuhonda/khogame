@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block title %}Quản lý người dùng{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>👥 Quản lý người dùng</h1><p>Tổng cộng {{ total }} người dùng.</p></div>
+    {% include "admin/_nav.html" %}
+    <form action="/admin/users" method="get" class="admin-search-form">
+        <input type="text" name="q" value="{{ search }}" placeholder="Tìm theo tên, email, username...">
+        <button class="btn btn-primary btn-sm" type="submit">Tìm</button>
+    </form>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Người dùng</th><th>Email</th><th>Vai trò</th><th>Game</th><th>Trạng thái</th><th>Tham gia</th><th>Hành động</th></tr></thead>
+            <tbody>
+            {% for u in users %}
+                <tr id="user-row-{{ u.id }}">
+                    <td>
+                        <div class="user-cell">
+                            {% match u.avatar_url %}
+                            {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ u.display_name }}">
+                            {% when Option::None %}<div class="avatar avatar-xs avatar-fallback">{{ u.display_name|initials }}</div>
+                            {% endmatch %}
+                            <a href="/u/{{ u.username }}">{{ u.display_name }}</a> <small>@{{ u.username }}</small>
+                        </div>
+                    </td>
+                    <td>{{ u.email }}</td>
+                    <td id="role-{{ u.id }}">
+                        <form hx-post="/admin/users/{{ u.id }}/role" hx-target="this" hx-swap="innerHTML" class="role-form">
+                            <select name="role" onchange="this.form.dispatchEvent(new Event('submit'))">
+                                <option value="user" {% if u.role.label() == "Thành viên" %}selected{% endif %}>Thành viên</option>
+                                <option value="moderator" {% if u.role.label() == "Điều hành viên" %}selected{% endif %}>Điều hành viên</option>
+                                <option value="admin" {% if u.role.label() == "Quản trị viên" %}selected{% endif %}>Quản trị viên</option>
+                            </select>
+                        </form>
+                    </td>
+                    <td>{{ u.games_count }}</td>
+                    <td id="ban-{{ u.id }}">
+                        {% if u.is_banned %}<span class="status-badge" style="color:#ef4444">Bị cấm</span>
+                        {% else %}<span class="status-badge" style="color:#10b981">Hoạt động</span>{% endif %}
+                    </td>
+                    <td>{{ u.created_at.to_rfc3339()|time_ago }}</td>
+                    <td class="admin-actions">
+                        <form hx-post="/admin/users/{{ u.id }}/ban" hx-target="#ban-{{ u.id }}" hx-swap="innerHTML">
+                            {% if u.is_banned %}
+                            <button class="btn btn-outline btn-sm" type="submit">Bỏ cấm</button>
+                            {% else %}
+                            <button class="btn btn-danger btn-sm" type="submit" name="ban" value="1" hx-confirm="Cấm người dùng này?">Cấm</button>
+                            {% endif %}
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

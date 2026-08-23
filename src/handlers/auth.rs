@@ -71,7 +71,7 @@ pub async fn google_callback(
     }
 
     // Find or create user
-    let user = match UserRepo::find_by_google_sub(&state.db, &userinfo.sub).await? {
+    let mut user = match UserRepo::find_by_google_sub(&state.db, &userinfo.sub).await? {
         Some(u) if u.is_banned => {
             return Err(AppError::Forbidden("Tài khoản đã bị cấm".into()));
         }
@@ -87,6 +87,13 @@ pub async fn google_callback(
             .await?
         }
     };
+
+    // Tự động cấp admin cho ADMIN_EMAIL (mặc định khongdich.admin@gmail.com)
+    if userinfo.email.eq_ignore_ascii_case(&state.config.admin_email) && !user.role.is_admin() {
+        UserRepo::set_role(&state.db, user.id, "admin").await?;
+        user.role = crate::models::user::UserRole::Admin;
+        tracing::info!("Granted admin to {} via ADMIN_EMAIL", userinfo.email);
+    }
 
     // Create session
     let session_token = auth::gen_session_token();

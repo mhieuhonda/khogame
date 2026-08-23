@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block title %}Quản lý thể loại{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>📁 Quản lý thể loại</h1><p>Thêm, sửa, xóa thể loại game.</p></div>
+    {% include "admin/_nav.html" %}
+    <section class="admin-section">
+        <div class="section-header"><h2>➕ Thêm thể loại mới</h2></div>
+        <form action="/admin/categories/save" method="post" class="admin-form-row">
+            <input type="text" name="name" placeholder="Tên thể loại (vd: Đấu vật)" required>
+            <input type="text" name="icon" placeholder="Icon emoji (vd: 🥋)">
+            <input type="text" name="description" placeholder="Mô tả ngắn">
+            <button class="btn btn-primary" type="submit">Thêm</button>
+        </form>
+    </section>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Tên</th><th>Slug</th><th>Số game</th><th>Mô tả</th><th>Hành động</th></tr></thead>
+            <tbody>
+            {% for c in categories %}
+            <tr>
+                <td>
+                    <form action="/admin/categories/save" method="post" class="admin-form-inline">
+                        <input type="hidden" name="id" value="{{ c.id }}">
+                        <input type="text" name="name" value="{{ c.name }}">
+                </td>
+                <td>{{ c.slug }}</td>
+                <td>{{ c.games_count }}</td>
+                <td><input type="text" name="description" value="{{ c.description.as_deref().unwrap_or("") }}" class="input-wide"></td>
+                <td class="admin-actions">
+                        <input type="hidden" name="icon" value="{{ c.icon.as_deref().unwrap_or("") }}">
+                        <button class="btn btn-outline btn-sm" type="submit">Lưu</button>
+                    </form>
+                    <form hx-post="/admin/categories/{{ c.id }}/delete" hx-confirm="Xóa thể loại này?">
+                        <button class="btn btn-danger btn-sm" type="submit">Xóa</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

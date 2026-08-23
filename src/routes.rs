@@ -1,5 +1,5 @@
 use crate::handlers;
-use crate::middleware::require_admin;
+use crate::middleware::{maintenance_guard, rate_limit, require_admin};
 use crate::state::AppState;
 use axum::middleware;
 use axum::routing::{get, post};
@@ -16,6 +16,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/google", get(handlers::auth::google_login))
         .route("/auth/google/callback", get(handlers::auth::google_callback))
         .route("/auth/logout", post(handlers::auth::logout))
+        // Games - CRUD
         .route("/games/new", get(handlers::games::new_game_form))
         .route("/games", post(handlers::games::create_game))
         .route("/games/latest", get(handlers::games::list_latest))
@@ -27,6 +28,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/games/{slug}/edit", get(handlers::games::edit_game_form))
         .route("/games/{slug}", post(handlers::games::update_game).delete(handlers::games::delete_game))
         .route("/games/{slug}/delete", post(handlers::games::delete_game))
+        .route("/games/{slug}/publish", post(handlers::games::publish_game))
         .route("/games/{slug}/download", post(handlers::games::download_game))
         .route("/games/{slug}/report-form", get(handlers::games::report_form))
         .route("/games/{slug}/report", post(handlers::games::submit_report))
@@ -35,9 +37,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/games/{slug}/rate", post(handlers::interactions::rate))
         .route("/games/{slug}/share", post(handlers::games::share_game))
         .route("/games/{slug}/comments", post(handlers::comments::create_comment))
+        // Game của tôi
+        .route("/my-games", get(handlers::games::my_games))
+        // Comments
         .route("/comments/{id}", post(handlers::comments::like_comment).delete(handlers::comments::delete_comment))
         .route("/comments/{id}/like", post(handlers::comments::like_comment))
+        .route("/comments/{id}/edit", post(handlers::comments::edit_comment))
         .route("/comments/{id}/replies", get(handlers::comments::list_replies))
+        // GitHub Repos
+        .route("/repos", get(handlers::repos::list))
+        .route("/repos/new", get(handlers::repos::new_form))
+        .route("/repos", post(handlers::repos::create))
+        .route("/repos/{id}/refresh", post(handlers::repos::refresh))
+        .route("/repos/{id}/delete", post(handlers::repos::delete_own).delete(handlers::repos::delete_own))
+        .route("/u/{username}/repos", get(handlers::repos::user_repos_fragment))
+        // Users & profile
         .route("/u/{username}", get(handlers::profile::show_profile))
         .route("/u/{username}/follow", post(handlers::interactions::toggle_follow))
         .route("/categories", get(handlers::games::list_categories))
@@ -51,9 +65,25 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/notifications", get(handlers::notifications::list))
         .route("/notifications/{id}/read", post(handlers::notifications::mark_read))
         .route("/notifications/mark-all-read", post(handlers::notifications::mark_all_read))
+        // Static pages
         .route("/terms", get(handlers::pages::terms))
         .route("/privacy", get(handlers::pages::privacy))
-        .route("/health", get(handlers::pages::health));
+        .route("/health", get(handlers::api::health_detail))
+        .route("/maintenance", get(handlers::pages::maintenance));
+
+    // Public JSON API v1
+    let api_routes = Router::new()
+        .route("/games", get(handlers::api::games_list))
+        .route("/games/{slug}", get(handlers::api::game_detail))
+        .route("/repos", get(handlers::api::repos_list))
+        .route("/stats", get(handlers::api::stats_overview))
+        .route("/health", get(handlers::api::health_detail));
+
+    // Nội bộ (htmx fetch)
+    let internal_routes = Router::new()
+        .route("/announcement", get(handlers::api::announcement))
+        .route("/check-duplicate", get(handlers::api::check_duplicate))
+        .route("/preferences/theme", post(handlers::api::set_theme));
 
     let admin_routes = Router::new()
         .route("/admin", get(handlers::admin::dashboard))
@@ -61,13 +91,43 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/admin/reports/{id}/resolve", post(handlers::admin::resolve_report))
         .route("/admin/games/{id}/hide", post(handlers::admin::hide_game))
         .route("/admin/games/{id}/feature", post(handlers::admin::feature_game))
-        .route("/admin/comments/{id}/pin", post(crate::handlers::admin::pin_comment))
+        .route("/admin/comments/{id}/pin", post(handlers::admin::pin_comment))
+        // Games
+        .route("/admin/games", get(handlers::admin::games))
+        .route("/admin/games/{id}/delete", post(handlers::admin::delete_game).delete(handlers::admin::delete_game))
+        // Users
+        .route("/admin/users", get(handlers::admin::users))
+        .route("/admin/users/{id}/role", post(handlers::admin::set_role))
+        .route("/admin/users/{id}/ban", post(handlers::admin::set_banned))
+        // Comments
+        .route("/admin/comments", get(handlers::admin::comments))
+        .route("/admin/comments/{id}/delete", post(handlers::admin::delete_comment).delete(handlers::admin::delete_comment))
+        // Categories
+        .route("/admin/categories", get(handlers::admin::categories))
+        .route("/admin/categories/save", post(handlers::admin::save_category))
+        .route("/admin/categories/{id}/delete", post(handlers::admin::delete_category).delete(handlers::admin::delete_category))
+        // Repos
+        .route("/admin/repos", get(handlers::admin::repos))
+        .route("/admin/repos/{id}/status", post(handlers::admin::set_repo_status))
+        // Settings
+        .route("/admin/settings", get(handlers::admin::settings_page).post(handlers::admin::save_settings))
+        .route("/admin/broadcast", post(handlers::admin::broadcast))
+        // Audit & export
+        .route("/admin/audit", get(handlers::admin::audit_log))
+        .route("/admin/export", get(handlers::admin::export))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
     Router::new()
         .merge(public_routes)
+        .nest("/api/v1", api_routes)
+        .nest("/api", internal_routes)
         .merge(admin_routes)
         .nest_service("/static", ServeDir::new("static"))
+        .route("/rss.xml", get(handlers::api::rss))
+        .route("/sitemap.xml", get(handlers::api::sitemap))
+        .route("/robots.txt", get(handlers::api::robots))
+        .layer(middleware::from_fn_with_state(state.clone(), rate_limit))
+        .layer(middleware::from_fn_with_state(state.clone(), maintenance_guard))
         .layer(TraceLayer::new_for_http())
         .layer(CompressionLayer::new())
         .with_state(state)

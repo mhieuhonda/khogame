@@ -1,3 +1,4 @@
+pub mod api;
 pub mod auth;
 pub mod games;
 pub mod comments;
@@ -6,3 +7,4 @@ pub mod pages;
 pub mod profile;
 pub mod notifications;
 pub mod admin;
+pub mod repos;

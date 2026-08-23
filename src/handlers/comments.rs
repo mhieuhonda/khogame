@@ -40,12 +40,54 @@ pub async fn create_comment(
         .and_then(|s| Uuid::parse_str(s).ok());
     let _id = CommentRepo::create(&state.db, game.id, user.id, parent_id, content).await?;
 
+    // Mention @username -> thông báo
+    let mentions = CommentRepo::find_mentions(&state.db, content, user.id).await.unwrap_or_default();
+    for uid in mentions {
+        let _ = crate::repositories::NotificationRepo::create_mention(
+            &state.db,
+            uid,
+            user.id,
+            &slug,
+        )
+        .await;
+    }
+
     // Return the new comment HTML for HTMX prepend
     let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id).await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Failed to load created comment")))?;
     let partial = CommentItemPartial {
         comment: &comment,
         game_slug: &slug,
+        current_user: Some(&user),
+    };
+    Ok(Html(partial.render()?))
+}
+
+/// Sửa bình luận của chính mình (trong 5 phút)
+#[derive(Deserialize)]
+pub struct EditCommentForm {
+    pub content: String,
+}
+
+pub async fn edit_comment(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<EditCommentForm>,
+) -> AppResult<Html<String>> {
+    let content = form.content.trim();
+    if content.is_empty() {
+        return Err(AppError::BadRequest("Nội dung không được để trống".into()));
+    }
+    let existing = CommentRepo::find_by_id(&state.db, id).await?
+        .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+    if existing.user_id != user.id && !user.role.is_staff() {
+        return Err(AppError::Forbidden("Bạn không có quyền sửa bình luận này".into()));
+    }
+    let updated = CommentRepo::update_content(&state.db, id, user.id, content).await?;
+    let partial = CommentItemPartial {
+        comment: &updated,
+        game_slug: "",
         current_user: Some(&user),
     };
     Ok(Html(partial.render()?))

@@ -1,0 +1,59 @@
+{% extends "layout.html" %}
+{% block title %}Repo GitHub{% endblock %}
+{% block description %}Kho mã nguồn mở game từ cộng đồng Kho Game{% endblock %}
+{% block content %}
+<section class="repos-page">
+    <div class="page-header">
+        <h1>📦 Repo GitHub</h1>
+        <p>{{ total }} mã nguồn game mã nguồn mở do cộng đồng chia sẻ.</p>
+    </div>
+
+    <div class="admin-chip-row">
+        <a href="/repos?sort=stars" class="admin-chip {% if sort == "stars" %}chip-active{% endif %}">⭐ Nhiều sao nhất</a>
+        <a href="/repos?sort=recent" class="admin-chip {% if sort == "recent" %}chip-active{% endif %}">🆕 Mới đăng</a>
+    </div>
+
+    {% if !repos.is_empty() %}
+    <div class="repos-grid">
+        {% for r in repos %}
+        <div class="repo-card">
+            <div class="repo-card-head">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                <a href="{{ r.html_url() }}" target="_blank" rel="noopener" class="repo-name">{{ r.full_name() }}</a>
+            </div>
+            <p class="repo-desc">{{ r.description.as_deref().unwrap_or("Không có mô tả")|truncate(140) }}</p>
+            <div class="repo-meta">
+                {% if !r.primary_language.as_deref().unwrap_or("").is_empty() %}
+                <span class="repo-lang"><i class="lang-dot"></i>{{ r.primary_language.as_deref().unwrap_or("") }}</span>
+                {% endif %}
+                <span title="Stars">⭐ {{ r.stars|fmt_num }}</span>
+                <span title="Forks">🍴 {{ r.forks|fmt_num }}</span>
+                <span title="Issues">🐛 {{ r.open_issues|fmt_num }}</span>
+            </div>
+            <div class="repo-foot">
+                <a href="/u/{{ r.author_username }}" class="repo-author">
+                    {% match r.author_avatar %}
+                    {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ r.author_name }}">
+                    {% when Option::None %}<div class="avatar avatar-xs avatar-fallback">{{ r.author_name|initials }}</div>
+                    {% endmatch %}
+                    {{ r.author_name }}
+                </a>
+                {% match r.game_slug %}
+                {% when Option::Some with (slug) %}
+                <a href="/games/{{ slug }}" class="repo-link-game">🎮 {{ r.game_title.as_deref().unwrap_or("Xem game") }}</a>
+                {% when Option::None %}
+                {% endmatch %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div style="font-size:48px">📦</div>
+        <h3>Chưa có repo nào</h3>
+        <p>Hãy là người đầu tiên chia sẻ mã nguồn game của mình!</p>
+        <a href="/repos/new" class="btn btn-primary">Đăng repo đầu tiên</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

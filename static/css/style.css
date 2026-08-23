@@ -1524,3 +1524,158 @@ a:hover { color: var(--accent-light); }
 ::-webkit-scrollbar-track { background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ============================================
+ * NEW: Admin nav, tables, chips, charts, repos
+ * ============================================ */
+
+.admin-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px;
+    margin: 16px 0 24px;
+    background: var(--card-bg, #16162a);
+    border: 1px solid var(--border, #2a2a44);
+    border-radius: 12px;
+}
+.admin-nav-link {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary, #a0a0c0);
+    text-decoration: none;
+    transition: all .15s;
+}
+.admin-nav-link:hover { background: rgba(124,58,237,.15); color: #c4b5fd; }
+
+.admin-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+.admin-chip {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--card-bg, #16162a);
+    border: 1px solid var(--border, #2a2a44);
+    color: var(--text-secondary, #a0a0c0);
+    font-size: .85rem;
+    text-decoration: none;
+}
+.admin-chip.chip-active, .admin-chip:hover { border-color: #7c3aed; color: #c4b5fd; background: rgba(124,58,237,.12); }
+
+.admin-table-wrap { overflow-x: auto; border-radius: 12px; border: 1px solid var(--border, #2a2a44); }
+.admin-table { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 720px; }
+.admin-table th {
+    text-align: left; padding: 12px 14px;
+    background: rgba(124,58,237,.08);
+    font-weight: 600; color: var(--text-secondary, #a0a0c0);
+    white-space: nowrap;
+}
+.admin-table td { padding: 10px 14px; border-top: 1px solid var(--border, #2a2a44); vertical-align: middle; }
+.admin-table tr:hover td { background: rgba(255,255,255,.02); }
+.admin-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.admin-actions form { display: inline; }
+
+.btn-danger { background: #dc2626 !important; color: #fff !important; border-color: #dc2626 !important; }
+
+.user-cell { display: flex; align-items: center; gap: 8px; }
+.user-cell small { color: var(--text-secondary, #a0a0c0); }
+.role-form select {
+    background: var(--bg, #0f0f1e); color: var(--text, #eee);
+    border: 1px solid var(--border, #2a2a44); border-radius: 6px; padding: 4px 8px;
+}
+
+/* Dashboard chart 7 ngày */
+.admin-chart { display: flex; gap: 8px; align-items: flex-end; height: 160px; padding: 12px 4px; }
+.chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.chart-bars { display: flex; gap: 3px; align-items: flex-end; height: 110px; }
+.chart-bar { width: 12px; border-radius: 3px 3px 0 0; min-height: 2px; transition: height .3s; }
+.chart-bar.views { background: linear-gradient(180deg, #8b5cf6, #6d28d9); }
+.chart-bar.downloads { background: linear-gradient(180deg, #34d399, #059669); }
+.chart-label { font-size: .7rem; color: var(--text-secondary, #a0a0c0); }
+.chart-legend { display: flex; gap: 16px; font-size: .8rem; color: var(--text-secondary, #a0a0c0); margin-top: 8px; }
+.chart-legend .dot, .lang-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+.dot.views, .lang-dot { background: #8b5cf6; }
+.dot.downloads { background: #34d399; }
+
+.admin-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .admin-two-col { grid-template-columns: 1fr; } }
+
+/* Repo cards */
+.repos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.repo-card {
+    background: var(--card-bg, #16162a);
+    border: 1px solid var(--border, #2a2a44);
+    border-radius: 14px;
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 10px;
+    transition: border-color .15s, transform .15s;
+}
+.repo-card:hover { border-color: #7c3aed; transform: translateY(-2px); }
+.repo-card-head { display: flex; align-items: center; gap: 10px; color: #c4b5fd; }
+.repo-name { font-weight: 700; font-size: 1.02rem; color: #c4b5fd; text-decoration: none; }
+.repo-name:hover { text-decoration: underline; }
+.repo-desc { color: var(--text-secondary, #a0a0c0); font-size: .88rem; margin: 0; flex: 1; }
+.repo-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: .82rem; color: var(--text-secondary, #a0a0c0); }
+.repo-lang { display: inline-flex; align-items: center; }
+.repo-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px dashed var(--border, #2a2a44); padding-top: 10px; }
+.repo-author { display: flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--text, #eee); text-decoration: none; }
+.repo-link-game { font-size: .82rem; color: #34d399; text-decoration: none; }
+.repo-link-game:hover { text-decoration: underline; }
+.repo-mini-card {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 8px 12px; border: 1px solid var(--border, #2a2a44); border-radius: 8px;
+    color: #c4b5fd; text-decoration: none; font-size: .85rem;
+}
+.repo-mini-card:hover { border-color: #7c3aed; }
+
+/* Announcement banner */
+.site-announcement { margin: 12px 0 0; }
+.announcement-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-radius: 10px; font-size: .92rem;
+    border: 1px solid;
+}
+.announcement-banner.info { background: rgba(59,130,246,.1); border-color: rgba(59,130,246,.4); color: #93c5fd; }
+.announcement-banner.warning { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.4); color: #fcd34d; }
+.announcement-banner.success { background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.4); color: #6ee7b7; }
+.announcement-banner.danger { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.4); color: #fca5a5; }
+.announcement-close { margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font-size: 1.1rem; }
+
+/* Forms admin */
+.admin-search-form { display: flex; gap: 8px; margin-bottom: 16px; }
+.admin-search-form input {
+    flex: 1; max-width: 380px;
+    background: var(--bg, #0f0f1e); color: var(--text, #eee);
+    border: 1px solid var(--border, #2a2a44); border-radius: 8px; padding: 8px 12px;
+}
+.admin-form-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.admin-form-row input, .admin-form-row textarea {
+    background: var(--bg, #0f0f1e); color: var(--text, #eee);
+    border: 1px solid var(--border, #2a2a44); border-radius: 8px; padding: 8px 12px;
+}
+.admin-form-row input[type="text"] { min-width: 200px; }
+.admin-form-row textarea { flex-basis: 100%; }
+.admin-settings-form label { display: block; margin: 12px 0 4px; font-size: .88rem; color: var(--text-secondary, #a0a0c0); }
+.admin-settings-form input[type="text"], .admin-settings-form textarea, .admin-settings-form select {
+    width: 100%; background: var(--bg, #0f0f1e); color: var(--text, #eee);
+    border: 1px solid var(--border, #2a2a44); border-radius: 8px; padding: 8px 12px;
+}
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.admin-table input[type="text"] {
+    background: var(--bg, #0f0f1e); color: var(--text, #eee);
+    border: 1px solid var(--border, #2a2a44); border-radius: 6px; padding: 4px 8px;
+}
+.admin-table .input-wide { min-width: 180px; }
+.status-badge { font-size: .78rem; white-space: nowrap; }
+
+/* Light mode hỗ trợ biến mặc định */
+[data-theme="light"] .admin-nav,
+[data-theme="light"] .admin-table tr:hover td { background: #f4f4fb; }
+[data-theme="light"] .repo-card,
+[data-theme="light"] .admin-chip,
+[data-theme="light"] .admin-table input[type="text"],
+[data-theme="light"] .role-form select,
+[data-theme="light"] .admin-search-form input,
+[data-theme="light"] .admin-form-row input,
+[data-theme="light"] .admin-settings-form input[type="text"],
+[data-theme="light"] .admin-settings-form textarea { background: #fff; border-color: #ddd; color: #222; }

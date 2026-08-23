@@ -1,4 +1,5 @@
 use crate::error::AppResult;
+use crate::models::UserWithGameCount;
 use crate::models::{User, UserPreference, UserStats};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -187,8 +188,66 @@ impl UserRepo {
         Ok(users)
     }
 
+    /// Danh sách user cho admin (kèm số game), tìm kiếm theo tên/email
+    pub async fn list_for_admin(
+        pool: &PgPool,
+        search: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<UserWithGameCount>> {
+        let pattern = format!("%{}%", search.unwrap_or_default());
+        let users = sqlx::query_as::<_, UserWithGameCount>(
+            r#"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
+                u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
+                COUNT(g.id) FILTER (WHERE g.status = 'published')::bigint AS games_count
+              FROM users u
+              LEFT JOIN games g ON g.user_id = u.id
+              WHERE ($1 = '%%' OR u.email ILIKE $1 OR u.username ILIKE $1 OR u.display_name ILIKE $1)
+              GROUP BY u.id
+              ORDER BY u.created_at DESC
+              LIMIT $2 OFFSET $3"#,
+        )
+        .bind(pattern)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+        Ok(users)
+    }
+
+    pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
+    }
+
+    /// Tìm user theo email (dùng cho seed admin)
+    pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
+        let user = sqlx::query_as::<_, User>(
+            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+                role, is_banned, last_seen_at, created_at, updated_at
+              FROM users WHERE email = $1"#,
+        )
+        .bind(email)
+        .fetch_optional(pool)
+        .await?;
+        Ok(user)
+    }
+
+    /// Nâng cấp user lên admin nếu chưa phải (idempotent)
+    pub async fn ensure_admin_by_email(pool: &PgPool, email: &str) -> AppResult<bool> {
+        let res = sqlx::query(
+            "UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'",
+        )
+        .bind(email)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     pub async fn set_role(pool: &PgPool, user_id: Uuid, role: &str) -> AppResult<()> {
-        sqlx::query("UPDATE users SET role = $1 WHERE id = $2")
+        sqlx::query("UPDATE users SET role = $1::user_role WHERE id = $2")
             .bind(role)
             .bind(user_id)
             .execute(pool)

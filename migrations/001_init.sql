@@ -3,7 +3,7 @@
 -- ============================================
 
 -- Extensions
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- uuid-ossp không cần nữa: dùng gen_random_uuid() built-in từ PG13+
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- ============================================
@@ -13,7 +13,7 @@ CREATE TYPE user_role AS ENUM ('user', 'moderator', 'admin');
 CREATE TYPE auth_provider AS ENUM ('google');
 
 CREATE TABLE users (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email         VARCHAR(255) NOT NULL UNIQUE,
     username      VARCHAR(50) NOT NULL UNIQUE,
     display_name  VARCHAR(100) NOT NULL,
@@ -36,7 +36,7 @@ CREATE INDEX idx_users_created_at ON users(created_at DESC);
 -- CATEGORIES & TAGS
 -- ============================================
 CREATE TABLE categories (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        VARCHAR(50) NOT NULL UNIQUE,
     slug        VARCHAR(60) NOT NULL UNIQUE,
     description TEXT DEFAULT '',
@@ -45,7 +45,7 @@ CREATE TABLE categories (
 );
 
 CREATE TABLE tags (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name       VARCHAR(50) NOT NULL UNIQUE,
     slug       VARCHAR(60) NOT NULL UNIQUE,
     usage_count INTEGER NOT NULL DEFAULT 0,
@@ -63,7 +63,7 @@ CREATE TYPE platform_type AS ENUM ('android', 'ios', 'windows', 'linux', 'macos'
 CREATE TYPE age_rating AS ENUM ('everyone', 'teen', 'mature', 'adult');
 
 CREATE TABLE games (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title           VARCHAR(200) NOT NULL,
     slug            VARCHAR(220) NOT NULL UNIQUE,
@@ -106,7 +106,7 @@ CREATE INDEX idx_games_content_trgm ON games USING gin (content gin_trgm_ops);
 
 -- Game download links (hidden from viewers)
 CREATE TABLE game_links (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     platform   platform_type NOT NULL,
     url        TEXT NOT NULL,
@@ -118,7 +118,7 @@ CREATE INDEX idx_game_links_game ON game_links(game_id);
 
 -- Game screenshots
 CREATE TABLE game_screenshots (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     url        TEXT NOT NULL,
     caption    VARCHAR(255) DEFAULT '',
@@ -144,7 +144,7 @@ CREATE INDEX idx_game_tags_tag ON game_tags(tag_id);
 
 -- Comments (with threaded replies)
 CREATE TABLE comments (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     parent_id  UUID REFERENCES comments(id) ON DELETE CASCADE,
@@ -191,7 +191,7 @@ CREATE INDEX idx_ratings_game ON ratings(game_id);
 
 -- Reviews (detailed reviews with title + body)
 CREATE TABLE reviews (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title      VARCHAR(200) NOT NULL,
@@ -236,7 +236,7 @@ CREATE TYPE report_reason AS ENUM (
 );
 
 CREATE TABLE reports (
-    id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id      UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     reporter_id  UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     reason       report_reason NOT NULL,
@@ -254,7 +254,7 @@ CREATE INDEX idx_reports_reporter ON reports(reporter_id);
 
 -- Downloads tracking
 CREATE TABLE downloads (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
     platform   platform_type NOT NULL,
@@ -268,7 +268,7 @@ CREATE INDEX idx_downloads_game ON downloads(game_id, created_at DESC);
 CREATE TYPE share_platform AS ENUM ('facebook', 'twitter', 'telegram', 'whatsapp', 'copy', 'native');
 
 CREATE TABLE shares (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     game_id    UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
     user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
     platform   share_platform NOT NULL,
@@ -286,7 +286,7 @@ CREATE TYPE notification_type AS ENUM (
 );
 
 CREATE TABLE notifications (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     actor_id   UUID REFERENCES users(id) ON DELETE SET NULL,
     type       notification_type NOT NULL,
@@ -303,7 +303,7 @@ CREATE INDEX idx_notifications_user ON notifications(user_id, is_read, created_a
 -- SESSIONS (cookie-based sessions stored in DB)
 -- ============================================
 CREATE TABLE sessions (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash  VARCHAR(64) NOT NULL UNIQUE,
     user_agent  TEXT DEFAULT '',

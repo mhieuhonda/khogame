@@ -19,6 +19,12 @@
         const current = document.documentElement.getAttribute('data-theme') || 'dark';
         const next = current === 'dark' ? 'light' : 'dark';
         applyTheme(next);
+        // Đồng bộ theme lên server (nếu đã đăng nhập)
+        fetch('/api/preferences/theme', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'theme=' + encodeURIComponent(next)
+        }).catch(function() {});
     }
 
     // Apply stored theme on load
@@ -28,6 +34,55 @@
         const toggle = document.getElementById('themeToggle');
         if (toggle) {
             toggle.addEventListener('click', toggleTheme);
+        }
+
+        // ===== Announcement banner toàn site =====
+        const bannerSlot = document.getElementById('announcement-slot');
+        if (bannerSlot) {
+            fetch('/api/announcement').then(function(r) { return r.json(); }).then(function(d) {
+                if (d && d.text) {
+                    const div = document.createElement('div');
+                    div.className = 'container site-announcement';
+                    const dismissed = sessionStorage.getItem('kg-ann-dismissed');
+                    if (dismissed === d.text) return;
+                    div.innerHTML = '<div class="announcement-banner ' + (d.kind || 'info') + '">' +
+                        '<span>📢</span><span class="ann-text"></span>' +
+                        '<button class="announcement-close" aria-label="Đóng">×</button></div>';
+                    div.querySelector('.ann-text').textContent = d.text;
+                    div.querySelector('.announcement-close').addEventListener('click', function() {
+                        sessionStorage.setItem('kg-ann-dismissed', d.text);
+                        div.remove();
+                    });
+                    bannerSlot.parentNode.insertBefore(div, bannerSlot.nextSibling);
+                }
+            }).catch(function() {});
+        }
+
+        // ===== Cảnh báo trùng tiêu đề khi đăng game =====
+        const titleInput = document.getElementById('title');
+        if (titleInput) {
+            let debounce = null;
+            titleInput.addEventListener('input', function() {
+                clearTimeout(debounce);
+                const v = this.value.trim();
+                const warn = document.getElementById('dup-warning');
+                if (v.length < 3) { if (warn) warn.remove(); return; }
+                debounce = setTimeout(function() {
+                    fetch('/api/check-duplicate?title=' + encodeURIComponent(v))
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) {
+                            const existing = document.getElementById('dup-warning');
+                            if (existing) existing.remove();
+                            if (d.similar > 0) {
+                                const el = document.createElement('small');
+                                el.id = 'dup-warning';
+                                el.style.color = '#fcd34d';
+                                el.textContent = '⚠️ Có thể đã có ' + d.similar + ' game tên tương tự.';
+                                titleInput.parentNode.appendChild(el);
+                            }
+                        }).catch(function() {});
+                }, 500);
+            });
         }
 
         // Auto-mark notifications as read when viewed

@@ -57,6 +57,24 @@ pub struct UserStats {
     pub following_count: i64,
 }
 
+/// User + số game đã đăng (cho bảng quản trị)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserWithGameCount {
+    pub id: Uuid,
+    pub email: String,
+    pub username: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub google_sub: String,
+    pub role: UserRole,
+    pub is_banned: bool,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub games_count: i64,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, FromRow)]
 pub struct UserPreference {
     pub theme: String,

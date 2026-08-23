@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+{% block title %}Quản lý game{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>🎮 Quản lý game</h1><p>Tất cả game trong hệ thống theo trạng thái.</p></div>
+    {% include "admin/_nav.html" %}
+    <div class="admin-chip-row">
+        <a href="/admin/games" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}">Tất cả</a>
+        {% for s in status_counts %}
+        <a href="/admin/games?status={{ s.0 }}" class="admin-chip {% if status_filter.as_deref() == Some(s.0.as_str()) %}chip-active{% endif %}">{{ s.0 }} ({{ s.1 }})</a>
+        {% endfor %}
+    </div>
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Game</th><th>Tác giả</th><th>Thể loại</th><th>Trạng thái</th><th>Thống kê</th><th>Hành động</th></tr></thead>
+            <tbody>
+            {% for g in games %}
+                <tr class="admin-game-row" id="game-row-{{ g.id }}">
+                    <td><a href="/games/{{ g.slug }}">{{ g.title }}</a></td>
+                    <td>{{ g.author_name }}</td>
+                    <td>{{ g.category_name.as_deref().unwrap_or("-") }}</td>
+                    <td><span class="status-badge">{{ g.status.label() }}</span>
+                        {% if g.is_featured %}<span class="status-badge" style="color:#f59e0b">⭐ Nổi bật</span>{% endif %}</td>
+                    <td>👁️ {{ g.view_count|fmt_num }} · ⬇️ {{ g.download_count|fmt_num }} · ❤️ {{ g.like_count|fmt_num }} · 💬 {{ g.comment_count|fmt_num }}</td>
+                    <td class="admin-actions">
+                        {% if g.status.label() == "Đã xuất bản" %}
+                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-vals='{"hide":"1"}' hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
+                        {% else %}
+                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Hiện</button></form>
+                        {% endif %}
+                        <form hx-post="/admin/games/{{ g.id }}/feature" hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Nổi bật</button></form>
+                        <form hx-post="/admin/games/{{ g.id }}/delete" hx-confirm="Xóa vĩnh viễn game này?" hx-target="closest tr" hx-swap="outerHTML"><button class="btn btn-danger btn-sm" type="submit">Xóa</button></form>
+                        <span class="alert-zone"></span>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if games.is_empty() %}
+    <div class="empty-state"><p>Không có game nào.</p></div>
+    {% endif %}
+</section>
+{% endblock %}

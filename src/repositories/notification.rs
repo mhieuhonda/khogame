@@ -83,4 +83,44 @@ impl NotificationRepo {
         .await?;
         Ok(())
     }
+
+    /// Gửi thông báo hệ thống tới toàn bộ người dùng đang hoạt động
+    pub async fn broadcast(
+        pool: &PgPool,
+        title: &str,
+        content: &str,
+        link: &str,
+    ) -> AppResult<u64> {
+        let res = sqlx::query(
+            r#"INSERT INTO notifications (user_id, type, title, content, link)
+               SELECT id, 'system'::notification_type, $1, $2, $3 FROM users
+               WHERE NOT is_banned"#,
+        )
+        .bind(title)
+        .bind(content)
+        .bind(link)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
+    /// Thông báo mention tới 1 user
+    pub async fn create_mention(
+        pool: &PgPool,
+        user_id: Uuid,
+        actor_id: Uuid,
+        game_slug: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              VALUES ($1, $2, 'mention'::notification_type, $3, $4)"#,
+        )
+        .bind(user_id)
+        .bind(actor_id)
+        .bind("Có người nhắc đến bạn trong một bình luận")
+        .bind(format!("/games/{}", game_slug))
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
 }

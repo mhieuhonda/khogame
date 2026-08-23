@@ -1,6 +1,8 @@
 use crate::error::AppResult;
-use crate::models::category::{Category, CategoryWithCount};
+use crate::models::CategoryWithCount;
+use crate::models::category::Category;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 pub struct CategoryRepo;
 
@@ -34,6 +36,52 @@ impl CategoryRepo {
             r#"SELECT id, name, slug, description, icon, created_at FROM categories WHERE slug = $1"#,
         )
         .bind(slug)
+        .fetch_optional(pool)
+        .await?;
+        Ok(c)
+    }
+
+    // ===== CRUD cho admin =====
+    pub async fn create(pool: &PgPool, name: &str, slug: &str, description: &str, icon: &str) -> AppResult<Uuid> {
+        let id: Uuid = sqlx::query_scalar(
+            r#"INSERT INTO categories (name, slug, description, icon)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+               RETURNING id"#,
+        )
+        .bind(name)
+        .bind(slug)
+        .bind(description)
+        .bind(icon)
+        .fetch_one(pool)
+        .await?;
+        Ok(id)
+    }
+
+    pub async fn update(pool: &PgPool, id: uuid::Uuid, name: &str, description: &str, icon: &str) -> AppResult<()> {
+        sqlx::query("UPDATE categories SET name = $1, description = $2, icon = $3 WHERE id = $4")
+            .bind(name)
+            .bind(description)
+            .bind(icon)
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete(pool: &PgPool, id: uuid::Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM categories WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn find_by_id(pool: &PgPool, id: uuid::Uuid) -> AppResult<Option<Category>> {
+        let c = sqlx::query_as::<_, Category>(
+            r#"SELECT id, name, slug, description, icon, created_at FROM categories WHERE id = $1"#,
+        )
+        .bind(id)
         .fetch_optional(pool)
         .await?;
         Ok(c)

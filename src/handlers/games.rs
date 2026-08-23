@@ -89,30 +89,6 @@ pub async fn create_game(
     let count = GameRepo::count_slug(&state.db, &slug_base).await.unwrap_or(0);
     let slug = utils::make_unique_slug(&form.title, count);
 
-    // Process screenshots textarea (one URL per line)
-    form.screenshots = form
-        .screenshots
-        .iter()
-        .flat_map(|s| s.lines().map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    // Process tags (split by comma)
-    form.tags = form
-        .tags
-        .iter()
-        .flat_map(|s| s.split(',').map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    // Process languages (split by comma)
-    form.languages = form
-        .languages
-        .iter()
-        .flat_map(|s| s.split(',').map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty())
-        .collect();
-
     let id = GameRepo::create(&state.db, user.id, &form, &slug).await?;
     tracing::info!("Game created: {} ({})", id, slug);
 
@@ -136,6 +112,7 @@ pub async fn show_game(
 
     if !is_owner {
         let _ = GameRepo::increment_view_count(&state.db, game.id).await;
+        let _ = crate::repositories::StatsRepo::record_view(&state.db, game.id).await;
     }
     let game = GameRepo::find_by_slug(&state.db, &slug).await?.unwrap();
 
@@ -249,16 +226,6 @@ pub async fn update_game(
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
     }
 
-    form.screenshots = form.screenshots.iter()
-        .flat_map(|s| s.lines().map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty()).collect();
-    form.tags = form.tags.iter()
-        .flat_map(|s| s.split(',').map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty()).collect();
-    form.languages = form.languages.iter()
-        .flat_map(|s| s.split(',').map(|l| l.trim().to_string()))
-        .filter(|s| !s.is_empty()).collect();
-
     GameRepo::update(&state.db, game.id, &form).await?;
     Ok(Redirect::to(&format!("/games/{}", slug)))
 }
@@ -309,6 +276,7 @@ pub async fn download_game(
     )
     .await;
     let _ = GameRepo::increment_download_count(&state.db, game.id).await;
+    let _ = crate::repositories::StatsRepo::record_download(&state.db, game.id).await;
 
     Ok((
         StatusCode::OK,
@@ -607,4 +575,42 @@ pub async fn share_game(
     let _ = InteractionRepo::record_share(&state.db, game.id, user_id, &form.platform).await;
     let _ = GameRepo::increment_share_count(&state.db, game.id).await;
     Ok(Html("<span></span>".into()))
+}
+
+// ============= Game của tôi =============
+pub async fn my_games(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<MyGamesTemplate> {
+    let games = GameRepo::all_by_user(&state.db, user.id).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(MyGamesTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        games,
+    })
+}
+
+// ============= Xuất bản game nháp =============
+pub async fn publish_game(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(slug): Path<String>,
+) -> AppResult<Html<String>> {
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    if game.user_id != user.id && !user.role.is_staff() {
+        return Err(AppError::Forbidden("Bạn không có quyền".into()));
+    }
+    sqlx::query(
+        "UPDATE games SET status = 'published', \
+         published_at = COALESCE(published_at, NOW()) WHERE id = $1",
+    )
+    .bind(game.id)
+    .execute(&state.db)
+    .await?;
+    Ok(Html(
+        "<div class='alert alert-success'>Đã xuất bản game.</div>".into(),
+    ))
 }

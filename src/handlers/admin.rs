@@ -1,18 +1,29 @@
 use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::AuthUser;
-use crate::models::report::{ReportStatus};
-use crate::repositories::{GameRepo, ReportRepo};
+use crate::models::report::ReportStatus;
+use crate::repositories::{
+    AdminLogRepo, CategoryRepo, CommentRepo, GameRepo, NotificationRepo, RepoRepo, ReportRepo,
+    SettingsRepo, StatsRepo, UserRepo,
+};
 use crate::state::AppState;
-use crate::templates::{AdminReportsTemplate, AdminTemplate};
+use crate::templates::*;
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::response::Html;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+// ============= Helper: ghi audit log (best-effort) =============
+async fn audit(state: &AppState, admin_id: Uuid, action: &str, target_type: &str, target_id: &str, detail: &str) {
+    let _ = AdminLogRepo::log(&state.db, admin_id, action, target_type, target_id, detail, None).await;
+}
+
+// ============================================================
+// DASHBOARD (kèm chart 7 ngày)
+// ============================================================
 pub async fn dashboard(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -21,17 +32,25 @@ pub async fn dashboard(
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
     let total_games = GameRepo::count_published(&state.db).await.unwrap_or(0);
-    let total_users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
+    let total_users: i64 = UserRepo::count_all(&state.db).await.unwrap_or(0);
     let total_downloads: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM downloads")
         .fetch_one(&state.db)
         .await
         .unwrap_or(0);
     let pending_reports = ReportRepo::count_pending(&state.db).await.unwrap_or(0);
-    let recent_reports = ReportRepo::list(&state.db, Some("pending"), 10, 0).await.unwrap_or_default();
-    let recent_games = GameRepo::list_published(&state.db, 10, 0, "latest").await.unwrap_or_default();
+    let recent_reports = ReportRepo::list(&state.db, Some("pending"), 10, 0)
+        .await
+        .unwrap_or_default();
+    let recent_games = GameRepo::list_published(&state.db, 10, 0, "latest")
+        .await
+        .unwrap_or_default();
+    let recent_comments = CommentRepo::list_recent(&state.db, 5).await.unwrap_or_default();
+    let daily_stats = StatsRepo::daily_last_7_days(&state.db).await.unwrap_or_default();
+    let total_repos = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
+    let pending_repos = RepoRepo::pending_count(&state.db).await.unwrap_or(0);
+    let status_counts = GameRepo::count_by_status(&state.db).await.unwrap_or_default();
+    let max_views = daily_stats.iter().map(|d| d.views).max().unwrap_or(1).max(1);
+    let max_downloads = daily_stats.iter().map(|d| d.downloads).max().unwrap_or(1).max(1);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminTemplate {
         current_user: Some(user),
@@ -42,9 +61,19 @@ pub async fn dashboard(
         pending_reports,
         recent_reports,
         recent_games,
+        recent_comments,
+        daily_stats,
+        total_repos,
+        pending_repos,
+        status_counts,
+        max_views,
+        max_downloads,
     })
 }
 
+// ============================================================
+// REPORTS (giữ hành vi cũ)
+// ============================================================
 #[derive(Deserialize)]
 pub struct ReportsQuery {
     pub status: Option<String>,
@@ -89,9 +118,16 @@ pub async fn resolve_report(
         "dismissed" => ReportStatus::Dismissed,
         _ => return Err(AppError::BadRequest("Trạng thái không hợp lệ".into())),
     };
-    ReportRepo::resolve(&state.db, id, user.id, &form.status, &form.resolution.unwrap_or_default()).await?;
-    let _ = status;
-    // Return updated report row HTML
+    ReportRepo::resolve(
+        &state.db,
+        id,
+        user.id,
+        &form.status,
+        &form.resolution.unwrap_or_default(),
+    )
+    .await?;
+    audit(&state, user.id, "report.resolve", "report", &id.to_string(), &format!("-> {:?}", status)).await;
+
     let reports = ReportRepo::list(&state.db, None, 50, 0).await?;
     let r = reports.iter().find(|r| r.id == id);
     let html = if let Some(r) = r {
@@ -111,7 +147,7 @@ pub async fn resolve_report(
     Ok(Html(html))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct HideGameForm {
     pub hide: Option<String>,
 }
@@ -127,8 +163,11 @@ pub async fn hide_game(
     }
     let status = if form.hide.is_some() { "hidden" } else { "published" };
     GameRepo::set_status(&state.db, id, status).await?;
-    Ok(Html(format!("<div class='alert alert-success'>Đã {} game.</div>",
-        if status == "hidden" { "ẩn" } else { "hiện" })))
+    audit(&state, user.id, "game.status", "game", &id.to_string(), status).await;
+    Ok(Html(format!(
+        "<div class='alert alert-success'>Đã {} game.</div>",
+        if status == "hidden" { "ẩn" } else { "hiện" }
+    )))
 }
 
 pub async fn feature_game(
@@ -139,12 +178,23 @@ pub async fn feature_game(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    // Toggle featured
-    let game = GameRepo::find_by_id(&state.db, id).await?
+    let game = GameRepo::find_by_id(&state.db, id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     GameRepo::set_featured(&state.db, id, !game.is_featured).await?;
-    Ok(Html(format!("<div class='alert alert-success'>Đã {} nổi bật.</div>",
-        if !game.is_featured { "đặt làm" } else { "bỏ" })))
+    audit(
+        &state,
+        user.id,
+        "game.feature",
+        "game",
+        &id.to_string(),
+        if !game.is_featured { "on" } else { "off" },
+    )
+    .await;
+    Ok(Html(format!(
+        "<div class='alert alert-success'>Đã {} nổi bật.</div>",
+        if !game.is_featured { "đặt làm" } else { "bỏ" }
+    )))
 }
 
 pub async fn pin_comment(
@@ -155,14 +205,557 @@ pub async fn pin_comment(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let pinned = crate::repositories::CommentRepo::toggle_pin(&state.db, id).await?;
-    let comment = crate::repositories::CommentRepo::find_by_id(&state.db, id).await?
+    let pinned = CommentRepo::toggle_pin(&state.db, id).await?;
+    let comment = CommentRepo::find_by_id(&state.db, id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
-    let partial = crate::templates::CommentItemPartial {
+    let partial = CommentItemPartial {
         comment: &comment,
         game_slug: "",
         current_user: Some(&user),
     };
-    let _ = pinned;
+    audit(&state, user.id, "comment.pin", "comment", &id.to_string(), if pinned { "on" } else { "off" }).await;
     Ok(Html(partial.render()?))
+}
+
+// ============================================================
+// ADMIN: GAMES
+// ============================================================
+#[derive(Deserialize, Default)]
+pub struct AdminGamesQuery {
+    pub status: Option<String>,
+    pub page: Option<i64>,
+}
+
+pub async fn games(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<AdminGamesQuery>,
+) -> AppResult<AdminGamesTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let games = GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset).await?;
+    let status_counts = GameRepo::count_by_status(&state.db).await.unwrap_or_default();
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminGamesTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        games,
+        status_filter: q.status,
+        status_counts,
+        page,
+        per_page,
+    })
+}
+
+pub async fn delete_game(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Html<String>> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let game = GameRepo::find_by_id(&state.db, id).await?;
+    GameRepo::delete(&state.db, id).await?;
+    if let Some(g) = game {
+        audit(&state, user.id, "game.delete", "game", &id.to_string(), &g.title).await;
+    }
+    Ok(Html(
+        "<div class='alert alert-success'>Đã xóa game vĩnh viễn.</div>".into(),
+    ))
+}
+
+// ============================================================
+// ADMIN: USERS
+// ============================================================
+#[derive(Deserialize, Default)]
+pub struct AdminUsersQuery {
+    pub q: Option<String>,
+    pub page: Option<i64>,
+}
+
+pub async fn users(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<AdminUsersQuery>,
+) -> AppResult<AdminUsersTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let search = q.q.as_deref().filter(|s| !s.trim().is_empty());
+    let users = UserRepo::list_for_admin(&state.db, search, per_page, offset).await?;
+    let total = UserRepo::count_all(&state.db).await.unwrap_or(0);
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminUsersTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        users,
+        search: q.q.unwrap_or_default(),
+        total,
+        page,
+        per_page,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct RoleForm {
+    pub role: String,
+}
+
+pub async fn set_role(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<RoleForm>,
+) -> AppResult<Html<String>> {
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    if !matches!(form.role.as_str(), "user" | "moderator" | "admin") {
+        return Err(AppError::BadRequest("Vai trò không hợp lệ".into()));
+    }
+    if id == admin.id && form.role != "admin" {
+        return Err(AppError::BadRequest("Không thể tự hạ quyền của chính mình".into()));
+    }
+    UserRepo::set_role(&state.db, id, &form.role).await?;
+    audit(&state, admin.id, "user.role", "user", &id.to_string(), &form.role).await;
+    Ok(Html(format!(
+        "<span class='role-badge role-{}'>{}</span>",
+        form.role,
+        match form.role.as_str() {
+            "admin" => "Quản trị viên",
+            "moderator" => "Điều hành viên",
+            _ => "Thành viên",
+        }
+    )))
+}
+
+#[derive(Deserialize, Default)]
+pub struct BanForm {
+    pub ban: Option<String>,
+}
+
+pub async fn set_banned(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<BanForm>,
+) -> AppResult<Html<String>> {
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    if id == admin.id {
+        return Err(AppError::BadRequest("Không thể tự cấm chính mình".into()));
+    }
+    let banned = form.ban.is_some();
+    UserRepo::set_banned(&state.db, id, banned).await?;
+    audit(&state, admin.id, "user.ban", "user", &id.to_string(), if banned { "banned" } else { "unbanned" }).await;
+    Ok(Html(if banned {
+        "<span class='status-badge' style='color:#ef4444'>Bị cấm</span>".into()
+    } else {
+        "<span class='status-badge' style='color:#10b981'>Hoạt động</span>".into()
+    }))
+}
+
+// ============================================================
+// ADMIN: COMMENTS
+// ============================================================
+pub async fn comments(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminCommentsTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let comments = CommentRepo::list_recent(&state.db, 100).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminCommentsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        comments,
+    })
+}
+
+pub async fn delete_comment(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Html<String>> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    CommentRepo::delete(&state.db, id).await?;
+    audit(&state, user.id, "comment.delete", "comment", &id.to_string(), "").await;
+    Ok(Html(
+        "<div class='alert alert-success'>Đã xóa bình luận.</div>".into(),
+    ))
+}
+
+// ============================================================
+// ADMIN: CATEGORIES
+// ============================================================
+pub async fn categories(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminCategoriesTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let cats = CategoryRepo::list_with_counts(&state.db).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminCategoriesTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        categories: cats,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct CategoryForm {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub id: Option<String>,
+}
+
+pub async fn save_category(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<CategoryForm>,
+) -> AppResult<Redirect> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("Tên thể loại không được trống".into()));
+    }
+    let description = form.description.unwrap_or_default();
+    let icon = form.icon.unwrap_or_default();
+    match form.id.as_deref().filter(|s| !s.is_empty()).and_then(|s| Uuid::parse_str(s).ok()) {
+        Some(id) => {
+            CategoryRepo::update(&state.db, id, name, &description, &icon).await?;
+            audit(&state, user.id, "category.update", "category", &id.to_string(), name).await;
+        }
+        None => {
+            let slug = slug::slugify(name);
+            let id = CategoryRepo::create(&state.db, name, &slug, &description, &icon).await?;
+            audit(&state, user.id, "category.create", "category", &id.to_string(), name).await;
+        }
+    }
+    Ok(Redirect::to("/admin/categories"))
+}
+
+pub async fn delete_category(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Redirect> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    // Kiểm tra còn game không
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE category_id = $1")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    if count > 0 {
+        return Err(AppError::BadRequest(format!(
+            "Thể loại còn {} game. Hãy chuyển game sang thể loại khác trước.",
+            count
+        )));
+    }
+    CategoryRepo::delete(&state.db, id).await?;
+    audit(&state, user.id, "category.delete", "category", &id.to_string(), "").await;
+    Ok(Redirect::to("/admin/categories"))
+}
+
+// ============================================================
+// ADMIN: REPOS moderation
+// ============================================================
+#[derive(Deserialize, Default)]
+pub struct AdminReposQuery {
+    pub status: Option<String>,
+}
+
+pub async fn repos(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Query(q): Query<AdminReposQuery>,
+) -> AppResult<AdminReposTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let repos = RepoRepo::list_admin(&state.db, q.status.as_deref(), 100).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminReposTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        repos,
+        status_filter: q.status,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct RepoStatusForm {
+    pub status: String,
+}
+
+pub async fn set_repo_status(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<RepoStatusForm>,
+) -> AppResult<Html<String>> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    if !matches!(form.status.as_str(), "pending" | "approved" | "hidden") {
+        return Err(AppError::BadRequest("Trạng thái không hợp lệ".into()));
+    }
+    RepoRepo::set_status(&state.db, id, &form.status).await?;
+    audit(&state, user.id, "repo.status", "repo", &id.to_string(), &form.status).await;
+    Ok(Html(format!(
+        "<span class='status-badge' style='color:{}'>{}</span>",
+        match form.status.as_str() {
+            "pending" => "#f59e0b",
+            "approved" => "#10b981",
+            _ => "#ef4444",
+        },
+        match form.status.as_str() {
+            "pending" => "Chờ duyệt",
+            "approved" => "Đã duyệt",
+            _ => "Đã ẩn",
+        }
+    )))
+}
+
+// ============================================================
+// ADMIN: SETTINGS + ANNOUNCEMENT + MAINTENANCE
+// ============================================================
+pub async fn settings_page(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminSettingsTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let mut map = SettingsRepo::get_map(
+        &state.db,
+        &[
+            "site_name",
+            "site_description",
+            "maintenance_mode",
+            "announcement",
+            "announcement_type",
+            "footer_text",
+            "repo_auto_approve",
+        ],
+    )
+    .await?;
+    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| m.remove(k).unwrap_or_default();
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminSettingsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        site_name: get(&mut map, "site_name"),
+        site_description: get(&mut map, "site_description"),
+        maintenance_mode: get(&mut map, "maintenance_mode") == "on",
+        announcement: get(&mut map, "announcement"),
+        announcement_type: get(&mut map, "announcement_type"),
+        footer_text: get(&mut map, "footer_text"),
+        repo_auto_approve: get(&mut map, "repo_auto_approve") != "off",
+        saved: false,
+    })
+}
+
+#[derive(Deserialize, Default)]
+pub struct SettingsForm {
+    pub site_name: Option<String>,
+    pub site_description: Option<String>,
+    pub maintenance_mode: Option<String>,
+    pub announcement: Option<String>,
+    pub announcement_type: Option<String>,
+    pub footer_text: Option<String>,
+    pub repo_auto_approve: Option<String>,
+}
+
+pub async fn save_settings(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<SettingsForm>,
+) -> AppResult<AdminSettingsTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let uid = user.id;
+    async fn set(state: &AppState, uid: Uuid, k: &str, v: &str) -> AppResult<()> {
+        SettingsRepo::set(&state.db, k, v, Some(uid)).await
+    }
+    set(&state, uid, "site_name", form.site_name.as_deref().unwrap_or("Kho Game").trim()).await?;
+    set(
+        &state,
+        uid,
+        "site_description",
+        form.site_description.as_deref().unwrap_or("").trim(),
+    )
+    .await?;
+    set(
+        &state,
+        uid,
+        "maintenance_mode",
+        if form.maintenance_mode.is_some() { "on" } else { "off" },
+    )
+    .await?;
+    set(&state, uid, "announcement", form.announcement.as_deref().unwrap_or("").trim()).await?;
+    set(
+        &state,
+        uid,
+        "announcement_type",
+        form.announcement_type.as_deref().unwrap_or("info"),
+    )
+    .await?;
+    set(&state, uid, "footer_text", form.footer_text.as_deref().unwrap_or("").trim()).await?;
+    set(
+        &state,
+        uid,
+        "repo_auto_approve",
+        if form.repo_auto_approve.is_some() { "on" } else { "off" },
+    )
+    .await?;
+    audit(&state, user.id, "settings.save", "settings", "", "").await;
+
+    let mut map = SettingsRepo::get_map(
+        &state.db,
+        &[
+            "site_name",
+            "site_description",
+            "maintenance_mode",
+            "announcement",
+            "announcement_type",
+            "footer_text",
+            "repo_auto_approve",
+        ],
+    )
+    .await?;
+    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| m.remove(k).unwrap_or_default();
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminSettingsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        site_name: get(&mut map, "site_name"),
+        site_description: get(&mut map, "site_description"),
+        maintenance_mode: get(&mut map, "maintenance_mode") == "on",
+        announcement: get(&mut map, "announcement"),
+        announcement_type: get(&mut map, "announcement_type"),
+        footer_text: get(&mut map, "footer_text"),
+        repo_auto_approve: get(&mut map, "repo_auto_approve") != "off",
+        saved: true,
+    })
+}
+
+// Gửi thông báo hệ thống tới toàn bộ người dùng
+#[derive(Deserialize)]
+pub struct BroadcastForm {
+    pub title: String,
+    pub content: Option<String>,
+    pub link: Option<String>,
+}
+
+pub async fn broadcast(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<BroadcastForm>,
+) -> AppResult<Html<String>> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    if form.title.trim().is_empty() {
+        return Err(AppError::BadRequest("Tiêu đề thông báo trống".into()));
+    }
+    let sent = NotificationRepo::broadcast(
+        &state.db,
+        &form.title.trim(),
+        form.content.as_deref().unwrap_or(""),
+        form.link.as_deref().unwrap_or(""),
+    )
+    .await?;
+    audit(&state, user.id, "notification.broadcast", "system", "", &format!("{} users", sent)).await;
+    Ok(Html(format!(
+        "<div class='alert alert-success'>Đã gửi thông báo tới {} người dùng.</div>",
+        sent
+    )))
+}
+
+// ============================================================
+// ADMIN: AUDIT LOG
+// ============================================================
+pub async fn audit_log(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminAuditTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let logs = AdminLogRepo::list(&state.db, 200).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminAuditTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        logs,
+    })
+}
+
+// ============================================================
+// ADMIN: EXPORT BACKUP (JSON)
+// ============================================================
+pub async fn export(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let games = GameRepo::admin_list(&state.db, None, 10000, 0).await?;
+    let users = UserRepo::list_for_admin(&state.db, None, 10000, 0).await?;
+    let repos = RepoRepo::list_admin(&state.db, None, 10000).await?;
+    let body = serde_json::json!({
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "version": env!("CARGO_PKG_VERSION"),
+        "counts": {
+            "games": games.len(),
+            "users": users.len(),
+            "repos": repos.len(),
+        },
+        "games": games,
+        "users": users.iter().map(|u| serde_json::json!({
+            "id": u.id, "email": u.email, "username": u.username,
+            "display_name": u.display_name, "role": u.role, "is_banned": u.is_banned,
+            "games_count": u.games_count, "created_at": u.created_at,
+        })).collect::<Vec<_>>(),
+        "repos": repos,
+    });
+    audit(&state, user.id, "system.export", "system", "", "").await;
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/json; charset=utf-8",
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                "attachment; filename=\"khogame-backup.json\"",
+            ),
+        ],
+        serde_json::to_string_pretty(&body).unwrap_or_default(),
+    )
+        .into_response())
 }

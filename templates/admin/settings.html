@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+{% block title %}Cài đặt hệ thống{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>⚙️ Cài đặt hệ thống</h1><p>Cấu hình site, thông báo và chế độ bảo trì.</p></div>
+    {% include "admin/_nav.html" %}
+    {% if saved %}
+    <div class="alert alert-success">✓ Đã lưu cài đặt.</div>
+    {% endif %}
+    <form action="/admin/settings" method="post" class="admin-settings-form">
+        <section class="admin-section">
+            <div class="section-header"><h2>🌐 Thông tin site</h2></div>
+            <label>Tên site</label>
+            <input type="text" name="site_name" value="{{ site_name }}">
+            <label>Mô tả site (SEO)</label>
+            <textarea name="site_description" rows="2">{{ site_description }}</textarea>
+            <label>Chân trang</label>
+            <input type="text" name="footer_text" value="{{ footer_text }}">
+        </section>
+        <section class="admin-section">
+            <div class="section-header"><h2>📢 Thông báo toàn site</h2></div>
+            <label>Nội dung thông báo (để trống nếu không hiển thị)</label>
+            <textarea name="announcement" rows="2" placeholder="Ví dụ: Chào mừng bạn đến với Kho Game v0.1!">{{ announcement }}</textarea>
+            <label>Loại</label>
+            <select name="announcement_type">
+                <option value="info" {% if announcement_type == "info" %}selected{% endif %}>Thông tin (xanh)</option>
+                <option value="warning" {% if announcement_type == "warning" %}selected{% endif %}>Cảnh báo (vàng)</option>
+                <option value="success" {% if announcement_type == "success" %}selected{% endif %}>Thành công (xanh lá)</option>
+                <option value="danger" {% if announcement_type == "danger" %}selected{% endif %}>Quan trọng (đỏ)</option>
+            </select>
+        </section>
+        <section class="admin-section">
+            <div class="section-header"><h2>🔔 Gửi thông báo đến người dùng</h2></div>
+            <div class="admin-form-row">
+                <input type="text" name="b_title" placeholder="Tiêu đề thông báo" form="broadcast-form">
+                <input type="text" name="b_link" placeholder="Link (tuỳ chọn, vd: /games/abc)" form="broadcast-form">
+                <textarea name="b_content" rows="2" placeholder="Nội dung" form="broadcast-form"></textarea>
+                <button class="btn btn-primary" type="submit" form="broadcast-form" formaction="/admin/broadcast" formmethod="post">Gửi tới tất cả</button>
+            </div>
+        </section>
+        <section class="admin-section">
+            <div class="section-header"><h2>🎛️ Chế độ hoạt động</h2></div>
+            <label class="checkbox-row">
+                <input type="checkbox" name="maintenance_mode" {% if maintenance_mode %}checked{% endif %}>
+                🛠️ Bật chế độ bảo trì (chỉ admin truy cập được)
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" name="repo_auto_approve" {% if repo_auto_approve %}checked{% endif %}>
+                ✅ Tự động duyệt repo GitHub mới (nếu tắt, repo sẽ chờ duyệt)
+            </label>
+        </section>
+        <button class="btn btn-primary" type="submit">💾 Lưu cài đặt</button>
+    </form>
+
+    <section class="admin-section" style="margin-top:24px">
+        <div class="section-header"><h2>📦 Dữ liệu</h2></div>
+        <a class="btn btn-outline" href="/admin/export">⬇️ Tải backup JSON</a>
+    </section>
+</section>
+<form id="broadcast-form"></form>
+{% endblock %}

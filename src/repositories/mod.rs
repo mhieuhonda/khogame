@@ -8,6 +8,8 @@ pub mod review;
 pub mod category;
 pub mod tag;
 pub mod session;
+pub mod repo_repo;
+pub mod settings_repo;
 
 pub use user::UserRepo;
 pub use game::GameRepo;
@@ -19,3 +21,5 @@ pub use review::ReviewRepo;
 pub use category::CategoryRepo;
 pub use tag::TagRepo;
 pub use session::SessionRepo;
+pub use repo_repo::RepoRepo;
+pub use settings_repo::{SettingsRepo, AdminLogRepo, StatsRepo};

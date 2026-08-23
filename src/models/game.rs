@@ -231,6 +231,23 @@ pub struct GameCard {
     pub published_at: Option<DateTime<Utc>>,
 }
 
+/// Dòng game cho bảng quản trị / "Game của tôi"
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AdminGameRow {
+    pub id: Uuid,
+    pub slug: String,
+    pub title: String,
+    pub status: GameStatus,
+    pub view_count: i32,
+    pub download_count: i32,
+    pub like_count: i32,
+    pub comment_count: i32,
+    pub is_featured: bool,
+    pub created_at: DateTime<Utc>,
+    pub author_name: String,
+    pub category_name: Option<String>,
+}
+
 impl GameCard {
     pub fn rating_avg_f64(&self) -> f64 {
         use std::str::FromStr;
@@ -243,28 +260,63 @@ impl GameCard {
 
 #[derive(Debug, Clone, Deserialize, Default)]
 pub struct GameForm {
+    #[serde(default)]
     pub title: String,
+    #[serde(default)]
     pub excerpt: String,
+    #[serde(default)]
     pub content: String,
+    #[serde(default)]
     pub status: String,
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub developer: String,
+    #[serde(default)]
     pub publisher: String,
+    #[serde(default)]
     pub release_date: Option<String>,
+    #[serde(default)]
     pub file_size: String,
+    #[serde(default)]
     pub age_rating: String,
     #[serde(default)]
-    pub languages: Vec<String>,
+    pub languages: String,
+    #[serde(default)]
     pub trailer_url: String,
+    #[serde(default)]
     pub cover_image: String,
+    #[serde(default)]
     pub category_id: Option<String>,
+    /// Nhận trực tiếp từ <input name="tags"> (phân cách bằng dấu phẩy)
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: String,
+    /// Mỗi dòng là 1 URL ảnh
     #[serde(default)]
-    pub screenshots: Vec<String>,
+    pub screenshots: String,
+    #[serde(default)]
     pub android_link: Option<String>,
+    #[serde(default)]
     pub ios_link: Option<String>,
+    #[serde(default)]
     pub windows_link: Option<String>,
+    #[serde(default)]
     pub linux_link: Option<String>,
+    #[serde(default)]
     pub macos_link: Option<String>,
+}
+
+impl GameForm {
+    /// Tách chuỗi tags phân cách dấu phẩy thành Vec
+    pub fn tags_vec(&self) -> Vec<String> {
+        self.tags.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    }
+    /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec
+    pub fn languages_vec(&self) -> Vec<String> {
+        self.languages.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    }
+    /// Mỗi dòng trong textarea là 1 URL screenshot
+    pub fn screenshots_vec(&self) -> Vec<String> {
+        self.screenshots.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+    }
 }

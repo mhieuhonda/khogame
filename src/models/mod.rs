@@ -7,6 +7,8 @@ pub mod report;
 pub mod review;
 pub mod category;
 pub mod tag;
+pub mod repo;
+pub mod settings;
 
 pub use user::*;
 pub use game::*;
@@ -17,3 +19,5 @@ pub use report::*;
 pub use review::*;
 pub use category::*;
 pub use tag::*;
+pub use repo::*;
+pub use settings::*;

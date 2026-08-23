@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block title %}Đăng repo GitHub{% endblock %}
+{% block content %}
+<section class="form-page">
+    <div class="page-header">
+        <h1>📦 Đăng repo GitHub</h1>
+        <p>Chia sẻ mã nguồn game của bạn với cộng đồng. Thông tin (sao, ngôn ngữ, mô tả) sẽ được tự động lấy từ GitHub.</p>
+    </div>
+
+    <form action="/repos" method="post" class="game-form">
+        <div class="form-group">
+            <label for="url">URL repository *</label>
+            <input type="text" id="url" name="url" required placeholder="https://github.com/owner/repo hoặc owner/repo">
+            <small>Repo phải ở chế độ công khai (public).</small>
+        </div>
+        <div class="form-group">
+            <label for="description">Mô tả (tuỳ chọn)</label>
+            <input type="text" id="description" name="description" placeholder="Để trống sẽ dùng mô tả từ GitHub">
+        </div>
+        <div class="form-group">
+            <label for="game_slug">Liên kết với game (tuỳ chọn)</label>
+            <input type="text" id="game_slug" name="game_slug" placeholder="Slug của game đã đăng, vd: mineclone-viet-hoa">
+            <small>Người xem sẽ thấy nút chuyển sang game tương ứng.</small>
+        </div>
+        <div class="form-actions">
+            <a href="/repos" class="btn btn-outline">Huỷ</a>
+            <button type="submit" class="btn btn-primary">Đăng repo</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

@@ -226,7 +226,7 @@ impl InteractionRepo {
         ip: Option<&str>,
     ) -> AppResult<()> {
         sqlx::query(
-            "INSERT INTO downloads (game_id, user_id, platform, ip_address) VALUES ($1, $2, $3, $4)",
+            "INSERT INTO downloads (game_id, user_id, platform, ip_address) VALUES ($1, $2, $3::platform_type, $4)",
         )
         .bind(game_id)
         .bind(user_id)
@@ -244,7 +244,7 @@ impl InteractionRepo {
         platform: &str,
     ) -> AppResult<()> {
         sqlx::query(
-            "INSERT INTO shares (game_id, user_id, platform) VALUES ($1, $2, $3)",
+            "INSERT INTO shares (game_id, user_id, platform) VALUES ($1, $2, $3::share_platform)",
         )
         .bind(game_id)
         .bind(user_id)

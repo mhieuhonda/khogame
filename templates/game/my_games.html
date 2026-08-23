@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+{% block title %}Game của tôi{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>🎮 Game của tôi</h1>
+        <p>Quản lý tất cả game bạn đã đăng, kể cả bản nháp.</p>
+        <a href="/games/new" class="btn btn-primary">+ Đăng game mới</a>
+    </div>
+
+    {% if !games.is_empty() %}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead><tr><th>Game</th><th>Trạng thái</th><th>Thống kê</th><th>Ngày đăng</th><th>Hành động</th></tr></thead>
+            <tbody>
+            {% for g in games %}
+            <tr>
+                <td><a href="/games/{{ g.slug }}">{{ g.title }}</a>
+                    {% if g.is_featured %}<span class="status-badge" style="color:#f59e0b">⭐</span>{% endif %}</td>
+                <td><span class="status-badge">{{ g.status.label() }}</span></td>
+                <td>👁️ {{ g.view_count|fmt_num }} · ⬇️ {{ g.download_count|fmt_num }} · ❤️ {{ g.like_count|fmt_num }} · 💬 {{ g.comment_count|fmt_num }}</td>
+                <td>{{ g.created_at.to_rfc3339()|time_ago }}</td>
+                <td class="admin-actions">
+                    <a href="/games/{{ g.slug }}/edit" class="btn btn-outline btn-sm">Sửa</a>
+                    {% if g.status.label() != "Đã xuất bản" %}
+                    <form hx-post="/games/{{ g.slug }}/publish" hx-target="find .alert-zone" hx-swap="innerHTML">
+                        <button class="btn btn-primary btn-sm" type="submit">Xuất bản</button>
+                        <span class="alert-zone"></span>
+                    </form>
+                    {% endif %}
+                    <form hx-post="/games/{{ g.slug }}/delete" hx-confirm="Xóa game này?" hx-target="closest tr" hx-swap="outerHTML">
+                        <button class="btn btn-danger btn-sm" type="submit">Xóa</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <div style="font-size:48px">🎮</div>
+        <h3>Bạn chưa đăng game nào</h3>
+        <p>Chia sẻ game đầu tiên của bạn với cộng đồng!</p>
+        <a href="/games/new" class="btn btn-primary">Đăng game ngay</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

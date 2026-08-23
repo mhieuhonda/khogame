@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+{% block title %}Quản lý bình luận{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header"><h1>💬 Quản lý bình luận</h1><p>100 bình luận gần nhất.</p></div>
+    {% include "admin/_nav.html" %}
+    <div class="reports-list">
+        {% for c in comments %}
+        <div class="report-row" id="comment-row-{{ c.id }}">
+            <div class="report-info">
+                <a href="/games/{{ c.game_slug }}" class="report-game-title">{{ c.user_name }} @ {{ c.game_title }}</a>
+                <div class="report-meta">
+                    <span class="report-reason">{{ c.content|truncate(120) }}</span>
+                    <span class="report-time">{{ c.created_at.to_rfc3339()|time_ago }}</span>
+                    {% if c.is_pinned %}<span class="status-badge" style="color:#f59e0b">📌 Ghim</span>{% endif %}
+                </div>
+            </div>
+            <div class="report-actions admin-actions">
+                <form hx-post="/admin/comments/{{ c.id }}/pin" hx-swap="none"><button class="btn btn-outline btn-sm" type="submit">{% if c.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}</button></form>
+                <form hx-post="/admin/comments/{{ c.id }}/delete" hx-confirm="Xóa bình luận này?" hx-target="closest .report-row" hx-swap="outerHTML"><button class="btn btn-danger btn-sm" type="submit">Xóa</button></form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if comments.is_empty() %}
+    <div class="empty-state"><p>Chưa có bình luận nào.</p></div>
+    {% endif %}
+</section>
+{% endblock %}

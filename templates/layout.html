@@ -7,8 +7,13 @@
     <meta name="description" content="{% block description %}Kho Game - Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam{% endblock %}">
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
-    <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
-    <script src="https://unpkg.com/htmx.org/dist/ext/multi-swap.js" defer></script>
+    <script src="/static/js/htmx.min.js" defer></script>
+    <meta property="og:site_name" content="Kho Game">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{% block og_title %}Kho Game{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam{% endblock %}">
+    <meta property="og:url" content="{% block og_url %}/{% endblock %}">
+    <meta name="twitter:card" content="summary_large_image">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -46,7 +51,7 @@
                 <a href="/" class="nav-link">Trang chủ</a>
                 <a href="/games/latest" class="nav-link">Mới nhất</a>
                 <a href="/games/trending" class="nav-link">Thịnh hành</a>
-                <a href="/games/top-rated" class="nav-link">Đánh giá cao</a>
+                <a href="/repos" class="nav-link">Repo GitHub</a>
                 <a href="/categories" class="nav-link">Thể loại</a>
             </nav>
 
@@ -73,6 +78,22 @@
                     </svg>
                     Đăng game
                 </a>
+                <a href="/repos/new" class="btn btn-outline btn-sm" title="Đăng repo GitHub">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+                    </svg>
+                    Repo
+                </a>
+                <a href="/my-games" class="icon-btn" title="Game của tôi" aria-label="Game của tôi">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
+                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
+                        <path d="M4 22h16"/>
+                        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
+                        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
+                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                    </svg>
+                </a>
                 <a href="/u/{{ user.username }}" class="avatar-link" title="Hồ sơ của tôi">
                     {% match user.avatar_url %}
                     {% when Option::Some with (url) %}
@@ -98,6 +119,8 @@
             </div>
         </div>
     </header>
+
+    <div id="announcement-slot"></div>
 
     <main class="site-main">
         <div class="container">

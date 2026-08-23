@@ -34,6 +34,16 @@ impl_template_response!(
     NotificationsTemplate,
     AdminTemplate,
     AdminReportsTemplate,
+    AdminGamesTemplate,
+    AdminUsersTemplate,
+    AdminCommentsTemplate,
+    AdminCategoriesTemplate,
+    AdminReposTemplate,
+    AdminSettingsTemplate,
+    AdminAuditTemplate,
+    RepoListTemplate,
+    RepoNewTemplate,
+    MyGamesTemplate,
     ErrorTemplate,
 );
 
@@ -191,6 +201,13 @@ pub struct AdminTemplate {
     pub pending_reports: i64,
     pub recent_reports: Vec<report::ReportWithGame>,
     pub recent_games: Vec<GameCard>,
+    pub recent_comments: Vec<comment::CommentWithGame>,
+    pub daily_stats: Vec<settings::DailyStatRow>,
+    pub total_repos: i64,
+    pub pending_repos: i64,
+    pub status_counts: Vec<(String, i64)>,
+    pub max_views: i64,
+    pub max_downloads: i64,
 }
 
 /// Admin reports
@@ -201,6 +218,113 @@ pub struct AdminReportsTemplate {
     pub unread_notifications: i64,
     pub reports: Vec<report::ReportWithGame>,
     pub status_filter: Option<String>,
+}
+
+/// Admin games
+#[derive(Template)]
+#[template(path = "admin/games.html")]
+pub struct AdminGamesTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub games: Vec<game::AdminGameRow>,
+    pub status_filter: Option<String>,
+    pub status_counts: Vec<(String, i64)>,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+/// Admin users
+#[derive(Template)]
+#[template(path = "admin/users.html")]
+pub struct AdminUsersTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub users: Vec<user::UserWithGameCount>,
+    pub search: String,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+/// Admin comments
+#[derive(Template)]
+#[template(path = "admin/comments.html")]
+pub struct AdminCommentsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub comments: Vec<comment::CommentWithGame>,
+}
+
+/// Admin categories
+#[derive(Template)]
+#[template(path = "admin/categories.html")]
+pub struct AdminCategoriesTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub categories: Vec<category::CategoryWithCount>,
+}
+
+/// Admin repos
+#[derive(Template)]
+#[template(path = "admin/repos.html")]
+pub struct AdminReposTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub repos: Vec<repo::GithubRepoCard>,
+    pub status_filter: Option<String>,
+}
+
+/// Admin settings
+#[derive(Template)]
+#[template(path = "admin/settings.html")]
+pub struct AdminSettingsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub site_name: String,
+    pub site_description: String,
+    pub maintenance_mode: bool,
+    pub announcement: String,
+    pub announcement_type: String,
+    pub footer_text: String,
+    pub repo_auto_approve: bool,
+    pub saved: bool,
+}
+
+/// Admin audit log
+#[derive(Template)]
+#[template(path = "admin/audit.html")]
+pub struct AdminAuditTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub logs: Vec<settings::AdminLogWithAdmin>,
+}
+
+/// Danh sách GitHub repos
+#[derive(Template)]
+#[template(path = "repos/index.html")]
+pub struct RepoListTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub repos: Vec<repo::GithubRepoCard>,
+    pub total: i64,
+    pub sort: String,
+}
+
+/// Form đăng repo
+#[derive(Template)]
+#[template(path = "repos/new.html")]
+pub struct RepoNewTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+}
+
+/// Game của tôi
+#[derive(Template)]
+#[template(path = "game/my_games.html")]
+pub struct MyGamesTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub games: Vec<game::AdminGameRow>,
 }
 
 /// Error page (standalone, not extending layout)
