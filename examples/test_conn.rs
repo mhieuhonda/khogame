@@ -10,9 +10,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let v: String = sqlx::query_scalar("SELECT version()")
                 .fetch_one(&pool)
                 .await?;
-            eprintln!("OK: {}", v);
+            eprintln!("OK: {v}");
         }
-        Err(e) => eprintln!("FAIL: {:?}", e),
+        Err(e) => eprintln!("FAIL: {e:?}"),
     }
     eprintln!("2) PgConnection::connect...");
     use sqlx::Connection;
@@ -21,9 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let v: String = sqlx::query_scalar("SELECT version()")
                 .fetch_one(&mut c)
                 .await?;
-            eprintln!("OK: {}", v);
+            eprintln!("OK: {v}");
         }
-        Err(e) => eprintln!("FAIL: {:?}", e),
+        Err(e) => eprintln!("FAIL: {e:?}"),
     }
     Ok(())
 }

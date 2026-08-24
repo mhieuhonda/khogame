@@ -563,4 +563,36 @@ pub async fn categories_list(State(state): State<Arc<AppState>>) -> AppResult<Re
         .into_response())
 }
 
+/// Hồ sơ user công khai — cho phép client bên ngoài hiển thị thông tin
+/// tác giả game mà không cần cào HTML. Chỉ trả field công khai:
+/// username, display_name, avatar_url, bio, role, stats (số game,
+/// follower, following). Không trả email hay session info nhạy cảm.
+pub async fn user_profile(
+    State(state): State<Arc<AppState>>,
+    Path(username): Path<String>,
+) -> AppResult<Response> {
+    let user = UserRepo::find_by_username(&state.db, &username)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    if user.is_banned {
+        return Err(AppError::NotFound("Người dùng không tồn tại".into()));
+    }
+    let stats = UserRepo::stats(&state.db, user.id).await?;
+    let body = serde_json::json!({
+        "username": user.username,
+        "display_name": user.display_name,
+        "avatar_url": user.avatar_url,
+        "bio": user.bio,
+        "role": format!("{:?}", user.role).to_lowercase(),
+        "created_at": user.created_at.to_rfc3339(),
+        "last_seen_at": user.last_seen_at.map(|d| d.to_rfc3339()),
+        "stats": {
+            "games_count": stats.games_count,
+            "followers_count": stats.followers_count,
+            "following_count": stats.following_count,
+        },
+    });
+    Ok(([(header::CACHE_CONTROL, "public, max-age=120")], Json(body)).into_response())
+}
+
 // ===================== Maintenance page dùng nội bộ =====================

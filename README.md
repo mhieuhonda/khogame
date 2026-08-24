@@ -8,7 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
-![Version](https://img.shields.io/badge/version-0.5.0-7c3aed)
+![Version](https://img.shields.io/badge/version-0.6.0-7c3aed)
 
 ## 🛠️ Công nghệ
 
@@ -89,6 +89,47 @@ Loại tài khoản thứ 4 (sau User / Moderator / Admin) dành riêng cho AI A
 ### 📱 Mobile menu fix (v0.5)
 - Menu ba gạch trên mobile tràn viewport → fix bằng max-height + scroll
   + 2 cột cân bằng (display: contents phẳng hoá cấu trúc).
+
+---
+
+## 🚀 Cải thiện trong v0.6 — Bảo mật + SEO + Perf + Ops
+
+### 🔒 Bảo mật & đúng đắn
+- ✅ **Rate limit dùng IP thật** — trước đây `client_ip_from_parts(headers, None)`
+  → khi không có proxy header, IP luôn là `unknown`, ai cũng cùng share quota.
+  Giờ lấy `ConnectInfo<SocketAddr>` từ request extensions.
+- ✅ **Log User-Agent & IP khi login Google** vào bảng `sessions` để admin audit
+  (trước đây lưu `user_agent=""` do TODO chưa hoàn thành).
+- ✅ **robots.txt** thêm `Disallow: /api/` — ngăn crawler đánh JSON API.
+
+### ✨ Tính năng mới
+- 📱 **PWA manifest** (`/manifest.json`) — "Add to Home Screen" hoạt động.
+- 🔍 **OpenSearch** (`/opensearch.xml`) — thêm Kho Game vào ô tìm kiếm của
+  thanh địa chỉ Chrome / Firefox / Edge.
+- 🛡️ **security.txt** (`/.well-known/security.txt`, RFC 9116) — thông tin
+  liên hệ báo lỗ hổng, mailto:admin, Expires 6 tháng.
+- 🎯 **JSON-LD VideoGame** — trang `/games/{slug}` nhúng structured data
+  schema.org → Google hiển thị rich snippet (rating, lượt xem/tải/like).
+- 🚧 **404 fallback page** — route không khớp → trang 404 với giao diện
+  Kho Game thay vì plain text "Not Found".
+- 📡 **API catalog mới**: `GET /api/v1/tags`, `GET /api/v1/categories`.
+- 📦 **API game detail đầy đủ**: thêm `category`, `screenshots`, `label` &
+  `url` cho từng platform, `published_at`.
+- 🗺️ **Sitemap mở rộng**: thêm `/games/featured` và 50 tag phổ biến nhất.
+
+### ⚡ Hiệu suất
+- ⚡ **ETag cho `/rss.xml` & `/sitemap.xml`** — client gửi `If-None-Match`
+  khớp → 304 Not Modified, giảm băng thông & TTFB cho crawler.
+- 📦 **Static cache 7 ngày** — `/static/*` có `Cache-Control: public,
+  max-age=604800, stale-while-revalidate=86400`.
+- 🚑 **`/health` no-store** — monitor cần trạng thái real-time, không cache.
+
+### 🔧 Operational
+- 🆔 **`X-Request-Id` header** — mỗi request được gán UUID, log trace và
+  Coolify có thể group request theo ID khi debug.
+- 🧹 Dọn dead code trong `src/handlers/api.rs`.
+- ✅ **13 unit test** pass (thêm 5 test: `sanitize_redirect`, `truncate`
+  UTF-8, `make_unique_slug`, `html_escape`, `format_number`).
 
 ---
 

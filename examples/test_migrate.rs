@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("pool OK, chạy migrate...");
     match sqlx::migrate!("./migrations").run(&pool).await {
         Ok(_) => eprintln!("MIGRATE OK"),
-        Err(e) => eprintln!("MIGRATE FAIL: {}", e),
+        Err(e) => eprintln!("MIGRATE FAIL: {e}"),
     }
     Ok(())
 }

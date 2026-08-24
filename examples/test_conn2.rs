@@ -9,15 +9,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .min_connections(2)
         .acquire_timeout(std::time::Duration::from_secs(10))
         .idle_timeout(Some(std::time::Duration::from_secs(300)))
-        .max_lifetime(Some(std::time::Duration::from_secs(1800)))
+        .max_lifetime(Some(std::time::Duration::from_mins(30)))
         .connect(url)
         .await;
     match pool {
         Ok(p) => {
             let v: String = sqlx::query_scalar("SELECT version()").fetch_one(&p).await?;
-            eprintln!("OK: {}", v);
+            eprintln!("OK: {v}");
         }
-        Err(e) => eprintln!("FAIL: {:?}", e),
+        Err(e) => eprintln!("FAIL: {e:?}"),
     }
     Ok(())
 }

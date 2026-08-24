@@ -144,6 +144,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/repos", get(handlers::api::repos_list))
         .route("/tags", get(handlers::api::tags_list))
         .route("/categories", get(handlers::api::categories_list))
+        .route("/users/{username}", get(handlers::api::user_profile))
         .route("/stats", get(handlers::api::stats_overview))
         .route("/health", get(handlers::api::health_detail));
 
