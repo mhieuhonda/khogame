@@ -16,6 +16,7 @@ const CARD_JOINS: &str = r#"FROM github_repos r
     JOIN users u ON u.id = r.user_id"#;
 
 impl RepoRepo {
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
@@ -48,9 +49,21 @@ impl RepoRepo {
         .bind(game_id)
         .bind(owner)
         .bind(repo_name)
-        .bind(if description.is_empty() { None } else { Some(description) })
-        .bind(if homepage.is_empty() { None } else { Some(homepage) })
-        .bind(if language.is_empty() { None } else { Some(language) })
+        .bind(if description.is_empty() {
+            None
+        } else {
+            Some(description)
+        })
+        .bind(if homepage.is_empty() {
+            None
+        } else {
+            Some(homepage)
+        })
+        .bind(if language.is_empty() {
+            None
+        } else {
+            Some(language)
+        })
         .bind(stars)
         .bind(forks)
         .bind(open_issues)
@@ -94,10 +107,7 @@ impl RepoRepo {
         Ok(rows)
     }
 
-    pub async fn list_by_user(
-        pool: &PgPool,
-        user_id: Uuid,
-    ) -> AppResult<Vec<GithubRepoCard>> {
+    pub async fn list_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<GithubRepoCard>> {
         let sql = format!(
             r#"SELECT {} {} WHERE r.user_id = $1 AND r.status != 'hidden' ORDER BY r.created_at DESC"#,
             CARD_COLS, CARD_JOINS
@@ -179,6 +189,7 @@ impl RepoRepo {
         Ok(rows)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_meta(
         pool: &PgPool,
         id: Uuid,

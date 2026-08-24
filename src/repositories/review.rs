@@ -32,18 +32,16 @@ impl ReviewRepo {
         .await?;
 
         // Notify game owner
-        let owner_id: Option<Uuid> =
-            sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
-                .bind(game_id)
-                .fetch_optional(pool)
-                .await?;
+        let owner_id: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
+            .bind(game_id)
+            .fetch_optional(pool)
+            .await?;
         if let Some(oid) = owner_id {
             if oid != user_id {
-                let game_slug: String =
-                    sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
-                        .bind(game_id)
-                        .fetch_one(pool)
-                        .await?;
+                let game_slug: String = sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
+                    .bind(game_id)
+                    .fetch_one(pool)
+                    .await?;
                 let _ = sqlx::query(
                     r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
                       VALUES ($1, $2, 'review'::notification_type, $3, $4)"#,

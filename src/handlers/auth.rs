@@ -11,6 +11,9 @@ use rand::Rng;
 use serde::Deserialize;
 use std::sync::Arc;
 
+/// Tên cookie chứa OAuth `state` (CSRF token) - sống 10 phút.
+pub const OAUTH_STATE_COOKIE: &str = "kg_oauth_state";
+
 #[derive(Deserialize)]
 pub struct AuthQuery {
     pub next: Option<String>,
@@ -36,14 +39,28 @@ pub async fn login_page(
 pub async fn google_login(
     State(state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
-) -> AppResult<Redirect> {
+    jar: CookieJar,
+) -> AppResult<(CookieJar, Redirect)> {
     let csrf = gen_csrf();
     let auth_url = auth::build_auth_url(&state, &csrf);
-    // Store CSRF in a short-lived cookie
-    // We'll verify on callback
-    // For simplicity, we trust the state param here
-    let _ = q.next;
-    Ok(Redirect::to(&auth_url))
+
+    // Lưu CSRF state vào cookie HttpOnly + SameSite=Lax sống 10 phút.
+    // Khi callback về, ta sẽ verify state khớp cookie để chặn login-CSRF.
+    let mut new_jar = jar;
+    auth::set_oauth_state_cookie(&mut new_jar, &csrf, &state.config.base_url);
+
+    // Lưu `next` vào cookie tạm để redirect sau khi đăng nhập thành công.
+    if let Some(next) = q.next.as_deref().filter(|s| !s.is_empty()) {
+        // Chỉ cho phép redirect nội bộ (path absolute không có scheme/host)
+        let safe_next = if next.starts_with('/') && !next.starts_with("//") {
+            next.to_string()
+        } else {
+            "/".to_string()
+        };
+        auth::set_oauth_next_cookie(&mut new_jar, &safe_next, &state.config.base_url);
+    }
+
+    Ok((new_jar, Redirect::to(&auth_url)))
 }
 
 #[derive(Deserialize)]
@@ -60,14 +77,45 @@ pub async fn google_callback(
 ) -> AppResult<(CookieJar, Redirect)> {
     if let Some(err) = &q.error {
         tracing::warn!("OAuth error: {}", err);
-        return Err(AppError::OAuth(format!("Google từ chối đăng nhập: {}", err)));
+        return Err(AppError::OAuth(format!(
+            "Google từ chối đăng nhập: {}",
+            err
+        )));
+    }
+
+    // === CSRF verification: state từ Google phải khớp state trong cookie ===
+    let cookie_state = jar.get(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
+    let next_path = jar
+        .get(auth::OAUTH_NEXT_COOKIE)
+        .map(|c| c.value().to_string());
+    let mut cleanup_jar = jar;
+    // Xoá cookie state và next dù thành công hay thất bại
+    auth::clear_oauth_state_cookie(&mut cleanup_jar, &state.config.base_url);
+    auth::clear_oauth_next_cookie(&mut cleanup_jar, &state.config.base_url);
+
+    match (q.state.as_deref(), cookie_state.as_deref()) {
+        (Some(s_from_google), Some(s_from_cookie)) if s_from_google == s_from_cookie => {
+            // OK - state khớp
+        }
+        _ => {
+            tracing::warn!(
+                "OAuth state mismatch: google={:?} cookie={:?} - từ chối callback (CSRF)",
+                q.state,
+                cookie_state
+            );
+            return Err(AppError::BadRequest(
+                "OAuth state không khớp - có thể bị CSRF. Vui lòng đăng nhập lại.".into(),
+            ));
+        }
     }
 
     let token = auth::exchange_code(&state, &q.code).await?;
     let userinfo = auth::fetch_userinfo(&state, &token.access_token).await?;
 
-    if userinfo.email_verified.unwrap_or(false) == false {
-        return Err(AppError::BadRequest("Email Google chưa được xác minh".into()));
+    if !userinfo.email_verified.unwrap_or(false) {
+        return Err(AppError::BadRequest(
+            "Email Google chưa được xác minh".into(),
+        ));
     }
 
     // Find or create user
@@ -89,7 +137,11 @@ pub async fn google_callback(
     };
 
     // Tự động cấp admin cho ADMIN_EMAIL (mặc định khongdich.admin@gmail.com)
-    if userinfo.email.eq_ignore_ascii_case(&state.config.admin_email) && !user.role.is_admin() {
+    if userinfo
+        .email
+        .eq_ignore_ascii_case(&state.config.admin_email)
+        && !user.role.is_admin()
+    {
         UserRepo::set_role(&state.db, user.id, "admin").await?;
         user.role = crate::models::user::UserRole::Admin;
         tracing::info!("Granted admin to {} via ADMIN_EMAIL", userinfo.email);
@@ -98,7 +150,7 @@ pub async fn google_callback(
     // Create session
     let session_token = auth::gen_session_token();
     let token_hash = auth::hash_token(&session_token);
-    let user_agent = ""; // Could extract from headers
+    let user_agent = ""; // TODO: extract từ headers khi có ConnectInfo
     SessionRepo::create(
         &state.db,
         user.id,
@@ -110,10 +162,15 @@ pub async fn google_callback(
     .await?;
     UserRepo::update_last_seen(&state.db, user.id).await?;
 
-    let mut new_jar = jar;
+    let mut new_jar = cleanup_jar;
     auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
 
-    Ok((new_jar, Redirect::to("/")))
+    // Redirect về `next` nếu có, mặc định /
+    let redirect_target = next_path
+        .as_deref()
+        .filter(|s| !s.is_empty() && s.starts_with('/') && !s.starts_with("//"))
+        .unwrap_or("/");
+    Ok((new_jar, Redirect::to(redirect_target)))
 }
 
 pub async fn logout(

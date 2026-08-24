@@ -7,7 +7,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("1) PgPoolOptions.connect...");
     match PgPoolOptions::new().connect(url).await {
         Ok(pool) => {
-            let v: String = sqlx::query_scalar("SELECT version()").fetch_one(&pool).await?;
+            let v: String = sqlx::query_scalar("SELECT version()")
+                .fetch_one(&pool)
+                .await?;
             eprintln!("OK: {}", v);
         }
         Err(e) => eprintln!("FAIL: {:?}", e),
@@ -16,7 +18,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use sqlx::Connection;
     match sqlx::PgConnection::connect(url).await {
         Ok(mut c) => {
-            let v: String = sqlx::query_scalar("SELECT version()").fetch_one(&mut c).await?;
+            let v: String = sqlx::query_scalar("SELECT version()")
+                .fetch_one(&mut c)
+                .await?;
             eprintln!("OK: {}", v);
         }
         Err(e) => eprintln!("FAIL: {:?}", e),

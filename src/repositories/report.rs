@@ -25,11 +25,10 @@ impl ReportRepo {
         .await?;
 
         // Notify all admins/moderators
-        let staff: Vec<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM users WHERE role IN ('admin', 'moderator')",
-        )
-        .fetch_all(pool)
-        .await?;
+        let staff: Vec<Uuid> =
+            sqlx::query_scalar("SELECT id FROM users WHERE role IN ('admin', 'moderator')")
+                .fetch_all(pool)
+                .await?;
         for sid in staff {
             let _ = sqlx::query(
                 r#"INSERT INTO notifications (user_id, type, title, content, link)
@@ -38,7 +37,7 @@ impl ReportRepo {
             .bind(sid)
             .bind("Có báo cáo mới cần xử lý")
             .bind(format!("Lý do: {}", reason.label()))
-            .bind(format!("/admin/reports"))
+            .bind("/admin/reports".to_string())
             .execute(pool)
             .await;
         }
@@ -46,11 +45,7 @@ impl ReportRepo {
         Ok(id)
     }
 
-    pub async fn has_reported(
-        pool: &PgPool,
-        game_id: Uuid,
-        reporter_id: Uuid,
-    ) -> AppResult<bool> {
+    pub async fn has_reported(pool: &PgPool, game_id: Uuid, reporter_id: Uuid) -> AppResult<bool> {
         let r: Option<i32> = sqlx::query_scalar(
             "SELECT 1 FROM reports WHERE game_id = $1 AND reporter_id = $2 AND status IN ('pending', 'reviewing')",
         )
@@ -120,12 +115,10 @@ impl ReportRepo {
         .await?;
 
         // Notify reporter
-        let reporter_id: Uuid = sqlx::query_scalar(
-            "SELECT reporter_id FROM reports WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
+        let reporter_id: Uuid = sqlx::query_scalar("SELECT reporter_id FROM reports WHERE id = $1")
+            .bind(id)
+            .fetch_one(pool)
+            .await?;
         let game_slug: String = sqlx::query_scalar(
             "SELECT g.slug FROM reports r JOIN games g ON g.id = r.game_id WHERE r.id = $1",
         )

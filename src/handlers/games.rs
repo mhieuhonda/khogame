@@ -68,7 +68,7 @@ pub async fn new_game_form(
 pub async fn create_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
-    Form(mut form): Form<GameForm>,
+    Form(form): Form<GameForm>,
 ) -> AppResult<Redirect> {
     if form.title.trim().is_empty() {
         return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
@@ -76,17 +76,35 @@ pub async fn create_game(
     if form.content.trim().is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
-    if form.android_link.as_deref().filter(|s| !s.is_empty()).is_none()
+    if form
+        .android_link
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_none()
         && form.ios_link.as_deref().filter(|s| !s.is_empty()).is_none()
-        && form.windows_link.as_deref().filter(|s| !s.is_empty()).is_none()
-        && form.linux_link.as_deref().filter(|s| !s.is_empty()).is_none()
-        && form.macos_link.as_deref().filter(|s| !s.is_empty()).is_none()
+        && form
+            .windows_link
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .is_none()
+        && form
+            .linux_link
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .is_none()
+        && form
+            .macos_link
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .is_none()
     {
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
 
     let slug_base = slug::slugify(&form.title);
-    let count = GameRepo::count_slug(&state.db, &slug_base).await.unwrap_or(0);
+    let count = GameRepo::count_slug(&state.db, &slug_base)
+        .await
+        .unwrap_or(0);
     let slug = utils::make_unique_slug(&form.title, count);
 
     let id = GameRepo::create(&state.db, user.id, &form, &slug).await?;
@@ -105,7 +123,10 @@ pub async fn show_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
 
-    let is_owner = current_user.as_ref().map(|u| u.id == game.user_id).unwrap_or(false);
+    let is_owner = current_user
+        .as_ref()
+        .map(|u| u.id == game.user_id)
+        .unwrap_or(false);
     if !is_owner && !matches!(game.status, GameStatus::Published) {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }
@@ -140,28 +161,28 @@ pub async fn show_game(
     .await?;
     let related_games = GameRepo::related(&state.db, game.id, game.category_id, 6).await?;
 
-    let (is_liked, is_bookmarked, is_following_author, user_rating) = if let Some(ref u) = current_user
-    {
-        let liked = InteractionRepo::is_liked(&state.db, game.id, u.id)
-            .await
-            .unwrap_or(false);
-        let bm = InteractionRepo::is_bookmarked(&state.db, game.id, u.id)
-            .await
-            .unwrap_or(false);
-        let following = if u.id != author.id {
-            InteractionRepo::is_following(&state.db, u.id, author.id)
+    let (is_liked, is_bookmarked, is_following_author, user_rating) =
+        if let Some(ref u) = current_user {
+            let liked = InteractionRepo::is_liked(&state.db, game.id, u.id)
                 .await
-                .unwrap_or(false)
+                .unwrap_or(false);
+            let bm = InteractionRepo::is_bookmarked(&state.db, game.id, u.id)
+                .await
+                .unwrap_or(false);
+            let following = if u.id != author.id {
+                InteractionRepo::is_following(&state.db, u.id, author.id)
+                    .await
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            let rating = InteractionRepo::get_user_rating(&state.db, game.id, u.id)
+                .await
+                .unwrap_or(None);
+            (liked, bm, following, rating)
         } else {
-            false
+            (false, false, false, None)
         };
-        let rating = InteractionRepo::get_user_rating(&state.db, game.id, u.id)
-            .await
-            .unwrap_or(None);
-        (liked, bm, following, rating)
-    } else {
-        (false, false, false, None)
-    };
 
     let unread = unread_for(&state, current_user.as_ref()).await;
 
@@ -181,6 +202,7 @@ pub async fn show_game(
         is_following_author,
         is_owner,
         user_rating,
+        base_url: state.config.base_url.clone(),
     })
 }
 
@@ -217,7 +239,7 @@ pub async fn update_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
-    Form(mut form): Form<GameForm>,
+    Form(form): Form<GameForm>,
 ) -> AppResult<Redirect> {
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
@@ -267,23 +289,15 @@ pub async fn download_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Link tải không tồn tại".into()))?;
 
-    let _ = InteractionRepo::record_download(
-        &state.db,
-        game.id,
-        Some(user.id),
-        &form.platform,
-        None,
-    )
-    .await;
+    let _ =
+        InteractionRepo::record_download(&state.db, game.id, Some(user.id), &form.platform, None)
+            .await;
     let _ = GameRepo::increment_download_count(&state.db, game.id).await;
     let _ = crate::repositories::StatsRepo::record_download(&state.db, game.id).await;
 
     Ok((
         StatusCode::OK,
-        [
-            ("X-Redirect", url.as_str()),
-            ("HX-Redirect", url.as_str()),
-        ],
+        [("X-Redirect", url.as_str()), ("HX-Redirect", url.as_str())],
         "",
     )
         .into_response())
@@ -336,7 +350,8 @@ pub async fn submit_report(
     .await?;
 
     Ok(Html(
-        "<div class='alert alert-success'>✓ Báo cáo đã được gửi. Cảm ơn bạn đã đóng góp!</div>".into(),
+        "<div class='alert alert-success'>✓ Báo cáo đã được gửi. Cảm ơn bạn đã đóng góp!</div>"
+            .into(),
     ))
 }
 
@@ -382,7 +397,15 @@ pub async fn list_latest(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<GameListTemplate> {
-    build_list_template(&state, current_user, "🎮 Game mới nhất", "latest", "latest", q).await
+    build_list_template(
+        &state,
+        current_user,
+        "🎮 Game mới nhất",
+        "latest",
+        "latest",
+        q,
+    )
+    .await
 }
 
 pub async fn list_trending(
@@ -390,7 +413,15 @@ pub async fn list_trending(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<GameListTemplate> {
-    build_list_template(&state, current_user, "🔥 Đang thịnh hành", "trending", "trending", q).await
+    build_list_template(
+        &state,
+        current_user,
+        "🔥 Đang thịnh hành",
+        "trending",
+        "trending",
+        q,
+    )
+    .await
 }
 
 pub async fn list_top_rated(
@@ -398,7 +429,15 @@ pub async fn list_top_rated(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<GameListTemplate> {
-    build_list_template(&state, current_user, "⭐ Đánh giá cao nhất", "top-rated", "top_rated", q).await
+    build_list_template(
+        &state,
+        current_user,
+        "⭐ Đánh giá cao nhất",
+        "top-rated",
+        "top_rated",
+        q,
+    )
+    .await
 }
 
 pub async fn list_downloads(
@@ -406,7 +445,15 @@ pub async fn list_downloads(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<GameListTemplate> {
-    build_list_template(&state, current_user, "⬇️ Tải nhiều nhất", "downloads", "downloads", q).await
+    build_list_template(
+        &state,
+        current_user,
+        "⬇️ Tải nhiều nhất",
+        "downloads",
+        "downloads",
+        q,
+    )
+    .await
 }
 
 pub async fn list_featured(
@@ -414,7 +461,15 @@ pub async fn list_featured(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<ListQuery>,
 ) -> AppResult<GameListTemplate> {
-    build_list_template(&state, current_user, "⭐ Game nổi bật", "featured", "trending", q).await
+    build_list_template(
+        &state,
+        current_user,
+        "⭐ Game nổi bật",
+        "featured",
+        "trending",
+        q,
+    )
+    .await
 }
 
 // ============= Category / Tag listing =============
@@ -507,12 +562,19 @@ pub async fn list_categories(
 }
 
 // ============= Search =============
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct SearchQuery {
+    // Sửa: `q` là Option để không trả 400 khi user vào /search không có query string.
+    // Trang /search trống sẽ hiển thị danh sách game mới nhất (như browse page).
+    #[serde(default)]
     pub q: String,
+    #[serde(default)]
     pub category: Option<String>,
+    #[serde(default)]
     pub platform: Option<String>,
+    #[serde(default)]
     pub sort: Option<String>,
+    #[serde(default)]
     pub page: Option<i64>,
 }
 
@@ -569,7 +631,8 @@ pub async fn share_game(
     Path(slug): Path<String>,
     Form(form): Form<ShareForm>,
 ) -> AppResult<Html<String>> {
-    let game = GameRepo::find_by_slug(&state.db, &slug).await?
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let user_id = current_user.as_ref().map(|u| u.id);
     let _ = InteractionRepo::record_share(&state.db, game.id, user_id, &form.platform).await;

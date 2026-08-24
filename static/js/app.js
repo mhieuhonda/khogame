@@ -99,16 +99,36 @@
     });
 
     // ===== Share functions =====
+    // Sử dụng event delegation: dữ liệu lấy từ data-* attributes trên .share-buttons,
+    // tránh XSS từ title có dấu nháy đơn khi truyền vào onclick='...'.
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.share-buttons [data-share-platform]');
+        if (!btn) return;
+        const container = btn.closest('.share-buttons');
+        if (!container) return;
+        const slug = container.dataset.slug || '';
+        const title = container.dataset.title || '';
+        const shareUrl = container.dataset.shareUrl || (window.location.origin + '/games/' + slug);
+        const platform = btn.dataset.sharePlatform;
+        if (platform === 'copy') {
+            copyShareLink(slug, shareUrl);
+        } else if (platform === 'native') {
+            nativeShare(slug, title, shareUrl);
+        } else {
+            recordShare(slug, platform);
+        }
+    });
+
     window.recordShare = function(slug, platform) {
-        fetch('/games/' + slug + '/share', {
+        fetch('/games/' + encodeURIComponent(slug) + '/share', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: 'platform=' + encodeURIComponent(platform)
         }).catch(function() {});
     };
 
-    window.copyShareLink = function(slug) {
-        const url = window.location.origin + '/games/' + slug;
+    window.copyShareLink = function(slug, optUrl) {
+        const url = optUrl || (window.location.origin + '/games/' + slug);
         if (navigator.clipboard) {
             navigator.clipboard.writeText(url).then(function() {
                 showToast('Đã sao chép link!', 'success');
@@ -129,13 +149,13 @@
         recordShare(slug, 'copy');
     };
 
-    window.nativeShare = function(slug, title) {
-        const url = window.location.origin + '/games/' + slug;
+    window.nativeShare = function(slug, title, optUrl) {
+        const url = optUrl || (window.location.origin + '/games/' + slug);
         if (navigator.share) {
             navigator.share({ title: title, url: url }).catch(function() {});
             recordShare(slug, 'native');
         } else {
-            copyShareLink(slug);
+            copyShareLink(slug, url);
         }
     };
 

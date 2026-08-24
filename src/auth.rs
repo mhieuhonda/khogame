@@ -7,6 +7,13 @@ use sha2::{Digest, Sha256};
 pub const SESSION_COOKIE: &str = "kg_session";
 pub const SESSION_TTL_DAYS: i64 = 30;
 
+/// Tên cookie lưu OAuth `state` (CSRF) - sống ngắn, dùng 1 lần.
+pub const OAUTH_STATE_COOKIE: &str = "kg_oauth_state";
+/// Tên cookie lưu `next` path sau login.
+pub const OAUTH_NEXT_COOKIE: &str = "kg_oauth_next";
+/// TTL cho OAuth state/next cookies.
+const OAUTH_TEMP_TTL_SECS: i64 = 600; // 10 phút
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GoogleUserInfo {
     pub sub: String,
@@ -120,6 +127,58 @@ pub fn set_session_cookie(jar: &mut CookieJar, token: &str, base_url: &str) {
 pub fn clear_session_cookie(jar: &mut CookieJar, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};
     let cookie = Cookie::build((SESSION_COOKIE, ""))
+        .path("/")
+        .http_only(true)
+        .secure(base_url.starts_with("https://"))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(0))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
+/// Đặt cookie OAuth state (CSRF token) - sống 10 phút, HttpOnly + SameSite=Lax.
+pub fn set_oauth_state_cookie(jar: &mut CookieJar, state: &str, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((OAUTH_STATE_COOKIE, state.to_string()))
+        .path("/")
+        .http_only(true)
+        .secure(base_url.starts_with("https://"))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(OAUTH_TEMP_TTL_SECS))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
+/// Xoá cookie OAuth state.
+pub fn clear_oauth_state_cookie(jar: &mut CookieJar, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((OAUTH_STATE_COOKIE, ""))
+        .path("/")
+        .http_only(true)
+        .secure(base_url.starts_with("https://"))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(0))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
+/// Đặt cookie OAuth `next` path - sống 10 phút.
+pub fn set_oauth_next_cookie(jar: &mut CookieJar, next: &str, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((OAUTH_NEXT_COOKIE, next.to_string()))
+        .path("/")
+        .http_only(true)
+        .secure(base_url.starts_with("https://"))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(OAUTH_TEMP_TTL_SECS))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
+/// Xoá cookie OAuth `next`.
+pub fn clear_oauth_next_cookie(jar: &mut CookieJar, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((OAUTH_NEXT_COOKIE, ""))
         .path("/")
         .http_only(true)
         .secure(base_url.starts_with("https://"))

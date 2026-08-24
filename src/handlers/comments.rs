@@ -27,8 +27,14 @@ pub async fn create_comment(
     if content.is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
-    if content.len() > 1000 {
-        return Err(AppError::BadRequest("Nội dung quá dài (tối đa 1000 ký tự)".into()));
+    // Đếm theo số ký tự (char count), không phải byte length, để hỗ trợ unicode tiếng Việt.
+    // 1000 ký tự Việt = ~3000 bytes UTF-8, nếu đếm byte sẽ chặn nhầm.
+    let char_count = content.chars().count();
+    if char_count > 1000 {
+        return Err(AppError::BadRequest(format!(
+            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {})",
+            char_count
+        )));
     }
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
         .await?
@@ -41,19 +47,18 @@ pub async fn create_comment(
     let _id = CommentRepo::create(&state.db, game.id, user.id, parent_id, content).await?;
 
     // Mention @username -> thông báo
-    let mentions = CommentRepo::find_mentions(&state.db, content, user.id).await.unwrap_or_default();
+    let mentions = CommentRepo::find_mentions(&state.db, content, user.id)
+        .await
+        .unwrap_or_default();
     for uid in mentions {
-        let _ = crate::repositories::NotificationRepo::create_mention(
-            &state.db,
-            uid,
-            user.id,
-            &slug,
-        )
-        .await;
+        let _ =
+            crate::repositories::NotificationRepo::create_mention(&state.db, uid, user.id, &slug)
+                .await;
     }
 
     // Return the new comment HTML for HTMX prepend
-    let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id).await?
+    let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id)
+        .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Failed to load created comment")))?;
     let partial = CommentItemPartial {
         comment: &comment,
@@ -79,10 +84,13 @@ pub async fn edit_comment(
     if content.is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
-    let existing = CommentRepo::find_by_id(&state.db, id).await?
+    let existing = CommentRepo::find_by_id(&state.db, id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     if existing.user_id != user.id && !user.role.is_staff() {
-        return Err(AppError::Forbidden("Bạn không có quyền sửa bình luận này".into()));
+        return Err(AppError::Forbidden(
+            "Bạn không có quyền sửa bình luận này".into(),
+        ));
     }
     let updated = CommentRepo::update_content(&state.db, id, user.id, content).await?;
     let partial = CommentItemPartial {
@@ -98,10 +106,13 @@ pub async fn delete_comment(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
-    let comment = CommentRepo::find_by_id(&state.db, id).await?
+    let comment = CommentRepo::find_by_id(&state.db, id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     if comment.user_id != user.id && !user.role.is_staff() {
-        return Err(AppError::Forbidden("Bạn không có quyền xóa bình luận này".into()));
+        return Err(AppError::Forbidden(
+            "Bạn không có quyền xóa bình luận này".into(),
+        ));
     }
     CommentRepo::delete(&state.db, id).await?;
     Ok(Html("".into()))
@@ -113,10 +124,11 @@ pub async fn like_comment(
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
     let liked = CommentRepo::toggle_like(&state.db, id, user.id).await?;
-    let comment = CommentRepo::find_by_id(&state.db, id).await?
+    let comment = CommentRepo::find_by_id(&state.db, id)
+        .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     let _ = liked;
-    Ok(Html(format!("{}", comment.like_count).into()))
+    Ok(Html(format!("{}", comment.like_count)))
 }
 
 pub async fn list_replies(

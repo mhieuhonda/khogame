@@ -21,10 +21,7 @@ impl FromRef<Arc<AppState>> for AppState {
 }
 
 /// Extracts the current user from the request, if any.
-pub async fn current_user_from_jar(
-    state: &AppState,
-    jar: &CookieJar,
-) -> Option<User> {
+pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<User> {
     let token = jar.get(SESSION_COOKIE)?.value().to_string();
     let token_hash = hash_token(&token);
     let user_id = SessionRepo::find_user_by_token(&state.db, &token_hash)
@@ -85,7 +82,7 @@ pub async fn require_admin(
     next: Next,
 ) -> Result<Response, StatusCode> {
     // Extract cookies from request headers
-    let jar = CookieJar::from_headers(&request.headers());
+    let jar = CookieJar::from_headers(request.headers());
     let user = current_user_from_jar(&state, &jar)
         .await
         .ok_or(StatusCode::UNAUTHORIZED)?;
@@ -105,8 +102,15 @@ pub async fn maintenance_guard(
 ) -> Response {
     let path = request.uri().path().to_string();
     let bypass_prefixes = [
-        "/admin", "/login", "/auth", "/static", "/api/v1/health", "/health",
-        "/maintenance", "/api/announcement", "/api/preferences",
+        "/admin",
+        "/login",
+        "/auth",
+        "/static",
+        "/api/v1/health",
+        "/health",
+        "/maintenance",
+        "/api/announcement",
+        "/api/preferences",
     ];
     if bypass_prefixes.iter().any(|p| path.starts_with(p)) {
         return next.run(request).await;
@@ -116,7 +120,7 @@ pub async fn maintenance_guard(
         return next.run(request).await;
     }
     // Staff bypass
-    let jar = CookieJar::from_headers(&request.headers());
+    let jar = CookieJar::from_headers(request.headers());
     if let Some(user) = current_user_from_jar(&state, &jar).await {
         if user.role.is_staff() {
             return next.run(request).await;
@@ -197,7 +201,7 @@ pub async fn rate_limit(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let path = request.uri().path().to_string();
-    let ip = client_ip_from_parts(&request.headers(), None);
+    let ip = client_ip_from_parts(request.headers(), None);
     let (max, window) = if path.contains("/download") {
         (20, 60) // 20 download/phút
     } else if path.contains("/comments") {
@@ -205,7 +209,10 @@ pub async fn rate_limit(
     } else {
         (120, 60)
     };
-    if !state.rate_limiter.check(&format!("{}:{}", ip, path), max, window) {
+    if !state
+        .rate_limiter
+        .check(&format!("{}:{}", ip, path), max, window)
+    {
         tracing::warn!("Rate limit exceeded: {} {}", ip, path);
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
@@ -213,9 +220,7 @@ pub async fn rate_limit(
 }
 
 #[allow(dead_code)]
-pub async fn get_client_ip(
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> String {
+pub async fn get_client_ip(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
     addr.ip().to_string()
 }
 

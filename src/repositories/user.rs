@@ -92,6 +92,23 @@ impl UserRepo {
         bio: &str,
         avatar_url: Option<&str>,
     ) -> AppResult<User> {
+        // Validate avatar_url: chỉ cho phép http/https, không cho javascript:/data:
+        // để tránh XSS qua avatar URL (thẻ <img src="javascript:..."> sẽ không chạy JS
+        // nhưng src="data:text/html,..." hoặc scheme khác có thể lạm dụng).
+        let avatar_url_safe = match avatar_url {
+            Some(s) if !s.is_empty() => {
+                let lower = s.to_ascii_lowercase();
+                if lower.starts_with("http://") || lower.starts_with("https://") {
+                    Some(s)
+                } else {
+                    return Err(crate::error::AppError::BadRequest(
+                        "Avatar URL phải là http:// hoặc https://".into(),
+                    ));
+                }
+            }
+            _ => None,
+        };
+
         let user = sqlx::query_as::<_, User>(
             r#"UPDATE users SET display_name = $1, bio = $2, avatar_url = COALESCE($3, avatar_url)
               WHERE id = $4
@@ -100,7 +117,7 @@ impl UserRepo {
         )
         .bind(display_name)
         .bind(bio)
-        .bind(avatar_url)
+        .bind(avatar_url_safe)
         .bind(id)
         .fetch_one(pool)
         .await?;
@@ -237,12 +254,11 @@ impl UserRepo {
 
     /// Nâng cấp user lên admin nếu chưa phải (idempotent)
     pub async fn ensure_admin_by_email(pool: &PgPool, email: &str) -> AppResult<bool> {
-        let res = sqlx::query(
-            "UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'",
-        )
-        .bind(email)
-        .execute(pool)
-        .await?;
+        let res =
+            sqlx::query("UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'")
+                .bind(email)
+                .execute(pool)
+                .await?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -276,14 +292,12 @@ impl UserRepo {
             } else {
                 format!("{}_{}", base, i)
             };
-            let exists: Option<i32> = sqlx::query_scalar(
-                "SELECT 1 FROM users WHERE username = $1",
-            )
-            .bind(&candidate)
-            .fetch_optional(pool)
-            .await
-            .ok()
-            .flatten();
+            let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM users WHERE username = $1")
+                .bind(&candidate)
+                .fetch_optional(pool)
+                .await
+                .ok()
+                .flatten();
             if exists.is_none() {
                 return candidate;
             }

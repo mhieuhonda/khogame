@@ -1,6 +1,6 @@
+use askama::Template;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use askama::Template;
 use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;

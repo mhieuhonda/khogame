@@ -1,5 +1,5 @@
-use askama::Template;
 use crate::models::*;
+use askama::Template;
 
 /// Implement `axum::response::IntoResponse` for a template type by rendering it.
 macro_rules! impl_template_response {
@@ -112,6 +112,8 @@ pub struct GameShowTemplate {
     pub is_following_author: bool,
     pub is_owner: bool,
     pub user_rating: Option<i16>,
+    /// Base URL tuyệt đối (https://...) để dựng share URL đầy đủ.
+    pub base_url: String,
 }
 
 /// Search results
@@ -436,7 +438,8 @@ pub struct DownloadButtonsPartial<'a> {
 pub struct ShareButtonsPartial<'a> {
     pub slug: &'a str,
     pub title: &'a str,
-    pub base_url: String,
+    /// URL tuyệt đối (vd https://domain.com/games/slug)
+    pub share_url: String,
 }
 
 #[derive(Template)]
@@ -463,8 +466,8 @@ pub struct PaginationPartial {
 
 // Helper functions exposed to templates (Askama 0.16 custom filters)
 pub mod filters {
-    use crate::utils as u;
     use crate::models::user::User;
+    use crate::utils as u;
     use askama::filters::Safe;
     use askama::Values;
     use std::fmt::Display;
@@ -526,9 +529,10 @@ pub mod filters {
     /// Avatar của user hoặc placeholder
     #[askama::filter_fn]
     pub fn avatar_or(user: &User, _: &dyn Values) -> ::askama::Result<String> {
-        Ok(user.avatar_url.clone().unwrap_or_else(|| {
-            "/static/img/avatar-placeholder.svg".to_string()
-        }))
+        Ok(user
+            .avatar_url
+            .clone()
+            .unwrap_or_else(|| "/static/img/avatar-placeholder.svg".to_string()))
     }
 
     #[askama::filter_fn]
@@ -549,22 +553,35 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
-    pub fn format_date(date: &Option<chrono::NaiveDate>, _: &dyn Values) -> ::askama::Result<String> {
-        Ok(date.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default())
+    pub fn format_date(
+        date: &Option<chrono::NaiveDate>,
+        _: &dyn Values,
+    ) -> ::askama::Result<String> {
+        Ok(date
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .unwrap_or_default())
     }
 
     #[askama::filter_fn]
-    pub fn format_date_vn(date: &Option<chrono::NaiveDate>, _: &dyn Values) -> ::askama::Result<String> {
-        Ok(date.map(|d| d.format("%d/%m/%Y").to_string()).unwrap_or_default())
+    pub fn format_date_vn(
+        date: &Option<chrono::NaiveDate>,
+        _: &dyn Values,
+    ) -> ::askama::Result<String> {
+        Ok(date
+            .map(|d| d.format("%d/%m/%Y").to_string())
+            .unwrap_or_default())
     }
 
     #[askama::filter_fn]
-    pub fn format_datetime_vn(dt: &chrono::DateTime<chrono::Utc>, _: &dyn Values) -> ::askama::Result<String> {
+    pub fn format_datetime_vn(
+        dt: &chrono::DateTime<chrono::Utc>,
+        _: &dyn Values,
+    ) -> ::askama::Result<String> {
         Ok(dt.format("%d/%m/%Y").to_string())
     }
 
     #[askama::filter_fn]
-    pub fn join_tags(items: &Vec<String>, _: &dyn Values) -> ::askama::Result<String> {
+    pub fn join_tags(items: &[String], _: &dyn Values) -> ::askama::Result<String> {
         Ok(items.join(", "))
     }
 }

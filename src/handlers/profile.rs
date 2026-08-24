@@ -21,7 +21,10 @@ pub async fn show_profile(
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
     let stats = UserRepo::stats(&state.db, user.id).await?;
     let games = GameRepo::by_user(&state.db, user.id, 24, 0).await?;
-    let is_self = current_user.as_ref().map(|u| u.id == user.id).unwrap_or(false);
+    let is_self = current_user
+        .as_ref()
+        .map(|u| u.id == user.id)
+        .unwrap_or(false);
     let is_following = if let Some(ref cu) = current_user {
         if !is_self {
             InteractionRepo::is_following(&state.db, cu.id, user.id)
@@ -33,7 +36,9 @@ pub async fn show_profile(
     } else {
         false
     };
-    let preferences = UserRepo::get_preferences(&state.db, user.id).await.unwrap_or_default();
+    let preferences = UserRepo::get_preferences(&state.db, user.id)
+        .await
+        .unwrap_or_default();
     let unread = match &current_user {
         Some(u) => unread_count(&state, u.id).await,
         None => 0,
@@ -60,7 +65,9 @@ pub async fn edit_profile_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<EditProfileTemplate> {
-    let preferences = UserRepo::get_preferences(&state.db, user.id).await.unwrap_or_default();
+    let preferences = UserRepo::get_preferences(&state.db, user.id)
+        .await
+        .unwrap_or_default();
     let unread = unread_count(&state, user.id).await;
     Ok(EditProfileTemplate {
         current_user: Some(user),
@@ -88,7 +95,9 @@ pub async fn update_profile(
 ) -> AppResult<Redirect> {
     let display_name = form.display_name.trim();
     if display_name.is_empty() {
-        return Err(AppError::BadRequest("Tên hiển thị không được để trống".into()));
+        return Err(AppError::BadRequest(
+            "Tên hiển thị không được để trống".into(),
+        ));
     }
     let bio = form.bio.unwrap_or_default();
     let avatar_url = form.avatar_url.as_deref().filter(|s| !s.is_empty());
@@ -100,8 +109,15 @@ pub async fn update_profile(
     let language = form.language.unwrap_or_else(|| "vi".into());
     let email_notif = form.email_notifications.is_some();
     let show_online = form.show_online.is_some();
-    UserRepo::update_preferences(&state.db, user.id, &theme, email_notif, show_online, &language)
-        .await?;
+    UserRepo::update_preferences(
+        &state.db,
+        user.id,
+        &theme,
+        email_notif,
+        show_online,
+        &language,
+    )
+    .await?;
 
     Ok(Redirect::to(&format!("/u/{}", user.username)))
 }

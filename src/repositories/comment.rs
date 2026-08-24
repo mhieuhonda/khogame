@@ -1,6 +1,6 @@
 use crate::error::AppResult;
-use crate::models::CommentWithGame;
 use crate::models::comment::CommentWithUser;
+use crate::models::CommentWithGame;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -26,11 +26,10 @@ impl CommentRepo {
         .await?;
 
         // Insert notification for game owner
-        let owner_id: Option<Uuid> =
-            sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
-                .bind(game_id)
-                .fetch_optional(pool)
-                .await?;
+        let owner_id: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
+            .bind(game_id)
+            .fetch_optional(pool)
+            .await?;
         if let Some(oid) = owner_id {
             if oid != user_id {
                 let title = if parent_id.is_some() {
@@ -38,7 +37,11 @@ impl CommentRepo {
                 } else {
                     "Có người vừa bình luận game của bạn"
                 };
-                let ntype = if parent_id.is_some() { "reply" } else { "comment" };
+                let ntype = if parent_id.is_some() {
+                    "reply"
+                } else {
+                    "comment"
+                };
                 let game_slug: String = sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
                     .bind(game_id)
                     .fetch_one(pool)
@@ -158,11 +161,7 @@ impl CommentRepo {
         Ok(pinned)
     }
 
-    pub async fn toggle_like(
-        pool: &PgPool,
-        comment_id: Uuid,
-        user_id: Uuid,
-    ) -> AppResult<bool> {
+    pub async fn toggle_like(pool: &PgPool, comment_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         let liked: Option<bool> = sqlx::query_scalar(
             "SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2",
         )
@@ -197,28 +196,60 @@ impl CommentRepo {
         }
     }
 
-    /// Sửa bình luận (chỉ trong 5 phút đầu)
-    pub async fn update_content(pool: &PgPool, id: Uuid, user_id: Uuid, content: &str) -> AppResult<CommentWithUser> {
+    /// Sửa bình luận (chỉ trong 5 phút đầu).
+    /// Trả về lỗi NotFound nếu bình luận không tồn tại, không thuộc user, hoặc đã quá 5 phút.
+    pub async fn update_content(
+        pool: &PgPool,
+        id: Uuid,
+        user_id: Uuid,
+        content: &str,
+    ) -> AppResult<CommentWithUser> {
+        // Kiểm tra quyền và thời hạn trước khi update để phân biệt lỗi rõ ràng
+        let existing: Option<(Uuid, Uuid, chrono::DateTime<chrono::Utc>)> =
+            sqlx::query_as(r#"SELECT id, user_id, created_at FROM comments WHERE id = $1"#)
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
+
+        let row = existing
+            .ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại".into()))?;
+        if row.1 != user_id {
+            return Err(crate::error::AppError::Forbidden(
+                "Bạn không có quyền sửa bình luận này".into(),
+            ));
+        }
+        if row.2 < chrono::Utc::now() - chrono::Duration::minutes(5) {
+            return Err(crate::error::AppError::Forbidden(
+                "Đã quá hạn 5 phút chỉnh sửa bình luận".into(),
+            ));
+        }
+
         sqlx::query(
-            r#"UPDATE comments SET content = $1
-              WHERE id = $2 AND user_id = $3 AND created_at > NOW() - INTERVAL '5 minutes'"#,
+            r#"UPDATE comments SET content = $1, updated_at = NOW()
+              WHERE id = $2 AND user_id = $3"#,
         )
         .bind(content)
         .bind(id)
         .bind(user_id)
         .execute(pool)
         .await?;
-        let full = Self::find_by_id(pool, id).await?;
-        Ok(full.ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại hoặc đã quá hạn chỉnh sửa".into()))?)
+        Self::find_by_id(pool, id)
+            .await?
+            .ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại".into()))
     }
 
     /// Tìm user được @mention trong nội dung
-    pub async fn find_mentions(pool: &PgPool, content: &str, exclude_user: Uuid) -> AppResult<Vec<Uuid>> {
+    pub async fn find_mentions(
+        pool: &PgPool,
+        content: &str,
+        exclude_user: Uuid,
+    ) -> AppResult<Vec<Uuid>> {
         let mut ids = Vec::new();
         let words: Vec<&str> = content.split_whitespace().collect();
         for w in words {
             if let Some(username) = w.strip_prefix('@') {
-                let username = username.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                let username =
+                    username.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
                 if username.is_empty() {
                     continue;
                 }

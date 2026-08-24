@@ -57,10 +57,12 @@ impl NotificationRepo {
     }
 
     pub async fn mark_all_read(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
-        sqlx::query("UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE")
-            .bind(user_id)
-            .execute(pool)
-            .await?;
+        sqlx::query(
+            "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

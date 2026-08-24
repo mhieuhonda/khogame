@@ -1,17 +1,20 @@
-{# Share buttons #}
-<div class="share-buttons">
-    <a href="https://www.facebook.com/sharer/sharer.php?u=/games/{{ slug }}"
+{# Share buttons - dùng data-* để tránh XSS từ title (đã có case title chứa quote) #}
+<div class="share-buttons"
+     data-slug="{{ slug }}"
+     data-title="{{ title }}"
+     data-share-url="{{ share_url }}">
+    <a href="https://www.facebook.com/sharer/sharer.php?u={{ share_url }}"
        target="_blank" rel="noopener" class="share-btn share-facebook"
-       onclick="recordShare('{{ slug }}', 'facebook')">f</a>
-    <a href="https://twitter.com/intent/tweet?url=/games/{{ slug }}"
+       data-share-platform="facebook">f</a>
+    <a href="https://twitter.com/intent/tweet?url={{ share_url }}"
        target="_blank" rel="noopener" class="share-btn share-twitter"
-       onclick="recordShare('{{ slug }}', 'twitter')">𝕏</a>
-    <a href="https://t.me/share/url?url=/games/{{ slug }}"
+       data-share-platform="twitter">𝕏</a>
+    <a href="https://t.me/share/url?url={{ share_url }}"
        target="_blank" rel="noopener" class="share-btn share-telegram"
-       onclick="recordShare('{{ slug }}', 'telegram')">✈</a>
-    <a href="https://wa.me/?text=/games/{{ slug }}"
+       data-share-platform="telegram">✈</a>
+    <a href="https://wa.me/?text={{ share_url }}"
        target="_blank" rel="noopener" class="share-btn share-whatsapp"
-       onclick="recordShare('{{ slug }}', 'whatsapp')">W</a>
-    <button class="share-btn share-copy" onclick="copyShareLink('{{ slug }}')" title="Sao chép link">📋</button>
-    <button class="share-btn share-native" onclick="nativeShare('{{ slug }}', '{{ title|esc }}')" title="Chia sẻ qua ứng dụng">📤</button>
+       data-share-platform="whatsapp">W</a>
+    <button type="button" class="share-btn share-copy" data-share-platform="copy" title="Sao chép link">📋</button>
+    <button type="button" class="share-btn share-native" data-share-platform="native" title="Chia sẻ qua ứng dụng">📤</button>
 </div>

@@ -26,7 +26,10 @@ impl AppState {
             config: Arc::new(config),
             http_client,
             rate_limiter: Arc::new(RateLimiter::new()),
-            maintenance_cache: Arc::new(tokio::sync::RwLock::new((false, std::time::Instant::now()))),
+            maintenance_cache: Arc::new(tokio::sync::RwLock::new((
+                false,
+                std::time::Instant::now(),
+            ))),
         })
     }
 

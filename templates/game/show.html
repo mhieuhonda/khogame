@@ -255,12 +255,16 @@
                     </button>
                     {% when Option::None %}
                     {% endmatch %}
-                    <div class="share-buttons">
-                        <a href="https://www.facebook.com/sharer/sharer.php?u=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-facebook" onclick="recordShare('{{ game.slug }}', 'facebook')">f</a>
-                        <a href="https://twitter.com/intent/tweet?url=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-twitter" onclick="recordShare('{{ game.slug }}', 'twitter')">𝕏</a>
-                        <a href="https://t.me/share/url?url=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-telegram" onclick="recordShare('{{ game.slug }}', 'telegram')">✈</a>
-                        <a href="https://wa.me/?text=/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-whatsapp" onclick="recordShare('{{ game.slug }}', 'whatsapp')">W</a>
-                        <button class="share-btn share-copy" onclick="copyShareLink('{{ game.slug }}')" title="Sao chép link">📋</button>
+                    <div class="share-buttons"
+                         data-slug="{{ game.slug }}"
+                         data-title="{{ game.title }}"
+                         data-share-url="{{ base_url }}/games/{{ game.slug }}">
+                        <a href="https://www.facebook.com/sharer/sharer.php?u={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-facebook" data-share-platform="facebook">f</a>
+                        <a href="https://twitter.com/intent/tweet?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-twitter" data-share-platform="twitter">𝕏</a>
+                        <a href="https://t.me/share/url?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-telegram" data-share-platform="telegram">✈</a>
+                        <a href="https://wa.me/?text={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-whatsapp" data-share-platform="whatsapp">W</a>
+                        <button type="button" class="share-btn share-copy" data-share-platform="copy" title="Sao chép link">📋</button>
+                        <button type="button" class="share-btn share-native" data-share-platform="native" title="Chia sẻ qua ứng dụng">📤</button>
                     </div>
                     {% if !is_owner %}
                     <button class="action-btn report-btn" onclick="openReportModal('{{ game.slug }}')">

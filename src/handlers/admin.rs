@@ -17,8 +17,24 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 // ============= Helper: ghi audit log (best-effort) =============
-async fn audit(state: &AppState, admin_id: Uuid, action: &str, target_type: &str, target_id: &str, detail: &str) {
-    let _ = AdminLogRepo::log(&state.db, admin_id, action, target_type, target_id, detail, None).await;
+async fn audit(
+    state: &AppState,
+    admin_id: Uuid,
+    action: &str,
+    target_type: &str,
+    target_id: &str,
+    detail: &str,
+) {
+    let _ = AdminLogRepo::log(
+        &state.db,
+        admin_id,
+        action,
+        target_type,
+        target_id,
+        detail,
+        None,
+    )
+    .await;
 }
 
 // ============================================================
@@ -44,13 +60,29 @@ pub async fn dashboard(
     let recent_games = GameRepo::list_published(&state.db, 10, 0, "latest")
         .await
         .unwrap_or_default();
-    let recent_comments = CommentRepo::list_recent(&state.db, 5).await.unwrap_or_default();
-    let daily_stats = StatsRepo::daily_last_7_days(&state.db).await.unwrap_or_default();
+    let recent_comments = CommentRepo::list_recent(&state.db, 5)
+        .await
+        .unwrap_or_default();
+    let daily_stats = StatsRepo::daily_last_7_days(&state.db)
+        .await
+        .unwrap_or_default();
     let total_repos = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
     let pending_repos = RepoRepo::pending_count(&state.db).await.unwrap_or(0);
-    let status_counts = GameRepo::count_by_status(&state.db).await.unwrap_or_default();
-    let max_views = daily_stats.iter().map(|d| d.views).max().unwrap_or(1).max(1);
-    let max_downloads = daily_stats.iter().map(|d| d.downloads).max().unwrap_or(1).max(1);
+    let status_counts = GameRepo::count_by_status(&state.db)
+        .await
+        .unwrap_or_default();
+    let max_views = daily_stats
+        .iter()
+        .map(|d| d.views)
+        .max()
+        .unwrap_or(1)
+        .max(1);
+    let max_downloads = daily_stats
+        .iter()
+        .map(|d| d.downloads)
+        .max()
+        .unwrap_or(1)
+        .max(1);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminTemplate {
         current_user: Some(user),
@@ -126,7 +158,15 @@ pub async fn resolve_report(
         &form.resolution.unwrap_or_default(),
     )
     .await?;
-    audit(&state, user.id, "report.resolve", "report", &id.to_string(), &format!("-> {:?}", status)).await;
+    audit(
+        &state,
+        user.id,
+        "report.resolve",
+        "report",
+        &id.to_string(),
+        &format!("-> {:?}", status),
+    )
+    .await;
 
     let reports = ReportRepo::list(&state.db, None, 50, 0).await?;
     let r = reports.iter().find(|r| r.id == id);
@@ -161,9 +201,21 @@ pub async fn hide_game(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let status = if form.hide.is_some() { "hidden" } else { "published" };
+    let status = if form.hide.is_some() {
+        "hidden"
+    } else {
+        "published"
+    };
     GameRepo::set_status(&state.db, id, status).await?;
-    audit(&state, user.id, "game.status", "game", &id.to_string(), status).await;
+    audit(
+        &state,
+        user.id,
+        "game.status",
+        "game",
+        &id.to_string(),
+        status,
+    )
+    .await;
     Ok(Html(format!(
         "<div class='alert alert-success'>Đã {} game.</div>",
         if status == "hidden" { "ẩn" } else { "hiện" }
@@ -193,7 +245,11 @@ pub async fn feature_game(
     .await;
     Ok(Html(format!(
         "<div class='alert alert-success'>Đã {} nổi bật.</div>",
-        if !game.is_featured { "đặt làm" } else { "bỏ" }
+        if !game.is_featured {
+            "đặt làm"
+        } else {
+            "bỏ"
+        }
     )))
 }
 
@@ -214,7 +270,15 @@ pub async fn pin_comment(
         game_slug: "",
         current_user: Some(&user),
     };
-    audit(&state, user.id, "comment.pin", "comment", &id.to_string(), if pinned { "on" } else { "off" }).await;
+    audit(
+        &state,
+        user.id,
+        "comment.pin",
+        "comment",
+        &id.to_string(),
+        if pinned { "on" } else { "off" },
+    )
+    .await;
     Ok(Html(partial.render()?))
 }
 
@@ -239,7 +303,9 @@ pub async fn games(
     let per_page: i64 = 50;
     let offset = (page - 1) * per_page;
     let games = GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset).await?;
-    let status_counts = GameRepo::count_by_status(&state.db).await.unwrap_or_default();
+    let status_counts = GameRepo::count_by_status(&state.db)
+        .await
+        .unwrap_or_default();
     let unread = unread_count(&state, user.id).await;
     Ok(AdminGamesTemplate {
         current_user: Some(user),
@@ -263,7 +329,15 @@ pub async fn delete_game(
     let game = GameRepo::find_by_id(&state.db, id).await?;
     GameRepo::delete(&state.db, id).await?;
     if let Some(g) = game {
-        audit(&state, user.id, "game.delete", "game", &id.to_string(), &g.title).await;
+        audit(
+            &state,
+            user.id,
+            "game.delete",
+            "game",
+            &id.to_string(),
+            &g.title,
+        )
+        .await;
     }
     Ok(Html(
         "<div class='alert alert-success'>Đã xóa game vĩnh viễn.</div>".into(),
@@ -323,10 +397,20 @@ pub async fn set_role(
         return Err(AppError::BadRequest("Vai trò không hợp lệ".into()));
     }
     if id == admin.id && form.role != "admin" {
-        return Err(AppError::BadRequest("Không thể tự hạ quyền của chính mình".into()));
+        return Err(AppError::BadRequest(
+            "Không thể tự hạ quyền của chính mình".into(),
+        ));
     }
     UserRepo::set_role(&state.db, id, &form.role).await?;
-    audit(&state, admin.id, "user.role", "user", &id.to_string(), &form.role).await;
+    audit(
+        &state,
+        admin.id,
+        "user.role",
+        "user",
+        &id.to_string(),
+        &form.role,
+    )
+    .await;
     Ok(Html(format!(
         "<span class='role-badge role-{}'>{}</span>",
         form.role,
@@ -357,7 +441,15 @@ pub async fn set_banned(
     }
     let banned = form.ban.is_some();
     UserRepo::set_banned(&state.db, id, banned).await?;
-    audit(&state, admin.id, "user.ban", "user", &id.to_string(), if banned { "banned" } else { "unbanned" }).await;
+    audit(
+        &state,
+        admin.id,
+        "user.ban",
+        "user",
+        &id.to_string(),
+        if banned { "banned" } else { "unbanned" },
+    )
+    .await;
     Ok(Html(if banned {
         "<span class='status-badge' style='color:#ef4444'>Bị cấm</span>".into()
     } else {
@@ -393,7 +485,15 @@ pub async fn delete_comment(
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
     CommentRepo::delete(&state.db, id).await?;
-    audit(&state, user.id, "comment.delete", "comment", &id.to_string(), "").await;
+    audit(
+        &state,
+        user.id,
+        "comment.delete",
+        "comment",
+        &id.to_string(),
+        "",
+    )
+    .await;
     Ok(Html(
         "<div class='alert alert-success'>Đã xóa bình luận.</div>".into(),
     ))
@@ -440,15 +540,36 @@ pub async fn save_category(
     }
     let description = form.description.unwrap_or_default();
     let icon = form.icon.unwrap_or_default();
-    match form.id.as_deref().filter(|s| !s.is_empty()).and_then(|s| Uuid::parse_str(s).ok()) {
+    match form
+        .id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
         Some(id) => {
             CategoryRepo::update(&state.db, id, name, &description, &icon).await?;
-            audit(&state, user.id, "category.update", "category", &id.to_string(), name).await;
+            audit(
+                &state,
+                user.id,
+                "category.update",
+                "category",
+                &id.to_string(),
+                name,
+            )
+            .await;
         }
         None => {
             let slug = slug::slugify(name);
             let id = CategoryRepo::create(&state.db, name, &slug, &description, &icon).await?;
-            audit(&state, user.id, "category.create", "category", &id.to_string(), name).await;
+            audit(
+                &state,
+                user.id,
+                "category.create",
+                "category",
+                &id.to_string(),
+                name,
+            )
+            .await;
         }
     }
     Ok(Redirect::to("/admin/categories"))
@@ -474,7 +595,15 @@ pub async fn delete_category(
         )));
     }
     CategoryRepo::delete(&state.db, id).await?;
-    audit(&state, user.id, "category.delete", "category", &id.to_string(), "").await;
+    audit(
+        &state,
+        user.id,
+        "category.delete",
+        "category",
+        &id.to_string(),
+        "",
+    )
+    .await;
     Ok(Redirect::to("/admin/categories"))
 }
 
@@ -522,7 +651,15 @@ pub async fn set_repo_status(
         return Err(AppError::BadRequest("Trạng thái không hợp lệ".into()));
     }
     RepoRepo::set_status(&state.db, id, &form.status).await?;
-    audit(&state, user.id, "repo.status", "repo", &id.to_string(), &form.status).await;
+    audit(
+        &state,
+        user.id,
+        "repo.status",
+        "repo",
+        &id.to_string(),
+        &form.status,
+    )
+    .await;
     Ok(Html(format!(
         "<span class='status-badge' style='color:{}'>{}</span>",
         match form.status.as_str() {
@@ -561,7 +698,9 @@ pub async fn settings_page(
         ],
     )
     .await?;
-    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| m.remove(k).unwrap_or_default();
+    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| {
+        m.remove(k).unwrap_or_default()
+    };
     let unread = unread_count(&state, user.id).await;
     Ok(AdminSettingsTemplate {
         current_user: Some(user),
@@ -600,7 +739,13 @@ pub async fn save_settings(
     async fn set(state: &AppState, uid: Uuid, k: &str, v: &str) -> AppResult<()> {
         SettingsRepo::set(&state.db, k, v, Some(uid)).await
     }
-    set(&state, uid, "site_name", form.site_name.as_deref().unwrap_or("Kho Game").trim()).await?;
+    set(
+        &state,
+        uid,
+        "site_name",
+        form.site_name.as_deref().unwrap_or("Kho Game").trim(),
+    )
+    .await?;
     set(
         &state,
         uid,
@@ -612,10 +757,20 @@ pub async fn save_settings(
         &state,
         uid,
         "maintenance_mode",
-        if form.maintenance_mode.is_some() { "on" } else { "off" },
+        if form.maintenance_mode.is_some() {
+            "on"
+        } else {
+            "off"
+        },
     )
     .await?;
-    set(&state, uid, "announcement", form.announcement.as_deref().unwrap_or("").trim()).await?;
+    set(
+        &state,
+        uid,
+        "announcement",
+        form.announcement.as_deref().unwrap_or("").trim(),
+    )
+    .await?;
     set(
         &state,
         uid,
@@ -623,12 +778,22 @@ pub async fn save_settings(
         form.announcement_type.as_deref().unwrap_or("info"),
     )
     .await?;
-    set(&state, uid, "footer_text", form.footer_text.as_deref().unwrap_or("").trim()).await?;
+    set(
+        &state,
+        uid,
+        "footer_text",
+        form.footer_text.as_deref().unwrap_or("").trim(),
+    )
+    .await?;
     set(
         &state,
         uid,
         "repo_auto_approve",
-        if form.repo_auto_approve.is_some() { "on" } else { "off" },
+        if form.repo_auto_approve.is_some() {
+            "on"
+        } else {
+            "off"
+        },
     )
     .await?;
     audit(&state, user.id, "settings.save", "settings", "", "").await;
@@ -646,7 +811,9 @@ pub async fn save_settings(
         ],
     )
     .await?;
-    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| m.remove(k).unwrap_or_default();
+    let get = |m: &mut std::collections::HashMap<String, String>, k: &str| {
+        m.remove(k).unwrap_or_default()
+    };
     let unread = unread_count(&state, user.id).await;
     Ok(AdminSettingsTemplate {
         current_user: Some(user),
@@ -683,12 +850,20 @@ pub async fn broadcast(
     }
     let sent = NotificationRepo::broadcast(
         &state.db,
-        &form.title.trim(),
+        form.title.trim(),
         form.content.as_deref().unwrap_or(""),
         form.link.as_deref().unwrap_or(""),
     )
     .await?;
-    audit(&state, user.id, "notification.broadcast", "system", "", &format!("{} users", sent)).await;
+    audit(
+        &state,
+        user.id,
+        "notification.broadcast",
+        "system",
+        "",
+        &format!("{} users", sent),
+    )
+    .await;
     Ok(Html(format!(
         "<div class='alert alert-success'>Đã gửi thông báo tới {} người dùng.</div>",
         sent

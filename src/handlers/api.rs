@@ -92,11 +92,7 @@ pub async fn games_list(
         page,
         per_page,
     };
-    Ok((
-        [(header::CACHE_CONTROL, "public, max-age=60")],
-        Json(body),
-    )
-        .into_response())
+    Ok(([(header::CACHE_CONTROL, "public, max-age=60")], Json(body)).into_response())
 }
 
 pub async fn game_detail(
@@ -143,11 +139,7 @@ pub async fn game_detail(
         "created_at": g.created_at.to_rfc3339(),
         "updated_at": g.updated_at.to_rfc3339(),
     });
-    Ok((
-        [(header::CACHE_CONTROL, "public, max-age=60")],
-        Json(body),
-    )
-        .into_response())
+    Ok(([(header::CACHE_CONTROL, "public, max-age=60")], Json(body)).into_response())
 }
 
 pub async fn repos_list(
@@ -241,7 +233,11 @@ pub async fn set_theme(
     AuthUser(user): AuthUser,
     Form(form): Form<ThemeForm>,
 ) -> AppResult<Response> {
-    let theme = if form.theme == "light" { "light" } else { "dark" };
+    let theme = if form.theme == "light" {
+        "light"
+    } else {
+        "dark"
+    };
     let pref = UserRepo::get_preferences(&state.db, user.id).await?;
     UserRepo::update_preferences(
         &state.db,
@@ -335,8 +331,13 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
         base
     ));
     for page in [
-        "/games/latest", "/games/trending", "/games/top-rated", "/games/downloads",
-        "/categories", "/repos", "/search",
+        "/games/latest",
+        "/games/trending",
+        "/games/top-rated",
+        "/games/downloads",
+        "/categories",
+        "/repos",
+        "/search",
     ] {
         urls.push_str(&format!(
             r#"  <url><loc>{}{}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
@@ -429,7 +430,9 @@ pub async fn mention_test(state: &AppState, user: Uuid) -> AppResult<Vec<Uuid>> 
 }
 
 #[allow(dead_code)]
-pub async fn daily_stats(state: &AppState) -> AppResult<Vec<crate::models::settings::DailyStatRow>> {
+pub async fn daily_stats(
+    state: &AppState,
+) -> AppResult<Vec<crate::models::settings::DailyStatRow>> {
     StatsRepo::daily_last_7_days(&state.db).await
 }
 

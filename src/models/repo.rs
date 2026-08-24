@@ -5,16 +5,12 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
 #[sqlx(type_name = "repo_status", rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RepoStatus {
     Pending,
+    #[default]
     Approved,
     Hidden,
-}
-
-impl Default for RepoStatus {
-    fn default() -> Self {
-        RepoStatus::Approved
-    }
 }
 
 impl RepoStatus {

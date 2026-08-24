@@ -8,15 +8,19 @@ pub struct SettingsRepo;
 
 impl SettingsRepo {
     pub async fn get(pool: &PgPool, key: &str) -> AppResult<Option<String>> {
-        let v: Option<String> =
-            sqlx::query_scalar("SELECT value FROM settings WHERE key = $1")
-                .bind(key)
-                .fetch_optional(pool)
-                .await?;
+        let v: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = $1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await?;
         Ok(v)
     }
 
-    pub async fn set(pool: &PgPool, key: &str, value: &str, updated_by: Option<Uuid>) -> AppResult<()> {
+    pub async fn set(
+        pool: &PgPool,
+        key: &str,
+        value: &str,
+        updated_by: Option<Uuid>,
+    ) -> AppResult<()> {
         sqlx::query(
             r#"INSERT INTO settings (key, value, updated_by)
                VALUES ($1, $2, $3)
@@ -31,19 +35,20 @@ impl SettingsRepo {
     }
 
     pub async fn get_all(pool: &PgPool) -> AppResult<Vec<Setting>> {
-        let rows = sqlx::query_as::<_, Setting>("SELECT key, value, updated_at, updated_by FROM settings ORDER BY key")
-            .fetch_all(pool)
-            .await?;
+        let rows = sqlx::query_as::<_, Setting>(
+            "SELECT key, value, updated_at, updated_by FROM settings ORDER BY key",
+        )
+        .fetch_all(pool)
+        .await?;
         Ok(rows)
     }
 
     pub async fn get_map(pool: &PgPool, keys: &[&str]) -> AppResult<HashMap<String, String>> {
-        let rows: Vec<(String, String)> = sqlx::query_as(
-            "SELECT key, value FROM settings WHERE key = ANY($1)",
-        )
-        .bind(keys.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-        .fetch_all(pool)
-        .await?;
+        let rows: Vec<(String, String)> =
+            sqlx::query_as("SELECT key, value FROM settings WHERE key = ANY($1)")
+                .bind(keys.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+                .fetch_all(pool)
+                .await?;
         Ok(rows.into_iter().collect())
     }
 }

@@ -6,13 +6,12 @@ pub struct InteractionRepo;
 
 impl InteractionRepo {
     pub async fn toggle_like(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let liked: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2",
-        )
-        .bind(game_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let liked: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2")
+                .bind(game_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         if liked.is_some() {
             sqlx::query("DELETE FROM likes WHERE game_id = $1 AND user_id = $2")
                 .bind(game_id)
@@ -21,34 +20,34 @@ impl InteractionRepo {
                 .await?;
             Ok(false)
         } else {
-            sqlx::query("INSERT INTO likes (game_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
-                .bind(game_id)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
+            sqlx::query(
+                "INSERT INTO likes (game_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            )
+            .bind(game_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
             Ok(true)
         }
     }
 
     pub async fn is_liked(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let r: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2",
-        )
-        .bind(game_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let r: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2")
+                .bind(game_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(r.is_some())
     }
 
     pub async fn toggle_bookmark(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let exists: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2",
-        )
-        .bind(game_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let exists: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2")
+                .bind(game_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         if exists.is_some() {
             sqlx::query("DELETE FROM bookmarks WHERE game_id = $1 AND user_id = $2")
                 .bind(game_id)
@@ -69,13 +68,12 @@ impl InteractionRepo {
     }
 
     pub async fn is_bookmarked(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let r: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2",
-        )
-        .bind(game_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let r: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2")
+                .bind(game_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(r.is_some())
     }
 
@@ -121,13 +119,12 @@ impl InteractionRepo {
         if follower_id == followee_id {
             return Ok(false);
         }
-        let exists: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2",
-        )
-        .bind(follower_id)
-        .bind(followee_id)
-        .fetch_optional(pool)
-        .await?;
+        let exists: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2")
+                .bind(follower_id)
+                .bind(followee_id)
+                .fetch_optional(pool)
+                .await?;
         if exists.is_some() {
             sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2")
                 .bind(follower_id)
@@ -151,7 +148,12 @@ impl InteractionRepo {
             .bind(followee_id)
             .bind(follower_id)
             .bind("Có người mới theo dõi bạn")
-            .bind(format!("/u/{}", Self::get_username(pool, follower_id).await.unwrap_or_default()))
+            .bind(format!(
+                "/u/{}",
+                Self::get_username(pool, follower_id)
+                    .await
+                    .unwrap_or_default()
+            ))
             .execute(pool)
             .await;
             Ok(true)
@@ -163,13 +165,12 @@ impl InteractionRepo {
         follower_id: Uuid,
         followee_id: Uuid,
     ) -> AppResult<bool> {
-        let r: Option<i32> = sqlx::query_scalar(
-            "SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2",
-        )
-        .bind(follower_id)
-        .bind(followee_id)
-        .fetch_optional(pool)
-        .await?;
+        let r: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2")
+                .bind(follower_id)
+                .bind(followee_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(r.is_some())
     }
 
@@ -208,13 +209,12 @@ impl InteractionRepo {
         game_id: Uuid,
         user_id: Uuid,
     ) -> AppResult<Option<i16>> {
-        let r: Option<i16> = sqlx::query_scalar(
-            "SELECT score FROM ratings WHERE game_id = $1 AND user_id = $2",
-        )
-        .bind(game_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let r: Option<i16> =
+            sqlx::query_scalar("SELECT score FROM ratings WHERE game_id = $1 AND user_id = $2")
+                .bind(game_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(r)
     }
 

@@ -28,10 +28,7 @@ impl SessionRepo {
         Ok(id)
     }
 
-    pub async fn find_user_by_token(
-        pool: &PgPool,
-        token_hash: &str,
-    ) -> AppResult<Option<Uuid>> {
+    pub async fn find_user_by_token(pool: &PgPool, token_hash: &str) -> AppResult<Option<Uuid>> {
         let user_id: Option<Uuid> = sqlx::query_scalar(
             r#"SELECT user_id FROM sessions
               WHERE token_hash = $1 AND expires_at > NOW()"#,

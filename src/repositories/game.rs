@@ -1,9 +1,11 @@
 use crate::error::AppResult;
+use crate::models::game::{
+    AgeRating, Game, GameCard, GameForm, GameLink, GameScreenshot, GameStatus, Platform,
+};
 use crate::models::AdminGameRow;
-use crate::models::game::{Game, GameCard, GameForm, GameLink, GameScreenshot, GameStatus, Platform, AgeRating};
+use chrono::Utc;
 use sqlx::PgPool;
 use uuid::Uuid;
-use chrono::Utc;
 
 pub struct GameRepo;
 
@@ -16,7 +18,10 @@ impl GameRepo {
     ) -> AppResult<Uuid> {
         let status = GameStatus::from_str(&form.status);
         let age_rating = AgeRating::from_str(&form.age_rating);
-        let release_date = form.release_date.as_deref().and_then(crate::utils::parse_date);
+        let release_date = form
+            .release_date
+            .as_deref()
+            .and_then(crate::utils::parse_date);
         let category_id = form
             .category_id
             .as_deref()
@@ -109,14 +114,13 @@ impl GameRepo {
         Ok(id)
     }
 
-    pub async fn update(
-        pool: &PgPool,
-        id: Uuid,
-        form: &GameForm,
-    ) -> AppResult<()> {
+    pub async fn update(pool: &PgPool, id: Uuid, form: &GameForm) -> AppResult<()> {
         let status = GameStatus::from_str(&form.status);
         let age_rating = AgeRating::from_str(&form.age_rating);
-        let release_date = form.release_date.as_deref().and_then(crate::utils::parse_date);
+        let release_date = form
+            .release_date
+            .as_deref()
+            .and_then(crate::utils::parse_date);
         let category_id = form
             .category_id
             .as_deref()
@@ -424,8 +428,7 @@ impl GameRepo {
             _ => "g.published_at DESC NULLS LAST",
         };
 
-        let mut sql = format!(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+        let mut sql = r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -440,7 +443,7 @@ impl GameRepo {
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published'
                 AND (g.title ILIKE $1 OR g.excerpt ILIKE $1 OR g.content ILIKE $1)"#
-        );
+            .to_string();
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");
         }
@@ -450,13 +453,23 @@ impl GameRepo {
                 if category_slug.is_some() { 3 } else { 2 }
             ));
         }
-        sql.push_str(&format!(" ORDER BY {} LIMIT ${} OFFSET ${}", order,
-            if category_slug.is_some() && platform.is_some() { 4 }
-            else if category_slug.is_some() || platform.is_some() { 3 }
-            else { 2 },
-            if category_slug.is_some() && platform.is_some() { 5 }
-            else if category_slug.is_some() || platform.is_some() { 4 }
-            else { 3 }
+        sql.push_str(&format!(
+            " ORDER BY {} LIMIT ${} OFFSET ${}",
+            order,
+            if category_slug.is_some() && platform.is_some() {
+                4
+            } else if category_slug.is_some() || platform.is_some() {
+                3
+            } else {
+                2
+            },
+            if category_slug.is_some() && platform.is_some() {
+                5
+            } else if category_slug.is_some() || platform.is_some() {
+                4
+            } else {
+                3
+            }
         ));
 
         let pattern = format!("%{}%", query);
@@ -686,42 +699,45 @@ impl GameRepo {
         offset: i64,
     ) -> AppResult<Vec<AdminGameRow>> {
         let rows = match status {
-            Some(s) if !s.is_empty() => sqlx::query_as::<_, AdminGameRow>(
-                r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+            Some(s) if !s.is_empty() => {
+                sqlx::query_as::<_, AdminGameRow>(
+                    r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                     g.like_count, g.comment_count, g.is_featured, g.created_at,
                     u.display_name as author_name, c.name as category_name
                   FROM games g JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
                   WHERE g.status = $1
                   ORDER BY g.created_at DESC LIMIT $2 OFFSET $3"#,
-            )
-            .bind(s)
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?,
-            _ => sqlx::query_as::<_, AdminGameRow>(
-                r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                )
+                .bind(s)
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+            }
+            _ => {
+                sqlx::query_as::<_, AdminGameRow>(
+                    r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                     g.like_count, g.comment_count, g.is_featured, g.created_at,
                     u.display_name as author_name, c.name as category_name
                   FROM games g JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
                   ORDER BY g.created_at DESC LIMIT $1 OFFSET $2"#,
-            )
-            .bind(limit)
-            .bind(offset)
-            .fetch_all(pool)
-            .await?,
+                )
+                .bind(limit)
+                .bind(offset)
+                .fetch_all(pool)
+                .await?
+            }
         };
         Ok(rows)
     }
 
     pub async fn count_by_status(pool: &PgPool) -> AppResult<Vec<(String, i64)>> {
-        let rows: Vec<(String, i64)> = sqlx::query_as(
-            "SELECT status::text, COUNT(*)::bigint FROM games GROUP BY status",
-        )
-        .fetch_all(pool)
-        .await?;
+        let rows: Vec<(String, i64)> =
+            sqlx::query_as("SELECT status::text, COUNT(*)::bigint FROM games GROUP BY status")
+                .fetch_all(pool)
+                .await?;
         Ok(rows)
     }
 
@@ -743,7 +759,9 @@ impl GameRepo {
     }
 
     /// Slug + updated_at cho sitemap
-    pub async fn sitemap_entries(pool: &PgPool) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
+    pub async fn sitemap_entries(
+        pool: &PgPool,
+    ) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
         let rows: Vec<(String, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
             "SELECT slug, updated_at FROM games WHERE status = 'published' ORDER BY updated_at DESC LIMIT 5000",
         )

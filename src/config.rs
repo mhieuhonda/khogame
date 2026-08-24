@@ -20,7 +20,10 @@ impl AppConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Self {
             host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into()),
-            port: env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(3000),
+            port: env::var("PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(3000),
             base_url: env::var("BASE_URL")
                 .ok()
                 .filter(|s| !s.is_empty())

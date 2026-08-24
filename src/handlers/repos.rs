@@ -70,9 +70,10 @@ async fn fetch_github_meta(
     if let Some(token) = &state.config.github_token {
         req = req.bearer_auth(token);
     }
-    let resp = req.send().await.map_err(|e| {
-        AppError::OAuth(format!("Không kết nối được GitHub API: {}", e))
-    })?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| AppError::OAuth(format!("Không kết nối được GitHub API: {}", e)))?;
     match resp.status().as_u16() {
         200 => Ok(resp.json().await?),
         404 => Err(AppError::NotFound(format!(
@@ -92,8 +93,11 @@ pub async fn create(
     AuthUser(user): AuthUser,
     Form(form): Form<RepoForm>,
 ) -> AppResult<Redirect> {
-    let (owner, name) = RepoRepo::parse_github_url(&form.url)
-        .ok_or_else(|| AppError::BadRequest("URL repo không hợp lệ. Dùng dạng https://github.com/owner/repo hoặc owner/repo".into()))?;
+    let (owner, name) = RepoRepo::parse_github_url(&form.url).ok_or_else(|| {
+        AppError::BadRequest(
+            "URL repo không hợp lệ. Dùng dạng https://github.com/owner/repo hoặc owner/repo".into(),
+        )
+    })?;
 
     // Lấy metadata từ GitHub
     let meta = fetch_github_meta(&state, &owner, &name).await?;
@@ -119,7 +123,7 @@ pub async fn create(
         form.description.trim().to_string()
     };
 
-    let _id = RepoRepo::create(
+    let repo_id = RepoRepo::create(
         &state.db,
         user.id,
         game_id,
@@ -135,17 +139,18 @@ pub async fn create(
     )
     .await?;
 
-    // Nếu có auto_approve = false -> chuyển sang pending sau khi insert
+    // Nếu có auto_approve = false -> chuyển sang pending ngay với id vừa insert.
     if !auto_approve {
-        if let Ok(Some(id)) = RepoRepo::list_by_user(&state.db, user.id)
-            .await
-            .map(|rs| rs.first().map(|r| r.id))
-        {
-            let _ = RepoRepo::set_status(&state.db, id, "pending").await;
-        }
+        let _ = RepoRepo::set_status(&state.db, repo_id, "pending").await;
     }
 
-    tracing::info!("Repo registered: {}/{} by {}", owner, name, user.username);
+    tracing::info!(
+        "Repo registered: {}/{} by {} (id={})",
+        owner,
+        name,
+        user.username,
+        repo_id
+    );
     Ok(Redirect::to("/repos"))
 }
 

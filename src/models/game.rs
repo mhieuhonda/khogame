@@ -5,18 +5,14 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
 #[sqlx(type_name = "game_status", rename_all = "snake_case")]
+#[derive(Default)]
 pub enum GameStatus {
     Draft,
+    #[default]
     Published,
     Archived,
     Hidden,
     PendingReview,
-}
-
-impl Default for GameStatus {
-    fn default() -> Self {
-        GameStatus::Published
-    }
 }
 
 impl GameStatus {
@@ -29,6 +25,9 @@ impl GameStatus {
             GameStatus::PendingReview => "Chờ duyệt",
         }
     }
+    /// Parse từ chuỗi (DB/JSON). Đặt tên khác `from_str` sẽ phá vỡ nhiều call site;
+    /// tạm thời allow clippy::should_implement_trait.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "draft" => GameStatus::Draft,
@@ -79,6 +78,9 @@ impl Platform {
             Platform::Macos => "#555555",
         }
     }
+    /// Parse từ chuỗi. Đổi tên `from_str` sẽ phá vỡ nhiều call site;
+    /// tạm thời allow clippy::should_implement_trait.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "android" => Some(Platform::Android),
@@ -102,17 +104,13 @@ impl Platform {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
 #[sqlx(type_name = "age_rating", rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AgeRating {
+    #[default]
     Everyone,
     Teen,
     Mature,
     Adult,
-}
-
-impl Default for AgeRating {
-    fn default() -> Self {
-        AgeRating::Everyone
-    }
 }
 
 impl AgeRating {
@@ -124,6 +122,7 @@ impl AgeRating {
             AgeRating::Adult => "A - Người lớn (18+)",
         }
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "teen" => AgeRating::Teen,
@@ -182,7 +181,10 @@ impl Game {
         self.content.clone().unwrap_or_default()
     }
     pub fn cover_or(&self, fallback: &str) -> String {
-        self.cover_image.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.to_string())
+        self.cover_image
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| fallback.to_string())
     }
     pub fn rating_avg_f64(&self) -> f64 {
         use std::str::FromStr;
@@ -254,7 +256,10 @@ impl GameCard {
         f64::from_str(&self.rating_avg.to_string()).unwrap_or(0.0)
     }
     pub fn cover_or(&self, fallback: &str) -> String {
-        self.cover_image.clone().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.to_string())
+        self.cover_image
+            .clone()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| fallback.to_string())
     }
 }
 
@@ -309,14 +314,26 @@ pub struct GameForm {
 impl GameForm {
     /// Tách chuỗi tags phân cách dấu phẩy thành Vec
     pub fn tags_vec(&self) -> Vec<String> {
-        self.tags.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+        self.tags
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
     /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec
     pub fn languages_vec(&self) -> Vec<String> {
-        self.languages.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+        self.languages
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
     /// Mỗi dòng trong textarea là 1 URL screenshot
     pub fn screenshots_vec(&self) -> Vec<String> {
-        self.screenshots.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+        self.screenshots
+            .lines()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
     }
 }

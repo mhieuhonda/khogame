@@ -1,6 +1,6 @@
 use crate::error::AppResult;
-use crate::models::CategoryWithCount;
 use crate::models::category::Category;
+use crate::models::CategoryWithCount;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -42,7 +42,13 @@ impl CategoryRepo {
     }
 
     // ===== CRUD cho admin =====
-    pub async fn create(pool: &PgPool, name: &str, slug: &str, description: &str, icon: &str) -> AppResult<Uuid> {
+    pub async fn create(
+        pool: &PgPool,
+        name: &str,
+        slug: &str,
+        description: &str,
+        icon: &str,
+    ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
             r#"INSERT INTO categories (name, slug, description, icon)
                VALUES ($1, $2, $3, $4)
@@ -58,7 +64,13 @@ impl CategoryRepo {
         Ok(id)
     }
 
-    pub async fn update(pool: &PgPool, id: uuid::Uuid, name: &str, description: &str, icon: &str) -> AppResult<()> {
+    pub async fn update(
+        pool: &PgPool,
+        id: uuid::Uuid,
+        name: &str,
+        description: &str,
+        icon: &str,
+    ) -> AppResult<()> {
         sqlx::query("UPDATE categories SET name = $1, description = $2, icon = $3 WHERE id = $4")
             .bind(name)
             .bind(description)

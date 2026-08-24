@@ -8,6 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
+![Version](https://img.shields.io/badge/version-0.2.0-7c3aed)
 
 ## 🛠️ Công nghệ
 
@@ -19,7 +20,7 @@
 | Frontend interactivity | HTMX 2.0.10 (self-hosted) |
 | Database | PostgreSQL 17 |
 | ORM | sqlx 0.9 (runtime-tokio + rustls) |
-| Auth | Google OAuth 2.0 |
+| Auth | Google OAuth 2.0 (CSRF state verification) |
 | HTTP Client | reqwest 0.12 |
 | Styling | Custom CSS (dark/light mode) |
 
@@ -55,6 +56,42 @@
 18. ✏️ **Sửa bình luận** trong 5 phút
 19. ⚠️ **Cảnh báo trùng tiêu đề** khi đăng game (AJAX realtime)
 20. 📥 **Export backup JSON** (admin) + Health check nâng cao kèm DB status
+
+## 🔧 Cải thiện trong v0.2
+
+### 🔒 Bảo mật
+- ✅ **OAuth state CSRF verification** — `state` token được verify với cookie HttpOnly + SameSite=Lax, chặn login-CSRF
+- ✅ **Stored XSS fix** trong share buttons — chuyển sang `data-*` attributes + event delegation
+- ✅ **avatar_url validation** — chỉ chấp nhận `http(s)://`, chặn `javascript:`/`data:` schemes
+
+### 🐛 Bug fixes
+- ✅ Search trả 400 khi không có `?q=` → giờ trả 200 + list game mới nhất
+- ✅ Game form `enctype="multipart/form-data"` sai → submit trả 415/422 (đã xoá)
+- ✅ Repo create race condition (dùng `list_by_user(...).first()` thay vì id trả về)
+- ✅ Comment edit silent success khi quá 5 phút → giờ trả Forbidden rõ ràng
+- ✅ Comment length check sai (byte length thay vì char count) → chặn nhầm bình luận tiếng Việt
+- ✅ Share URL tương đối → tuyệt đối (Facebook/Twitter/Telegram/WhatsApp share hoạt động đúng)
+- ✅ `axum::serve` thiếu `into_make_service_with_connect_info` → rate-limit không lấy được IP thật
+- ✅ Admin role/comment pin form HTMX swap sai (innerHTML/none → outerHTML)
+
+### 🎨 UI/UX (lỗi tràn giao diện)
+- ✅ Game card title: 1 dòng → 3 dòng với `line-clamp`, `word-break`, `overflow-wrap`
+- ✅ Game card excerpt: 2 dòng → 3 dòng
+- ✅ Cover fallback text giảm 32px → 22px để không che platform icons
+- ✅ Game grid `auto-fill` → `auto-fit`: khi 1-2 game, card fill width + căn giữa
+- ✅ Profile avatar: thêm border + box-shadow, không còn bị cắt nửa trên
+- ✅ Profile actions: `align-self: flex-end` để nút Theo dõi cùng baseline với tên
+- ✅ Game title (h1): `word-break` + `overflow-wrap` để wrap gọn khi tiêu đề dài
+- ✅ Khoảng trắng trước footer giảm: `flex: 1` → `flex: 0 0 auto` cho `.site-main`, footer margin-top 64→32px
+- ✅ Login page min-height 70vh → 50vh, giảm khoảng trắng thừa
+- ✅ Mobile filter box: filter-group min-width 100%, nút Lọc full width
+- ✅ Search bar button "Tím" thêm background accent, dễ nhận biết là button
+- ✅ Game header responsive: 1024px thumbnail 220px, 768px single column với thumbnail 180px
+
+### 🧹 Codebase
+- ✅ **Clippy 0 warning** (was 22): sửa toàn bộ useless_format, needless_borrow, bool_comparison, ptr_arg, needless_mut, useless_ok, derivable_impl
+- ✅ rustfmt pass toàn bộ
+- ✅ Migration 003 mới: tái tạo 2 index trigram bằng `DO EXCEPTION` để migration không fail khi thiếu pg_trgm
 
 ## 🚀 Chạy local
 
@@ -114,11 +151,13 @@ khogame/
 
 ## 🔐 Bảo mật
 - Cookie httpOnly + session hash SHA-256 trong DB
+- **OAuth state CSRF verification** (v0.2): `state` token được verify với cookie HttpOnly + SameSite=Lax sống 10 phút
 - CSRF qua OAuth state
 - SQL injection: 100% prepared statements (sqlx)
 - HTML escaping tự động (Askama) + `Safe` có kiểm soát
+- **avatar_url validation** (v0.2): chỉ chấp nhận `http(s)://`, chặn `javascript:`/`data:`
 - RBAC: user / moderator / admin
-- Rate limiting theo IP
+- Rate limiting theo IP (v0.2: lấy IP thật qua `ConnectInfo<SocketAddr>`)
 - Admin: đăng nhập Google với `ADMIN_EMAIL` được whitelist
 
 ## 📜 License

@@ -25,7 +25,7 @@
                     </td>
                     <td>{{ u.email }}</td>
                     <td id="role-{{ u.id }}">
-                        <form hx-post="/admin/users/{{ u.id }}/role" hx-target="this" hx-swap="innerHTML" class="role-form">
+                        <form hx-post="/admin/users/{{ u.id }}/role" hx-target="#role-{{ u.id }}" hx-swap="outerHTML" class="role-form">
                             <select name="role" onchange="this.form.dispatchEvent(new Event('submit'))">
                                 <option value="user" {% if u.role.label() == "Thành viên" %}selected{% endif %}>Thành viên</option>
                                 <option value="moderator" {% if u.role.label() == "Điều hành viên" %}selected{% endif %}>Điều hành viên</option>
