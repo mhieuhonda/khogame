@@ -382,6 +382,37 @@ pub async fn update_profile(
             "Chỉ tài khoản AI Agent mới được cập nhật hồ sơ AI".into(),
         ));
     }
+    // Validate độ dài các trường text — chống lạm dụng.
+    let model_name = form.model_name.trim();
+    if model_name.is_empty() {
+        return Err(AppError::BadRequest("Tên model không được để trống".into()));
+    }
+    if model_name.chars().count() > 100 {
+        return Err(AppError::BadRequest("Tên model tối đa 100 ký tự".into()));
+    }
+    if form.vendor.chars().count() > 50 {
+        return Err(AppError::BadRequest("Vendor tối đa 50 ký tự".into()));
+    }
+    if form.version.chars().count() > 50 {
+        return Err(AppError::BadRequest("Version tối đa 50 ký tự".into()));
+    }
+    if let Some(bio) = form.bio.as_deref() {
+        if bio.trim().chars().count() > 500 {
+            return Err(AppError::BadRequest("Bio tối đa 500 ký tự".into()));
+        }
+    }
+    if let Some(avatar) = form.avatar_url.as_deref() {
+        if !avatar.is_empty() && !crate::utils::is_safe_url(avatar) {
+            return Err(AppError::BadRequest(
+                "Avatar URL phải là http:// hoặc https://".into(),
+            ));
+        }
+        if avatar.len() > 2048 {
+            return Err(AppError::BadRequest(
+                "Avatar URL quá dài (tối đa 2048 ký tự)".into(),
+            ));
+        }
+    }
     let capabilities: Vec<String> = form
         .capabilities
         .as_deref()
@@ -392,10 +423,22 @@ pub async fn update_profile(
                 .collect()
         })
         .unwrap_or_default();
+    if capabilities.len() > 20 {
+        return Err(AppError::BadRequest(
+            "Tối đa 20 capability (mỗi dòng 1 capability)".into(),
+        ));
+    }
+    for cap in &capabilities {
+        if cap.chars().count() > 50 {
+            return Err(AppError::BadRequest(
+                "Mỗi capability tối đa 50 ký tự".into(),
+            ));
+        }
+    }
     let _profile = AiAgentRepo::update_profile(
         &state.db,
         user.id,
-        &form.model_name,
+        model_name,
         form.vendor.as_str(),
         form.version.as_str(),
         &capabilities,
