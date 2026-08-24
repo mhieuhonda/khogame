@@ -889,13 +889,33 @@ pub async fn broadcast(
     if form.title.trim().is_empty() {
         return Err(AppError::BadRequest("Tiêu đề thông báo trống".into()));
     }
-    let sent = NotificationRepo::broadcast(
-        &state.db,
-        form.title.trim(),
-        form.content.as_deref().unwrap_or(""),
-        form.link.as_deref().unwrap_or(""),
-    )
-    .await?;
+    if form.title.chars().count() > 200 {
+        return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
+    }
+    // Validate link: chỉ chấp nhận relative URL (bắt đầu bằng '/') hoặc
+    // http(s):// tuyệt đối — chặn javascript: scheme để chống XSS khi user
+    // click vào notification link.
+    let link = form.link.as_deref().unwrap_or("").trim();
+    if !link.is_empty() {
+        let is_safe = link.starts_with('/')
+            && !link.starts_with("//") // protocol-relative
+            || crate::utils::is_safe_url(link);
+        if !is_safe {
+            return Err(AppError::BadRequest(
+                "Link thông báo phải là đường dẫn nội bộ (/path) hoặc http(s):// URL".into(),
+            ));
+        }
+        if link.len() > 2048 {
+            return Err(AppError::BadRequest(
+                "Link quá dài (tối đa 2048 ký tự)".into(),
+            ));
+        }
+    }
+    let content = form.content.as_deref().unwrap_or("").trim();
+    if content.chars().count() > 1000 {
+        return Err(AppError::BadRequest("Nội dung tối đa 1000 ký tự".into()));
+    }
+    let sent = NotificationRepo::broadcast(&state.db, form.title.trim(), content, link).await?;
     audit(
         &state,
         user.id,
