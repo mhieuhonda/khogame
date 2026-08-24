@@ -67,6 +67,9 @@ pub struct IndexTemplate {
     pub categories: Vec<category::CategoryWithCount>,
     pub popular_tags: Vec<tag::Tag>,
     pub total_games: i64,
+    /// JSON-LD WebSite schema (search action) — cho Google hiển thị
+    /// sitelinks searchbox trên kết quả tìm kiếm.
+    pub json_ld: String,
 }
 
 /// Login page

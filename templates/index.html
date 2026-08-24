@@ -2,6 +2,12 @@
 
 {% block title %}Trang chủ{% endblock %}
 
+{% block description %}Kho Game — nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam. Khám phá hàng nghìn tựa game, đăng game của bạn, kết nối với cộng đồng game thủ.{% endblock %}
+
+{% block head_extra %}
+{{ json_ld|safe }}
+{% endblock %}
+
 {% block content %}
 <section class="hero-section">
     <div class="hero-content">

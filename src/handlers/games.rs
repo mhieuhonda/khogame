@@ -38,6 +38,29 @@ pub async fn home(
     let popular_tags = TagRepo::popular(&state.db, 20).await.unwrap_or_default();
     let total_games = GameRepo::count_published(&state.db).await.unwrap_or(0);
 
+    // JSON-LD schema.org/WebSite với SearchAction — giúp Google hiển thị
+    // sitelinks searchbox ngay trên kết quả tìm kiếm (rich result).
+    let json_ld = serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Kho Game",
+        "url": state.config.base_url,
+        "description": "Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam",
+        "inLanguage": "vi-VN",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+                "@type": "EntryPoint",
+                "urlTemplate": format!("{}/search?q={{search_term_string}}", state.config.base_url),
+            },
+            "query-input": "required name=search_term_string",
+        }
+    });
+    let json_ld = format!(
+        "<script type=\"application/ld+json\">\n{}\n</script>",
+        serde_json::to_string_pretty(&json_ld).unwrap_or_default()
+    );
+
     Ok(IndexTemplate {
         current_user,
         unread_notifications: unread,
@@ -48,6 +71,7 @@ pub async fn home(
         categories,
         popular_tags,
         total_games,
+        json_ld,
     })
 }
 
