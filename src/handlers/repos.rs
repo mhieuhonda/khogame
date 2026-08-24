@@ -93,11 +93,27 @@ pub async fn create(
     AuthUser(user): AuthUser,
     Form(form): Form<RepoForm>,
 ) -> AppResult<Redirect> {
-    let (owner, name) = RepoRepo::parse_github_url(&form.url).ok_or_else(|| {
+    // Validate URL: chỉ chấp nhận github.com hoặc định dạng owner/repo.
+    // parse_github_url đã kiểm tra format, nhưng cũng chặn sớm URL rỗng.
+    let url_trimmed = form.url.trim();
+    if url_trimmed.is_empty() {
+        return Err(AppError::BadRequest("URL repo không được để trống".into()));
+    }
+    if url_trimmed.len() > 2048 {
+        return Err(AppError::BadRequest(
+            "URL repo quá dài (tối đa 2048 ký tự)".into(),
+        ));
+    }
+    let (owner, name) = RepoRepo::parse_github_url(url_trimmed).ok_or_else(|| {
         AppError::BadRequest(
             "URL repo không hợp lệ. Dùng dạng https://github.com/owner/repo hoặc owner/repo".into(),
         )
     })?;
+    // Validate description length nếu user cung cấp
+    let description_user = form.description.trim();
+    if description_user.chars().count() > 500 {
+        return Err(AppError::BadRequest("Mô tả repo tối đa 500 ký tự".into()));
+    }
 
     // Lấy metadata từ GitHub
     let meta = fetch_github_meta(&state, &owner, &name).await?;
@@ -117,10 +133,10 @@ pub async fn create(
         None => None,
     };
 
-    let description = if form.description.trim().is_empty() {
+    let description = if description_user.is_empty() {
         meta.description.clone().unwrap_or_default()
     } else {
-        form.description.trim().to_string()
+        description_user.to_string()
     };
 
     let repo_id = RepoRepo::create(
