@@ -49,10 +49,15 @@ services:
       - traefik.http.routers.kgx-http.rule=Host(`louis.vangioitutien.com`)
       - traefik.http.routers.kgx-http.entrypoints=http
       - traefik.http.routers.kgx-http.service=kgx-svc
+      # Force HTTPS — Secure cookie sẽ bị browser từ chối nếu user vào bằng http
+      - traefik.http.routers.kgx-http.middlewares=kgx-rdr@docker
       - 'traefik.http.routers.kgx-wild-http.rule=HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`)'
       - traefik.http.routers.kgx-wild-http.entrypoints=http
       - traefik.http.routers.kgx-wild-http.service=kgx-svc
       - traefik.http.routers.kgx-wild-http.priority=1
+      - traefik.http.routers.kgx-wild-http.middlewares=kgx-rdr@docker
+      - traefik.http.middlewares.kgx-rdr.redirectscheme.scheme=https
+      - traefik.http.middlewares.kgx-rdr.redirectscheme.permanent=true
       - 'traefik.http.routers.kgx-wild-https.rule=HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`)'
       - traefik.http.routers.kgx-wild-https.entrypoints=https
       - traefik.http.routers.kgx-wild-https.tls=true

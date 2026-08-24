@@ -4,6 +4,23 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-08-24
+
+### 🐛 Bug fixes (Critical)
+
+- **Login Google luôn fail "OAuth state không khớp" (CRITICAL):** nút
+  "Đăng nhập với Google" trên trang `/login` trỏ thẳng tới
+  `accounts.google.com` với `auth_url` do handler `login_page` sinh ra,
+  nhưng handler này **không set cookie `kg_oauth_state`** (chỉ route
+  `/auth/google` mới set). Callback về luôn không có cookie đối chiếu →
+  400 CSRF với mọi lần đăng nhập. Fix: nút Google trỏ tới `/auth/google`,
+  bỏ hẳn `auth_url` khỏi `LoginTemplate` — route `/auth/google` là nơi
+  duy nhất sinh state + set cookie.
+- **Force HTTPS ở Traefik (HIGH):** cookie OAuth/session có cờ `Secure`;
+  nếu người dùng vào site bằng `http://`, browser sẽ từ chối set cookie →
+  login fail tương tự. Thêm middleware `redirectscheme https (permanent)`
+  cho cả 2 router HTTP (domain chính + wildcard) trong compose prod.
+
 ## [0.3.0] — 2026-08-24
 
 ### 🚀 Release Engineering (CI/CD & hạ tầng prod)

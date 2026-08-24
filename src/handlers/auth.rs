@@ -20,19 +20,18 @@ pub struct AuthQuery {
 }
 
 pub async fn login_page(
-    State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
 ) -> AppResult<LoginTemplate> {
     if current_user.is_some() {
         // Already logged in - redirect home
         return Err(AppError::BadRequest("Đã đăng nhập".into()));
     }
-    let csrf = gen_csrf();
-    let auth_url = auth::build_auth_url(&state, &csrf);
+    // Nút Google trong template trỏ tới `/auth/google` — route duy nhất sinh
+    // CSRF state và set cookie `kg_oauth_state`. Không build auth_url tại đây
+    // để tránh state không có cookie đối chiếu (bug v0.3.0).
     Ok(LoginTemplate {
         current_user: None,
         unread_notifications: 0,
-        auth_url,
     })
 }
 

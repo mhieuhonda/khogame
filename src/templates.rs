@@ -68,7 +68,6 @@ pub struct IndexTemplate {
 pub struct LoginTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
-    pub auth_url: String,
 }
 
 /// New game form
