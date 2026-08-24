@@ -4,6 +4,92 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-08-24
+
+### 🔒 Bảo mật & đúng đắn
+
+- **Rate limit dùng IP thật của client:** trước đây `rate_limit`
+  middleware gọi `client_ip_from_parts(headers, None)` — nếu không có
+  proxy header (chạy dev/test hoặc IP không qua Traefik) thì IP luôn
+  là `unknown`, rate limit không phân biệt được user → ai cũng cùng
+  share quota `unknown`. Sửa bằng cách lấy `ConnectInfo<SocketAddr>`
+  từ `request.extensions()` do axum thêm vào khi dùng
+  `into_make_service_with_connect_info::<SocketAddr>()`.
+- **Log `User-Agent` & IP khi đăng nhập Google:** trước đây
+  `google_callback` lưu `user_agent = ""` (TODO), không có IP —
+  admin không thể audit phiên. Sửa: ghi User-Agent (cắt 255 chars để
+  tránh overflow DB) và IP (ưu tiên `X-Forwarded-For` / `X-Real-IP`
+  do Traefik đặt, fallback về IP TCP) vào bảng `sessions`.
+- **`robots.txt`:** thêm `Disallow: /api/` — ngăn crawler đánh API
+  JSON (API là cho app/client, không phải cho search engine).
+
+### ✨ Tính năng mới
+
+- **API catalog endpoints:** thêm `GET /api/v1/tags` (top 100 tag
+  phổ biến) và `GET /api/v1/categories` (đầy đủ thể loại kèm số
+  game). Cả hai có `Cache-Control: public, max-age=300`. Tiện cho
+  autocomplete / cross-linking ở client.
+- **API game detail đầy đủ hơn:** thêm `category`, `screenshots`,
+  `label` & `url` cho từng platform (trước đây chỉ có tên platform,
+  không có URL tải), và `published_at`. Client bên ngoài có thể hiển
+  thị game mà không cần gọi thêm nhiều endpoint.
+- **PWA manifest (`/manifest.json`):** manifest.webmanifest đầy đủ
+  (name, short_name, icons, shortcuts, theme_color, background_color,
+  lang=vi) → trình duyệt có thể "Add to Home Screen". Layout có
+  `<link rel="manifest">` + `<meta name="theme-color">`.
+- **OpenSearch (`/opensearch.xml`):** trình duyệt thêm Kho Game vào
+  ô tìm kiếm của thanh địa chỉ (Chrome/Firefox/Edge). Layout có
+  `<link rel="search" type="application/opensearchdescription+xml">`.
+- **`/.well-known/security.txt` (RFC 9116):** cung cấp thông tin
+  liên hệ (mailto:admin) + Expires 6 tháng + Preferred-Languages vi,en
+  cho nhà nghiên cứu bảo mật báo lỗ hổng.
+- **JSON-LD schema.org/VideoGame:** trang `/games/{slug}` nhúng
+  `<script type="application/ld+json">` với VideoGame schema — Google
+  có thể hiển thị rich snippet (rating, lượt xem, lượt tải, lượt like,
+  lượt comment) trên kết quả tìm kiếm. Bao gồm aggregateRating, author,
+  publisher, operatingSystem, datePublished, genre, keywords.
+- **404 fallback page:** route không khớp → trang 404 với giao diện
+  Kho Game (trước đây axum trả plain text "Not Found").
+- **Sitemap mở rộng:** thêm trang `/games/featured` và 50 tag phổ
+  biến nhất (trước đây chỉ có category & game).
+
+### ⚡ Hiệu suất
+
+- **ETag cho `/rss.xml` & `/sitemap.xml`:** server trả ETag (SHA-256
+  hash 8 byte) + `Cache-Control: public, max-age=600`. Khi client gửi
+  `If-None-Match` khớp → 304 Not Modified (không cần chuyển payload).
+  Giảm băng thông & TTFB cho crawler.
+- **Static cache 7 ngày:** `/static/*` có `Cache-Control: public,
+  max-age=604800, stale-while-revalidate=86400` → browser tái dụng
+  CSS/JS/ảnh, giảm tải server.
+- **`/api/v1/repos` Cache-Control:** thêm `public, max-age=120`.
+- **`/health` no-store:** monitor (Coolify/Kubernetes) cần trạng thái
+  real-time, không cache. Tránh false-positive khi DB vừa down.
+
+### 🔧 Operational
+
+- **`X-Request-Id` header:** mỗi request được gán UUID qua
+  `SetRequestIdLayer` + `PropagateRequestIdLayer` (tower-http).
+  Log trace và Coolify có thể group request theo ID khi debug.
+- **Cache header nhất quán:** mọi API JSON có `Cache-Control` rõ ràng,
+  tránh bị proxy cache mặc định không mong muốn.
+
+### 🧪 Test
+
+- **5 unit test mới** (tổng cộng 13): `sanitize_redirect` (chống
+  open redirect), `truncate` (xử lý UTF-8 đúng với ký tự Việt),
+  `make_unique_slug`, `html_escape`, `format_number` edges (số 0, âm,
+  ranh giới 999/1000, tỷ).
+- Build sạch với `cargo clippy --all-targets -- -D warnings`.
+
+### 🔧 Bảo trì
+
+- Dọn dead code `#[allow(dead_code)]` trong `src/handlers/api.rs`
+  (các hàm `mention_test`, `daily_stats`, `require_any_user`,
+  `unused_current`, `current_user_count` không được dùng).
+- Loại bỏ `StatsRepo`, `CommentRepo`, `CurrentUser` không dùng trong
+  `api.rs` khỏi imports.
+
 ## [0.5.0] — 2026-08-24
 
 ### 🤖 Tài khoản AI Agent (Feature lớn của bản này)
