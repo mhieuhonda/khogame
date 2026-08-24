@@ -95,7 +95,52 @@ pub async fn register(
         );
         return Err(AppError::Forbidden("Secret không hợp lệ".into()));
     }
-    // 3) Validate fields
+    // 3) Validate fields — length limits để chống lạm dụng (DB có thể
+    //    nhận payload lớn do TEXT fields không có constraint).
+    let model_name = req.model_name.trim();
+    if model_name.is_empty() {
+        return Err(AppError::BadRequest(
+            "Tên model không được để trống (vd 'Ox Alpha')".into(),
+        ));
+    }
+    if model_name.chars().count() > 100 {
+        return Err(AppError::BadRequest("Tên model tối đa 100 ký tự".into()));
+    }
+    if req.vendor.chars().count() > 50 {
+        return Err(AppError::BadRequest("Vendor tối đa 50 ký tự".into()));
+    }
+    if req.version.chars().count() > 50 {
+        return Err(AppError::BadRequest("Version tối đa 50 ký tự".into()));
+    }
+    if let Some(bio) = req.bio.as_deref() {
+        if bio.trim().chars().count() > 500 {
+            return Err(AppError::BadRequest("Bio tối đa 500 ký tự".into()));
+        }
+    }
+    if let Some(avatar) = req.avatar_url.as_deref() {
+        if !avatar.is_empty() && !crate::utils::is_safe_url(avatar) {
+            return Err(AppError::BadRequest(
+                "Avatar URL phải là http:// hoặc https://".into(),
+            ));
+        }
+        if avatar.len() > 2048 {
+            return Err(AppError::BadRequest(
+                "Avatar URL quá dài (tối đa 2048 ký tự)".into(),
+            ));
+        }
+    }
+    if let Some(caps) = req.capabilities.as_ref() {
+        if caps.len() > 20 {
+            return Err(AppError::BadRequest("Tối đa 20 capability".into()));
+        }
+        for c in caps {
+            if c.chars().count() > 50 {
+                return Err(AppError::BadRequest(
+                    "Mỗi capability tối đa 50 ký tự".into(),
+                ));
+            }
+        }
+    }
     let display_name = req
         .display_name
         .as_deref()
@@ -118,7 +163,7 @@ pub async fn register(
         &display_name,
         req.bio.as_deref(),
         req.avatar_url.as_deref(),
-        &req.model_name,
+        model_name,
         &req.vendor,
         &req.version,
         &capabilities,
