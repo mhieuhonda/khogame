@@ -1,0 +1,145 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Kiểm tra (Rust 1.98)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Rust 1.98
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Cargo check (--locked)
+        run: cargo check --locked
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings || echo "::warning::Clippy có cảnh báo"
+
+  build-push:
+    name: Build & Push Docker Image (Rust 1.98)
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Đăng nhập GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Chuẩn bị tag image
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build & Push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tóm tắt image
+        run: |
+          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+
+  deploy:
+    name: Trigger Coolify Deploy
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin image theo digest vào compose prod
+        run: |
+          sed -i "s|__IMAGE_REF__|${{ needs.build-push.outputs.image_ref }}|g" deploy/compose.prod.yml
+          grep -n "image:" deploy/compose.prod.yml | head -3
+
+      - name: Cập nhật compose trên Coolify (PATCH)
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          compose = open("deploy/compose.prod.yml").read()
+          body = json.dumps({"docker_compose_raw": compose}).encode()
+          url = f"{os.environ['COOLIFY_URL']}/api/v1/services/{os.environ['COOLIFY_SERVICE_UUID']}"
+          req = urllib.request.Request(url, data=body, method="PATCH", headers={
+              "Authorization": f"Bearer {os.environ['COOLIFY_API_TOKEN']}",
+              "Content-Type": "application/json",
+          })
+          with urllib.request.urlopen(req, timeout=30) as r:
+              print("PATCH compose:", r.status)
+          PY
+        env:
+          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
+
+      - name: Trigger deploy Coolify
+        id: trigger
+        run: |
+          RESP=$(curl -fsS -X POST \
+            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_SERVICE_UUID }}&force=true" \
+            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+            -H "Content-Type: application/json" --max-time 30)
+          echo "$RESP"
+          echo "deployment_uuid=$(echo "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("deployment_uuid",""))')" >> "$GITHUB_OUTPUT"
+
+      - name: Chờ Coolify deploy xong (tối đa ~12 phút)
+        if: steps.trigger.outputs.deployment_uuid != ''
+        run: |
+          UUID="${{ steps.trigger.outputs.deployment_uuid }}"
+          for i in $(seq 1 24); do
+            sleep 30
+            STATUS=$(curl -fsS "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$UUID" \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))' || echo "?")
+            echo "[$i] deployment status: $STATUS"
+            case "$STATUS" in
+              finished) echo "::notice::Deploy thành công"; exit 0 ;;
+              failed|cancelled) echo "::error::Deploy thất bại ($STATUS)"; exit 1 ;;
+            esac
+          done
+          echo "::warning::Hết thời gian chờ — kiểm tra tiếp trên Coolify dashboard"

@@ -1,0 +1,85 @@
+# ============================================================
+# Kho Game - Production Compose (chạy trên Coolify)
+# Source of truth cho stack prod: app + PostgreSQL 17.
+#
+# __IMAGE_REF__ được GitHub Actions thay bằng image pin digest
+# (ghcr.io/mhieuhonda/khogame@sha256:...) trước mỗi lần deploy
+# → Coolify luôn pull đúng phiên bản vừa build.
+#
+# Secrets (DB_PASSWORD, SESSION_KEY, GOOGLE_CLIENT_ID/SECRET)
+# KHÔNG nằm trong repo — khai báo trong tab Environment Variables
+# của Service trên Coolify, compose tự nội suy ${VAR}.
+# ============================================================
+
+services:
+  khogame:
+    image: __IMAGE_REF__
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://khogame:${DB_PASSWORD}@khogame-db:5432/khogame
+      - SESSION_KEY=${SESSION_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_REDIRECT_URI=https://louis.vangioitutien.com/auth/google/callback
+      - BASE_URL=https://louis.vangioitutien.com
+      - ADMIN_EMAIL=khongdich.admin@gmail.com
+      - RUST_LOG=khogame=info,tower_http=warn
+      - TZ=Asia/Ho_Chi_Minh
+    depends_on:
+      khogame-db:
+        condition: service_healthy
+    networks:
+      - default
+      - coolify
+    volumes:
+      - khogame-storage:/app/storage
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.kgx-https.rule=Host(`louis.vangioitutien.com`)
+      - traefik.http.routers.kgx-https.entrypoints=https
+      - traefik.http.routers.kgx-https.tls=true
+      - traefik.http.routers.kgx-https.tls.certresolver=letsencrypt
+      - traefik.http.routers.kgx-https.service=kgx-svc
+      - traefik.http.routers.kgx-http.rule=Host(`louis.vangioitutien.com`)
+      - traefik.http.routers.kgx-http.entrypoints=http
+      - traefik.http.routers.kgx-http.service=kgx-svc
+      - 'traefik.http.routers.kgx-wild-http.rule=HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`)'
+      - traefik.http.routers.kgx-wild-http.entrypoints=http
+      - traefik.http.routers.kgx-wild-http.service=kgx-svc
+      - traefik.http.routers.kgx-wild-http.priority=1
+      - 'traefik.http.routers.kgx-wild-https.rule=HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`)'
+      - traefik.http.routers.kgx-wild-https.entrypoints=https
+      - traefik.http.routers.kgx-wild-https.tls=true
+      - traefik.http.routers.kgx-wild-https.service=kgx-svc
+      - traefik.http.routers.kgx-wild-https.priority=1
+      - traefik.http.services.kgx-svc.loadbalancer.server.port=3000
+
+  khogame-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=khogame
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=khogame
+      - TZ=Asia/Ho_Chi_Minh
+    volumes:
+      - khogame-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khogame -d khogame"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  khogame-storage:
+  khogame-pgdata:
+
+networks:
+  coolify:
+    external: true

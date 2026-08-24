@@ -4,6 +4,31 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-08-24
+
+### 🚀 Release Engineering (CI/CD & hạ tầng prod)
+
+- **Pipeline CD mới:** GitHub Actions build image Rust 1.98 → push GHCR
+  (`latest`, `sha-<sha>`, semver) → **pin image theo digest** vào
+  `deploy/compose.prod.yml` → PATCH compose lên Coolify → trigger deploy →
+  poll trạng thái deployment tới khi xong. Không còn rủi ro chạy nhầm bản
+  `:latest` cũ do Docker cache.
+- **Secrets tách khỏi repo/public compose:** `DB_PASSWORD`, `SESSION_KEY`,
+  `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` khai báo trong tab Environment
+  Variables của Service trên Coolify; compose prod chỉ tham chiếu `${VAR}`.
+- **Tạo lại database từ đầu trên VPS:** xoá stack `khogame` cũ cùng volumes
+  (PostgreSQL 17 data cũ) và tạo mới — DB sạch, app tự chạy migration khi
+  khởi động.
+- Workflow CI (`pull_request`) và CD (`push main/tag v*`, `workflow_dispatch`)
+  tách riêng rõ ràng; cả hai pin Rust 1.98.
+
+### 🧹 Vệ sinh
+
+- Bỏ workflow `build.yml` cũ (thay bằng `deploy.yml`), bỏ biến secret
+  `COOLIFY_APP_UUID` thay bằng `COOLIFY_SERVICE_UUID`.
+- Xoá `container_name` cứng trong compose (Coolify tự đặt theo UUID stack,
+  tránh orphan container trùng tên giữa các lần tái tạo stack).
+
 ## [0.2.0] — 2026-08-24
 
 ### 🔒 Bảo mật (Security)

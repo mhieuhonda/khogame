@@ -6,7 +6,7 @@ on:
 
 jobs:
   check:
-    name: Kiểm tra PR
+    name: Kiểm tra PR (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Cargo check
+      - name: Cargo check (--locked)
         run: cargo check --locked
 
       - name: Clippy
