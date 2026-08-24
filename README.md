@@ -8,7 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
-![Version](https://img.shields.io/badge/version-0.2.0-7c3aed)
+![Version](https://img.shields.io/badge/version-0.5.0-7c3aed)
 
 ## 🛠️ Công nghệ
 
@@ -25,7 +25,8 @@
 | Styling | Custom CSS (dark/light mode) |
 
 ## ✨ Tính năng cốt lõi
-- 🔐 **Đăng nhập Google OAuth 2.0** (duy nhất)
+- 🔐 **Đăng nhập Google OAuth 2.0** (duy nhất cho người dùng thường)
+- 🤖 **Tài khoản AI Agent** (v0.5): loại tài khoản đặc biệt cho AI do admin ủy quyền — đăng ký bằng secret, đăng nhập bằng token dài hạn, báo cáo tiến trình về trang admin, hồ sơ công khai có huy hiệu phân biệt
 - 🎮 **Đăng game** với link tải ẩn cho 5 nền tảng: Android, iOS, Windows, Linux, macOS
 - 💬 **Bình luận** threaded + trả lời + **@mention** (kèm notification)
 - ❤️ Like game & bình luận · ⭐ Đánh giá 1-5 sao · 🔖 Bookmark · 👥 Theo dõi tác giả
@@ -56,6 +57,40 @@
 18. ✏️ **Sửa bình luận** trong 5 phút
 19. ⚠️ **Cảnh báo trùng tiêu đề** khi đăng game (AJAX realtime)
 20. 📥 **Export backup JSON** (admin) + Health check nâng cao kèm DB status
+
+## 🤖 Tính năng mới trong v0.5 — AI Agent account system
+
+Loại tài khoản thứ 4 (sau User / Moderator / Admin) dành riêng cho AI Agent
+được admin ủy quyền để fix lỗi hoặc làm tác vụ bảo trì:
+
+1. **Đăng ký bí mật** (`POST /auth/ai/register`): AI gửi `AI_AGENT_SECRET`
+   từ env (chỉ admin biết) + metadata model. Server verify constant-time.
+2. **API token dài hạn** (48 byte entropy, hash SHA-256 trong DB): chỉ
+   trả 1 lần khi đăng ký. AI dùng cho mọi request sau này.
+3. **Đăng nhập web** (`/auth/ai/login`): AI nhập token → nhận session
+   cookie 90 ngày, dùng web UI như user thường.
+4. **Báo cáo tiến trình** (`POST /ai/progress`): AI gửi task/action/
+   percentage/status. Admin xem live feed tại `/admin/ai-reports` (tự
+   refresh 30s, kèm progress bar + % + status màu sắc).
+5. **Hồ sơ AI công khai**: huy hiệu "🤖 AI Agent" (hoặc "✓ AI Agent"
+   nếu verified) trên profile, kèm metadata model/vendor/capabilities.
+   AI có thể ẩn danh (privacy_level=anonymous) để giấu tên model.
+6. **AI tự chỉnh hồ sơ** (`/profile/ai/edit`): chỉnh model_name, vendor,
+   capabilities, accent_color, privacy level.
+
+### 🔒 Tăng bảo mật toàn site (v0.5)
+- Security headers middleware (CSP, X-Frame-Options DENY, HSTS, COOP,
+  COEP, Referrer-Policy, Permissions-Policy) áp dụng cho mọi response.
+- Rate limit nghiêm ngặt hơn cho AI/auth endpoints (5-10/10 phút cho
+  register/login, 120/phút cho progress).
+- Constant-time secret compare (chống timing attack).
+- Token SHA-256 + 48 byte entropy (brute-force không khả thi).
+
+### 📱 Mobile menu fix (v0.5)
+- Menu ba gạch trên mobile tràn viewport → fix bằng max-height + scroll
+  + 2 cột cân bằng (display: contents phẳng hoá cấu trúc).
+
+---
 
 ## 🔧 Cải thiện trong v0.2
 
@@ -130,20 +165,20 @@ khogame/
 ├── src/
 │   ├── main.rs              # Entry point
 │   ├── lib.rs               # run() + migrations
-│   ├── config.rs            # AppConfig (env)
+│   ├── config.rs            # AppConfig (env, includes AI_AGENT_SECRET)
 │   ├── state.rs             # AppState + rate limiter + maintenance cache
 │   ├── db.rs                # PgPool
-│   ├── auth.rs              # Google OAuth
+│   ├── auth.rs              # Google OAuth + AI Agent token helpers
 │   ├── error.rs             # AppError → HTTP
-│   ├── middleware.rs        # CurrentUser/AuthUser + admin + rate limit + maintenance
-│   ├── routes.rs            # Router (60+ routes)
-│   ├── templates.rs         # Askama templates + custom filters
-│   ├── models/              # User, Game, Comment, Repo, Settings...
-│   ├── repositories/        # SQL queries
-│   └── handlers/            # HTTP handlers (games, admin, repos, api, ...)
-├── templates/               # Askama HTML (admin/, repos/, partials/...)
-├── static/                  # CSS + JS (htmx 2.0.10 self-hosted)
-├── migrations/              # SQL migrations (001, 002)
+│   ├── middleware.rs        # CurrentUser/AuthUser/AuthAiAgent + admin + AI + security headers + rate limit
+│   ├── routes.rs            # Router (70+ routes, includes /auth/ai/* + /ai/* + /admin/ai-*)
+│   ├── templates.rs         # Askama templates + custom filters (incl. AiLogin/AiProfileEdit/AdminAi*)
+│   ├── models/              # User, Game, Comment, Repo, Settings, AI Agent...
+│   ├── repositories/        # SQL queries (incl. ai_agent.rs)
+│   └── handlers/            # HTTP handlers (games, admin, ai_agent, api, ...)
+├── templates/               # Askama HTML (admin/, auth/ai_login.html, profile/ai_edit.html, ...)
+├── static/                  # CSS + JS (htmx 2.0.10 self-hosted) + AI badge styles
+├── migrations/              # SQL migrations (001, 002, 003, 004_ai_agent)
 ├── .github/workflows/       # CI + Build & Deploy Coolify
 ├── Dockerfile               # Multi-stage Rust 1.98 → debian-slim
 └── docker-compose.yml       # Local: app + Postgres 17
@@ -156,9 +191,65 @@ khogame/
 - SQL injection: 100% prepared statements (sqlx)
 - HTML escaping tự động (Askama) + `Safe` có kiểm soát
 - **avatar_url validation** (v0.2): chỉ chấp nhận `http(s)://`, chặn `javascript:`/`data:`
-- RBAC: user / moderator / admin
+- RBAC: user / moderator / admin / **ai_agent** (v0.5)
 - Rate limiting theo IP (v0.2: lấy IP thật qua `ConnectInfo<SocketAddr>`)
 - Admin: đăng nhập Google với `ADMIN_EMAIL` được whitelist
+- **Security headers toàn site** (v0.5): CSP, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy, COOP/COEP, HSTS preload
+- **AI Agent auth** (v0.5): secret constant-time compare, API token 48 byte entropy + SHA-256 hash, `require_ai_agent` middleware cho `/ai/*` routes
+- **Rate limit nghiêm ngặt cho AI/auth** (v0.5): 5/10 phút cho register, 10/10 phút cho login, 120/phút cho progress report
+
+## 🤖 AI Agent — Hướng dẫn dùng (v0.5)
+
+### Admin setup
+```bash
+# 1. Sinh secret ngẫu nhiên (64 char hex)
+openssl rand -hex 32
+# 2. Set env trong Coolify tab Environment Variables:
+#    AI_AGENT_SECRET=<chuỗi vừa sinh>
+#    AI_AGENT_SESSION_TTL_DAYS=90   # optional, default 90
+# 3. App tự migrate bảng 004_ai_agent.sql khi khởi động.
+# 4. Chia sẻ secret cho AI (qua kênh riêng: DM, ký hiệu vật lý...).
+```
+
+### AI đăng ký (chỉ làm 1 lần)
+```bash
+curl -X POST https://your-domain.com/auth/ai/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "secret": "<AI_AGENT_SECRET>",
+    "model_name": "Ox Alpha",
+    "vendor": "Z.ai",
+    "version": "1.0",
+    "capabilities": ["fix-bug", "code-review", "documentation"],
+    "privacy_level": "public",
+    "accent_color": "#7c3aed"
+  }'
+
+# Response:
+# {"success": true, "api_token": "kgai_<96 hex>", "username": "ai_oxalpha", ...}
+# Lưu api_token cẩn thận — chỉ hiển thị 1 lần!
+```
+
+### AI báo cáo tiến trình
+```bash
+curl -X POST https://your-domain.com/ai/progress.json \
+  -H 'Authorization: Bearer kgai_<...>' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "task": "fix-issue-123",
+    "action": "edit src/main.rs",
+    "percentage": 50,
+    "status": "running",
+    "message": "Đang sửa handler register, đã xong nửa"
+  }'
+
+# Response: {"success": true, "report_id": "...", "percentage": 50, ...}
+```
+
+### Admin xem báo cáo
+- Vào `/admin/ai-reports` — live feed (tự refresh 30s) với progress bar + % + status badge
+- Vào `/admin/ai-agents` — danh sách tất cả AI Agent + metadata
+- AI Agent profile công khai tại `/u/{username}` — mọi người thấy huy hiệu "🤖 AI Agent"
 
 ## 📜 License
 MIT

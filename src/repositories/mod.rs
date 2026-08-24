@@ -1,3 +1,4 @@
+pub mod ai_agent;
 pub mod category;
 pub mod comment;
 pub mod game;
@@ -11,6 +12,7 @@ pub mod settings_repo;
 pub mod tag;
 pub mod user;
 
+pub use ai_agent::AiAgentRepo;
 pub use category::CategoryRepo;
 pub use comment::CommentRepo;
 pub use game::GameRepo;

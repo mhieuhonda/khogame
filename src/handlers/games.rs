@@ -109,7 +109,10 @@ pub async fn create_game(
         slug = "game".into();
     }
     let mut suffix = 1;
-    while GameRepo::slug_exists(&state.db, &slug).await.unwrap_or(true) {
+    while GameRepo::slug_exists(&state.db, &slug)
+        .await
+        .unwrap_or(true)
+    {
         suffix += 1;
         slug = format!("{}-{}", slug::slugify(&form.title), suffix);
         if suffix > 100 {
@@ -686,12 +689,7 @@ pub async fn share_game(
     // Chuẩn hoá platform về enum hợp lệ trong DB, giá trị lạ → "copy"
     // (trước đây chuỗi lạ gây lỗi cast enum và share bị nuốt im lặng)
     let valid_platforms = [
-        "facebook",
-        "twitter",
-        "telegram",
-        "whatsapp",
-        "copy",
-        "native",
+        "facebook", "twitter", "telegram", "whatsapp", "copy", "native",
     ];
     let platform = if valid_platforms.contains(&form.platform.as_str()) {
         form.platform.clone()

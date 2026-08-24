@@ -1,11 +1,11 @@
 use crate::auth::{hash_token, SESSION_COOKIE};
 use crate::error::AppError;
 use crate::models::user::User;
-use crate::repositories::{SessionRepo, SettingsRepo, UserRepo};
+use crate::repositories::{AiAgentRepo, SessionRepo, SettingsRepo, UserRepo};
 use crate::state::AppState;
 use axum::{
     extract::{ConnectInfo, FromRef, FromRequestParts, Request, State},
-    http::{request::Parts, StatusCode},
+    http::{request::Parts, HeaderValue, StatusCode},
     middleware::Next,
     response::{Html, IntoResponse, Response},
 };
@@ -111,6 +111,7 @@ pub async fn maintenance_guard(
         "/maintenance",
         "/api/announcement",
         "/api/preferences",
+        "/ai", // AI Agent vẫn có thể báo cáo tiến trình trong lúc maintenance
     ];
     if bypass_prefixes.iter().any(|p| path.starts_with(p)) {
         return next.run(request).await;
@@ -202,7 +203,21 @@ pub async fn rate_limit(
 ) -> Result<Response, StatusCode> {
     let path = request.uri().path().to_string();
     let ip = client_ip_from_parts(request.headers(), None);
-    let (max, window) = if path.contains("/download") {
+    // Tăng giới hạn nghiêm ngặt cho các endpoint AI Agent & auth để
+    // chống brute-force token hoặc spam progress.
+    // - /auth/ai/register: 5 / 10 phút (rất hiếm, chỉ AI admin mới gọi)
+    // - /auth/ai/login:    10 / 10 phút (chống brute-force token)
+    // - /ai/progress:      120 / phút  (AI báo cáo thường xuyên)
+    // - /auth/google:      10 / 10 phút (chống lạm dụng OAuth)
+    // - /download:         20 / phút
+    // - /comments:         10 / phút
+    let (max, window) = if path.starts_with("/auth/ai/register") {
+        (5, 600)
+    } else if path.starts_with("/auth/ai/login") || path.starts_with("/auth/google") {
+        (10, 600)
+    } else if path.starts_with("/ai/") {
+        (120, 60)
+    } else if path.contains("/download") {
         (20, 60) // 20 download/phút
     } else if path.contains("/comments") {
         (10, 60) // 10 bình luận/phút
@@ -213,7 +228,7 @@ pub async fn rate_limit(
         .rate_limiter
         .check(&format!("{}:{}", ip, path), max, window)
     {
-        tracing::warn!("Rate limit exceeded: {} {}", ip, path);
+        tracing::warn!("Rate limit exceeded: {} {} ({}/{})", ip, path, max, window);
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     Ok(next.run(request).await)
@@ -236,4 +251,149 @@ pub async fn seed_admin_email(state: &AppState) {
         Err(e) => tracing::warn!("Failed seeding admin: {}", e),
     }
     let _ = SettingsRepo::set(&state.db, "admin_email", email, None).await;
+}
+
+// ============================================================
+// Security headers middleware (tăng bảo mật toàn site)
+//
+// Áp dụng cho mọi response. Đặc biệt:
+// - X-Frame-Options: DENY — chống clickjacking (không cho nhúng iframe)
+// - X-Content-Type-Options: nosniff — chống MIME sniffing
+// - Referrer-Policy: strict-origin-when-cross-origin — rò rỉ referer tối thiểu
+// - Permissions-Policy: tắt FCM, microphone, camera, geolocation (chỉ site cơ bản)
+// - Strict-Transport-Security: bắt buộc HTTPS (chỉ có hiệu lực khi đã ở HTTPS)
+// - Cross-Origin-Opener-Policy: same-origin — cô lập context browsing
+// ============================================================
+pub async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    // Chống clickjacking
+    headers.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    // Chống MIME sniffing
+    headers.insert(
+        "x-content-type-options",
+        HeaderValue::from_static("nosniff"),
+    );
+    // Referrer policy
+    headers.insert(
+        "referrer-policy",
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    // Permissions policy (tắt các API nhạy cảm)
+    headers.insert(
+        "permissions-policy",
+        HeaderValue::from_static(
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()",
+        ),
+    );
+    // Cross-origin isolation (chống side-channel / spectre-like)
+    headers.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "cross-origin-resource-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    // HSTS: 1 năm, includeSubDomains, preload (chỉ phát huy tác dụng khi ở HTTPS)
+    headers.insert(
+        "strict-transport-security",
+        HeaderValue::from_static("max-age=31536000; includeSubDomains; preload"),
+    );
+    // COEP:.require-corp sẽ chặn ảnh flickr/imgur v.v. → dùng unsafe-inline CSP
+    // cởi hơn cho nội dung động. Đặt CSP chung:
+    //   default-src 'self' (chỉ cho phép nội dung từ chính site)
+    //   script-src 'self' 'unsafe-inline' (htmx + app.js inline được)
+    //   style-src 'self' 'unsafe-inline' (style nội tuyến)
+    //   img-src 'self' https: data: (avatar từ Google + placeholder)
+    //   font-src 'self' https://fonts.gstatic.com (Google Fonts)
+    //   connect-src 'self' (htmx không gọi cross-origin)
+    //   frame-ancestors 'none' (chống nhúng iframe)
+    //   base-uri 'self'
+    //   form-action 'self' (form chỉ submit về chính site)
+    headers.insert(
+        "content-security-policy",
+        HeaderValue::from_static(
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        ),
+    );
+    response
+}
+
+// ============================================================
+// AI Agent auth middleware: chỉ cho phép AI Agent (role=ai_agent)
+// qua. Dùng cho các endpoint /ai/* (report progress, v.v.).
+//
+// Ưu tiên kiểm tra Authorization: Bearer <token> trước (lấy từ header).
+// Nếu không có, fallback sang session cookie (AI đã đăng nhập qua web).
+// ============================================================
+pub async fn require_ai_agent(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // 1) Thử Authorization: Bearer <token>
+    let auth_header = request
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    let user_opt = if let Some(h) = auth_header.as_deref() {
+        if let Some(token) = h
+            .strip_prefix("Bearer ")
+            .or_else(|| h.strip_prefix("bearer "))
+        {
+            let token = token.trim();
+            if token.is_empty() {
+                None
+            } else {
+                AiAgentRepo::find_by_api_token(&state.db, token)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|(u, _)| u)
+            }
+        } else {
+            None
+        }
+    } else {
+        // 2) Fallback: session cookie
+        let jar = CookieJar::from_headers(request.headers());
+        current_user_from_jar(&state, &jar)
+            .await
+            .filter(|u| u.role.is_ai_agent())
+    };
+
+    let user = user_opt.ok_or(StatusCode::UNAUTHORIZED)?;
+    if !user.role.is_ai_agent() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if user.is_banned {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    // Lưu user vào request extensions để handler lấy ra qua AuthAiAgent extractor
+    let mut request = request;
+    request.extensions_mut().insert(user);
+    Ok(next.run(request).await)
+}
+
+/// Extractor lấy AI Agent user (đã được middleware `require_ai_agent` xác thực)
+#[derive(Clone)]
+pub struct AuthAiAgent(pub User);
+
+impl<S> FromRequestParts<S> for AuthAiAgent
+where
+    S: Send + Sync,
+{
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<User>()
+            .filter(|u| u.role.is_ai_agent())
+            .map(|u| AuthAiAgent(u.clone()))
+            .ok_or(StatusCode::UNAUTHORIZED)
+    }
 }

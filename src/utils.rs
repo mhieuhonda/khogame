@@ -311,7 +311,10 @@ mod tests {
 
     #[test]
     fn test_parse_date() {
-        assert_eq!(parse_date("2026-08-24"), Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 24).unwrap()));
+        assert_eq!(
+            parse_date("2026-08-24"),
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 24).unwrap())
+        );
         assert_eq!(parse_date("không phải ngày"), None);
     }
 }

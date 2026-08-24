@@ -23,6 +23,8 @@ macro_rules! impl_template_response {
 impl_template_response!(
     IndexTemplate,
     LoginTemplate,
+    AiLoginTemplate,
+    AiProfileEditTemplate,
     NewGameTemplate,
     EditGameTemplate,
     GameShowTemplate,
@@ -41,6 +43,8 @@ impl_template_response!(
     AdminReposTemplate,
     AdminSettingsTemplate,
     AdminAuditTemplate,
+    AdminAiAgentsTemplate,
+    AdminAiReportsTemplate,
     RepoListTemplate,
     RepoNewTemplate,
     MyGamesTemplate,
@@ -71,6 +75,27 @@ pub struct IndexTemplate {
 pub struct LoginTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
+}
+
+/// AI Agent login page (nhập API token)
+#[derive(Template)]
+#[template(path = "auth/ai_login.html")]
+pub struct AiLoginTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Optional `next` path để redirect sau khi đăng nhập.
+    pub next: Option<String>,
+}
+
+/// AI Agent profile edit (model_name, vendor, capabilities, ...)
+#[derive(Template)]
+#[template(path = "profile/ai_edit.html")]
+pub struct AiProfileEditTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub profile: ai_agent::AiAgentProfile,
+    pub privacy_public_label: &'static str,
+    pub privacy_anonymous_label: &'static str,
 }
 
 /// New game form
@@ -167,6 +192,9 @@ pub struct ProfileTemplate {
     pub is_following: bool,
     pub is_self: bool,
     pub preferences: user::UserPreference,
+    /// Nếu user là AI Agent, đây là hồ sơ AI (model_name, vendor, ...).
+    /// None nếu user thường.
+    pub ai_profile: Option<ai_agent::AiAgentProfile>,
 }
 
 /// Edit profile
@@ -313,6 +341,25 @@ pub struct AdminAuditTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub logs: Vec<settings::AdminLogWithAdmin>,
+}
+
+/// Admin: danh sách AI Agent
+#[derive(Template)]
+#[template(path = "admin/ai_agents.html")]
+pub struct AdminAiAgentsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub agents: Vec<ai_agent::AiAgentWithProfile>,
+}
+
+/// Admin: live feed báo cáo tiến trình từ AI
+#[derive(Template)]
+#[template(path = "admin/ai_reports.html")]
+pub struct AdminAiReportsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub reports: Vec<ai_agent::AiProgressReportWithAgent>,
+    pub total_agents: i64,
 }
 
 /// Danh sách GitHub repos

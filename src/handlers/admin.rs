@@ -3,8 +3,8 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::AuthUser;
 use crate::models::report::ReportStatus;
 use crate::repositories::{
-    AdminLogRepo, CategoryRepo, CommentRepo, GameRepo, NotificationRepo, RepoRepo, ReportRepo,
-    SettingsRepo, StatsRepo, UserRepo,
+    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NotificationRepo, RepoRepo,
+    ReportRepo, SettingsRepo, StatsRepo, UserRepo,
 };
 use crate::state::AppState;
 use crate::templates::*;
@@ -73,7 +73,9 @@ pub async fn dashboard(
         .unwrap_or_default()
         .into_iter()
         .map(|(key, count)| crate::templates::StatusCountChip {
-            label: crate::models::game::GameStatus::from_str(&key).label().to_string(),
+            label: crate::models::game::GameStatus::from_str(&key)
+                .label()
+                .to_string(),
             key,
             count,
         })
@@ -327,7 +329,9 @@ pub async fn games(
         .unwrap_or_default()
         .into_iter()
         .map(|(key, count)| crate::templates::StatusCountChip {
-            label: crate::models::game::GameStatus::from_str(&key).label().to_string(),
+            label: crate::models::game::GameStatus::from_str(&key)
+                .label()
+                .to_string(),
             key,
             count,
         })
@@ -963,4 +967,48 @@ pub async fn export(
         serde_json::to_string_pretty(&body).unwrap_or_default(),
     )
         .into_response())
+}
+
+// ============================================================
+// AI Agent admin handlers
+// ============================================================
+
+/// Trang /admin/ai-agents — danh sách tất cả AI Agent (chỉ admin/staff).
+pub async fn ai_agents(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminAiAgentsTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let agents = AiAgentRepo::list_for_admin(&state.db)
+        .await
+        .unwrap_or_default();
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminAiAgentsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        agents,
+    })
+}
+
+/// Trang /admin/ai-reports — live feed báo cáo tiến trình từ AI Agent.
+pub async fn ai_reports(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminAiReportsTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let reports = AiAgentRepo::list_progress_recent(&state.db, 100)
+        .await
+        .unwrap_or_default();
+    let total_agents = AiAgentRepo::count_all(&state.db).await.unwrap_or(0);
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminAiReportsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        reports,
+        total_agents,
+    })
 }

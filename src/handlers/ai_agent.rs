@@ -1,0 +1,463 @@
+//! Handlers cho AI Agent account system.
+//!
+//! Bao gồm:
+//! - [`register`]: POST /auth/ai/register — AI tạo tài khoản (yêu cầu secret). Body JSON.
+//! - [`login_form`]: GET /auth/ai/login — trang web form nhập API token.
+//! - [`login`]: POST /auth/ai/login — AI đăng nhập bằng API token, nhận session cookie. Body form.
+//! - [`report_progress`]: POST /ai/progress — AI báo cáo tiến trình (form hoặc JSON).
+//! - [`update_profile`]: POST /profile/ai — AI tự cập nhật hồ sơ.
+//! - [`info`]: GET /ai/info — Trả về thông tin AI Agent đang xác thực.
+
+use crate::auth;
+use crate::error::{AppError, AppResult};
+use crate::handlers::auth::unread_count;
+use crate::middleware::{AuthAiAgent, AuthUser, CurrentUser};
+use crate::models::ai_agent::{AiPrivacyLevel, AiTaskStatus};
+use crate::models::user::User;
+use crate::repositories::{AiAgentRepo, SessionRepo};
+use crate::state::AppState;
+use crate::templates::{AiLoginTemplate, AiProfileEditTemplate};
+use askama::Template;
+use axum::extract::{Query, State};
+use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::Form;
+use axum_extra::extract::CookieJar;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+#[derive(Debug, Deserialize, Default)]
+pub struct AuthQuery {
+    pub next: Option<String>,
+}
+
+// ============================================================
+// Đăng ký AI Agent (POST /auth/ai/register, body JSON)
+// ============================================================
+/// Body cho đăng ký AI Agent. AI gửi kèm secret do admin cấp
+/// out-of-band. Nếu secret sai → 403 Forbidden. Nếu feature chưa
+/// bật trong env (AI_AGENT_SECRET rỗng) → 403.
+#[derive(Debug, Deserialize)]
+pub struct AiRegisterRequest {
+    pub secret: String,
+    pub model_name: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub username: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub bio: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub capabilities: Option<Vec<String>>,
+    #[serde(default)]
+    pub privacy_level: Option<String>,
+    #[serde(default)]
+    pub accent_color: Option<String>,
+    #[serde(default)]
+    pub token_label: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AiRegisterResponse {
+    pub success: bool,
+    /// Plain API token — chỉ trả 1 lần. AI phải lưu lại.
+    pub api_token: String,
+    pub username: String,
+    pub user_id: String,
+    pub message: String,
+}
+
+pub async fn register(
+    State(state): State<Arc<AppState>>,
+    axum::Json(req): axum::Json<AiRegisterRequest>,
+) -> AppResult<Response> {
+    // 1) Kiểm tra feature đã bật (có secret trong env)
+    if !state.config.ai_agent_enabled {
+        return Err(AppError::Forbidden(
+            "AI Agent registration is disabled (AI_AGENT_SECRET not set)".into(),
+        ));
+    }
+    // 2) Verify secret (constant-time compare để chống timing attack)
+    if !constant_time_eq(
+        req.secret.as_bytes(),
+        state.config.ai_agent_secret.as_bytes(),
+    ) {
+        tracing::warn!(
+            "AI Agent registration: invalid secret (model_name={})",
+            req.model_name
+        );
+        return Err(AppError::Forbidden("Secret không hợp lệ".into()));
+    }
+    // 3) Validate fields
+    let display_name = req
+        .display_name
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| req.model_name.trim().to_string());
+    let token_label = req
+        .token_label
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or("default")
+        .to_string();
+    let capabilities = req.capabilities.unwrap_or_default();
+
+    // 4) Tạo user + profile + token (Repo tự sinh username duy nhất)
+    let plain_token = AiAgentRepo::register(
+        &state.db,
+        req.email.as_deref().unwrap_or(""),
+        req.username.as_deref().unwrap_or(""),
+        &display_name,
+        req.bio.as_deref(),
+        req.avatar_url.as_deref(),
+        &req.model_name,
+        &req.vendor,
+        &req.version,
+        &capabilities,
+        req.privacy_level.as_deref().unwrap_or("public"),
+        req.accent_color.as_deref().unwrap_or("#7c3aed"),
+        &token_label,
+        None,
+        "ai-agent-register",
+    )
+    .await?;
+
+    // 5) Trả về token (chỉ 1 lần!) + thông tin user
+    // Lấy lại username cuối cùng từ DB (Repo đã tự ensure unique)
+    let token_hash = auth::hash_token(&plain_token);
+    let user_id: Option<uuid::Uuid> =
+        sqlx::query_scalar("SELECT user_id FROM ai_agent_tokens WHERE token_hash = $1")
+            .bind(&token_hash)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten();
+    let username: String = match user_id {
+        Some(id) => sqlx::query_scalar("SELECT username FROM users WHERE id = $1")
+            .bind(id)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or_else(|_| display_name.clone()),
+        None => display_name.clone(),
+    };
+
+    tracing::info!(
+        "AI Agent registered: model_name={} vendor={} username={}",
+        req.model_name,
+        req.vendor,
+        username
+    );
+
+    let resp = AiRegisterResponse {
+        success: true,
+        api_token: plain_token,
+        username,
+        user_id: user_id.map(|u| u.to_string()).unwrap_or_default(),
+        message: "Đăng ký AI Agent thành công. Lưu API token cẩn thận — chỉ hiển thị 1 lần.".into(),
+    };
+    Ok(axum::response::Json(resp).into_response())
+}
+
+/// So sánh 2 slice byte constant-time (chống timing attack).
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+// ============================================================
+// Đăng nhập AI Agent (POST /auth/ai/login)
+// ============================================================
+pub async fn login_form(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<AuthQuery>,
+    CurrentUser(current_user): CurrentUser,
+) -> AppResult<Response> {
+    if !state.config.ai_agent_enabled {
+        return Err(AppError::Forbidden(
+            "AI Agent login is disabled (feature not configured)".into(),
+        ));
+    }
+    if current_user.is_some() {
+        return Ok(Redirect::to("/").into_response());
+    }
+    let tpl = AiLoginTemplate {
+        current_user: None,
+        unread_notifications: 0,
+        next: q.next,
+    };
+    Ok(Html(tpl.render().map_err(AppError::from)?).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AiLoginForm {
+    pub api_token: String,
+    pub next: Option<String>,
+}
+
+pub async fn login(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<AuthQuery>,
+    jar: CookieJar,
+    Form(form): Form<AiLoginForm>,
+) -> AppResult<(CookieJar, Redirect)> {
+    if !state.config.ai_agent_enabled {
+        return Err(AppError::Forbidden("AI Agent login is disabled".into()));
+    }
+    let token = form.api_token.trim();
+    if token.is_empty() {
+        return Err(AppError::BadRequest("API token không được để trống".into()));
+    }
+    // Tra user theo token
+    let (user, _profile) = AiAgentRepo::find_by_api_token(&state.db, token)
+        .await?
+        .ok_or_else(|| AppError::Forbidden("API token không hợp lệ hoặc đã bị thu hồi".into()))?;
+    if !user.role.is_ai_agent() {
+        return Err(AppError::Forbidden(
+            "Token này không thuộc tài khoản AI Agent".into(),
+        ));
+    }
+    if user.is_banned {
+        return Err(AppError::Forbidden("Tài khoản AI Agent đã bị cấm".into()));
+    }
+    // Tạo session
+    let session_token = auth::gen_session_token();
+    let token_hash = auth::hash_token(&session_token);
+    SessionRepo::create(
+        &state.db,
+        user.id,
+        &token_hash,
+        "ai-agent-web",
+        None,
+        state.config.ai_agent_session_ttl_days,
+    )
+    .await?;
+    let mut new_jar = jar;
+    auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
+    tracing::info!("AI Agent logged in: {}", user.username);
+    // Safe redirect next
+    let next = form
+        .next
+        .as_deref()
+        .or(q.next.as_deref())
+        .filter(|s| !s.is_empty() && s.starts_with('/') && !s.starts_with("//"))
+        .unwrap_or("/");
+    Ok((new_jar, Redirect::to(next)))
+}
+
+// ============================================================
+// Báo cáo tiến trình (POST /ai/progress)
+// ============================================================
+#[derive(Debug, Deserialize)]
+pub struct AiProgressRequest {
+    pub task: String,
+    #[serde(default)]
+    pub action: String,
+    #[serde(default)]
+    pub percentage: Option<i16>,
+    #[serde(default)]
+    pub status: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    /// JSON string tuỳ chọn (metadata)
+    #[serde(default)]
+    pub metadata: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AiProgressResponse {
+    pub success: bool,
+    pub report_id: String,
+    pub percentage: i16,
+    pub status: String,
+    pub message: String,
+}
+
+pub async fn report_progress(
+    State(state): State<Arc<AppState>>,
+    AuthAiAgent(user): AuthAiAgent,
+    Form(req): Form<AiProgressRequest>,
+) -> AppResult<axum::response::Json<AiProgressResponse>> {
+    report_progress_impl(&state, user, req).await
+}
+
+pub async fn report_progress_json(
+    State(state): State<Arc<AppState>>,
+    AuthAiAgent(user): AuthAiAgent,
+    axum::Json(req): axum::Json<AiProgressRequest>,
+) -> AppResult<axum::response::Json<AiProgressResponse>> {
+    report_progress_impl(&state, user, req).await
+}
+
+async fn report_progress_impl(
+    state: &AppState,
+    user: User,
+    req: AiProgressRequest,
+) -> AppResult<axum::response::Json<AiProgressResponse>> {
+    let percentage = req.percentage.unwrap_or(0);
+    let status = req
+        .status
+        .as_deref()
+        .map(parse_status)
+        .unwrap_or(AiTaskStatus::Running);
+    let metadata: Option<serde_json::Value> = req
+        .metadata
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| serde_json::from_str(s).ok());
+    let report = AiAgentRepo::add_progress(
+        &state.db,
+        user.id,
+        &req.task,
+        &req.action,
+        percentage,
+        &status,
+        req.message.as_deref().unwrap_or(""),
+        metadata.as_ref(),
+        None,
+    )
+    .await?;
+    Ok(axum::response::Json(AiProgressResponse {
+        success: true,
+        report_id: report.id.to_string(),
+        percentage: report.percentage,
+        status: format!("{:?}", report.status).to_lowercase(),
+        message: "Tiến trình đã được ghi nhận".into(),
+    }))
+}
+
+fn parse_status(s: &str) -> AiTaskStatus {
+    match s.to_ascii_lowercase().as_str() {
+        "queued" | "queue" => AiTaskStatus::Queued,
+        "done" | "completed" | "success" => AiTaskStatus::Done,
+        "failed" | "error" => AiTaskStatus::Failed,
+        "cancelled" | "canceled" => AiTaskStatus::Cancelled,
+        _ => AiTaskStatus::Running,
+    }
+}
+
+// ============================================================
+// AI Agent tự cập nhật hồ sơ (POST /profile/ai)
+// ============================================================
+#[derive(Debug, Deserialize)]
+pub struct AiProfileForm {
+    pub model_name: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub capabilities: Option<String>, // newline-separated
+    #[serde(default)]
+    pub privacy_level: Option<String>,
+    #[serde(default)]
+    pub accent_color: Option<String>,
+    #[serde(default)]
+    pub bio: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+}
+
+pub async fn update_profile(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<AiProfileForm>,
+) -> AppResult<Redirect> {
+    // Chỉ AI Agent mới được dùng endpoint này
+    if !user.role.is_ai_agent() {
+        return Err(AppError::Forbidden(
+            "Chỉ tài khoản AI Agent mới được cập nhật hồ sơ AI".into(),
+        ));
+    }
+    let capabilities: Vec<String> = form
+        .capabilities
+        .as_deref()
+        .map(|s| {
+            s.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let _profile = AiAgentRepo::update_profile(
+        &state.db,
+        user.id,
+        &form.model_name,
+        form.vendor.as_str(),
+        form.version.as_str(),
+        &capabilities,
+        form.privacy_level.as_deref().unwrap_or("public"),
+        form.accent_color.as_deref().unwrap_or("#7c3aed"),
+        form.bio.as_deref().unwrap_or(""),
+        form.avatar_url.as_deref(),
+    )
+    .await?;
+    Ok(Redirect::to(&format!("/u/{}", user.username)))
+}
+
+pub async fn edit_profile_form(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AiProfileEditTemplate> {
+    if !user.role.is_ai_agent() {
+        return Err(AppError::Forbidden(
+            "Chỉ tài khoản AI Agent mới truy cập được trang này".into(),
+        ));
+    }
+    let profile = AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Hồ sơ AI Agent không tồn tại".into()))?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AiProfileEditTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        profile,
+        privacy_public_label: AiPrivacyLevel::Public.label(),
+        privacy_anonymous_label: AiPrivacyLevel::Anonymous.label(),
+    })
+}
+
+// ============================================================
+// AI Agent info (GET /ai/info) — kiểm tra token hợp lệ không
+// ============================================================
+#[derive(Debug, Serialize)]
+pub struct AiInfoResponse {
+    pub success: bool,
+    pub user_id: String,
+    pub username: String,
+    pub display_name: String,
+    pub model_name: String,
+    pub vendor: String,
+    pub verified: bool,
+}
+
+pub async fn info(
+    State(state): State<Arc<AppState>>,
+    AuthAiAgent(user): AuthAiAgent,
+) -> AppResult<axum::response::Json<AiInfoResponse>> {
+    let profile = AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Hồ sơ AI Agent không tồn tại".into()))?;
+    Ok(axum::response::Json(AiInfoResponse {
+        success: true,
+        user_id: user.id.to_string(),
+        username: user.username,
+        display_name: user.display_name,
+        model_name: profile.model_name,
+        vendor: profile.vendor,
+        verified: profile.verified,
+    }))
+}

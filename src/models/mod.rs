@@ -1,3 +1,4 @@
+pub mod ai_agent;
 pub mod category;
 pub mod comment;
 pub mod game;
@@ -10,6 +11,7 @@ pub mod settings;
 pub mod tag;
 pub mod user;
 
+pub use ai_agent::*;
 pub use category::*;
 pub use comment::*;
 pub use game::*;

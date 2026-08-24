@@ -111,11 +111,18 @@
                     {% if user.role.is_staff() %}
                     <a href="/admin" class="menu-link">🛡️ Quản trị</a>
                     {% endif %}
+                    {% if user.role.is_staff() %}
+                    <a href="/admin/ai-reports" class="menu-link">📊 Tiến trình AI</a>
+                    {% endif %}
+                    {% if user.role.is_ai_agent() %}
+                    <a href="/profile/ai/edit" class="menu-link menu-link-accent">🤖 Hồ sơ AI</a>
+                    {% endif %}
                     <form method="post" action="/auth/logout" class="menu-form">
                         <button type="submit" class="menu-link menu-link-danger">🚪 Đăng xuất</button>
                     </form>
                     {% when Option::None %}
                     <a href="/login" class="menu-link menu-link-accent">🔑 Đăng nhập bằng Google</a>
+                    <a href="/auth/ai/login" class="menu-link">🤖 Đăng nhập AI Agent</a>
                     <a href="/terms" class="menu-link">📜 Điều khoản</a>
                     <a href="/privacy" class="menu-link">🔒 Bảo mật</a>
                     {% endmatch %}

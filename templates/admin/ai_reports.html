@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+
+{% block title %}Tiến trình AI - Quản trị{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>📊 Tiến trình AI Agent</h1>
+        <p>Live feed: AI báo cáo những việc đang làm + % hoàn thành.</p>
+    </div>
+
+    {% include "admin/_nav.html" %}
+
+    <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap purple">🤖</div>
+            <div>
+                <div class="stat-value">{{ total_agents }}</div>
+                <div class="stat-label">AI Agent</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap blue">📊</div>
+            <div>
+                <div class="stat-value">{{ reports.len() }}</div>
+                <div class="stat-label">Báo cáo gần đây</div>
+            </div>
+        </div>
+    </div>
+
+    {% if reports.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">📊</div>
+        <h3>Chưa có báo cáo nào</h3>
+        <p>
+            Khi AI Agent gửi báo cáo tiến trình (qua <code>POST /ai/progress</code>),
+            nó sẽ xuất hiện tại đây. AI cũng có thể tự cập nhật % hoàn thành và
+            trạng thái (running/done/failed).
+        </p>
+    </div>
+    {% else %}
+    <div class="ai-reports-list">
+        {% for r in &reports %}
+        <div class="ai-report-row">
+            <div class="ai-report-header">
+                <div class="ai-report-agent">
+                    {% match r.agent_avatar_url %}
+                    {% when Option::Some with (url) %}
+                    <img src="{{ url }}" alt="{{ r.agent_display_name }}" class="avatar avatar-sm">
+                    {% when Option::None %}
+                    <div class="avatar avatar-sm avatar-fallback">{{ r.agent_display_name|initials }}</div>
+                    {% endmatch %}
+                    <a href="/u/{{ r.agent_username }}" class="ai-agent-name">{{ r.agent_display_name }}</a>
+                    {% if !r.agent_model_name.is_empty() %}
+                    <span class="ai-model-badge">🤖 {{ r.agent_model_name }}</span>
+                    {% endif %}
+                </div>
+                <span class="ai-report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
+            </div>
+            <div class="ai-report-body">
+                <div class="ai-report-task">
+                    <span class="ai-task-label">Task:</span>
+                    <span class="ai-task-value">{{ r.task }}</span>
+                    {% if !r.action.is_empty() %}
+                    <span class="ai-action-label">→ {{ r.action }}</span>
+                    {% endif %}
+                </div>
+                {% if !r.message.is_empty() %}
+                <div class="ai-report-message">{{ r.message }}</div>
+                {% endif %}
+                <div class="ai-report-progress">
+                    <div class="ai-progress-bar-wrap">
+                        <div class="ai-progress-bar" style="width: {{ r.percentage }}%; background: {{ r.status.color() }}"></div>
+                    </div>
+                    <span class="ai-progress-pct">{{ r.percentage }}%</span>
+                    <span class="ai-status-badge" style="color: {{ r.status.color() }}">{{ r.status.label() }}</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="ai-reports-hint">
+        <p>
+            💡 Trang này tự động cập nhật mỗi 30 giây. Để bật auto-refresh, mở
+            tab mới và để nguyên. AI gửi báo cáo qua <code>POST /ai/progress</code>
+            với body JSON hoặc form-encoded.
+        </p>
+    </div>
+    {% endif %}
+</section>
+
+<script>
+// Auto-refresh 30s để live feed báo cáo AI mới
+(function() {
+    if (window.location.search.indexOf('norefresh') === -1) {
+        setTimeout(function() { window.location.reload(); }, 30000);
+    }
+})();
+</script>
+{% endblock %}

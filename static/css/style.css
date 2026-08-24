@@ -208,6 +208,12 @@ a:hover { color: var(--accent-light); }
     box-shadow: var(--shadow-lg);
     z-index: 99;
     animation: fadeIn 0.18s ease;
+    /* Tràn mục trên mobile: giới hạn chiều cao + cuộn dọc bên trong,
+       để menu không đẩy nội dung xuống và luôn khớp viewport. */
+    max-height: calc(100vh - var(--site-header-h, 64px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 .site-menu[hidden] { display: none; }
 .site-menu-inner {
@@ -260,6 +266,55 @@ a:hover { color: var(--accent-light); }
     text-align: center;
     border-radius: 9px;
     padding: 0 5px;
+}
+
+/* ===== Mobile: rút gọn menu ba gạch =====
+   Trên điện thoại grid 220px+ → 1 cột → danh sách dài tràn viewport.
+   - Dùng `display: contents` trên .menu-col để "phẳng hoá" cấu trúc:
+     các .menu-link trở thành grid item trực tiếp của .site-menu-inner,
+     không bị nhốt trong 1 cột theo nhóm "Khám phá" / "Cá nhân".
+   - 2 cột cân bằng → tận dụng width mobile (~360px+), mỗi mục chiếm
+     ít diện tích, chỉ còn ~5-8 hàng thay vì 15+ hàng tràn viewport.
+   - max-height + overflow-y (đã set ở rule .site-menu ở trên) giữ
+     menu luôn khớp viewport; nếu dài quá sẽ cuộn bên trong.
+ */
+@media (max-width: 768px) {
+    .site-menu {
+        /* header trên mobile thường ~100-110px (do wrap search bar). */
+        max-height: calc(100vh - 120px);
+    }
+    .site-menu-inner {
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 12px;
+        padding-top: 10px;
+        padding-bottom: 12px;
+    }
+    .menu-col {
+        display: contents;
+    }
+    .menu-heading {
+        grid-column: 1 / -1;
+        font-size: 10px;
+        margin-bottom: 2px;
+        margin-top: 6px;
+    }
+    .menu-link {
+        padding: 7px 9px;
+        font-size: 13px;
+        gap: 7px;
+        border-radius: 6px;
+        /* Cắt bớt text dài thay vì tràn dòng (vd "Hồ sơ (@very_long_username)"). */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .menu-link > svg { flex-shrink: 0; }
+    .menu-badge { min-width: 16px; height: 16px; line-height: 16px; font-size: 10px; padding: 0 4px; }
+}
+
+/* Mobile rất nhỏ (<360px): vẫn giữ 1 cột nhưng gọn + scroll. */
+@media (max-width: 359px) {
+    .site-menu-inner { grid-template-columns: 1fr; }
 }
 
 .icon-btn {
@@ -1866,3 +1921,281 @@ a:hover { color: var(--accent-light); }
 [data-theme="light"] .admin-form-row input,
 [data-theme="light"] .admin-settings-form input[type="text"],
 [data-theme="light"] .admin-settings-form textarea { background: #fff; border-color: #ddd; color: #222; }
+
+/* ============================================================
+   AI Agent badge + profile styles
+   ============================================================ */
+.ai-badge-large {
+    font-size: 64px;
+    line-height: 1;
+    margin: 0 auto 12px;
+}
+.ai-badge,
+.ai-badge-profile {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    margin-left: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid;
+    border-radius: 10px;
+    vertical-align: middle;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+}
+.ai-verified {
+    color: #10b981;
+    margin-left: 4px;
+    font-size: 14px;
+}
+.ai-profile-info {
+    margin: 6px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.ai-meta-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+.ai-meta-label {
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ai-model-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border: 1px solid;
+    border-radius: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+}
+.ai-vendor-text,
+.ai-version-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.ai-anonymous-note {
+    font-style: italic;
+    color: var(--text-muted);
+}
+.ai-caps .ai-cap-chip {
+    display: inline-block;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 1px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    margin-right: 4px;
+}
+.ai-profile-note {
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.ai-profile-note h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+}
+.ai-profile-note ul {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.7;
+}
+
+/* Admin AI Agent list row */
+.ai-agent-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.ai-agent-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    min-width: 200px;
+}
+.ai-agent-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+}
+.ai-agent-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.ai-agent-sub {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.ai-model-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    border: 1px solid;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+.ai-agent-caps {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.ai-agent-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+.ai-agent-privacy {
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* Admin AI reports (live feed) */
+.ai-reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.ai-report-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 18px;
+}
+.ai-report-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+}
+.ai-report-agent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.ai-report-time {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+.ai-report-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.ai-report-task {
+    font-size: 14px;
+    color: var(--text-primary);
+}
+.ai-task-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ai-task-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+}
+.ai-action-label {
+    color: var(--text-secondary);
+    margin-left: 6px;
+}
+.ai-report-message {
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 4px 0;
+    border-left: 2px solid var(--border);
+    padding-left: 10px;
+}
+.ai-report-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.ai-progress-bar-wrap {
+    flex: 1;
+    min-width: 200px;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.ai-progress-bar {
+    height: 100%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+.ai-progress-pct {
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text-primary);
+    min-width: 40px;
+    text-align: right;
+}
+.ai-status-badge {
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.ai-reports-hint {
+    margin-top: 20px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+/* Mobile AI rows */
+@media (max-width: 768px) {
+    .ai-agent-row { flex-direction: column; align-items: stretch; }
+    .ai-agent-actions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 12px; }
+}

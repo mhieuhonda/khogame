@@ -10,6 +10,11 @@ pub enum UserRole {
     User,
     Moderator,
     Admin,
+    /// Tài khoản đặc biệt dành cho AI Agent (do admin cấp secret để AI
+    /// tự đăng ký). Có thể đăng nhập bằng token dài hạn, báo cáo tiến
+    /// trình về trang admin. Không phải staff (không có quyền quản trị
+    /// site) nhưng có quyền truy cập các endpoint AI nội bộ.
+    AiAgent,
 }
 
 impl UserRole {
@@ -19,11 +24,16 @@ impl UserRole {
     pub fn is_staff(&self) -> bool {
         matches!(self, UserRole::Admin | UserRole::Moderator)
     }
+    /// True nếu đây là tài khoản AI Agent (khác hẳn user thường).
+    pub fn is_ai_agent(&self) -> bool {
+        matches!(self, UserRole::AiAgent)
+    }
     pub fn label(&self) -> &'static str {
         match self {
             UserRole::User => "Thành viên",
             UserRole::Moderator => "Điều hành viên",
             UserRole::Admin => "Quản trị viên",
+            UserRole::AiAgent => "Tác nhân AI",
         }
     }
 }

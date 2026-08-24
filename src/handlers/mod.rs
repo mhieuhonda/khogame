@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod ai_agent;
 pub mod api;
 pub mod auth;
 pub mod comments;

@@ -1,5 +1,7 @@
 use crate::handlers;
-use crate::middleware::{maintenance_guard, rate_limit, require_admin};
+use crate::middleware::{
+    maintenance_guard, rate_limit, require_admin, require_ai_agent, security_headers,
+};
 use crate::state::AppState;
 use axum::middleware;
 use axum::routing::{get, post};
@@ -19,6 +21,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::auth::google_callback),
         )
         .route("/auth/logout", post(handlers::auth::logout))
+        // === AI Agent auth (public nhưng yêu cầu secret/token) ===
+        .route("/auth/ai/login", get(handlers::ai_agent::login_form))
+        .route("/auth/ai/login", post(handlers::ai_agent::login))
+        // Register: chỉ AI có secret mới dùng được. Trả 403 nếu secret sai.
+        .route("/auth/ai/register", post(handlers::ai_agent::register))
         // Games - CRUD
         .route("/games/new", get(handlers::games::new_game_form))
         .route(
@@ -106,6 +113,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/profile", get(handlers::profile::my_profile))
         .route("/profile/edit", get(handlers::profile::edit_profile_form))
         .route("/profile", post(handlers::profile::update_profile))
+        // AI Agent tự cập nhật hồ sơ (yêu cầu AI Agent session)
+        .route("/profile/ai", post(handlers::ai_agent::update_profile))
+        .route(
+            "/profile/ai/edit",
+            get(handlers::ai_agent::edit_profile_form),
+        )
         .route("/bookmarks", get(handlers::profile::bookmarks_page))
         .route("/notifications", get(handlers::notifications::list))
         .route(
@@ -135,6 +148,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/announcement", get(handlers::api::announcement))
         .route("/check-duplicate", get(handlers::api::check_duplicate))
         .route("/preferences/theme", post(handlers::api::set_theme));
+
+    // === AI Agent internal routes: yêu cầu AI Agent auth ===
+    // (Bearer token trong header hoặc session cookie của AI Agent)
+    let ai_internal_routes = Router::new()
+        .route("/info", get(handlers::ai_agent::info))
+        .route("/progress", post(handlers::ai_agent::report_progress))
+        .route(
+            "/progress.json",
+            post(handlers::ai_agent::report_progress_json),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_ai_agent,
+        ));
 
     let admin_routes = Router::new()
         .route("/admin", get(handlers::admin::dashboard))
@@ -184,6 +211,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/repos/{id}/status",
             post(handlers::admin::set_repo_status),
         )
+        // === AI Agent admin pages ===
+        .route("/admin/ai-agents", get(handlers::admin::ai_agents))
+        .route("/admin/ai-reports", get(handlers::admin::ai_reports))
         // Settings
         .route(
             "/admin/settings",
@@ -199,11 +229,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .merge(public_routes)
         .nest("/api/v1", api_routes)
         .nest("/api", internal_routes)
+        .nest("/ai", ai_internal_routes)
         .merge(admin_routes)
         .nest_service("/static", ServeDir::new("static"))
         .route("/rss.xml", get(handlers::api::rss))
         .route("/sitemap.xml", get(handlers::api::sitemap))
         .route("/robots.txt", get(handlers::api::robots))
+        // Đặt security_headers ngoài cùng (áp dụng cho mọi response).
+        // rate_limit và maintenance_guard đã có từ trước, giữ thứ tự này.
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn_with_state(state.clone(), rate_limit))
         .layer(middleware::from_fn_with_state(
             state.clone(),

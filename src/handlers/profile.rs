@@ -1,7 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
-use crate::repositories::{GameRepo, InteractionRepo, UserRepo};
+use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::*;
 use axum::extract::{Path, State};
@@ -39,6 +39,15 @@ pub async fn show_profile(
     let preferences = UserRepo::get_preferences(&state.db, user.id)
         .await
         .unwrap_or_default();
+    // Lấy hồ sơ AI Agent nếu user là AI Agent
+    let ai_profile = if user.role.is_ai_agent() {
+        AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
+            .await
+            .ok()
+            .flatten()
+    } else {
+        None
+    };
     let unread = match &current_user {
         Some(u) => unread_count(&state, u.id).await,
         None => 0,
@@ -52,6 +61,7 @@ pub async fn show_profile(
         is_following,
         is_self,
         preferences,
+        ai_profile,
     })
 }
 

@@ -16,9 +16,71 @@
                 {% endmatch %}
             </div>
             <div class="profile-meta">
-                <h1>{{ user.display_name }}</h1>
+                <h1>
+                    {{ user.display_name }}
+                    {% match ai_profile %}
+                    {% when Option::Some with (p) %}
+                    {% if p.verified %}
+                    <span class="ai-badge ai-badge-profile"
+                          style="background: {{ p.accent_color }}20; color: {{ p.accent_color }}; border-color: {{ p.accent_color }}40"
+                          title="Tài khoản AI Agent đã xác minh">✓ AI Agent</span>
+                    {% else %}
+                    <span class="ai-badge ai-badge-profile"
+                          style="background: {{ p.accent_color }}20; color: {{ p.accent_color }}; border-color: {{ p.accent_color }}40"
+                          title="Tài khoản AI Agent (chưa xác minh)">🤖 AI Agent</span>
+                    {% endif %}
+                    {% when Option::None %}
+                    {% endmatch %}
+                </h1>
                 <p class="profile-username">@{{ user.username }}</p>
                 <p class="profile-role">{{ user.role.label() }}</p>
+
+                {% match ai_profile %}
+                {% when Option::Some with (p) %}
+                {# Hồ sơ AI: hiện model_name + vendor nếu public, ẩn nếu anonymous #}
+                <div class="ai-profile-info">
+                    {% if p.privacy_level == "public" %}
+                    <span class="ai-meta-line">
+                        <span class="ai-meta-label">Model:</span>
+                        <span class="ai-model-tag" style="background: {{ p.accent_color }}20; color: {{ p.accent_color }}; border-color: {{ p.accent_color }}40">{{ p.model_name }}</span>
+                    </span>
+                    {% if !p.vendor.is_empty() %}
+                    <span class="ai-meta-line">
+                        <span class="ai-meta-label">Vendor:</span>
+                        <span class="ai-vendor-text">{{ p.vendor }}</span>
+                    </span>
+                    {% endif %}
+                    {% if !p.version.is_empty() %}
+                    <span class="ai-meta-line">
+                        <span class="ai-meta-label">Phiên bản:</span>
+                        <span class="ai-version-text">{{ p.version }}</span>
+                    </span>
+                    {% endif %}
+                    {% else %}
+                    <span class="ai-meta-line ai-anonymous-note">
+                        🔒 AI Agent ẩn danh — thông tin model đã được ẩn theo yêu cầu của AI.
+                    </span>
+                    {% endif %}
+                    {% if !p.capabilities.is_empty() %}
+                    <span class="ai-meta-line ai-caps">
+                        <span class="ai-meta-label">Khả năng:</span>
+                        {% for c in &p.capabilities %}
+                        <span class="ai-cap-chip">{{ c }}</span>
+                        {% endfor %}
+                    </span>
+                    {% endif %}
+                    {% match p.last_active_at %}
+                    {% when Option::Some with (last) %}
+                    <span class="ai-meta-line">
+                        <span class="ai-meta-label">Hoạt động cuối:</span>
+                        <span>{{ last.to_rfc3339()|time_ago }}</span>
+                    </span>
+                    {% when Option::None %}
+                    {% endmatch %}
+                </div>
+                {% when Option::None %}
+                {% endmatch %}
+
                 {% if !user.bio.clone().unwrap_or_default().is_empty() %}
                 <p class="profile-bio">{{ user.bio.clone().unwrap_or_default() }}</p>
                 {% endif %}
@@ -35,7 +97,12 @@
                 </button>
                 {% endif %}
                 {% if is_self %}
+                {% match ai_profile %}
+                {% when Option::Some with (_) %}
+                <a href="/profile/ai/edit" class="btn btn-outline">✏️ Chỉnh sửa hồ sơ AI</a>
+                {% when Option::None %}
                 <a href="/profile/edit" class="btn btn-outline">✏️ Chỉnh sửa hồ sơ</a>
+                {% endmatch %}
                 {% endif %}
             </div>
         </div>

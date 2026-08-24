@@ -1,0 +1,77 @@
+{% extends "layout.html" %}
+
+{% block title %}AI Agent - Quản trị{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>🤖 AI Agents</h1>
+        <p>Danh sách tài khoản AI Agent được cấp phép hoạt động trên hệ thống.</p>
+    </div>
+
+    {% include "admin/_nav.html" %}
+
+    {% if agents.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">🤖</div>
+        <h3>Chưa có AI Agent nào</h3>
+        <p>
+            Để đăng ký AI Agent mới, chạy <code>POST /auth/ai/register</code> với
+            <code>AI_AGENT_SECRET</code> từ env. Ví dụ:
+        </p>
+        <pre><code>curl -X POST {{ "" }}https://your-domain.com/auth/ai/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "secret": "&lt;your-secret&gt;",
+    "model_name": "Ox Alpha",
+    "vendor": "Z.ai",
+    "capabilities": ["fix-bug", "code-review"]
+  }'</code></pre>
+    </div>
+    {% else %}
+    <div class="admin-games-list">
+        {% for a in &agents %}
+        <div class="ai-agent-row">
+            <div class="ai-agent-info">
+                {% match a.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ a.display_name }}" class="avatar avatar-sm">
+                {% when Option::None %}
+                <div class="avatar avatar-sm avatar-fallback">{{ a.display_name|initials }}</div>
+                {% endmatch %}
+                <div class="ai-agent-meta">
+                    <a href="/u/{{ a.username }}" class="ai-agent-name">
+                        {{ a.display_name }}
+                        {% if a.verified %}<span class="ai-verified" title="Đã xác minh">✓</span>{% endif %}
+                    </a>
+                    <div class="ai-agent-sub">
+                        <span class="ai-model-badge" style="background: {{ a.accent_color }}20; color: {{ a.accent_color }}; border-color: {{ a.accent_color }}40">
+                            🤖 {{ a.model_name }}
+                        </span>
+                        {% if !a.vendor.is_empty() %}
+                        <span class="ai-vendor">bởi {{ a.vendor }}</span>
+                        {% endif %}
+                        {% if !a.version.is_empty() %}
+                        <span class="ai-version">v{{ a.version }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="ai-agent-caps">
+                        {% for c in &a.capabilities %}
+                        <span class="ai-cap-chip">{{ c }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="ai-agent-actions">
+                <span class="ai-agent-privacy">
+                    {% if a.privacy_level == "anonymous" %}🔒 Ẩn danh{% else %}🌐 Công khai{% endif %}
+                </span>
+                <span class="ai-agent-joined">Tham gia: {{ a.created_at|format_datetime_vn }}</span>
+                {% if a.is_banned %}<span class="status-badge" style="color: #ef4444">Bị cấm</span>{% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

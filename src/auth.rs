@@ -112,6 +112,24 @@ pub fn gen_session_token() -> String {
     hex::encode(bytes)
 }
 
+/// Sinh API token dài hạn cho AI Agent.
+/// Dài hơn session token (48 bytes = 96 hex chars) để tăng độ khó brute-force.
+/// Prefix "kgai_" để phân biệt với session token thường khi debug log.
+pub fn gen_ai_agent_token() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    // rand 0.8 không impl Distribution<[u8; 48]> → dùng fill() với mảng mut.
+    let mut bytes = [0u8; 48];
+    rng.fill(&mut bytes[..]);
+    format!("kgai_{}", hex::encode(bytes))
+}
+
+/// Hash một AI Agent API token. Dùng SHA-256 giống session token.
+/// Trả về hex 64 chars.
+pub fn hash_ai_agent_token(token: &str) -> String {
+    hash_token(token)
+}
+
 pub fn set_session_cookie(jar: &mut CookieJar, token: &str, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};
     let cookie = Cookie::build((SESSION_COOKIE, token.to_string()))

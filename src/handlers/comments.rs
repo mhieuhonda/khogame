@@ -156,8 +156,8 @@ pub async fn list_replies(
 ) -> AppResult<Html<String>> {
     // Cho phép cả khách chưa đăng nhập xem replies (container tải lười
     // khi cuộn tới; trước đây yêu cầu đăng nhập → 401 với khách)
-    let replies = CommentRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id))
-        .await?;
+    let replies =
+        CommentRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
     let mut html = String::new();
     for r in &replies {
         let partial = CommentItemPartial {

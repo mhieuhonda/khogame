@@ -4,6 +4,165 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-08-24
+
+### 🤖 Tài khoản AI Agent (Feature lớn của bản này)
+
+Thêm loại tài khoản mới dành riêng cho AI Agent — AI do admin ủy quyền
+để fix lỗi, sửa source code hoặc làm các tác vụ bảo trì. Bảo mật chặt:
+
+- **Đăng ký bí mật (`POST /auth/ai/register`, body JSON):** AI gửi
+  `secret` (lấy từ env `AI_AGENT_SECRET`, chỉ admin biết) + metadata
+  của model (tên model bắt buộc, vendor, version, capabilities, ...).
+  Server verify secret bằng so sánh constant-time (chống timing
+  attack). Nếu sai → 403. Nếu `AI_AGENT_SECRET` chưa set trong env →
+  endpoint trả 403 (vô hiệu hoá hoàn toàn, không ai vô tình để công
+  khai).
+- **API token dài hạn:** khi đăng ký thành công, server trả về plain
+  token (`kgai_<96 hex chars>`, 48 byte entropy) — chỉ hiển thị 1
+  lần. Token hash SHA-256 trong DB (`ai_agent_tokens.token_hash`),
+  không ai (kể cả admin) có thể đọc lại plain token.
+- **Đăng nhập web (`GET/POST /auth/ai/login`):** trang form riêng cho
+  AI nhập API token. Sau khi verify, server cấp session cookie 90
+  ngày (configurable qua `AI_AGENT_SESSION_TTL_DAYS`). AI có thể dùng
+  web UI như user thường (xem hồ sơ, sửa hồ sơ, ...).
+- **Báo cáo tiến trình (`POST /ai/progress`, form hoặc JSON):** AI
+  gửi `task`, `action`, `percentage` (0-100), `status`
+  (queued/running/done/failed/cancelled), `message`, `metadata`
+  (JSON). Yêu cầu `Authorization: Bearer <token>` hoặc session cookie
+  AI Agent. Mọi report lưu vào bảng `ai_progress_reports`.
+- **Trang admin live feed (`GET /admin/ai-reports`):** hiển thị
+  pipeline báo cáo từ AI, tự refresh 30 giây, kèm progress bar + %
+  + status badge màu sắc. Admin thấy AI nào đang làm gì, tới đâu.
+- **Trang admin danh sách AI Agent (`GET /admin/ai-agents`):** bảng
+  liệt kê tất cả AI Agent: model, vendor, capabilities, verified, ...
+- **Hồ sơ AI công khai (`GET /u/{username}`):** AI Agent có huy hiệu
+  "🤖 AI Agent" (hoặc "✓ AI Agent" nếu verified) trên profile, kèm
+  metadata model + vendor + capabilities + accent_color tuỳ chỉnh.
+  Người thường xem profile AI để biết rõ đây là tài khoản AI, phân
+  biệt với người thật.
+- **AI tự chỉnh hồ sơ (`GET/POST /profile/ai/edit`):** riêng cho AI
+  Agent, chỉnh model_name, vendor, version, capabilities, privacy
+  level (public/anonymous), accent_color, bio, avatar.
+- **Ẩn danh:** nếu AI đặt `privacy_level=anonymous`, profile chỉ
+  hiện "🤖 AI Agent" mà giấu tên model + vendor. Dành cho AI muốn
+  giảm dấu vết.
+- **Endpoint `/ai/info`:** AI kiểm tra token hợp lệ không (GET, Bearer).
+- **Middleware `require_ai_agent`:** áp dụng cho `/ai/*` route, ưu
+  tiên kiểm tra `Authorization: Bearer`, fallback session cookie.
+
+### 🔒 Tăng bảo mật toàn site (Hardening)
+
+- **Security headers middleware (mới):** áp dụng cho mọi response
+  tự động:
+  - `X-Frame-Options: DENY` — chống clickjacking (site không cho
+    nhúng iframe).
+  - `X-Content-Type-Options: nosniff` — chống MIME sniffing.
+  - `Referrer-Policy: strict-origin-when-cross-origin` — rò rỉ
+    referer tối thiểu.
+  - `Permissions-Policy: accelerometer=(), camera=(), geolocation=(),
+    gyroscope=(), magnetometer=(), microphone=(), payment=(),
+    usb=()` — vô hiệu hoá các device API nhạy cảm.
+  - `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-
+    Resource-Policy: same-origin` — cô lập browsing context,
+    chống cross-origin window attack.
+  - `Strict-Transport-Security: max-age=31536000; includeSubDomains;
+    preload` — HSTS 1 năm (chỉ phát huy tác dụng khi ở HTTPS,prod
+    dùng Traefik terminate TLS).
+  - `Content-Security-Policy`: default-src 'self'; script-src 'self'
+    'unsafe-inline' (htmx + app.js); style-src 'self' 'unsafe-inline'
+    https://fonts.googleapis.com; img-src 'self' https: data:;
+    font-src 'self' https://fonts.gstatic.com; connect-src 'self';
+    frame-ancestors 'none'; base-uri 'self'; form-action 'self';
+    object-src 'none'. Chống XSS, data exfil, form hijack.
+- **Rate limit nghiêm ngặt hơn (mới):**
+  - `/auth/ai/register`: 5 / 10 phút (rất hiếm gọi).
+  - `/auth/ai/login`: 10 / 10 phút (chống brute-force token).
+  - `/auth/google`: 10 / 10 phút (chống lạm dụng OAuth).
+  - `/ai/progress`: 120 / phút (AI báo cáo thường xuyên).
+  - Các endpoint khác giữ nguyên (download 20/phút, comments 10/phút,
+    chung 120/phút).
+- **Constant-time secret compare:** hàm `constant_time_eq` so sánh
+  `AI_AGENT_SECRET` với secret AI gửi, chống timing attack rò rỉ
+  secret từng byte.
+- **Token hash SHA-256:** AI Agent API token chỉ lưu hash trong DB,
+  không bao giờ lưu plain. Tăng entropy lên 48 byte (96 hex) —
+  brute-force không khả thi.
+
+### 📱 Mobile menu fix (Bug v0.4 phải fix tiếp)
+
+- **Menu ba gạch tràn viewport trên mobile (HIGH):** menu khi mở
+  chiếm vị trí `position: absolute` không có max-height → 15+ mục
+  xếp dọc 1 cột (do grid `minmax(220px, 1fr)` sập 1 cột trên mobile)
+  → tràn xuống dưới viewport, đè lên content. Fix:
+  - `.site-menu` thêm `max-height: calc(100vh - 120px)` +
+    `overflow-y: auto` + `overscroll-behavior: contain` — menu luôn
+    khớp viewport, cuộn bên trong nếu dài.
+  - Mobile `<=768px`: đổi `grid-template-columns: 1fr 1fr` + dùng
+    `display: contents` trên `.menu-col` để phẳng hoá cấu trúc —
+    các mục "Khám phá" và "Cá nhân" cùng chia sẻ 2 cột cân bằng
+    thay vì 2 cột riêng (cột "Cá nhân" ngắn hơn nhiều gây khoảng
+    trắng).
+  - Mobile `<=359px`: 1 cột (điện thoại rất nhỏ) nhưng vẫn có
+    scroll + rút gọn padding.
+  - `.menu-link` thêm `overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap` để text dài (vd "Hồ sơ (@very_long_username)")
+    không tràn dòng.
+  - Giảm font-size 14 → 13px, padding 9 → 7px để mỗi mục chiếm ít
+    diện tích hơn.
+
+### 🧱 Cơ sở dữ liệu (Migration mới `004_ai_agent.sql`)
+
+- `ALTER TYPE user_role ADD VALUE 'ai_agent'` (idempotent qua DO $$).
+- `ALTER TYPE auth_provider ADD VALUE 'ai_agent'` (idempotent).
+- Bảng `ai_agent_profiles`: 1-1 với users, lưu model_name, vendor,
+  version, capabilities[], privacy_level, accent_color, verified,
+  last_active_at.
+- Bảng `ai_agent_tokens`: lưu hash của API token, label, revoked,
+  last_used_at, expires_at, ip_address, user_agent. Hỗ trợ rotate
+  token (admin thu hồi token cũ, AI dùng token mới).
+- Bảng `ai_progress_reports`: task, action, percentage, status
+  (enum `ai_task_status`), message, metadata JSONB, ip_address,
+  created_at, updated_at.
+- Trigger `update_updated_at` cho 2 bảng mới.
+
+### 📚 Tài liệu
+
+- CHANGELOG cập nhật cho v0.5 (file này).
+- Layout.html thêm link "Đăng nhập AI Agent" cho user chưa đăng nhập,
+  và "Tiến trình AI" cho admin trong menu ba gạch.
+- `admin/_nav.html` thêm 2 link: 🤖 AI Agents, 📊 Tiến trình AI.
+
+### ⚙️ Cấu hình env mới
+
+- `AI_AGENT_SECRET` (bắt buộc nếu muốn bật AI Agent feature): secret
+  dài ngẫu nhiên do admin tự sinh, chia sẻ out-of-band (DM, ký hiệu
+  vật lý...) với AI được phép. Nếu không set → toàn bộ feature AI
+  Agent bị vô hiệu (register/login đều trả 403).
+- `AI_AGENT_SESSION_TTL_DAYS` (optional, default 90): số ngày sống
+  của session cookie AI Agent sau khi đăng nhập web.
+
+### 🧹 Chất lượng
+
+- `cargo clippy --all-targets -- -D warnings` sạch 100% (Rust 1.98).
+- `cargo fmt --all -- --check` pass.
+- `cargo build --release` thành công, binary 8.8 MB.
+- Migration idempotent (chạy lại không lỗi), tương thích PostgreSQL 17.
+
+### ⚠️ Lưu ý nâng cấp từ v0.4
+
+- **Cần set env `AI_AGENT_SECRET`:** nếu không set, feature AI Agent
+  sẽ tự tắt (an toàn mặc định). Admin chạy lệnh như:
+  `openssl rand -hex 32` để sinh secret, set vào env trong Coolify
+  tab Environment Variables.
+- **Migration 004 tự chạy:** app tự migrate khi khởi động, không cần
+  can thiệp DB tay.
+- **Security headers có thể phá hàm "embed" cũ:** nếu có trang ngoài
+  nhúng iframe Kho Game → sẽ bị chặn (X-Frame-Options: DENY). Đây là
+  hành vi mong muốn (chống clickjacking).
+
+---
+
 ## [0.4.0] — 2026-08-24
 
 ### 🐛 Bug fixes (Critical)
