@@ -416,4 +416,52 @@ mod tests {
         assert!(!is_safe_url("//evil.com/x")); // protocol-relative
         assert!(!is_safe_url("javascript:")); // rỗng sau scheme
     }
+
+    #[test]
+    fn test_time_ago_future() {
+        // Thời điểm trong tương lai (đồng hồ lệch) → vẫn trả "vừa xong"
+        // thay vì giá trị âm kỳ quặc.
+        let future = chrono::Utc::now() + chrono::Duration::seconds(60);
+        assert_eq!(time_ago(future), "vừa xong");
+    }
+
+    #[test]
+    fn test_time_ago_past() {
+        let now = chrono::Utc::now();
+        assert_eq!(time_ago(now), "vừa xong");
+        // 2 phút trước
+        let two_mins = now - chrono::Duration::minutes(2);
+        let s = time_ago(two_mins);
+        assert!(s.contains("phút trước"), "got: {}", s);
+        // 3 giờ trước
+        let three_hours = now - chrono::Duration::hours(3);
+        let s = time_ago(three_hours);
+        assert!(s.contains("giờ trước"), "got: {}", s);
+        // 5 ngày trước
+        let five_days = now - chrono::Duration::days(5);
+        let s = time_ago(five_days);
+        assert!(s.contains("ngày trước"), "got: {}", s);
+    }
+
+    #[test]
+    fn test_make_unique_slug_unicode() {
+        // Tiếng Việt có dấu → slug không dấu
+        assert_eq!(make_unique_slug("Hello Việt Nam", 0), "hello-viet-nam");
+        assert_eq!(make_unique_slug("Hà Nội", 0), "ha-noi");
+        // Ký tự đặc biệt → bị loại bỏ, chỉ còn chữ và số
+        let slug = make_unique_slug("Game!!! @#$", 0);
+        assert!(
+            slug == "game" || slug.starts_with("game"),
+            "expected 'game' prefix, got: {}",
+            slug
+        );
+    }
+
+    #[test]
+    fn test_html_escape_quotes() {
+        // Đảm bảo escape cả dấu nháy đơn và kép để chống XSS qua attribute
+        let s = html_escape(r#"<a href="x" title='y'>"#);
+        assert!(s.contains("&lt;a href=&quot;x&quot;"));
+        assert!(s.contains("title=&#x27;y&#x27;"));
+    }
 }
