@@ -769,24 +769,36 @@ pub async fn save_settings(
     if !user.role.is_admin() {
         return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
     }
+    // Validate độ dài các trường text để chống lạm dụng (DB field là TEXT,
+    // không có length limit, admin có thể vô tình paste payload lớn).
+    let site_name = form.site_name.as_deref().unwrap_or("Kho Game").trim();
+    if site_name.chars().count() > 100 {
+        return Err(AppError::BadRequest("Tên site tối đa 100 ký tự".into()));
+    }
+    let site_description = form.site_description.as_deref().unwrap_or("").trim();
+    if site_description.chars().count() > 500 {
+        return Err(AppError::BadRequest("Mô tả site tối đa 500 ký tự".into()));
+    }
+    let announcement = form.announcement.as_deref().unwrap_or("").trim();
+    if announcement.chars().count() > 500 {
+        return Err(AppError::BadRequest("Announcement tối đa 500 ký tự".into()));
+    }
+    let footer_text = form.footer_text.as_deref().unwrap_or("").trim();
+    if footer_text.chars().count() > 500 {
+        return Err(AppError::BadRequest("Footer text tối đa 500 ký tự".into()));
+    }
+    // Validate announcement_type phải là một trong các giá trị hợp lệ
+    let announcement_type = form
+        .announcement_type
+        .as_deref()
+        .filter(|s| matches!(*s, "info" | "success" | "warning" | "danger"))
+        .unwrap_or("info");
     let uid = user.id;
     async fn set(state: &AppState, uid: Uuid, k: &str, v: &str) -> AppResult<()> {
         SettingsRepo::set(&state.db, k, v, Some(uid)).await
     }
-    set(
-        &state,
-        uid,
-        "site_name",
-        form.site_name.as_deref().unwrap_or("Kho Game").trim(),
-    )
-    .await?;
-    set(
-        &state,
-        uid,
-        "site_description",
-        form.site_description.as_deref().unwrap_or("").trim(),
-    )
-    .await?;
+    set(&state, uid, "site_name", site_name).await?;
+    set(&state, uid, "site_description", site_description).await?;
     set(
         &state,
         uid,
@@ -798,27 +810,9 @@ pub async fn save_settings(
         },
     )
     .await?;
-    set(
-        &state,
-        uid,
-        "announcement",
-        form.announcement.as_deref().unwrap_or("").trim(),
-    )
-    .await?;
-    set(
-        &state,
-        uid,
-        "announcement_type",
-        form.announcement_type.as_deref().unwrap_or("info"),
-    )
-    .await?;
-    set(
-        &state,
-        uid,
-        "footer_text",
-        form.footer_text.as_deref().unwrap_or("").trim(),
-    )
-    .await?;
+    set(&state, uid, "announcement", announcement).await?;
+    set(&state, uid, "announcement_type", announcement_type).await?;
+    set(&state, uid, "footer_text", footer_text).await?;
     set(
         &state,
         uid,
