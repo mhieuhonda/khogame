@@ -4,6 +4,7 @@ use crate::repositories::{CategoryRepo, GameRepo, RepoRepo, SettingsRepo, TagRep
 use crate::state::AppState;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::header;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
@@ -293,7 +294,10 @@ pub async fn check_duplicate(
 
 // ===================== SEO: RSS, Sitemap, robots =====================
 
-pub async fn rss(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+pub async fn rss(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> AppResult<Response> {
     let games = GameRepo::latest_for_rss(&state.db, 20).await?;
     let base = &state.config.base_url;
     let mut items = String::new();
@@ -339,6 +343,16 @@ pub async fn rss(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     // ETag đơn giản dựa trên hash nội dung — client gửi If-None-Match khớp
     // → server trả 304 Not Modified, không cần chuyển payload XML.
     let etag = format!("\"{}\"", short_hash(&xml));
+    if etag_matches(&headers, &etag) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=600"),
+            ],
+        )
+            .into_response());
+    }
     Ok((
         [
             (header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
@@ -350,7 +364,10 @@ pub async fn rss(State(state): State<Arc<AppState>>) -> AppResult<Response> {
         .into_response())
 }
 
-pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+pub async fn sitemap(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> AppResult<Response> {
     let base = &state.config.base_url;
     let mut urls = String::new();
     urls.push_str(&format!(
@@ -411,6 +428,16 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
         urls
     );
     let etag = format!("\"{}\"", short_hash(&xml));
+    if etag_matches(&headers, &etag) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=600"),
+            ],
+        )
+            .into_response());
+    }
     Ok((
         [
             (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
@@ -420,6 +447,21 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
         xml,
     )
         .into_response())
+}
+
+/// So sánh ETag server với If-None-Match header của client.
+/// Hỗ trợ wildcard `*` (luôn khớp) và danh sách ETag cách nhau bởi `,`.
+fn etag_matches(headers: &axum::http::HeaderMap, etag: &str) -> bool {
+    let Some(inm) = headers
+        .get(header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+    if inm.trim() == "*" {
+        return true;
+    }
+    inm.split(',').any(|e| e.trim() == etag)
 }
 
 /// Hash ngắn (16 hex chars) cho ETag. Dùng xxHash sẽ nhanh hơn nhưng
@@ -633,3 +675,55 @@ pub async fn game_related(
 }
 
 // ===================== Maintenance page dùng nội bộ =====================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderMap;
+
+    #[test]
+    fn test_etag_matches_exact() {
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, "\"abc123\"".parse().unwrap());
+        assert!(etag_matches(&h, "\"abc123\""));
+        assert!(!etag_matches(&h, "\"different\""));
+    }
+
+    #[test]
+    fn test_etag_matches_wildcard() {
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, "*".parse().unwrap());
+        assert!(etag_matches(&h, "\"anything\""));
+    }
+
+    #[test]
+    fn test_etag_matches_list() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            header::IF_NONE_MATCH,
+            "\"etag1\", \"etag2\", \"etag3\"".parse().unwrap(),
+        );
+        assert!(etag_matches(&h, "\"etag2\""));
+        assert!(!etag_matches(&h, "\"etag4\""));
+    }
+
+    #[test]
+    fn test_etag_matches_missing_header() {
+        let h = HeaderMap::new();
+        assert!(!etag_matches(&h, "\"abc\""));
+    }
+
+    #[test]
+    fn test_short_hash_deterministic() {
+        // Hash phải deterministic cho cùng input
+        let h1 = short_hash("hello world");
+        let h2 = short_hash("hello world");
+        assert_eq!(h1, h2);
+        // Input khác → hash khác
+        let h3 = short_hash("hello world!");
+        assert_ne!(h1, h3);
+        // Đúng 16 hex chars
+        assert_eq!(h1.len(), 16);
+        assert!(h1.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+}
