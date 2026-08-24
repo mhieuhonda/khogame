@@ -247,6 +247,17 @@ pub fn sanitize_redirect(s: &str) -> String {
     }
 }
 
+/// Validate một URL là http(s) — chống javascript:/data:/file: scheme
+/// nguy hiểm khi dùng URL làm href hoặc src trong HTML. Trả về true nếu
+/// URL rỗng (không bắt buộc) hoặc là http(s)://.
+pub fn is_safe_url(url: &str) -> bool {
+    if url.is_empty() {
+        return true;
+    }
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("http://") || lower.starts_with("https://")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,5 +398,22 @@ mod tests {
         assert_eq!(format_number_i64(1000), "1.0K");
         // Lớn
         assert_eq!(format_number_i64(2_500_000_000), "2.5B");
+    }
+
+    #[test]
+    fn test_is_safe_url() {
+        // URL rỗng → an toàn (không bắt buộc)
+        assert!(is_safe_url(""));
+        // http(s) → an toàn
+        assert!(is_safe_url("http://example.com/img.png"));
+        assert!(is_safe_url("https://example.com/img.png"));
+        assert!(is_safe_url("HTTPS://EXAMPLE.COM/X")); // case-insensitive
+                                                       // Scheme nguy hiểm → không an toàn
+        assert!(!is_safe_url("javascript:alert(1)"));
+        assert!(!is_safe_url("data:text/html,<script>alert(1)</script>"));
+        assert!(!is_safe_url("file:///etc/passwd"));
+        assert!(!is_safe_url("vbscript:msgbox"));
+        assert!(!is_safe_url("//evil.com/x")); // protocol-relative
+        assert!(!is_safe_url("javascript:")); // rỗng sau scheme
     }
 }

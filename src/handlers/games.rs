@@ -105,6 +105,26 @@ pub async fn create_game(
     if form.content.trim().is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
+    // Validate cover_image: chỉ http/https (chống javascript: src dù
+    // browser không execute JS cho <img src> thì vẫn chống tracking pixel
+    // và scheme lạ).
+    if !crate::utils::is_safe_url(&form.cover_image) {
+        return Err(AppError::BadRequest(
+            "Cover image URL phải là http:// hoặc https://".into(),
+        ));
+    }
+    if form.cover_image.len() > 2048 {
+        return Err(AppError::BadRequest(
+            "Cover image URL quá dài (tối đa 2048 ký tự)".into(),
+        ));
+    }
+    // Validate trailer_url: chỉ http/https (filter youtube_embed sẽ
+    // trích ID YouTube an toàn, nhưng vẫn nên chặn scheme lạ sớm).
+    if !crate::utils::is_safe_url(&form.trailer_url) {
+        return Err(AppError::BadRequest(
+            "Trailer URL phải là http:// hoặc https://".into(),
+        ));
+    }
     // Validate các link tải: chỉ cho phép http/https để chống XSS qua
     // javascript: scheme. HTMX có HX-Redirect sẽ làm window.location = url,
     // nếu url là javascript:alert(1) sẽ execute JS trong context user.
@@ -431,6 +451,21 @@ pub async fn update_game(
     }
     if form.title.chars().count() > 200 {
         return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
+    }
+    if !crate::utils::is_safe_url(&form.cover_image) {
+        return Err(AppError::BadRequest(
+            "Cover image URL phải là http:// hoặc https://".into(),
+        ));
+    }
+    if form.cover_image.len() > 2048 {
+        return Err(AppError::BadRequest(
+            "Cover image URL quá dài (tối đa 2048 ký tự)".into(),
+        ));
+    }
+    if !crate::utils::is_safe_url(&form.trailer_url) {
+        return Err(AppError::BadRequest(
+            "Trailer URL phải là http:// hoặc https://".into(),
+        ));
     }
     for (label, url) in [
         ("Android", form.android_link.as_deref()),
