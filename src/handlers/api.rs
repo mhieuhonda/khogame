@@ -595,4 +595,41 @@ pub async fn user_profile(
     Ok(([(header::CACHE_CONTROL, "public, max-age=120")], Json(body)).into_response())
 }
 
+/// Game liên quan — cùng category (hoặc top downloads nếu không có
+/// category). Lợi cho sidebar "Related games" ở client bên ngoài.
+pub async fn game_related(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+) -> AppResult<Response> {
+    let g = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let related = GameRepo::related(&state.db, g.id, g.category_id, 10).await?;
+    let data: Vec<serde_json::Value> = related
+        .iter()
+        .map(|g| {
+            serde_json::json!({
+                "slug": g.slug,
+                "title": g.title,
+                "excerpt": g.excerpt,
+                "cover_image": g.cover_image,
+                "category": g.category_name,
+                "category_slug": g.category_slug,
+                "author": g.author_name,
+                "platforms": g.platforms,
+                "view_count": g.view_count,
+                "download_count": g.download_count,
+                "like_count": g.like_count,
+                "rating_avg": g.rating_avg_f64(),
+                "rating_count": g.rating_count,
+            })
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(serde_json::json!({"data": data})),
+    )
+        .into_response())
+}
+
 // ===================== Maintenance page dùng nội bộ =====================

@@ -291,6 +291,7 @@ mod tests {
 
     #[test]
     fn test_extract_youtube_id() {
+        // Các định dạng URL phổ biến
         assert_eq!(
             extract_youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
             Some("dQw4w9WgXcQ".into())
@@ -299,7 +300,26 @@ mod tests {
             extract_youtube_id("https://youtu.be/abc123"),
             Some("abc123".into())
         );
+        assert_eq!(
+            extract_youtube_id("https://www.youtube.com/embed/dQw4w9WgXcQ"),
+            Some("dQw4w9WgXcQ".into())
+        );
+        assert_eq!(
+            extract_youtube_id("https://www.youtube.com/shorts/XYZ789_-"),
+            Some("XYZ789_-".into())
+        );
+        // URL có query param khác đi kèm
+        assert_eq!(
+            extract_youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s&feature=share"),
+            Some("dQw4w9WgXcQ".into())
+        );
+        // URL rỗng / không hợp lệ
         assert_eq!(extract_youtube_id(""), None);
+        assert_eq!(extract_youtube_id("https://example.com"), None);
+        assert_eq!(
+            extract_youtube_id("https://youtube.com/watch?v="),
+            None // ID rỗng sau v=
+        );
     }
 
     #[test]
