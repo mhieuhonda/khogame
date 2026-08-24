@@ -674,6 +674,107 @@ pub async fn game_related(
         .into_response())
 }
 
+/// Liệt kê game theo thể loại — JSON API cho client bên ngoài lọc game
+/// theo category mà không cần cào trang HTML.
+pub async fn games_by_category(
+    State(state): State<Arc<AppState>>,
+    Path(cat_slug): Path<String>,
+    Query(q): Query<ApiListQuery>,
+) -> AppResult<Response> {
+    let cat = CategoryRepo::find_by_slug(&state.db, &cat_slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Thể loại không tồn tại".into()))?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 24;
+    let offset = (page - 1) * per_page;
+    let games = GameRepo::by_category(&state.db, &cat_slug, per_page, offset).await?;
+    let total = GameRepo::count_by_category(&state.db, &cat_slug)
+        .await
+        .unwrap_or(0);
+    let data: Vec<serde_json::Value> = games
+        .iter()
+        .map(|g| {
+            serde_json::json!({
+                "slug": g.slug,
+                "title": g.title,
+                "excerpt": g.excerpt,
+                "cover_image": g.cover_image,
+                "category": g.category_name,
+                "category_slug": g.category_slug,
+                "author": g.author_name,
+                "platforms": g.platforms,
+                "view_count": g.view_count,
+                "download_count": g.download_count,
+                "like_count": g.like_count,
+                "rating_avg": g.rating_avg_f64(),
+                "rating_count": g.rating_count,
+                "published_at": g.published_at.map(|d| d.to_rfc3339()),
+            })
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(serde_json::json!({
+            "category": {"slug": cat.slug, "name": cat.name},
+            "data": data,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        })),
+    )
+        .into_response())
+}
+
+/// Liệt kê game theo tag — JSON API cho client bên ngoài.
+pub async fn games_by_tag(
+    State(state): State<Arc<AppState>>,
+    Path(tag_slug): Path<String>,
+    Query(q): Query<ApiListQuery>,
+) -> AppResult<Response> {
+    let tag = TagRepo::find_by_slug(&state.db, &tag_slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tag không tồn tại".into()))?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 24;
+    let offset = (page - 1) * per_page;
+    let games = GameRepo::by_tag(&state.db, &tag_slug, per_page, offset).await?;
+    let total = GameRepo::count_by_tag(&state.db, &tag_slug)
+        .await
+        .unwrap_or(0);
+    let data: Vec<serde_json::Value> = games
+        .iter()
+        .map(|g| {
+            serde_json::json!({
+                "slug": g.slug,
+                "title": g.title,
+                "excerpt": g.excerpt,
+                "cover_image": g.cover_image,
+                "category": g.category_name,
+                "category_slug": g.category_slug,
+                "author": g.author_name,
+                "platforms": g.platforms,
+                "view_count": g.view_count,
+                "download_count": g.download_count,
+                "like_count": g.like_count,
+                "rating_avg": g.rating_avg_f64(),
+                "rating_count": g.rating_count,
+                "published_at": g.published_at.map(|d| d.to_rfc3339()),
+            })
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(serde_json::json!({
+            "tag": {"slug": tag.slug, "name": tag.name},
+            "data": data,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+        })),
+    )
+        .into_response())
+}
+
 // ===================== Maintenance page dùng nội bộ =====================
 
 #[cfg(test)]
