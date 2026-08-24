@@ -13,7 +13,7 @@
 
 | Thành phần | Công nghệ |
 |-----------|-----------|
-| Ngôn ngữ | Rust 1.98 (edition 2021) |
+| Ngôn ngữ | Rust 1.98  |
 | Web framework | Axum 0.8.9 + axum-extra 0.12 |
 | Template engine | Askama 0.16 |
 | Frontend interactivity | HTMX 2.0.10 (self-hosted) |
