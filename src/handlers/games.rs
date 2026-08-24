@@ -75,39 +75,21 @@ pub async fn home(
     })
 }
 
-// ============= New game form =============
-pub async fn new_game_form(
-    State(state): State<Arc<AppState>>,
-    AuthUser(user): AuthUser,
-) -> AppResult<NewGameTemplate> {
-    let categories = CategoryRepo::list_all(&state.db).await?;
-    let unread = unread_count(&state, user.id).await;
-    Ok(NewGameTemplate {
-        current_user: Some(user),
-        unread_notifications: unread,
-        categories,
-    })
-}
-
-// ============= Create game =============
-pub async fn create_game(
-    State(state): State<Arc<AppState>>,
-    AuthUser(user): AuthUser,
-    Form(form): Form<GameForm>,
-) -> AppResult<Redirect> {
+/// Validate tất cả URL trong GameForm — dùng chung cho create_game và
+/// update_game để tránh lặp code. Bao gồm:
+/// - 5 link tải (Android, iOS, Windows, Linux, macOS) — chỉ http(s),
+///   ≤ 2048 ký tự, chống XSS qua `javascript:` khi HTMX HX-Redirect.
+/// - cover_image và trailer_url — chỉ http(s), ≤ 2048 ký tự.
+/// - screenshot URLs (mỗi dòng 1 URL) — chỉ http(s), ≤ 2048 ký tự.
+/// - title ≤ 200 ký tự (được dùng làm slug + hiển thị).
+/// - tag count ≤ 20, mỗi tag ≤ 50 ký tự (chống lạm dụng).
+fn validate_game_form(form: &GameForm) -> AppResult<()> {
     if form.title.trim().is_empty() {
         return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
     }
-    // Giới hạn độ dài để chống lạm dụng (title được dùng làm slug + hiển thị)
     if form.title.chars().count() > 200 {
         return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
     }
-    if form.content.trim().is_empty() {
-        return Err(AppError::BadRequest("Nội dung không được để trống".into()));
-    }
-    // Validate cover_image: chỉ http/https (chống javascript: src dù
-    // browser không execute JS cho <img src> thì vẫn chống tracking pixel
-    // và scheme lạ).
     if !crate::utils::is_safe_url(&form.cover_image) {
         return Err(AppError::BadRequest(
             "Cover image URL phải là http:// hoặc https://".into(),
@@ -118,16 +100,41 @@ pub async fn create_game(
             "Cover image URL quá dài (tối đa 2048 ký tự)".into(),
         ));
     }
-    // Validate trailer_url: chỉ http/https (filter youtube_embed sẽ
-    // trích ID YouTube an toàn, nhưng vẫn nên chặn scheme lạ sớm).
     if !crate::utils::is_safe_url(&form.trailer_url) {
         return Err(AppError::BadRequest(
             "Trailer URL phải là http:// hoặc https://".into(),
         ));
     }
-    // Validate các link tải: chỉ cho phép http/https để chống XSS qua
-    // javascript: scheme. HTMX có HX-Redirect sẽ làm window.location = url,
-    // nếu url là javascript:alert(1) sẽ execute JS trong context user.
+    // Validate screenshots (mỗi dòng 1 URL)
+    for (i, line) in form.screenshots.lines().enumerate() {
+        let url = line.trim();
+        if url.is_empty() {
+            continue;
+        }
+        if !crate::utils::is_safe_url(url) {
+            return Err(AppError::BadRequest(format!(
+                "Screenshot #{} URL phải là http:// hoặc https://",
+                i + 1
+            )));
+        }
+        if url.len() > 2048 {
+            return Err(AppError::BadRequest(format!(
+                "Screenshot #{} URL quá dài (tối đa 2048 ký tự)",
+                i + 1
+            )));
+        }
+    }
+    // Validate tag count & length
+    let tags_vec = form.tags_vec();
+    if tags_vec.len() > 20 {
+        return Err(AppError::BadRequest("Tối đa 20 tag mỗi game".into()));
+    }
+    for t in &tags_vec {
+        if t.chars().count() > 50 {
+            return Err(AppError::BadRequest("Mỗi tag tối đa 50 ký tự".into()));
+        }
+    }
+    // Validate 5 link tải — chỉ http(s), ≤ 2048 ký tự
     for (label, url) in [
         ("Android", form.android_link.as_deref()),
         ("iOS", form.ios_link.as_deref()),
@@ -150,6 +157,33 @@ pub async fn create_game(
                 )));
             }
         }
+    }
+    Ok(())
+}
+
+// ============= New game form =============
+pub async fn new_game_form(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<NewGameTemplate> {
+    let categories = CategoryRepo::list_all(&state.db).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(NewGameTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        categories,
+    })
+}
+
+// ============= Create game =============
+pub async fn create_game(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<GameForm>,
+) -> AppResult<Redirect> {
+    validate_game_form(&form)?;
+    if form.content.trim().is_empty() {
+        return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
     if form
         .android_link
@@ -444,52 +478,8 @@ pub async fn update_game(
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
     }
-    // Validate tương tự create_game: title không rỗng, không quá dài,
-    // link tải chỉ http/https (chống javascript: XSS qua HX-Redirect).
-    if form.title.trim().is_empty() {
-        return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
-    }
-    if form.title.chars().count() > 200 {
-        return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
-    }
-    if !crate::utils::is_safe_url(&form.cover_image) {
-        return Err(AppError::BadRequest(
-            "Cover image URL phải là http:// hoặc https://".into(),
-        ));
-    }
-    if form.cover_image.len() > 2048 {
-        return Err(AppError::BadRequest(
-            "Cover image URL quá dài (tối đa 2048 ký tự)".into(),
-        ));
-    }
-    if !crate::utils::is_safe_url(&form.trailer_url) {
-        return Err(AppError::BadRequest(
-            "Trailer URL phải là http:// hoặc https://".into(),
-        ));
-    }
-    for (label, url) in [
-        ("Android", form.android_link.as_deref()),
-        ("iOS", form.ios_link.as_deref()),
-        ("Windows", form.windows_link.as_deref()),
-        ("Linux", form.linux_link.as_deref()),
-        ("macOS", form.macos_link.as_deref()),
-    ] {
-        if let Some(u) = url.filter(|s| !s.is_empty()) {
-            let lower = u.to_ascii_lowercase();
-            if !(lower.starts_with("http://") || lower.starts_with("https://")) {
-                return Err(AppError::BadRequest(format!(
-                    "Link tải {} phải là http:// hoặc https://",
-                    label
-                )));
-            }
-            if u.len() > 2048 {
-                return Err(AppError::BadRequest(format!(
-                    "Link tải {} quá dài (tối đa 2048 ký tự)",
-                    label
-                )));
-            }
-        }
-    }
+    // Validate tất cả URL & length — dùng chung với create_game
+    validate_game_form(&form)?;
 
     GameRepo::update(&state.db, game.id, &form).await?;
     Ok(Redirect::to(&format!("/games/{}", slug)))
