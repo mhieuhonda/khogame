@@ -331,6 +331,7 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
         base
     ));
     for page in [
+        "/games",
         "/games/latest",
         "/games/trending",
         "/games/top-rated",
