@@ -126,20 +126,25 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
             -H "Content-Type: application/json" --max-time 30)
           echo "$RESP"
-          echo "deployment_uuid=$(echo "$RESP" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("deployment_uuid",""))')" >> "$GITHUB_OUTPUT"
+          # Format response: {"deployments":[{"message":"Service ... started", ...}]}
+          QUEUED=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("deployments") else "no")')
+          echo "queued=$QUEUED" >> "$GITHUB_OUTPUT"
 
-      - name: Chờ Coolify deploy xong (tối đa ~12 phút)
-        if: steps.trigger.outputs.deployment_uuid != ''
+      - name: Chờ stack healthy (tối đa ~12 phút)
+        if: steps.trigger.outputs.queued == 'yes'
         run: |
-          UUID="${{ steps.trigger.outputs.deployment_uuid }}"
           for i in $(seq 1 24); do
             sleep 30
-            STATUS=$(curl -fsS "${{ secrets.COOLIFY_URL }}/api/v1/deployments/$UUID" \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))' || echo "?")
-            echo "[$i] deployment status: $STATUS"
+            STATUS=$(curl -fsS "${{ secrets.COOLIFY_URL }}/api/v1/services/${{ secrets.COOLIFY_SERVICE_UUID }}" \
+              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' || echo "?")
+            echo "[$i] service status: $STATUS"
             case "$STATUS" in
-              finished) echo "::notice::Deploy thành công"; exit 0 ;;
-              failed|cancelled) echo "::error::Deploy thất bại ($STATUS)"; exit 1 ;;
+              running:healthy)
+                echo "::notice::Deploy thành công — stack running:healthy"
+                curl -fsS --max-time 15 "https://louis.vangioitutien.com/api/v1/health" && echo
+                exit 0 ;;
+              failed|cancelled) echo "::error::Stack ở trạng thái $STATUS"; exit 1 ;;
             esac
           done
           echo "::warning::Hết thời gian chờ — kiểm tra tiếp trên Coolify dashboard"
