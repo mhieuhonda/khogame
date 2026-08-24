@@ -202,7 +202,15 @@ pub async fn rate_limit(
     next: Next,
 ) -> Result<Response, StatusCode> {
     let path = request.uri().path().to_string();
-    let ip = client_ip_from_parts(request.headers(), None);
+    // Lấy IP thật của client qua ConnectInfo (được axum thêm vào request
+    // extensions khi dùng into_make_service_with_connect_info). Nếu chạy sau
+    // proxy (Traefik/Coolify), ưu tiên header X-Forwarded-For / X-Real-IP /
+    // CF-Connecting-IP do proxy đặt. Nếu không có proxy, dùng IP TCP gốc.
+    let connect_info = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .copied();
+    let ip = client_ip_from_parts(request.headers(), connect_info.map(|ci| ci.0).as_ref());
     // Tăng giới hạn nghiêm ngặt cho các endpoint AI Agent & auth để
     // chống brute-force token hoặc spam progress.
     // - /auth/ai/register: 5 / 10 phút (rất hiếm, chỉ AI admin mới gọi)

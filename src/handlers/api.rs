@@ -1,8 +1,6 @@
 use crate::error::{AppError, AppResult};
-use crate::middleware::{AuthUser, CurrentUser};
-use crate::repositories::{
-    CategoryRepo, CommentRepo, GameRepo, RepoRepo, SettingsRepo, StatsRepo, UserRepo,
-};
+use crate::middleware::AuthUser;
+use crate::repositories::{CategoryRepo, GameRepo, RepoRepo, SettingsRepo, TagRepo, UserRepo};
 use crate::state::AppState;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::header;
@@ -105,6 +103,14 @@ pub async fn game_detail(
     let links = GameRepo::get_links(&state.db, g.id).await?;
     let tags = GameRepo::get_tags(&state.db, g.id).await?;
     let author = UserRepo::find_by_id(&state.db, g.user_id).await?;
+    // Lấy thêm category & screenshots để API public đầy đủ hơn (trước đây
+    // API thiếu các trường này, khiến client phải gọi thêm nhiều endpoint).
+    let category = if let Some(cat_id) = g.category_id {
+        CategoryRepo::find_by_id(&state.db, cat_id).await?
+    } else {
+        None
+    };
+    let screenshots = GameRepo::get_screenshots(&state.db, g.id).await?;
     let body = serde_json::json!({
         "id": g.id,
         "slug": g.slug,
@@ -119,6 +125,10 @@ pub async fn game_detail(
         "languages": g.languages,
         "trailer_url": g.trailer_url,
         "cover_image": g.cover_image,
+        "category": category.as_ref().map(|c| serde_json::json!({
+            "slug": c.slug,
+            "name": c.name,
+        })),
         "author": author.map(|u| serde_json::json!({
             "username": u.username,
             "display_name": u.display_name,
@@ -126,6 +136,13 @@ pub async fn game_detail(
         })),
         "platforms": links.iter().map(|l| serde_json::json!({
             "platform": format!("{:?}", l.platform).to_lowercase(),
+            "label": l.platform.label(),
+            "url": l.url,
+        })).collect::<Vec<_>>(),
+        "screenshots": screenshots.iter().map(|s| serde_json::json!({
+            "url": s.url,
+            "caption": s.caption,
+            "position": s.position,
         })).collect::<Vec<_>>(),
         "tags": tags,
         "stats": {
@@ -138,6 +155,7 @@ pub async fn game_detail(
         },
         "created_at": g.created_at.to_rfc3339(),
         "updated_at": g.updated_at.to_rfc3339(),
+        "published_at": g.published_at.map(|d| d.to_rfc3339()),
     });
     Ok(([(header::CACHE_CONTROL, "public, max-age=60")], Json(body)).into_response())
 }
@@ -175,13 +193,16 @@ pub async fn repos_list(
             })
         })
         .collect();
-    Ok(Json(ApiList {
-        data,
-        total,
-        page,
-        per_page,
-    })
-    .into_response())
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=120")],
+        Json(ApiList {
+            data,
+            total,
+            page,
+            per_page,
+        }),
+    )
+        .into_response())
 }
 
 pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Response> {
@@ -416,34 +437,36 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
             }),
         )
     };
-    (status, Json(body)).into_response()
+    // Health endpoint không cache — monitor (Coolify/Kubernetes) cần trạng
+    // thái thời gian thực, không phải snapshot cũ.
+    (
+        status,
+        [(header::CACHE_CONTROL, "no-store, max-age=0")],
+        Json(body),
+    )
+        .into_response()
+}
+
+// ===================== Catalog endpoints: tags & categories =====================
+// Cung cấp danh sách tag và thể loại qua JSON API để client-side search,
+// autocomplete và cross-linking không cần phải tải trang HTML đầy đủ.
+
+pub async fn tags_list(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+    let tags = TagRepo::popular(&state.db, 100).await.unwrap_or_default();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(serde_json::json!({"data": tags})),
+    )
+        .into_response())
+}
+
+pub async fn categories_list(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+    let cats = CategoryRepo::list_with_counts(&state.db).await?;
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=300")],
+        Json(serde_json::json!({"data": cats})),
+    )
+        .into_response())
 }
 
 // ===================== Maintenance page dùng nội bộ =====================
-#[allow(dead_code)]
-pub async fn current_user_count(state: &AppState) -> i64 {
-    UserRepo::count_all(&state.db).await.unwrap_or(0)
-}
-
-#[allow(dead_code)]
-pub async fn mention_test(state: &AppState, user: Uuid) -> AppResult<Vec<Uuid>> {
-    CommentRepo::find_mentions(&state.db, "@admin hello", user).await
-}
-
-#[allow(dead_code)]
-pub async fn daily_stats(
-    state: &AppState,
-) -> AppResult<Vec<crate::models::settings::DailyStatRow>> {
-    StatsRepo::daily_last_7_days(&state.db).await
-}
-
-#[allow(dead_code)]
-pub async fn require_any_user(user: Option<crate::models::user::User>) -> AppResult<()> {
-    match user {
-        Some(_) => Ok(()),
-        None => Err(AppError::Unauthorized),
-    }
-}
-
-#[allow(dead_code)]
-pub async fn unused_current(_c: CurrentUser) {}

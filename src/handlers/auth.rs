@@ -77,6 +77,8 @@ pub async fn google_callback(
     State(state): State<Arc<AppState>>,
     Query(q): Query<CallbackQuery>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
+    connect_info: axum::extract::ConnectInfo<std::net::SocketAddr>,
 ) -> AppResult<(CookieJar, Redirect)> {
     if let Some(err) = &q.error {
         tracing::warn!("OAuth error: {}", err);
@@ -150,16 +152,41 @@ pub async fn google_callback(
         tracing::info!("Granted admin to {} via ADMIN_EMAIL", userinfo.email);
     }
 
-    // Create session
+    // Create session — lưu User-Agent (cắt ngắn tránh overflow) và IP
+    // client để admin có thể audit / xoá phiên nếu cần.
     let session_token = auth::gen_session_token();
     let token_hash = auth::hash_token(&session_token);
-    let user_agent = ""; // TODO: extract từ headers khi có ConnectInfo
+    let user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .chars()
+        .take(255)
+        .collect::<String>();
+    let ip = {
+        // Ưu tiên header proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP)
+        // do Traefik đặt; fallback về IP TCP nếu chạy trực tiếp không proxy.
+        let proxy_ip = headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split(',').next())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                headers
+                    .get("x-real-ip")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            });
+        proxy_ip.unwrap_or_else(|| connect_info.0.ip().to_string())
+    };
     SessionRepo::create(
         &state.db,
         user.id,
         &token_hash,
-        user_agent,
-        None,
+        &user_agent,
+        Some(&ip),
         auth::SESSION_TTL_DAYS,
     )
     .await?;
