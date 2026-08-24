@@ -307,7 +307,30 @@ async fn report_progress_impl(
     user: User,
     req: AiProgressRequest,
 ) -> AppResult<axum::response::Json<AiProgressResponse>> {
-    let percentage = req.percentage.unwrap_or(0);
+    // Validate độ dài để tránh AI gửi payload lớn vô tội vạ.
+    let task = req.task.trim();
+    if task.is_empty() {
+        return Err(AppError::BadRequest("Task không được để trống".into()));
+    }
+    if task.chars().count() > 200 {
+        return Err(AppError::BadRequest("Task tối đa 200 ký tự".into()));
+    }
+    let action = req.action.trim();
+    if action.chars().count() > 200 {
+        return Err(AppError::BadRequest("Action tối đa 200 ký tự".into()));
+    }
+    let message = req.message.as_deref().unwrap_or("").trim();
+    if message.chars().count() > 2000 {
+        return Err(AppError::BadRequest("Message tối đa 2000 ký tự".into()));
+    }
+    if let Some(md) = req.metadata.as_deref().filter(|s| !s.is_empty()) {
+        if md.len() > 8192 {
+            return Err(AppError::BadRequest(
+                "Metadata JSON tối đa 8192 ký tự".into(),
+            ));
+        }
+    }
+    let percentage = req.percentage.unwrap_or(0).clamp(0, 100);
     let status = req
         .status
         .as_deref()
@@ -321,11 +344,11 @@ async fn report_progress_impl(
     let report = AiAgentRepo::add_progress(
         &state.db,
         user.id,
-        &req.task,
-        &req.action,
+        task,
+        action,
         percentage,
         &status,
-        req.message.as_deref().unwrap_or(""),
+        message,
         metadata.as_ref(),
         None,
     )
