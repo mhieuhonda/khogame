@@ -1,9 +1,11 @@
 use crate::error::AppResult;
 use crate::middleware::CurrentUser;
 use crate::state::AppState;
-use crate::templates::{PrivacyPageTemplate, TermsPageTemplate};
+use crate::templates::{ErrorTemplate, PrivacyPageTemplate, TermsPageTemplate};
+use askama::Template;
 use axum::extract::State;
-use axum::response::Html;
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Response};
 use std::sync::Arc;
 
 pub async fn terms(
@@ -25,6 +27,20 @@ pub async fn privacy(
         current_user,
         unread_notifications: 0,
     })
+}
+
+/// Fallback handler cho mọi route không khớp — trả về trang 404
+/// với giao diện Kho Game thay vì trang 404 mặc định của axum (chỉ
+/// có chữ "Not Found"). Giữ trải nghiệm người dùng tốt hơn.
+pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
+    let body = ErrorTemplate {
+        status: 404,
+        message: "Trang bạn tìm không tồn tại hoặc đã bị di chuyển.".into(),
+        current_user,
+    }
+    .render()
+    .unwrap_or_else(|_| "404 Not Found".into());
+    (StatusCode::NOT_FOUND, Html(body)).into_response()
 }
 
 pub async fn maintenance(State(_state): State<Arc<AppState>>) -> AppResult<Html<String>> {

@@ -203,6 +203,19 @@ pub async fn show_game(
 
     let unread = unread_for(&state, current_user.as_ref()).await;
 
+    // Structured data (JSON-LD) cho SEO: schema.org/VideoGame —
+    // giúp Google hiển thị rich snippet (rating, lượt tải, v.v.) trên
+    // kết quả tìm kiếm. Serialize trước bằng serde_json thay vì cố
+    // render JSON trong askama (không có filter json_encode ở 0.16).
+    let json_ld = build_game_json_ld(
+        &state.config.base_url,
+        &game,
+        &author,
+        &links,
+        &tags,
+        category.as_ref(),
+    );
+
     Ok(GameShowTemplate {
         current_user,
         unread_notifications: unread,
@@ -220,7 +233,100 @@ pub async fn show_game(
         is_owner,
         user_rating,
         base_url: state.config.base_url.clone(),
+        json_ld,
     })
+}
+
+/// Dựng JSON-LD schema.org/VideoGame để nhúng vào <head> của trang game.
+/// Dùng serde_json::Value để tránh lỗi cú pháp JSON (escape không đúng).
+/// Trả về tag <script type="application/ld+json">...</script> hoàn chỉnh.
+fn build_game_json_ld(
+    base_url: &str,
+    game: &crate::models::game::Game,
+    author: &crate::models::user::User,
+    links: &[crate::models::game::GameLink],
+    tags: &[String],
+    category: Option<&crate::models::category::Category>,
+) -> String {
+    use serde_json::{json, Value};
+    let mut root = json!({
+        "@context": "https://schema.org",
+        "@type": "VideoGame",
+        "name": game.title,
+        "url": format!("{}/games/{}", base_url, game.slug),
+        "author": {
+            "@type": "Person",
+            "name": author.display_name,
+            "url": format!("{}/u/{}", base_url, author.username),
+        },
+        "publisher": {
+            "@type": "Organization",
+            "name": "Kho Game",
+            "url": base_url,
+        },
+        "operatingSystem": links.iter().map(|l| l.platform.label()).collect::<Vec<_>>(),
+        "interactionStatistic": [
+            json!({
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/WatchAction",
+                "userInteractionCount": game.view_count,
+            }),
+            json!({
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/DownloadAction",
+                "userInteractionCount": game.download_count,
+            }),
+            json!({
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/LikeAction",
+                "userInteractionCount": game.like_count,
+            }),
+            json!({
+                "@type": "InteractionCounter",
+                "interactionType": "https://schema.org/CommentAction",
+                "userInteractionCount": game.comment_count,
+            }),
+        ],
+    });
+    let obj = root.as_object_mut().unwrap();
+    if !game.excerpt_or().is_empty() {
+        obj.insert("description".into(), json!(game.excerpt_or()));
+    }
+    if let Some(url) = game.cover_image.as_deref().filter(|s| !s.is_empty()) {
+        obj.insert("image".into(), json!(url));
+    }
+    if game.rating_count > 0 {
+        obj.insert(
+            "aggregateRating".into(),
+            json!({
+                "@type": "AggregateRating",
+                "ratingValue": game.rating_avg_f64(),
+                "ratingCount": game.rating_count,
+                "bestRating": 5,
+                "worstRating": 1,
+            }),
+        );
+    }
+    if let Some(d) = game.release_date {
+        obj.insert(
+            "datePublished".into(),
+            json!(d.format("%Y-%m-%d").to_string()),
+        );
+    }
+    if let Some(cat) = category {
+        obj.insert("genre".into(), json!(cat.name));
+    }
+    if !tags.is_empty() {
+        obj.insert(
+            "keywords".into(),
+            Value::Array(tags.iter().map(|t| json!(t)).collect()),
+        );
+    }
+    let pretty = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
+    format!(
+        "<script type=\"application/ld+json\">\n{}\n</script>",
+        pretty
+    )
 }
 
 // ============= Edit game =============

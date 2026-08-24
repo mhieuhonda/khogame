@@ -2,6 +2,16 @@
 
 {% block title %}{{ game.title }}{% endblock %}
 
+{% block description %}{{ game.title }} - {{ game.excerpt_or() }}{% endblock %}
+
+{% block og_title %}{{ game.title }}{% endblock %}
+{% block og_description %}{{ game.excerpt_or() }}{% endblock %}
+{% block og_url %}/games/{{ game.slug }}{% endblock %}
+
+{% block head_extra %}
+{{ json_ld|safe }}
+{% endblock %}
+
 {% block content %}
 <article class="game-detail">
     <nav class="breadcrumb">

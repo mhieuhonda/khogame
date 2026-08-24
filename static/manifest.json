@@ -1,0 +1,37 @@
+{
+  "name": "Kho Game",
+  "short_name": "Kho Game",
+  "description": "Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f0f23",
+  "theme_color": "#7c3aed",
+  "lang": "vi",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    {
+      "src": "/static/img/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Game mới nhất",
+      "short_name": "Mới nhất",
+      "url": "/games/latest"
+    },
+    {
+      "name": "Đang thịnh hành",
+      "short_name": "Thịnh hành",
+      "url": "/games/trending"
+    },
+    {
+      "name": "Tìm kiếm game",
+      "short_name": "Tìm",
+      "url": "/search"
+    }
+  ]
+}

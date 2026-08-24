@@ -403,10 +403,72 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
 pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
     let txt = format!(
-        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\n\nSitemap: {}/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /api/\n\nSitemap: {}/sitemap.xml\n",
         base
     );
     ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], txt).into_response()
+}
+
+/// OpenSearch description XML — cho phép trình duyệt thêm Kho Game vào
+/// ô tìm kiếm của thanh địa chỉ.
+pub async fn opensearch(State(state): State<Arc<AppState>>) -> Response {
+    let base = &state.config.base_url;
+    let xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
+                       xmlns:moz="http://www.mozilla.org/2006/browser/search/">
+  <ShortName>Kho Game</ShortName>
+  <Description>Tìm kiếm game độc lập trên Kho Game</Description>
+  <InputEncoding>UTF-8</InputEncoding>
+  <OutputEncoding>UTF-8</OutputEncoding>
+  <Image width="32" height="32" type="image/svg+xml">{base}/static/img/favicon.svg</Image>
+  <Url type="text/html" method="get" template="{base}/search?q={{searchTerms}}"/>
+  <Query role="example" searchTerms="puzzle"/>
+  <moz:SearchForm>{base}/search</moz:SearchForm>
+</OpenSearchDescription>"#
+    );
+    (
+        [(
+            header::CONTENT_TYPE,
+            "application/opensearchdescription+xml; charset=utf-8",
+        )],
+        xml,
+    )
+        .into_response()
+}
+
+/// security.txt — RFC 9116, đặt tại /.well-known/security.txt
+/// Cung cấp thông tin liên hệ để nhà nghiên cứu bảo mật báo lỗ hổng.
+pub async fn security_txt(State(state): State<Arc<AppState>>) -> Response {
+    let base = &state.config.base_url;
+    let admin_email = &state.config.admin_email;
+    let txt = format!(
+        "Contact: mailto:{admin_email}\nExpires: {expires}\nPreferred-Languages: vi, en\nCanonical: {base}/.well-known/security.txt\n",
+        admin_email = admin_email,
+        expires = chrono::Utc::now()
+            .checked_add_months(chrono::Months::new(6))
+            .map(|d| d.format("%Y-%m-%dT00:00:00.000Z").to_string())
+            .unwrap_or_default(),
+        base = base,
+    );
+    ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], txt).into_response()
+}
+
+/// PWA manifest — đặt tại /manifest.json (quy ước W3C). Trả về JSON
+/// từ static/manifest.json, có thể cache lâu vì nội dung hiếm khi đổi.
+pub async fn manifest() -> Response {
+    let json = include_str!("../../static/manifest.json");
+    (
+        [
+            (
+                header::CONTENT_TYPE,
+                "application/manifest+json; charset=utf-8",
+            ),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        json,
+    )
+        .into_response()
 }
 
 // ===================== Health nâng cao =====================

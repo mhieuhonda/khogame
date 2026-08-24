@@ -237,6 +237,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/rss.xml", get(handlers::api::rss))
         .route("/sitemap.xml", get(handlers::api::sitemap))
         .route("/robots.txt", get(handlers::api::robots))
+        .route("/opensearch.xml", get(handlers::api::opensearch))
+        .route("/manifest.json", get(handlers::api::manifest))
+        .route(
+            "/.well-known/security.txt",
+            get(handlers::api::security_txt),
+        )
+        .fallback(handlers::pages::not_found)
         // Đặt security_headers ngoài cùng (áp dụng cho mọi response).
         // rate_limit và maintenance_guard đã có từ trước, giữ thứ tự này.
         .layer(middleware::from_fn(security_headers))
