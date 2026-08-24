@@ -572,15 +572,17 @@ pub async fn submit_report(
             "<div class='alert alert-warning'>Bạn đã báo cáo game này rồi.</div>".into(),
         ));
     }
+    // Validate description length — chống lạm dụng (DB field TEXT không
+    // có constraint). 2000 ký tự là đủ cho mô tả chi tiết báo cáo.
+    let description = form.description.unwrap_or_default();
+    let description = description.trim();
+    if description.chars().count() > 2000 {
+        return Err(AppError::BadRequest(
+            "Mô tả báo cáo tối đa 2000 ký tự".into(),
+        ));
+    }
 
-    ReportRepo::create(
-        &state.db,
-        game.id,
-        user.id,
-        &reason,
-        &form.description.unwrap_or_default(),
-    )
-    .await?;
+    ReportRepo::create(&state.db, game.id, user.id, &reason, description).await?;
 
     Ok(Html(
         "<div class='alert alert-success'>✓ Báo cáo đã được gửi. Cảm ơn bạn đã đóng góp!</div>"
