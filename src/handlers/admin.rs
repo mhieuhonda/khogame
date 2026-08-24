@@ -572,8 +572,21 @@ pub async fn save_category(
     if name.is_empty() {
         return Err(AppError::BadRequest("Tên thể loại không được trống".into()));
     }
+    if name.chars().count() > 50 {
+        return Err(AppError::BadRequest("Tên thể loại tối đa 50 ký tự".into()));
+    }
     let description = form.description.unwrap_or_default();
+    let description = description.trim();
+    if description.chars().count() > 500 {
+        return Err(AppError::BadRequest(
+            "Mô tả thể loại tối đa 500 ký tự".into(),
+        ));
+    }
     let icon = form.icon.unwrap_or_default();
+    let icon = icon.trim();
+    if icon.chars().count() > 100 {
+        return Err(AppError::BadRequest("Icon tối đa 100 ký tự".into()));
+    }
     match form
         .id
         .as_deref()
