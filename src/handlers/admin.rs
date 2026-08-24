@@ -594,7 +594,7 @@ pub async fn save_category(
         .and_then(|s| Uuid::parse_str(s).ok())
     {
         Some(id) => {
-            CategoryRepo::update(&state.db, id, name, &description, &icon).await?;
+            CategoryRepo::update(&state.db, id, name, description, icon).await?;
             audit(
                 &state,
                 user.id,
@@ -607,7 +607,7 @@ pub async fn save_category(
         }
         None => {
             let slug = slug::slugify(name);
-            let id = CategoryRepo::create(&state.db, name, &slug, &description, &icon).await?;
+            let id = CategoryRepo::create(&state.db, name, &slug, description, icon).await?;
             audit(
                 &state,
                 user.id,
