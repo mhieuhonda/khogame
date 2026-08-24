@@ -21,7 +21,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/auth/logout", post(handlers::auth::logout))
         // Games - CRUD
         .route("/games/new", get(handlers::games::new_game_form))
-        .route("/games", post(handlers::games::create_game))
+        .route(
+            "/games",
+            get(handlers::games::list_all).post(handlers::games::create_game),
+        )
         .route("/games/latest", get(handlers::games::list_latest))
         .route("/games/trending", get(handlers::games::list_trending))
         .route("/games/top-rated", get(handlers::games::list_top_rated))

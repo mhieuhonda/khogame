@@ -82,34 +82,7 @@ impl GameRepo {
         }
 
         // Insert tags
-        for tag in form.tags_vec() {
-            let tag = tag.trim();
-            if tag.is_empty() {
-                continue;
-            }
-            let slug = slug::slugify(tag);
-            let _ = sqlx::query(
-                r#"INSERT INTO tags (name, slug) VALUES ($1, $2)
-                   ON CONFLICT (slug) DO UPDATE SET usage_count = tags.usage_count"#,
-            )
-            .bind(tag)
-            .bind(&slug)
-            .execute(pool)
-            .await;
-            let tag_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tags WHERE slug = $1")
-                .bind(&slug)
-                .fetch_optional(pool)
-                .await?;
-            if let Some(tid) = tag_id {
-                let _ = sqlx::query(
-                    "INSERT INTO game_tags (game_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                )
-                .bind(id)
-                .bind(tid)
-                .execute(pool)
-                .await;
-            }
-        }
+        Self::sync_tags(pool, id, form.tags_vec()).await?;
 
         Ok(id)
     }
@@ -183,36 +156,48 @@ impl GameRepo {
         }
 
         // Replace tags
+        Self::sync_tags(pool, id, form.tags_vec()).await?;
+        Ok(())
+    }
+
+    /// Gắn tags cho game. `tags.usage_count` được tăng/giảm bởi DB trigger
+    /// (trigger_game_tag_insert/delete trên game_tags), nên ở đây chỉ cần
+    /// thay thế các dòng game_tags — KHÔNG tự cộng trừ usage_count.
+    async fn sync_tags(pool: &PgPool, game_id: Uuid, tags: Vec<String>) -> AppResult<()> {
+        // Xoá liên kết cũ (trigger tự giảm usage_count từng tag bị gỡ)
         sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
-            .bind(id)
+            .bind(game_id)
             .execute(pool)
             .await?;
-        for tag in form.tags_vec() {
+
+        let mut seen = std::collections::HashSet::new();
+        for tag in tags {
             let tag = tag.trim();
             if tag.is_empty() {
                 continue;
             }
-            let slug = slug::slugify(tag);
-            let _ = sqlx::query(
+            let tag_slug = slug::slugify(tag);
+            if tag_slug.is_empty() || !seen.insert(tag_slug.clone()) {
+                continue; // bỏ tag rỗng/trùng trong cùng 1 lần submit
+            }
+            // Upsert không đụng usage_count; trigger sẽ +1 khi gắn vào game
+            let tag_id: Option<Uuid> = sqlx::query_scalar(
                 r#"INSERT INTO tags (name, slug) VALUES ($1, $2)
-                   ON CONFLICT (slug) DO UPDATE SET usage_count = tags.usage_count"#,
+                   ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+                   RETURNING id"#,
             )
             .bind(tag)
-            .bind(&slug)
-            .execute(pool)
-            .await;
-            let tag_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM tags WHERE slug = $1")
-                .bind(&slug)
-                .fetch_optional(pool)
-                .await?;
+            .bind(&tag_slug)
+            .fetch_optional(pool)
+            .await?;
             if let Some(tid) = tag_id {
-                let _ = sqlx::query(
+                sqlx::query(
                     "INSERT INTO game_tags (game_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                 )
-                .bind(id)
+                .bind(game_id)
                 .bind(tid)
                 .execute(pool)
-                .await;
+                .await?;
             }
         }
         Ok(())
@@ -651,6 +636,15 @@ impl GameRepo {
         Ok(count)
     }
 
+    /// Kiểm tra chính xác 1 slug đã tồn tại hay chưa
+    pub async fn slug_exists(pool: &PgPool, slug: &str) -> AppResult<bool> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE slug = $1")
+            .bind(slug)
+            .fetch_one(pool)
+            .await?;
+        Ok(c > 0)
+    }
+
     pub async fn count_published(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE status = 'published'")
             .fetch_one(pool)
@@ -658,7 +652,80 @@ impl GameRepo {
         Ok(c)
     }
 
-    pub async fn featured(pool: &PgPool, limit: i64) -> AppResult<Vec<GameCard>> {
+    /// Số kết quả khớp bộ lọc search (để phân trang đúng)
+    pub async fn count_search(
+        pool: &PgPool,
+        query: &str,
+        category_slug: Option<&str>,
+        platform: Option<&str>,
+    ) -> AppResult<i64> {
+        let mut sql = String::from(
+            r#"SELECT COUNT(*) FROM games g
+               LEFT JOIN categories c ON c.id = g.category_id
+               WHERE g.status = 'published'
+                 AND (g.title ILIKE $1 OR g.excerpt ILIKE $1 OR g.content ILIKE $1)"#,
+        );
+        if category_slug.is_some() {
+            sql.push_str(" AND c.slug = $2");
+        }
+        if platform.is_some() {
+            sql.push_str(&format!(
+                " AND EXISTS (SELECT 1 FROM game_links gl WHERE gl.game_id = g.id AND gl.platform = ${})",
+                if category_slug.is_some() { 3 } else { 2 }
+            ));
+        }
+        let pattern = format!("%{}%", query);
+        let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str())).bind(pattern);
+        if let Some(cs) = category_slug {
+            q = q.bind(cs);
+        }
+        if let Some(p) = platform {
+            let plat = Platform::from_str(p).ok_or_else(|| {
+                crate::error::AppError::BadRequest("Platform không hợp lệ".into())
+            })?;
+            q = q.bind(plat);
+        }
+        Ok(q.fetch_one(pool).await?)
+    }
+
+    /// Tổng số game trong 1 thể loại (published) để phân trang
+    pub async fn count_by_category(pool: &PgPool, cat_slug: &str) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM games g
+               JOIN categories c ON c.id = g.category_id
+               WHERE c.slug = $1 AND g.status = 'published'"#,
+        )
+        .bind(cat_slug)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
+    /// Tổng số game mang 1 tag (published) để phân trang
+    pub async fn count_by_tag(pool: &PgPool, tag_slug: &str) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM games g
+               JOIN game_tags gt ON gt.game_id = g.id
+               JOIN tags t ON t.id = gt.tag_id
+               WHERE t.slug = $1 AND g.status = 'published'"#,
+        )
+        .bind(tag_slug)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
+    /// Tổng số game nổi bật để phân trang
+    pub async fn count_featured(pool: &PgPool) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM games WHERE status = 'published' AND is_featured = TRUE",
+        )
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
+    pub async fn featured(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<GameCard>> {
         let cards = sqlx::query_as::<_, GameCard>(
             r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
@@ -674,9 +741,10 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published' AND g.is_featured = TRUE
-              ORDER BY g.published_at DESC NULLS LAST LIMIT $1"#,
+              ORDER BY g.published_at DESC NULLS LAST LIMIT $1 OFFSET $2"#,
         )
         .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
         Ok(cards)
@@ -706,7 +774,7 @@ impl GameRepo {
                     u.display_name as author_name, c.name as category_name
                   FROM games g JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
-                  WHERE g.status = $1
+                  WHERE g.status = $1::game_status
                   ORDER BY g.created_at DESC LIMIT $2 OFFSET $3"#,
                 )
                 .bind(s)
@@ -739,6 +807,26 @@ impl GameRepo {
                 .fetch_all(pool)
                 .await?;
         Ok(rows)
+    }
+
+    /// Tổng số game theo bộ lọc trạng thái (phân trang admin đúng)
+    pub async fn count_admin(pool: &PgPool, status: Option<&str>) -> AppResult<i64> {
+        match status {
+            Some(s) if !s.is_empty() => {
+                let c: i64 =
+                    sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE status = $1::game_status")
+                        .bind(s)
+                        .fetch_one(pool)
+                        .await?;
+                Ok(c)
+            }
+            _ => {
+                let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games")
+                    .fetch_one(pool)
+                    .await?;
+                Ok(c)
+            }
+        }
     }
 
     /// Tất cả game của 1 user (kể cả draft/hidden) cho trang "Game của tôi"

@@ -45,6 +45,9 @@ impl_template_response!(
     RepoNewTemplate,
     MyGamesTemplate,
     ErrorTemplate,
+    CategoriesPageTemplate,
+    TermsPageTemplate,
+    PrivacyPageTemplate,
 );
 
 /// Home page
@@ -145,6 +148,9 @@ pub struct GameListTemplate {
     pub per_page: i64,
     pub sort: String,
     pub list_type: String,
+    /// Đường dẫn gốc của trang list để dựng link sort/pagination
+    /// (vd /games/latest, /c/hanh-dong, /t/2d) — tránh link sort 404.
+    pub base_url: String,
     pub category: Option<category::Category>,
     pub tag: Option<tag::Tag>,
 }
@@ -206,7 +212,7 @@ pub struct AdminTemplate {
     pub daily_stats: Vec<settings::DailyStatRow>,
     pub total_repos: i64,
     pub pending_repos: i64,
-    pub status_counts: Vec<(String, i64)>,
+    pub status_counts: Vec<StatusCountChip>,
     pub max_views: i64,
     pub max_downloads: i64,
 }
@@ -221,6 +227,14 @@ pub struct AdminReportsTemplate {
     pub status_filter: Option<String>,
 }
 
+/// Chip lọc trạng thái game cho trang admin (key + nhãn tiếng Việt + số lượng)
+#[derive(Debug, Clone)]
+pub struct StatusCountChip {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
 /// Admin games
 #[derive(Template)]
 #[template(path = "admin/games.html")]
@@ -229,9 +243,10 @@ pub struct AdminGamesTemplate {
     pub unread_notifications: i64,
     pub games: Vec<game::AdminGameRow>,
     pub status_filter: Option<String>,
-    pub status_counts: Vec<(String, i64)>,
+    pub status_counts: Vec<StatusCountChip>,
     pub page: i64,
     pub per_page: i64,
+    pub total: i64,
 }
 
 /// Admin users
@@ -337,6 +352,31 @@ pub struct ErrorTemplate {
     pub current_user: Option<user::User>,
 }
 
+/// Trang danh sách tất cả thể loại
+#[derive(Template)]
+#[template(path = "pages/categories.html")]
+pub struct CategoriesPageTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub categories: Vec<category::CategoryWithCount>,
+}
+
+/// Trang điều khoản sử dụng
+#[derive(Template)]
+#[template(path = "pages/terms.html")]
+pub struct TermsPageTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+}
+
+/// Trang chính sách bảo mật
+#[derive(Template)]
+#[template(path = "pages/privacy.html")]
+pub struct PrivacyPageTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+}
+
 // ============= HTMX partials =============
 
 #[derive(Template)]
@@ -376,6 +416,8 @@ pub struct CommentItemPartial<'a> {
     pub comment: &'a comment::CommentWithUser,
     pub game_slug: &'a str,
     pub current_user: Option<&'a user::User>,
+    /// Chỉ bật lazy-load replies cho bình luận cấp 1 (reply không có con)
+    pub load_replies: bool,
 }
 
 #[derive(Template)]
@@ -384,6 +426,8 @@ pub struct CommentListPartial<'a> {
     pub comments: &'a [comment::CommentWithUser],
     pub game_slug: &'a str,
     pub current_user: Option<&'a user::User>,
+    /// Truyền xuống từng comment item (lazy-load replies cấp 1)
+    pub load_replies: bool,
 }
 
 #[derive(Template)]

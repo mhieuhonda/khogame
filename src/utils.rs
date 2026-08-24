@@ -1,5 +1,7 @@
 use slug::slugify;
 
+/// Sinh slug từ tiêu đề. Việc đảm bảo tính duy nhất được thực hiện ở
+/// `handlers::games::create_game` (kiểm tra DB với hậu tố -2, -3...).
 pub fn make_unique_slug(title: &str, existing_count: i64) -> String {
     let base = slugify(title);
     if existing_count == 0 {
@@ -55,20 +57,134 @@ pub fn format_number_i64(n: i64) -> String {
 }
 
 pub fn safe_markdown_to_html(input: &str) -> String {
-    // Very basic safe markdown: escape HTML, then re-apply minimal formatting
-    let escaped = html_escape(input);
-    // Apply paragraphs
-    escaped
+    // Markdown an toàn: escape HTML trước, sau đó áp dụng định dạng tối thiểu
+    // (**bold**, *italic*, `code`, [text](https://link)) trên từng đoạn văn.
+    input
         .split("\n\n")
-        .map(|p| {
-            if p.trim().is_empty() {
-                String::new()
-            } else {
-                format!("<p>{}</p>", p.replace('\n', "<br>"))
-            }
-        })
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| format!("<p>{}</p>", render_markdown_line(p)))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Áp dụng inline markdown lên chuỗi ĐÃ escape. Chỉ nhận link http/https.
+fn render_markdown_line(input: &str) -> String {
+    let s = html_escape(input);
+    let mut out = String::with_capacity(s.len());
+    let chars: Vec<char> = s.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        // Link [text](url)
+        if chars[i] == '[' {
+            if let Some((text, url, next)) = parse_md_link(&chars, i) {
+                out.push_str(&format!(
+                    r#"<a href="{}" target="_blank" rel="noopener noopener">{}</a>"#,
+                    url, text
+                ));
+                i = next;
+                continue;
+            }
+        }
+        // Bold **text**
+        if chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*' {
+            if let Some(close) = find_seq(&chars, i + 2, &['*', '*']) {
+                let inner: String = chars[i + 2..close].iter().collect();
+                out.push_str("<strong>");
+                out.push_str(&render_markdown_line(&inner));
+                out.push_str("</strong>");
+                i = close + 2;
+                continue;
+            }
+        }
+        // Italic *text*
+        if chars[i] == '*' {
+            if let Some(close) = find_seq(&chars, i + 1, &['*']) {
+                let inner: String = chars[i + 1..close].iter().collect();
+                out.push_str("<em>");
+                out.push_str(&render_markdown_line(&inner));
+                out.push_str("</em>");
+                i = close + 1;
+                continue;
+            }
+        }
+        // Code `text`
+        if chars[i] == '`' {
+            if let Some(close) = find_seq(&chars, i + 1, &['`']) {
+                let inner: String = chars[i + 1..close].iter().collect();
+                out.push_str("<code>");
+                out.push_str(&inner);
+                out.push_str("</code>");
+                i = close + 1;
+                continue;
+            }
+        }
+        // Xuống dòng trong đoạn
+        if chars[i] == '\n' {
+            out.push_str("<br>");
+            i += 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Tìm vị trí bắt đầu của `seq` trong chars từ `from`
+fn find_seq(chars: &[char], from: usize, seq: &[char]) -> Option<usize> {
+    let mut i = from;
+    while i + seq.len() <= chars.len() {
+        if chars[i..i + seq.len()] == *seq {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Parse `[text](https://url)` bắt đầu tại `start`. Trả về (text, url, vị trí kế).
+/// URL chỉ cho phép http/https; text/url phải không rỗng.
+fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
+    let mut j = start + 1;
+    let mut depth = 1usize;
+    while j < chars.len() {
+        match chars[j] {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    if j >= chars.len() || chars[j] != ']' {
+        return None;
+    }
+    let text: String = chars[start + 1..j].iter().collect();
+    // tiếp theo phải là '('
+    if j + 1 >= chars.len() || chars[j + 1] != '(' {
+        return None;
+    }
+    // tìm ')' đóng — không cho lồng nhau trong URL
+    let open_url = j + 1;
+    let close_url = find_seq(chars, open_url + 1, &[')'])?;
+    let raw_url: String = chars[open_url + 1..close_url].iter().collect();
+    let trimmed = raw_url.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if text.trim().is_empty()
+        || trimmed.is_empty()
+        || !(lower.starts_with("http://") || lower.starts_with("https://"))
+    {
+        return None;
+    }
+    Some((
+        text,
+        trimmed.replace('"', "%22").replace(' ', "%20"),
+        close_url + 1,
+    ))
 }
 
 pub fn html_escape(s: &str) -> String {
@@ -128,5 +244,74 @@ pub fn sanitize_redirect(s: &str) -> String {
         s.to_string()
     } else {
         "/".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_markdown_escapes_html() {
+        let html = safe_markdown_to_html("<script>alert(1)</script>");
+        assert!(!html.contains("<script>"));
+        assert!(html.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn test_markdown_bold_italic_code() {
+        let html = safe_markdown_to_html("**to** và *nghiêng* và `code`");
+        assert!(html.contains("<strong>to</strong>"));
+        assert!(html.contains("<em>nghiêng</em>"));
+        assert!(html.contains("<code>code</code>"));
+    }
+
+    #[test]
+    fn test_markdown_link_only_http() {
+        let ok = safe_markdown_to_html("[web](https://example.com)");
+        assert!(ok.contains(r#"<a href="https://example.com""#));
+        // javascript: bị từ chối → không tạo thẻ <a>, chỉ còn text thường
+        let bad = safe_markdown_to_html("[x](javascript:alert(1))");
+        assert!(!bad.contains("<a href=\"javascript"));
+        assert!(bad.contains("alert(1)")); // nội dung vẫn hiển thị dạng text
+    }
+
+    #[test]
+    fn test_time_ago_now() {
+        let now = chrono::Utc::now();
+        assert_eq!(time_ago(now), "vừa xong");
+    }
+
+    #[test]
+    fn test_format_number() {
+        assert_eq!(format_number_i64(999), "999");
+        assert_eq!(format_number_i64(1200), "1.2K");
+        assert_eq!(format_number_i64(3_400_000), "3.4M");
+    }
+
+    #[test]
+    fn test_extract_youtube_id() {
+        assert_eq!(
+            extract_youtube_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            Some("dQw4w9WgXcQ".into())
+        );
+        assert_eq!(
+            extract_youtube_id("https://youtu.be/abc123"),
+            Some("abc123".into())
+        );
+        assert_eq!(extract_youtube_id(""), None);
+    }
+
+    #[test]
+    fn test_initials() {
+        assert_eq!(initials("Nguyễn Văn A"), "NA");
+        assert_eq!(initials("hello"), "HE");
+        assert_eq!(initials(""), "?");
+    }
+
+    #[test]
+    fn test_parse_date() {
+        assert_eq!(parse_date("2026-08-24"), Some(chrono::NaiveDate::from_ymd_opt(2026, 8, 24).unwrap()));
+        assert_eq!(parse_date("không phải ngày"), None);
     }
 }

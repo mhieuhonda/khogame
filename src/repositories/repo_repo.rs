@@ -127,7 +127,7 @@ impl RepoRepo {
     ) -> AppResult<Vec<GithubRepoCard>> {
         let sql = match status {
             Some(s) if !s.is_empty() => format!(
-                r#"SELECT {} {} WHERE r.status = $1 ORDER BY r.updated_at DESC LIMIT $2"#,
+                r#"SELECT {} {} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2"#,
                 CARD_COLS, CARD_JOINS
             ),
             _ => format!(

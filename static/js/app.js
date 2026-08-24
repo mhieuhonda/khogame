@@ -36,6 +36,46 @@
             toggle.addEventListener('click', toggleTheme);
         }
 
+        // ===== Hamburger menu =====
+        const menuToggle = document.getElementById('menuToggle');
+        const siteMenu = document.getElementById('site-menu');
+        function closeMenu() {
+            if (!siteMenu || !menuToggle) return;
+            siteMenu.hidden = true;
+            menuToggle.classList.remove('open');
+            menuToggle.setAttribute('aria-expanded', 'false');
+        }
+        if (menuToggle && siteMenu) {
+            menuToggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (siteMenu.hidden) {
+                    siteMenu.hidden = false;
+                    menuToggle.classList.add('open');
+                    menuToggle.setAttribute('aria-expanded', 'true');
+                } else {
+                    closeMenu();
+                }
+            });
+            // Đóng khi bấm ra ngoài
+            document.addEventListener('click', function(e) {
+                if (!siteMenu.hidden && !siteMenu.contains(e.target) && !menuToggle.contains(e.target)) {
+                    closeMenu();
+                }
+            });
+            // Đóng bằng Escape
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') closeMenu();
+            });
+            // Đóng sau khi chọn link (trước khi điều hướng)
+            siteMenu.querySelectorAll('a').forEach(function(a) {
+                a.addEventListener('click', closeMenu);
+            });
+            // Đóng menu sau submit form trong menu (vd đăng xuất)
+            siteMenu.querySelectorAll('form').forEach(function(f) {
+                f.addEventListener('submit', closeMenu);
+            });
+        }
+
         // ===== Announcement banner toàn site =====
         const bannerSlot = document.getElementById('announcement-slot');
         if (bannerSlot) {

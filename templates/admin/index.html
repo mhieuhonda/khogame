@@ -54,7 +54,7 @@
         <div class="section-header"><h2>🗂️ Trạng thái game</h2></div>
         <div class="admin-chip-row">
             {% for s in status_counts %}
-            <span class="admin-chip">{{ s.0 }}: <b>{{ s.1 }}</b></span>
+            <span class="admin-chip">{{ s.label }}: <b>{{ s.count }}</b></span>
             {% endfor %}
         </div>
     </section>

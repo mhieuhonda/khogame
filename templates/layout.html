@@ -47,14 +47,6 @@
                 <button type="submit">Tìm</button>
             </form>
 
-            <nav class="main-nav">
-                <a href="/" class="nav-link">Trang chủ</a>
-                <a href="/games/latest" class="nav-link">Mới nhất</a>
-                <a href="/games/trending" class="nav-link">Thịnh hành</a>
-                <a href="/repos" class="nav-link">Repo GitHub</a>
-                <a href="/categories" class="nav-link">Thể loại</a>
-            </nav>
-
             <div class="header-actions">
                 {% match current_user %}
                 {% when Option::Some with (user) %}
@@ -65,35 +57,6 @@
                     </svg>
                     {% if unread_notifications > 0 %}<span class="badge">{{ unread_notifications }}</span>{% endif %}
                 </a>
-                {% if user.role.is_staff() %}
-                <a href="/admin" class="icon-btn" title="Quản trị" aria-label="Quản trị">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                    </svg>
-                </a>
-                {% endif %}
-                <a href="/games/new" class="btn btn-primary btn-sm">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                    Đăng game
-                </a>
-                <a href="/repos/new" class="btn btn-outline btn-sm" title="Đăng repo GitHub">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
-                    </svg>
-                    Repo
-                </a>
-                <a href="/my-games" class="icon-btn" title="Game của tôi" aria-label="Game của tôi">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/>
-                        <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/>
-                        <path d="M4 22h16"/>
-                        <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/>
-                        <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/>
-                        <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
-                    </svg>
-                </a>
                 <a href="/u/{{ user.username }}" class="avatar-link" title="Hồ sơ của tôi">
                     {% match user.avatar_url %}
                     {% when Option::Some with (url) %}
@@ -103,8 +66,7 @@
                     {% endmatch %}
                 </a>
                 {% when Option::None %}
-                <a href="/login" class="btn btn-outline btn-sm">Đăng nhập</a>
-                <a href="/login" class="btn btn-primary btn-sm">Bắt đầu</a>
+                <a href="/login" class="btn btn-outline btn-sm btn-login">Đăng nhập</a>
                 {% endmatch %}
 
                 <button class="icon-btn theme-toggle" id="themeToggle" title="Đổi giao diện" aria-label="Đổi giao diện">
@@ -116,6 +78,48 @@
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
                     </svg>
                 </button>
+
+                <button class="icon-btn menu-toggle" id="menuToggle" title="Menu" aria-label="Mở menu"
+                        aria-expanded="false" aria-controls="site-menu">
+                    <span class="menu-bars" aria-hidden="true"><span></span><span></span><span></span></span>
+                </button>
+            </div>
+        </div>
+
+        <div class="site-menu" id="site-menu" hidden>
+            <div class="container site-menu-inner">
+                <div class="menu-col">
+                    <h4 class="menu-heading">Khám phá</h4>
+                    <a href="/" class="menu-link">🏠 Trang chủ</a>
+                    <a href="/games/latest" class="menu-link">🆕 Game mới nhất</a>
+                    <a href="/games/trending" class="menu-link">🔥 Thịnh hành</a>
+                    <a href="/games/top-rated" class="menu-link">⭐ Đánh giá cao</a>
+                    <a href="/games/downloads" class="menu-link">⬇️ Tải nhiều nhất</a>
+                    <a href="/categories" class="menu-link">📁 Thể loại</a>
+                    <a href="/repos" class="menu-link">📦 Repo GitHub</a>
+                    <a href="/search" class="menu-link">🔍 Tìm kiếm</a>
+                </div>
+                <div class="menu-col">
+                    <h4 class="menu-heading">Cá nhân</h4>
+                    {% match current_user %}
+                    {% when Option::Some with (user) %}
+                    <a href="/games/new" class="menu-link menu-link-accent">➕ Đăng game</a>
+                    <a href="/my-games" class="menu-link">🎮 Game của tôi</a>
+                    <a href="/bookmarks" class="menu-link">🔖 Game đã lưu</a>
+                    <a href="/notifications" class="menu-link">🔔 Thông báo{% if unread_notifications > 0 %}<span class="menu-badge">{{ unread_notifications }}</span>{% endif %}</a>
+                    <a href="/profile" class="menu-link">👤 Hồ sơ (@{{ user.username }})</a>
+                    {% if user.role.is_staff() %}
+                    <a href="/admin" class="menu-link">🛡️ Quản trị</a>
+                    {% endif %}
+                    <form method="post" action="/auth/logout" class="menu-form">
+                        <button type="submit" class="menu-link menu-link-danger">🚪 Đăng xuất</button>
+                    </form>
+                    {% when Option::None %}
+                    <a href="/login" class="menu-link menu-link-accent">🔑 Đăng nhập bằng Google</a>
+                    <a href="/terms" class="menu-link">📜 Điều khoản</a>
+                    <a href="/privacy" class="menu-link">🔒 Bảo mật</a>
+                    {% endmatch %}
+                </div>
             </div>
         </div>
     </header>
@@ -157,18 +161,16 @@
                     <a href="/games/downloads">Tải nhiều nhất</a>
                 </div>
                 <div class="footer-col">
-                    <h4>Thể loại</h4>
+                    <h4>Cộng đồng</h4>
                     <a href="/categories">Tất cả thể loại</a>
-                    <a href="/c/hanh-dong">Hành động</a>
-                    <a href="/c/vai-dien">Vai diễn</a>
-                    <a href="/c/phieu-luu">Phiêu lưu</a>
+                    <a href="/repos">Repo GitHub</a>
+                    <a href="/games/new">Đăng game</a>
+                    <a href="/search">Tìm kiếm</a>
                 </div>
                 <div class="footer-col">
-                    <h4>Cộng đồng</h4>
-                    <a href="/games/new">Đăng game</a>
-                    <a href="/notifications">Thông báo</a>
-                    <a href="/profile">Hồ sơ</a>
-                    <a href="/login">Đăng nhập</a>
+                    <h4>Thông tin</h4>
+                    <a href="/terms">Điều khoản sử dụng</a>
+                    <a href="/privacy">Chính sách bảo mật</a>
                 </div>
             </div>
             <div class="footer-bottom">

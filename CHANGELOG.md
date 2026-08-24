@@ -4,6 +4,56 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — 2026-08-24
+
+### 🐛 Bug fixes (Critical)
+
+- **Lỗi 500 `operator does not exist: repo_status = text` (CRITICAL):**
+  trang admin "Quản lý repo GitHub" lọc theo trạng thái bị lỗi vì sqlx
+  bind chuỗi text so sánh với cột enum PostgreSQL `repo_status`.
+  Fix: ép kiểu tường minh `$1::repo_status` trong
+  `RepoRepo::list_admin`. Cùng lỗi với `game_status` ở
+  `GameRepo::admin_list` + `count_admin` → fix bằng `$1::game_status`
+  (lỗi 500 trang admin/games khi lọc trạng thái).
+- **Game đăng lên không hiện ở trang chủ/hồ sơ:** game "Phi Tiêu Dịch
+  Chuyển" bị kẹt ở trạng thái `pending_review` mà không có luồng duyệt
+  rõ ràng (trang admin lại 500 do lỗi trên). Fix gốc rễ: sửa 2 lỗi SQL
+  enum; bổ sung nút **"Duyệt & xuất bản"** trên admin/games cho game
+  chưa published; data prod đã cập nhật game về `published`.
+- **Repo GitHub không hiện ở hồ sơ:** endpoint fragment
+  `/u/{username}/repos` tồn tại nhưng profile template không bao giờ
+  gọi nó. Fix: thêm section "📦 Repo GitHub" vào trang profile, lazy-load
+  qua HTMX, có empty-state thân thiện khi chưa có repo.
+- **`/games` GET trả 405 Method Not Allowed:** route `/games` chỉ đăng
+  ký POST (tạo game). Fix: thêm `list_all` — danh mục đầy đủ tại
+  `GET /games`, phân trang + sort đầy đủ.
+
+### 🐛 Bug fixes (Khác)
+
+- Chip lọc trạng thái ở admin/games và dashboard hiển thị giá trị raw
+  enum (`pending_review`). Fix: hiển thị nhãn tiếng Việt
+  ("Chờ duyệt", "Đã xuất bản"...) qua `StatusCountChip`.
+
+### 📱 UI / Mobile
+
+- Toàn bộ điều hướng trên header gộp vào **menu ba gạch (hamburger)**:
+  nút menu mở panel "Khám phá" + "Cá nhân", đóng khi chọn link, bấm
+  ngoài, phím Escape hoặc sau submit (đăng xuất). Hết tình trạng tràn
+  nút trên màn hình nhỏ.
+- `.comment-actions` thêm `flex-wrap` — hàng nút like/trả lời của bình
+  luận không tràn dòng trên mobile.
+- Grid repo-mini ở profile tự co 1 cột dưới 560px.
+- Search bar xuống dòng riêng, các khối stats/filters đều wrap an toàn
+  (đã kiểm tra toàn bộ @media breakpoints).
+
+### 🧹 Chất lượng
+
+- `cargo clippy --all-targets` sạch 100% cảnh báo (Rust 1.98).
+- Kiểm thử thủ công end-to-end trên PostgreSQL 17: đăng nhập phiên,
+  đăng game, đăng repo (GitHub API thật), like/bookmark/rate/comment/
+  download, duyệt/ẩn game, đổi trạng thái repo, thông báo — tất cả
+  counters đồng bộ đúng (like/comment/download/rating trigger DB).
+
 ## [0.3.1] — 2026-08-24
 
 ### 🐛 Bug fixes (Critical)

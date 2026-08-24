@@ -19,19 +19,21 @@
             <tbody>
             {% for c in categories %}
             <tr>
+                {# Dùng thuộc tính `form=` của HTML5: 1 form duy nhất cho cả hàng
+                   mà không cần form trải nhiều <td> (invalid HTML, trình duyệt
+                   tự phá form khi parse). #}
                 <td>
-                    <form action="/admin/categories/save" method="post" class="admin-form-inline">
-                        <input type="hidden" name="id" value="{{ c.id }}">
-                        <input type="text" name="name" value="{{ c.name }}">
+                    <input type="text" name="name" value="{{ c.name }}" form="cat-edit-{{ c.id }}">
                 </td>
                 <td>{{ c.slug }}</td>
                 <td>{{ c.games_count }}</td>
-                <td><input type="text" name="description" value="{{ c.description.as_deref().unwrap_or("") }}" class="input-wide"></td>
+                <td><input type="text" name="description" value="{{ c.description.as_deref().unwrap_or("") }}" class="input-wide" form="cat-edit-{{ c.id }}"></td>
                 <td class="admin-actions">
-                        <input type="hidden" name="icon" value="{{ c.icon.as_deref().unwrap_or("") }}">
-                        <button class="btn btn-outline btn-sm" type="submit">Lưu</button>
-                    </form>
-                    <form hx-post="/admin/categories/{{ c.id }}/delete" hx-confirm="Xóa thể loại này?">
+                    <form id="cat-edit-{{ c.id }}" action="/admin/categories/save" method="post"></form>
+                    <input type="hidden" name="id" value="{{ c.id }}" form="cat-edit-{{ c.id }}">
+                    <input type="hidden" name="icon" value="{{ c.icon.as_deref().unwrap_or("") }}" form="cat-edit-{{ c.id }}">
+                    <button class="btn btn-outline btn-sm" type="submit" form="cat-edit-{{ c.id }}">Lưu</button>
+                    <form action="/admin/categories/{{ c.id }}/delete" method="post">
                         <button class="btn btn-danger btn-sm" type="submit">Xóa</button>
                     </form>
                 </td>
@@ -40,5 +42,8 @@
             </tbody>
         </table>
     </div>
+    {% if categories.is_empty() %}
+    <div class="empty-state"><p>Chưa có thể loại nào.</p></div>
+    {% endif %}
 </section>
 {% endblock %}

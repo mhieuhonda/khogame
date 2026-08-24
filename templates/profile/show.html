@@ -57,6 +57,7 @@
 
     <div class="profile-tabs">
         <a href="#games" class="profile-tab active">🎮 Game đã đăng</a>
+        <a href="#repos" class="profile-tab">📦 Repo GitHub</a>
         {% if is_self %}
         <a href="/bookmarks" class="profile-tab">🔖 Đã lưu</a>
         {% endif %}
@@ -97,6 +98,13 @@
             {% endfor %}
         </div>
         {% endif %}
+    </div>
+
+    <div class="profile-content" id="repos" style="margin-top:24px">
+        <h2 class="section-title" style="margin-bottom:16px">📦 Repo GitHub</h2>
+        <div hx-get="/u/{{ user.username }}/repos" hx-trigger="load" hx-swap="innerHTML">
+            <div class="empty-state" style="padding:24px"><p>Đang tải repo...</p></div>
+        </div>
     </div>
 </section>
 {% endblock %}

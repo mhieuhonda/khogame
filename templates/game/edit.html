@@ -9,8 +9,6 @@
 </section>
 
 <form class="game-form" method="post" action="/games/{{ game.slug }}">
-    <input type="hidden" name="_method" value="put">
-
     <div class="form-grid">
         <div class="form-section">
             <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
@@ -63,41 +61,36 @@
 
         <div class="form-section">
             <h2 class="form-section-title">📱 Link tải về</h2>
+            <p class="form-section-desc">Để trống nền tảng nào nếu không muốn cung cấp link cho nền tảng đó.</p>
 
-            {% for link in links %}
-            <div class="form-group">
-                <label class="form-label">
-                    <span class="platform-icon">
-                        {% if link.platform.label() == "Android" %}🤖{% else if link.platform.label() == "iOS" %}🍎{% else if link.platform.label() == "Windows" %}🪟{% else if link.platform.label() == "Linux" %}🐧{% else if link.platform.label() == "macOS" %}💻{% endif %}
-                    </span>
-                    Link tải {{ link.platform.label() }}
-                </label>
-                <input type="url" name="{{ link.platform.label()|lower }}_link" class="form-control" value="{{ link.url }}">
-            </div>
-            {% endfor %}
-
-            {# Always show all 5 platform inputs (existing links will be pre-filled above, missing ones shown empty below) #}
+            {# Mỗi nền tảng CHỈ MỘT input duy nhất — trước đây form render cả
+               input đã điền lẫn input trống cho cùng tên field, serde báo
+               "duplicate field" → mọi lần lưu game có link đều thất bại. #}
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🤖</span> Link tải Android</label>
-                <input type="url" name="android_link" class="form-control" placeholder="https://play.google.com/store/apps/...">
+                <input type="url" name="android_link" class="form-control" placeholder="https://play.google.com/store/apps/..."
+                       value="{% for link in links %}{% if link.platform.label() == "Android" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🍎</span> Link tải iOS</label>
-                <input type="url" name="ios_link" class="form-control" placeholder="https://apps.apple.com/...">
+                <input type="url" name="ios_link" class="form-control" placeholder="https://apps.apple.com/..."
+                       value="{% for link in links %}{% if link.platform.label() == "iOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🪟</span> Link tải Windows</label>
-                <input type="url" name="windows_link" class="form-control" placeholder="https://...">
+                <input type="url" name="windows_link" class="form-control" placeholder="https://..."
+                       value="{% for link in links %}{% if link.platform.label() == "Windows" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🐧</span> Link tải Linux</label>
-                <input type="url" name="linux_link" class="form-control" placeholder="https://...">
+                <input type="url" name="linux_link" class="form-control" placeholder="https://..."
+                       value="{% for link in links %}{% if link.platform.label() == "Linux" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">💻</span> Link tải macOS</label>
-                <input type="url" name="macos_link" class="form-control" placeholder="https://...">
+                <input type="url" name="macos_link" class="form-control" placeholder="https://..."
+                       value="{% for link in links %}{% if link.platform.label() == "macOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
-            <p class="form-hint">Nếu link đã tồn tại cho nền tảng nào, nó sẽ được hiển thị ở trên. Để trống các link bạn không muốn cập nhật.</p>
         </div>
 
         <div class="form-section">

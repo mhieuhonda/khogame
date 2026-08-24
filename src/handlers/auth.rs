@@ -4,8 +4,9 @@ use crate::middleware::CurrentUser;
 use crate::repositories::{SessionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::LoginTemplate;
+use askama::Template;
 use axum::extract::{Query, State};
-use axum::response::Redirect;
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
 use rand::Rng;
 use serde::Deserialize;
@@ -20,19 +21,22 @@ pub struct AuthQuery {
 }
 
 pub async fn login_page(
+    State(_state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
-) -> AppResult<LoginTemplate> {
+) -> AppResult<Response> {
     if current_user.is_some() {
-        // Already logged in - redirect home
-        return Err(AppError::BadRequest("Đã đăng nhập".into()));
+        // Đã đăng nhập → về trang chủ thay vì trả lỗi 400 (trước đây
+        // người dùng bấm "Đăng nhập" khi còn phiên sẽ thấy trang lỗi)
+        return Ok(Redirect::to("/").into_response());
     }
     // Nút Google trong template trỏ tới `/auth/google` — route duy nhất sinh
     // CSRF state và set cookie `kg_oauth_state`. Không build auth_url tại đây
     // để tránh state không có cookie đối chiếu (bug v0.3.0).
-    Ok(LoginTemplate {
+    let tpl = LoginTemplate {
         current_user: None,
         unread_notifications: 0,
-    })
+    };
+    Ok(Html(tpl.render().map_err(AppError::from)?).into_response())
 }
 
 pub async fn google_login(
@@ -160,6 +164,8 @@ pub async fn google_callback(
     )
     .await?;
     UserRepo::update_last_seen(&state.db, user.id).await?;
+    // Dọn session hết hạn (best-effort, tránh bảng phình to vô hạn)
+    let _ = SessionRepo::cleanup_expired(&state.db).await;
 
     let mut new_jar = cleanup_jar;
     auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);

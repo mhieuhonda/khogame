@@ -6,7 +6,6 @@ use crate::models::report::ReportReason;
 use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, ReportRepo, TagRepo};
 use crate::state::AppState;
 use crate::templates::*;
-use crate::utils;
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -29,7 +28,9 @@ pub async fn home(
     CurrentUser(current_user): CurrentUser,
 ) -> AppResult<IndexTemplate> {
     let unread = unread_for(&state, current_user.as_ref()).await;
-    let featured_games = GameRepo::featured(&state.db, 6).await.unwrap_or_default();
+    let featured_games = GameRepo::featured(&state.db, 6, 0)
+        .await
+        .unwrap_or_default();
     let latest_games = GameRepo::list_published(&state.db, 12, 0, "latest").await?;
     let trending_games = GameRepo::list_published(&state.db, 12, 0, "trending").await?;
     let top_rated_games = GameRepo::list_published(&state.db, 12, 0, "top_rated").await?;
@@ -101,11 +102,21 @@ pub async fn create_game(
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
 
-    let slug_base = slug::slugify(&form.title);
-    let count = GameRepo::count_slug(&state.db, &slug_base)
-        .await
-        .unwrap_or(0);
-    let slug = utils::make_unique_slug(&form.title, count);
+    // Sinh slug duy nhất: thử base, rồi base-2, base-3... tránh 500 do
+    // trùng ràng buộc UNIQUE khi có nhiều game cùng tên
+    let mut slug = slug::slugify(&form.title);
+    if slug.is_empty() {
+        slug = "game".into();
+    }
+    let mut suffix = 1;
+    while GameRepo::slug_exists(&state.db, &slug).await.unwrap_or(true) {
+        suffix += 1;
+        slug = format!("{}-{}", slug::slugify(&form.title), suffix);
+        if suffix > 100 {
+            slug = format!("{}-{}", slug, uuid::Uuid::new_v4().simple());
+            break;
+        }
+    }
 
     let id = GameRepo::create(&state.db, user.id, &form, &slug).await?;
     tracing::info!("Game created: {} ({})", id, slug);
@@ -127,15 +138,21 @@ pub async fn show_game(
         .as_ref()
         .map(|u| u.id == game.user_id)
         .unwrap_or(false);
-    if !is_owner && !matches!(game.status, GameStatus::Published) {
+    // Staff (admin/moderator) được xem game ẩn/nháp để kiểm duyệt báo cáo
+    let is_staff = current_user
+        .as_ref()
+        .map(|u| u.role.is_staff())
+        .unwrap_or(false);
+    if !is_owner && !is_staff && !matches!(game.status, GameStatus::Published) {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }
 
+    let mut game = game;
     if !is_owner {
         let _ = GameRepo::increment_view_count(&state.db, game.id).await;
         let _ = crate::repositories::StatsRepo::record_view(&state.db, game.id).await;
+        game.view_count += 1;
     }
-    let game = GameRepo::find_by_slug(&state.db, &slug).await?.unwrap();
 
     let author = crate::repositories::UserRepo::find_by_id(&state.db, game.user_id)
         .await?
@@ -144,10 +161,7 @@ pub async fn show_game(
     let screenshots = GameRepo::get_screenshots(&state.db, game.id).await?;
     let tags = GameRepo::get_tags(&state.db, game.id).await?;
     let category = if let Some(cat_id) = game.category_id {
-        CategoryRepo::list_all(&state.db)
-            .await?
-            .into_iter()
-            .find(|c| c.id == cat_id)
+        CategoryRepo::find_by_id(&state.db, cat_id).await?
     } else {
         None
     };
@@ -374,9 +388,25 @@ async fn build_list_template(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    let games = GameRepo::list_published(&state.db, per_page, offset, &sort).await?;
-    let total = GameRepo::count_published(&state.db).await.unwrap_or(0);
+
+    // Trang "featured" chỉ liệt kê game nổi bật, không phải toàn bộ game
+    let (games, total) = if list_type == "featured" {
+        (
+            GameRepo::featured(&state.db, per_page, offset).await?,
+            GameRepo::count_featured(&state.db).await.unwrap_or(0),
+        )
+    } else {
+        (
+            GameRepo::list_published(&state.db, per_page, offset, &sort).await?,
+            GameRepo::count_published(&state.db).await.unwrap_or(0),
+        )
+    };
     let unread = unread_for(state, current_user.as_ref()).await;
+    let base = if list_type == "all" {
+        "/games".to_string()
+    } else {
+        format!("/games/{}", list_type)
+    };
     Ok(GameListTemplate {
         current_user,
         unread_notifications: unread,
@@ -387,9 +417,19 @@ async fn build_list_template(
         per_page,
         sort,
         list_type: list_type.into(),
+        base_url: base,
         category: None,
         tag: None,
     })
+}
+
+/// Danh mục đầy đủ tại /games (trước đây chỉ có POST → GET trả 405)
+pub async fn list_all(
+    State(state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+    Query(q): Query<ListQuery>,
+) -> AppResult<GameListTemplate> {
+    build_list_template(&state, current_user, "🎮 Tất cả game", "all", "latest", q).await
 }
 
 pub async fn list_latest(
@@ -487,7 +527,11 @@ pub async fn list_by_category(
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
     let games = GameRepo::by_category(&state.db, &cat_slug, per_page, offset).await?;
-    let total = games.len() as i64;
+    // Đếm đúng tổng số game của thể loại (trước đây lấy games.len() →
+    // pagination luôn báo 1 trang dù còn game ở trang sau)
+    let total = GameRepo::count_by_category(&state.db, &cat_slug)
+        .await
+        .unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(GameListTemplate {
         current_user,
@@ -499,6 +543,7 @@ pub async fn list_by_category(
         per_page,
         sort,
         list_type: "category".into(),
+        base_url: format!("/c/{}", cat_slug),
         category: Some(category),
         tag: None,
     })
@@ -518,7 +563,9 @@ pub async fn list_by_tag(
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
     let games = GameRepo::by_tag(&state.db, &tag_slug, per_page, offset).await?;
-    let total = games.len() as i64;
+    let total = GameRepo::count_by_tag(&state.db, &tag_slug)
+        .await
+        .unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(GameListTemplate {
         current_user,
@@ -530,6 +577,7 @@ pub async fn list_by_tag(
         per_page,
         sort,
         list_type: "tag".into(),
+        base_url: format!("/t/{}", tag_slug),
         category: None,
         tag: Some(tag),
     })
@@ -538,27 +586,14 @@ pub async fn list_by_tag(
 pub async fn list_categories(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
-) -> AppResult<Html<String>> {
+) -> AppResult<CategoriesPageTemplate> {
     let cats = CategoryRepo::list_with_counts(&state.db).await?;
     let unread = unread_for(&state, current_user.as_ref()).await;
-    let mut html = format!(
-        r#"<!DOCTYPE html><html lang="vi" data-theme="dark"><head><meta charset="UTF-8"><title>Thể loại - Kho Game</title><link rel="stylesheet" href="/static/css/style.css"></head><body>
-        <header class="site-header"><div class="container header-inner"><a href="/" class="logo"><span>Kho Game</span></a></div></header>
-        <main class="site-main"><div class="container"><h1>📁 Tất cả thể loại</h1><p>Tổng cộng {} thể loại</p><div class="category-grid">"#,
-        cats.len()
-    );
-    for c in cats {
-        html.push_str(&format!(
-            r#"<a href="/c/{}" class="category-card"><div class="category-icon">{}</div><div class="category-info"><h3>{}</h3><p>{} game</p></div></a>"#,
-            c.slug,
-            c.name.chars().next().unwrap_or('G'),
-            c.name,
-            c.games_count
-        ));
-    }
-    html.push_str("</div></div></main></body></html>");
-    let _ = unread;
-    Ok(Html(html))
+    Ok(CategoriesPageTemplate {
+        current_user,
+        unread_notifications: unread,
+        categories: cats,
+    })
 }
 
 // ============= Search =============
@@ -587,7 +622,7 @@ pub async fn search(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    let games = if q.q.trim().is_empty() {
+    let games = if q.q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
         GameRepo::list_published(&state.db, per_page, offset, &sort).await?
     } else {
         GameRepo::search(
@@ -601,7 +636,20 @@ pub async fn search(
         )
         .await?
     };
-    let total = GameRepo::count_published(&state.db).await.unwrap_or(0);
+    // Đếm đúng số kết quả khớp bộ lọc (trước đây lấy tổng game đã đăng
+    // → "N kết quả" và phân trang sai khi có từ khóa/bộ lọc)
+    let total = if q.q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
+        GameRepo::count_published(&state.db).await.unwrap_or(0)
+    } else {
+        GameRepo::count_search(
+            &state.db,
+            &q.q,
+            q.category.as_deref(),
+            q.platform.as_deref(),
+        )
+        .await
+        .unwrap_or(0)
+    };
     let categories = CategoryRepo::list_all(&state.db).await?;
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(SearchTemplate {
@@ -635,7 +683,22 @@ pub async fn share_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let user_id = current_user.as_ref().map(|u| u.id);
-    let _ = InteractionRepo::record_share(&state.db, game.id, user_id, &form.platform).await;
+    // Chuẩn hoá platform về enum hợp lệ trong DB, giá trị lạ → "copy"
+    // (trước đây chuỗi lạ gây lỗi cast enum và share bị nuốt im lặng)
+    let valid_platforms = [
+        "facebook",
+        "twitter",
+        "telegram",
+        "whatsapp",
+        "copy",
+        "native",
+    ];
+    let platform = if valid_platforms.contains(&form.platform.as_str()) {
+        form.platform.clone()
+    } else {
+        "copy".to_string()
+    };
+    let _ = InteractionRepo::record_share(&state.db, game.id, user_id, &platform).await;
     let _ = GameRepo::increment_share_count(&state.db, game.id).await;
     Ok(Html("<span></span>".into()))
 }

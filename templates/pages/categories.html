@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+{% block title %}Tất cả thể loại{% endblock %}
+{% block description %}Khám phá game theo thể loại trên Kho Game{% endblock %}
+
+{% block content %}
+<section class="categories-page">
+    <div class="page-header">
+        <h1>📁 Tất cả thể loại</h1>
+        <p>{{ categories.len() }} thể loại đang có game trên Kho Game.</p>
+    </div>
+
+    {% if categories.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">📁</div>
+        <h3>Chưa có thể loại nào</h3>
+        <p>Quản trị viên chưa tạo thể loại nào. Hãy quay lại sau!</p>
+    </div>
+    {% else %}
+    <div class="category-grid">
+        {% for cat in categories %}
+        <a href="/c/{{ cat.slug }}" class="category-card">
+            <div class="category-icon">{{ cat.icon.as_deref().unwrap_or("").chars().next().unwrap_or('G') }}</div>
+            <div class="category-info">
+                <h3>{{ cat.name }}</h3>
+                <p>{{ cat.games_count }} game</p>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -24,7 +24,11 @@ pub async fn toggle_like(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let is_liked = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
-    let like_count = game.like_count + if is_liked { 1 } else { -1 };
+    // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
+    let like_count = GameRepo::find_by_id(&state.db, game.id)
+        .await?
+        .map(|g| g.like_count)
+        .unwrap_or(game.like_count);
     let partial = LikeButtonPartial {
         game_id: game.id,
         slug: slug.clone(),
@@ -66,7 +70,9 @@ pub async fn rate(
     InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
 
     // Reload game to get updated rating
-    let game = GameRepo::find_by_slug(&state.db, &slug).await?.unwrap();
+    let game = GameRepo::find_by_id(&state.db, game.id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let partial = RatingStarsPartial {
         game_id: game.id,
         slug: slug.clone(),

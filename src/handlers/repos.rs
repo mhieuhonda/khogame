@@ -209,6 +209,12 @@ pub async fn user_repos_fragment(
         .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
     let repos = RepoRepo::list_by_user(&state.db, user.id).await?;
+    if repos.is_empty() {
+        return Ok(Html(
+            r#"<div class="empty-state" style="padding:24px"><div style="font-size:40px">📦</div><h3>Chưa có repo GitHub nào</h3><p><a href="/repos/new">Đăng ký repo</a> để hiển thị tại đây.</p></div>"#
+                .to_string(),
+        ));
+    }
     let items: Vec<String> = repos
         .iter()
         .map(|r| {
@@ -224,7 +230,10 @@ pub async fn user_repos_fragment(
             )
         })
         .collect();
-    Ok(Html(items.join("\n")))
+    Ok(Html(format!(
+        r#"<div class="repo-mini-grid">{}</div>"#,
+        items.join("\n")
+    )))
 }
 
 #[allow(dead_code)]

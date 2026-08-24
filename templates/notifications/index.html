@@ -10,7 +10,8 @@
         <button class="btn btn-outline btn-sm"
                 hx-post="/notifications/mark-all-read"
                 hx-target=".notifications-list"
-                hx-swap="outerHTML">Đánh dấu tất cả đã đọc</button>
+                hx-swap="outerHTML"
+                hx-on::after-request="if(event.detail.successful) this.remove()">Đánh dấu tất cả đã đọc</button>
         {% endif %}
     </div>
 

@@ -31,12 +31,13 @@
         </section>
         <section class="admin-section">
             <div class="section-header"><h2>🔔 Gửi thông báo đến người dùng</h2></div>
-            <div class="admin-form-row">
-                <input type="text" name="b_title" placeholder="Tiêu đề thông báo" form="broadcast-form">
-                <input type="text" name="b_link" placeholder="Link (tuỳ chọn, vd: /games/abc)" form="broadcast-form">
-                <textarea name="b_content" rows="2" placeholder="Nội dung" form="broadcast-form"></textarea>
-                <button class="btn btn-primary" type="submit" form="broadcast-form" formaction="/admin/broadcast" formmethod="post">Gửi tới tất cả</button>
-            </div>
+            <form hx-post="/admin/broadcast" hx-target="#broadcast-result" hx-swap="innerHTML" class="admin-form-row">
+                <input type="text" name="title" placeholder="Tiêu đề thông báo" required>
+                <input type="text" name="link" placeholder="Link (tuỳ chọn, vd: /games/abc)">
+                <textarea name="content" rows="2" placeholder="Nội dung (tuỳ chọn)"></textarea>
+                <button class="btn btn-primary" type="submit">Gửi tới tất cả</button>
+            </form>
+            <div id="broadcast-result"></div>
         </section>
         <section class="admin-section">
             <div class="section-header"><h2>🎛️ Chế độ hoạt động</h2></div>
@@ -57,5 +58,4 @@
         <a class="btn btn-outline" href="/admin/export">⬇️ Tải backup JSON</a>
     </section>
 </section>
-<form id="broadcast-form"></form>
 {% endblock %}

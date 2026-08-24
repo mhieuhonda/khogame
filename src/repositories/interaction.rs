@@ -5,6 +5,9 @@ use uuid::Uuid;
 pub struct InteractionRepo;
 
 impl InteractionRepo {
+    /// Lưu ý: `games.like_count` được cập nhật bởi DB trigger
+    /// (`trigger_like_insert/delete` trong migrations/001_init.sql),
+    /// nên ở đây KHÔNG tự tăng/giảm counter nữa để tránh đếm đôi.
     pub async fn toggle_like(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         let liked: Option<i32> =
             sqlx::query_scalar("SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2")

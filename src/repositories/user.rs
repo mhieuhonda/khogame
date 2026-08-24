@@ -239,6 +239,19 @@ impl UserRepo {
         Ok(c)
     }
 
+    /// Đếm user theo bộ lọc tìm kiếm (phân trang admin đúng tổng số)
+    pub async fn count_for_admin(pool: &PgPool, search: Option<&str>) -> AppResult<i64> {
+        let pattern = format!("%{}%", search.unwrap_or_default());
+        let c: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM users
+               WHERE ($1 = '%%' OR email ILIKE $1 OR username ILIKE $1 OR display_name ILIKE $1)"#,
+        )
+        .bind(pattern)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
     /// Tìm user theo email (dùng cho seed admin)
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(

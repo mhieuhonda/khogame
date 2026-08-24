@@ -25,6 +25,9 @@ impl CommentRepo {
         .fetch_one(pool)
         .await?;
 
+        // games.comment_count được cập nhật bởi DB trigger
+        // (trigger_comment_insert) — không tự cộng lại tại đây.
+
         // Insert notification for game owner
         let owner_id: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
             .bind(game_id)
@@ -144,6 +147,7 @@ impl CommentRepo {
     }
 
     pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
+        // games.comment_count được giảm bởi DB trigger (trigger_comment_delete)
         sqlx::query("DELETE FROM comments WHERE id = $1")
             .bind(id)
             .execute(pool)

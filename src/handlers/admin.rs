@@ -70,7 +70,14 @@ pub async fn dashboard(
     let pending_repos = RepoRepo::pending_count(&state.db).await.unwrap_or(0);
     let status_counts = GameRepo::count_by_status(&state.db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, count)| crate::templates::StatusCountChip {
+            label: crate::models::game::GameStatus::from_str(&key).label().to_string(),
+            key,
+            count,
+        })
+        .collect();
     let max_views = daily_stats
         .iter()
         .map(|d| d.views)
@@ -170,19 +177,22 @@ pub async fn resolve_report(
 
     let reports = ReportRepo::list(&state.db, None, 50, 0).await?;
     let r = reports.iter().find(|r| r.id == id);
+    // Bọc trong .report-row để khớp hx-target="closest .admin-report-row"
+    // outerHTML ở trang admin/reports (trước đây mất wrapper → vỡ layout)
     let html = if let Some(r) = r {
         format!(
-            r#"<div class="report-info"><a href="/games/{}" class="report-game-title">{}</a><div class="report-meta"><span class="report-reason">{}</span><span class="report-reporter">bởi {}</span><span class="report-time">{}</span></div><span class="status-badge" style="color: {}">{}</span></div>"#,
-            r.game_slug,
-            r.game_title,
-            r.reason.label(),
-            r.reporter_name,
-            crate::utils::time_ago(r.created_at),
-            r.status.color(),
-            r.status.label()
+            r#"<div class="report-row admin-report-row" id="report-{id}"><div class="report-info"><a href="/games/{slug}" class="report-game-title">{title}</a><div class="report-meta"><span class="report-reason">{reason}</span><span class="report-reporter">bởi {reporter}</span><span class="report-time">{time}</span></div></div><div class="report-actions"><span class="status-badge" style="color: {color}">{status_label}</span></div></div>"#,
+            id = r.id,
+            slug = r.game_slug,
+            title = crate::utils::html_escape(&r.game_title),
+            reason = r.reason.label(),
+            reporter = crate::utils::html_escape(&r.reporter_name),
+            time = crate::utils::time_ago(r.created_at),
+            color = r.status.color(),
+            status_label = r.status.label()
         )
     } else {
-        "".to_string()
+        String::new()
     };
     Ok(Html(html))
 }
@@ -265,10 +275,16 @@ pub async fn pin_comment(
     let comment = CommentRepo::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+    // Lấy slug game để form trả lời trong item vẫn trỏ đúng URL
+    let game_slug = GameRepo::find_by_id(&state.db, comment.game_id)
+        .await?
+        .map(|g| g.slug)
+        .unwrap_or_default();
     let partial = CommentItemPartial {
         comment: &comment,
-        game_slug: "",
+        game_slug: &game_slug,
         current_user: Some(&user),
+        load_replies: true,
     };
     audit(
         &state,
@@ -303,9 +319,19 @@ pub async fn games(
     let per_page: i64 = 50;
     let offset = (page - 1) * per_page;
     let games = GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset).await?;
+    let total = GameRepo::count_admin(&state.db, q.status.as_deref())
+        .await
+        .unwrap_or(0);
     let status_counts = GameRepo::count_by_status(&state.db)
         .await
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(key, count)| crate::templates::StatusCountChip {
+            label: crate::models::game::GameStatus::from_str(&key).label().to_string(),
+            key,
+            count,
+        })
+        .collect();
     let unread = unread_count(&state, user.id).await;
     Ok(AdminGamesTemplate {
         current_user: Some(user),
@@ -315,6 +341,7 @@ pub async fn games(
         status_counts,
         page,
         per_page,
+        total,
     })
 }
 
@@ -366,7 +393,10 @@ pub async fn users(
     let offset = (page - 1) * per_page;
     let search = q.q.as_deref().filter(|s| !s.trim().is_empty());
     let users = UserRepo::list_for_admin(&state.db, search, per_page, offset).await?;
-    let total = UserRepo::count_all(&state.db).await.unwrap_or(0);
+    // Tổng theo bộ lọc (không phải tổng toàn site) để phân trang đúng
+    let total = UserRepo::count_for_admin(&state.db, search)
+        .await
+        .unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminUsersTemplate {
         current_user: Some(user),

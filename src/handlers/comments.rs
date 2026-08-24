@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use crate::middleware::AuthUser;
+use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::CommentRepo;
 use crate::state::AppState;
 use crate::templates::CommentItemPartial;
@@ -39,11 +39,21 @@ pub async fn create_comment(
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    let parent_id = form
+    let mut parent_id = form
         .parent_id
         .as_deref()
         .filter(|s| !s.is_empty())
         .and_then(|s| Uuid::parse_str(s).ok());
+    // Chuẩn hoá depth bình luận về tối đa 2 cấp: trả lời một reply
+    // sẽ được gắn vào comment gốc để luôn hiển thị đúng vị trí.
+    if let Some(pid) = parent_id {
+        let parent = CommentRepo::find_by_id(&state.db, pid)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("Bình luận cha không tồn tại".into()))?;
+        if let Some(grand) = parent.parent_id {
+            parent_id = Some(grand);
+        }
+    }
     let _id = CommentRepo::create(&state.db, game.id, user.id, parent_id, content).await?;
 
     // Mention @username -> thông báo
@@ -64,6 +74,7 @@ pub async fn create_comment(
         comment: &comment,
         game_slug: &slug,
         current_user: Some(&user),
+        load_replies: true,
     };
     Ok(Html(partial.render()?))
 }
@@ -87,16 +98,23 @@ pub async fn edit_comment(
     let existing = CommentRepo::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
-    if existing.user_id != user.id && !user.role.is_staff() {
+    // Chỉ chủ sở hữu được sửa (repo cũng kiểm tra + giới hạn 5 phút)
+    if existing.user_id != user.id {
         return Err(AppError::Forbidden(
-            "Bạn không có quyền sửa bình luận này".into(),
+            "Bạn chỉ có thể sửa bình luận của chính mình".into(),
         ));
     }
     let updated = CommentRepo::update_content(&state.db, id, user.id, content).await?;
+    // Lấy đúng slug của game để form trả lời trong item vẫn hoạt động
+    let game_slug = crate::repositories::GameRepo::find_by_id(&state.db, updated.game_id)
+        .await?
+        .map(|g| g.slug)
+        .unwrap_or_default();
     let partial = CommentItemPartial {
         comment: &updated,
-        game_slug: "",
+        game_slug: &game_slug,
         current_user: Some(&user),
+        load_replies: true,
     };
     Ok(Html(partial.render()?))
 }
@@ -133,16 +151,20 @@ pub async fn like_comment(
 
 pub async fn list_replies(
     State(state): State<Arc<AppState>>,
-    AuthUser(user): AuthUser,
+    CurrentUser(current_user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
-    let replies = CommentRepo::list_replies(&state.db, id, Some(user.id)).await?;
+    // Cho phép cả khách chưa đăng nhập xem replies (container tải lười
+    // khi cuộn tới; trước đây yêu cầu đăng nhập → 401 với khách)
+    let replies = CommentRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id))
+        .await?;
     let mut html = String::new();
     for r in &replies {
         let partial = CommentItemPartial {
             comment: r,
             game_slug: "", // not needed for replies list
-            current_user: Some(&user),
+            current_user: current_user.as_ref(),
+            load_replies: false,
         };
         html.push_str(&partial.render()?);
     }

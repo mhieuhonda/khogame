@@ -28,10 +28,10 @@
             <div class="report-actions admin-actions">
                 <span id="repo-status-{{ r.id }}" class="status-badge" style="color: {{ r.status.color() }}">{{ r.status.label() }}</span>
                 {% if r.status.label() != "Đã duyệt" %}
-                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"approved"}' hx-target="#repo-status-{{ r.id }}" hx-swap="innerHTML"><button class="btn btn-primary btn-sm" type="submit">Duyệt</button></form>
+                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"approved"}' hx-target="#repo-status-{{ r.id }}" hx-swap="outerHTML"><button class="btn btn-primary btn-sm" type="submit">Duyệt</button></form>
                 {% endif %}
                 {% if r.status.label() != "Đã ẩn" %}
-                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"hidden"}' hx-target="#repo-status-{{ r.id }}" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
+                <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"hidden"}' hx-target="#repo-status-{{ r.id }}" hx-swap="outerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
                 {% endif %}
                 <form hx-post="/repos/{{ r.id }}/refresh" hx-swap="none" title="Làm mới số sao từ GitHub"><button class="btn btn-outline btn-sm" type="submit">↻</button></form>
             </div>

@@ -23,19 +23,21 @@ pub async fn list(
     })
 }
 
+/// Đánh dấu 1 thông báo đã đọc và trả về đúng item đó
+/// (trước đây trả về toàn bộ danh sách → swap outerHTML nhân đôi danh sách)
 pub async fn mark_read(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
     NotificationRepo::mark_read(&state.db, id, user.id).await?;
-    let n = NotificationRepo::list_for_user(&state.db, user.id, 50, 0, false).await?;
-    let mut html = String::new();
-    for n in &n {
+    let items = NotificationRepo::list_for_user(&state.db, user.id, 200, 0, false).await?;
+    if let Some(n) = items.iter().find(|n| n.id == id) {
         let partial = NotificationItemPartial { notification: n };
-        html.push_str(&partial.render()?);
+        Ok(Html(partial.render()?))
+    } else {
+        Ok(Html(String::new()))
     }
-    Ok(Html(html))
 }
 
 pub async fn mark_all_read(

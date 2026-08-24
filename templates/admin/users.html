@@ -53,5 +53,13 @@
             </tbody>
         </table>
     </div>
+    {% set total_pages = (total + per_page - 1) / per_page %}
+    {% if total_pages > 1 %}
+    <nav class="pagination">
+        {% if page > 1 %}<a href="?q={{ search|esc }}&page={{ page - 1 }}" class="page-link">← Trước</a>{% endif %}
+        <span class="page-link current">{{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?q={{ search|esc }}&page={{ page + 1 }}" class="page-link">Sau →</a>{% endif %}
+    </nav>
+    {% endif %}
 </section>
 {% endblock %}

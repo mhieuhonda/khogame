@@ -16,8 +16,9 @@
                 </div>
             </div>
             <div class="report-actions admin-actions">
-                <form hx-post="/admin/comments/{{ c.id }}/pin" hx-target="closest .report-row" hx-swap="outerHTML" id="pin-form-{{ c.id }}"><button class="btn btn-outline btn-sm" type="submit">{% if c.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}</button></form>
+                <form hx-post="/admin/comments/{{ c.id }}/pin" hx-target="find .pin-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">{% if c.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}</button></form>
                 <form hx-post="/admin/comments/{{ c.id }}/delete" hx-confirm="Xóa bình luận này?" hx-target="closest .report-row" hx-swap="outerHTML"><button class="btn btn-danger btn-sm" type="submit">Xóa</button></form>
+                <span class="pin-zone"></span>
             </div>
         </div>
         {% endfor %}
