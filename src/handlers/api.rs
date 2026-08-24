@@ -775,6 +775,38 @@ pub async fn games_by_tag(
         .into_response())
 }
 
+/// Discovery endpoint: liệt kê tất cả endpoint API có sẵn, kèm method
+/// và mô tả ngắn. Tiện cho client bên ngoài tự khám phá API mà không
+/// phải đọc doc. Cache 1 giờ (rarely changes).
+pub async fn root(State(state): State<Arc<AppState>>) -> Response {
+    let base = state.config.base_url.clone();
+    let endpoints = serde_json::json!({
+        "name": "Kho Game API",
+        "version": env!("CARGO_PKG_VERSION"),
+        "base_url": format!("{}/api/v1", base),
+        "documentation": format!("{}/api/v1", base),
+        "endpoints": [
+            {"method": "GET", "path": "/api/v1", "description": "Discovery — danh sách endpoint"},
+            {"method": "GET", "path": "/api/v1/games", "description": "Danh sách game (có phân trang, sort, search)"},
+            {"method": "GET", "path": "/api/v1/games/{slug}", "description": "Chi tiết game"},
+            {"method": "GET", "path": "/api/v1/games/{slug}/related", "description": "Game liên quan"},
+            {"method": "GET", "path": "/api/v1/categories", "description": "Danh sách thể loại"},
+            {"method": "GET", "path": "/api/v1/categories/{slug}/games", "description": "Game theo thể loại"},
+            {"method": "GET", "path": "/api/v1/tags", "description": "Top tag phổ biến"},
+            {"method": "GET", "path": "/api/v1/tags/{slug}/games", "description": "Game theo tag"},
+            {"method": "GET", "path": "/api/v1/users/{username}", "description": "Hồ sơ user công khai"},
+            {"method": "GET", "path": "/api/v1/repos", "description": "Repo GitHub đã duyệt"},
+            {"method": "GET", "path": "/api/v1/stats", "description": "Thống kê tổng quan"},
+            {"method": "GET", "path": "/api/v1/health", "description": "Health check (no-store)"},
+        ],
+    });
+    (
+        [(header::CACHE_CONTROL, "public, max-age=3600")],
+        Json(endpoints),
+    )
+        .into_response()
+}
+
 // ===================== Maintenance page dùng nội bộ =====================
 
 #[cfg(test)]

@@ -139,6 +139,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     // Public JSON API v1
     let api_routes = Router::new()
+        .route("/", get(handlers::api::root))
         .route("/games", get(handlers::api::games_list))
         .route("/games/{slug}", get(handlers::api::game_detail))
         .route("/games/{slug}/related", get(handlers::api::game_related))
