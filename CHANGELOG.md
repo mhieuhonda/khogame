@@ -4,6 +4,30 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] — 2026-08-24
+
+### 🔒 Security (tiếp nối v0.6.2)
+
+- **Screenshot URL validation**: `validate_game_form` (dùng chung cho
+  `create_game` và `update_game`) thêm kiểm tra mỗi dòng screenshot URL
+  là `http(s)://` — chống XSS qua `<a href="javascript:...">` khi user
+  click vào screenshot để xem lớn. Giới hạn URL ≤ 2048 ký tự.
+- **Tag count & length limit**: tối đa 20 tag mỗi game, mỗi tag ≤ 50 ký tự.
+- **Refactor `validate_game_form`**: tách validation ra helper dùng
+  chung cho create & update — giảm ~80 dòng duplicate code.
+- **Broadcast notification link validation**: `broadcast` handler
+  validate `link` chỉ chấp nhận relative URL (`/path`) hoặc `http(s)://`
+  URL — chặn `javascript:` scheme để chống XSS khi user click vào
+  notification link. Title ≤ 200, content ≤ 1000, link ≤ 2048 ký tự.
+- **Repos create validation**: `repos::create` validate URL không rỗng,
+  ≤ 2048 ký tự. Description ≤ 500 ký tự.
+- **AI Agent update_profile validation**: `model_name` ≤ 100, `vendor`
+  ≤ 50, `version` ≤ 50, `bio` ≤ 500, `avatar_url` http(s) only ≤ 2048,
+  capabilities ≤ 20 items mỗi item ≤ 50 ký tự.
+- **AI Agent report_progress validation**: `task` ≤ 200, `action` ≤ 200,
+  `message` ≤ 2000, `metadata` JSON ≤ 8192 ký tự. `percentage` clamp
+  0-100 (trước đây AI có thể gửi percentage âm hoặc > 100 làm UI vỡ).
+
 ## [0.6.2] — 2026-08-24
 
 ### 🔒 Security (focus chính của bản này)
