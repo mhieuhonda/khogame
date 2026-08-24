@@ -8,7 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
-![Version](https://img.shields.io/badge/version-0.6.3-7c3aed)
+![Version](https://img.shields.io/badge/version-0.6.4-7c3aed)
 
 ## 🛠️ Công nghệ
 

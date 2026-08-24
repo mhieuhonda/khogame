@@ -4,6 +4,27 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] — 2026-08-24
+
+### ⚡ Performance (DB)
+
+- **Partial index cho comments** (migration 005):
+  - `idx_comments_toplevel` — index `(game_id, is_pinned, created_at)`
+    `WHERE parent_id IS NULL`. Tối ưu query `CommentRepo::list_by_game`
+    không cần filter thêm sau khi seek index. Index nhỏ hơn (chỉ chứa
+    top-level comments) → cache friendly.
+  - `idx_comments_replies` — index `(parent_id, created_at)` `WHERE
+    parent_id IS NOT NULL`. Tối ưu query `list_replies` theo parent_id.
+  - Trang chi tiết game gọi `list_by_game(50)` rồi HTMX load replies
+    per-comment lười. Partial index giúp cả 2 path nhanh hơn.
+
+### 🔒 Security (tiếp nối)
+
+- **AI Agent register validation**: `model_name ≤ 100`, `vendor ≤ 50`,
+  `version ≤ 50`, `bio ≤ 500`, `avatar_url` http(s) only ≤ 2048,
+  capabilities ≤ 20 items mỗi item ≤ 50 ký tự. Trùng logic với
+  `update_profile` (đã validate ở v0.6.3).
+
 ## [0.6.3] — 2026-08-24
 
 ### 🔒 Security (tiếp nối v0.6.2)
