@@ -109,10 +109,21 @@ pub async fn update_profile(
             "Tên hiển thị không được để trống".into(),
         ));
     }
+    // Giới hạn độ dài để chống lạm dụng (DB có giới hạn TEXT nhưng vẫn
+    // nên chặn sớm ở handler tránh payload lớn vào DB).
+    if display_name.chars().count() > 100 {
+        return Err(AppError::BadRequest("Tên hiển thị tối đa 100 ký tự".into()));
+    }
     let bio = form.bio.unwrap_or_default();
+    let bio = bio.trim();
+    if bio.chars().count() > 500 {
+        return Err(AppError::BadRequest(
+            "Giới thiệu bản thân tối đa 500 ký tự".into(),
+        ));
+    }
     let avatar_url = form.avatar_url.as_deref().filter(|s| !s.is_empty());
 
-    UserRepo::update_profile(&state.db, user.id, display_name, &bio, avatar_url).await?;
+    UserRepo::update_profile(&state.db, user.id, display_name, bio, avatar_url).await?;
 
     // Update preferences
     let theme = form.theme.unwrap_or_else(|| "dark".into());

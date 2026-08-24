@@ -98,8 +98,38 @@ pub async fn create_game(
     if form.title.trim().is_empty() {
         return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
     }
+    // Giới hạn độ dài để chống lạm dụng (title được dùng làm slug + hiển thị)
+    if form.title.chars().count() > 200 {
+        return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
+    }
     if form.content.trim().is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
+    }
+    // Validate các link tải: chỉ cho phép http/https để chống XSS qua
+    // javascript: scheme. HTMX có HX-Redirect sẽ làm window.location = url,
+    // nếu url là javascript:alert(1) sẽ execute JS trong context user.
+    for (label, url) in [
+        ("Android", form.android_link.as_deref()),
+        ("iOS", form.ios_link.as_deref()),
+        ("Windows", form.windows_link.as_deref()),
+        ("Linux", form.linux_link.as_deref()),
+        ("macOS", form.macos_link.as_deref()),
+    ] {
+        if let Some(u) = url.filter(|s| !s.is_empty()) {
+            let lower = u.to_ascii_lowercase();
+            if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+                return Err(AppError::BadRequest(format!(
+                    "Link tải {} phải là http:// hoặc https:// (đã chặn javascript: và các scheme nguy hiểm)",
+                    label
+                )));
+            }
+            if u.len() > 2048 {
+                return Err(AppError::BadRequest(format!(
+                    "Link tải {} quá dài (tối đa 2048 ký tự)",
+                    label
+                )));
+            }
+        }
     }
     if form
         .android_link
@@ -393,6 +423,37 @@ pub async fn update_game(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
+    }
+    // Validate tương tự create_game: title không rỗng, không quá dài,
+    // link tải chỉ http/https (chống javascript: XSS qua HX-Redirect).
+    if form.title.trim().is_empty() {
+        return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
+    }
+    if form.title.chars().count() > 200 {
+        return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
+    }
+    for (label, url) in [
+        ("Android", form.android_link.as_deref()),
+        ("iOS", form.ios_link.as_deref()),
+        ("Windows", form.windows_link.as_deref()),
+        ("Linux", form.linux_link.as_deref()),
+        ("macOS", form.macos_link.as_deref()),
+    ] {
+        if let Some(u) = url.filter(|s| !s.is_empty()) {
+            let lower = u.to_ascii_lowercase();
+            if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+                return Err(AppError::BadRequest(format!(
+                    "Link tải {} phải là http:// hoặc https://",
+                    label
+                )));
+            }
+            if u.len() > 2048 {
+                return Err(AppError::BadRequest(format!(
+                    "Link tải {} quá dài (tối đa 2048 ký tự)",
+                    label
+                )));
+            }
+        }
     }
 
     GameRepo::update(&state.db, game.id, &form).await?;
