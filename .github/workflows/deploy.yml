@@ -102,9 +102,9 @@ jobs:
       - name: Cập nhật compose trên Coolify (PATCH)
         run: |
           python3 - <<'PY'
-          import json, os, urllib.request
+          import json, os, base64, urllib.request
           compose = open("deploy/compose.prod.yml").read()
-          body = json.dumps({"docker_compose_raw": compose}).encode()
+          body = json.dumps({"docker_compose_raw": base64.b64encode(compose.encode()).decode()}).encode()
           url = f"{os.environ['COOLIFY_URL']}/api/v1/services/{os.environ['COOLIFY_SERVICE_UUID']}"
           req = urllib.request.Request(url, data=body, method="PATCH", headers={
               "Authorization": f"Bearer {os.environ['COOLIFY_API_TOKEN']}",
