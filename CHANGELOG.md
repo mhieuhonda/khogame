@@ -4,6 +4,59 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] — 2026-08-24
+
+### 🔒 Security (focus chính của bản này)
+
+- **Validate link tải http(s) only** (`create_game` & `update_game`):
+  trước đây không có validation, user có thể set
+  `android_link="javascript:alert(1)"` — HTMX `HX-Redirect` sẽ làm
+  `window.location = url`, execute JS trong context user (XSS). Giờ
+  chỉ chấp nhận `http://` hoặc `https://`. Giới hạn URL ≤ 2048 ký tự.
+  Validate cả 5 nền tảng (Android, iOS, Windows, Linux, macOS).
+- **Validate cover_image & trailer_url http(s) only**: trước đây không
+  có validation, user có thể set `cover_image="data:text/html,..."` hoặc
+  `trailer_url="javascript:..."`. Giờ dùng helper `utils::is_safe_url`
+  reusable — trả true nếu URL rỗng hoặc `http(s)://`.
+- **Validate profile form length**: `update_profile` thêm giới hạn
+  `display_name ≤ 100` và `bio ≤ 500` ký tự. Trước đây không có limit,
+  user có thể set bio rất dài (DB field TEXT không có constraint).
+- **Title game ≤ 200 ký tự**: `create_game` & `update_game` thêm
+  giới hạn độ dài title (được dùng làm slug + hiển thị).
+- **Admin save_settings length validation**: `site_name ≤ 100`,
+  `site_description ≤ 500`, `announcement ≤ 500`, `footer_text ≤ 500`.
+  Trước đây DB field TEXT không có limit, admin có thể vô tình paste
+  payload lớn.
+- **announcement_type whitelist**: chỉ chấp nhận `info`, `success`,
+  `warning`, `danger`. Trước đây lấy raw từ form, giá trị lạ sẽ làm
+  CSS class không khớp và vỡ layout.
+- **Admin save_category length validation**: `name ≤ 50`, `description ≤ 500`,
+  `icon ≤ 100`.
+
+### ⚡ Hiệu suất & ổn định
+
+- **Rate limiter memory leak fix**: trước đây entry rỗng (sau khi
+  `retain` xoá hết timestamp cũ) vẫn tồn tại trong map mãi mãi trừ
+  khi `map.len() > 10_000`. Giờ cleanup cũng xoá entry rỗng. Giảm
+  threshold cleanup từ 10_000 xuống 4_000 entry → dọn thường hơn.
+- **Mutex poison recovery**: trước đây `lock().unwrap()` sẽ propagate
+  panic nếu một thread panic khi giữ lock → cả server chết. Giờ dùng
+  `unwrap_or_else(into_inner)` để khôi phục, rate limit vẫn hoạt động
+  (có thể sai số nhẹ) thay vì crash toàn bộ service.
+
+### 🧪 Test
+
+- **4 unit test mới** (tổng cộng 23): `time_ago` future/past edge cases,
+  `make_unique_slug` unicode (Việt → không dấu), `html_escape` quotes
+  (single + double), `is_safe_url` 6 case (http/https/javascript/data/
+  file/vbscript/protocol-relative).
+
+### ✨ Tính năng mới (nhỏ)
+
+- **`GET /api/v1` discovery endpoint**: liệt kê tất cả endpoint API có
+  sẵn, kèm method, path, mô tả ngắn. Cache 1 giờ. Tiện cho client bên
+  ngoài tự khám phá API mà không phải đọc doc.
+
 ## [0.6.1] — 2026-08-24
 
 ### ✨ Tính năng mới (tiếp nối v0.6.0)
