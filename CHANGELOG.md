@@ -4,6 +4,44 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-08-24
+
+### ✨ Tính năng mới (tiếp nối v0.6.0)
+
+- **API hồ sơ user công khai:** `GET /api/v1/users/{username}` — trả
+  JSON profile công khai (username, display_name, avatar_url, bio,
+  role, stats: games_count, followers_count, following_count). Cache
+  2 phút. Không trả email hay session info nhạy cảm. User banned → 404.
+- **API game liên quan:** `GET /api/v1/games/{slug}/related` — trả
+  10 game liên quan (cùng category, fallback top downloads). Cache
+  5 phút.
+- **API game theo thể loại:** `GET /api/v1/categories/{slug}/games`
+  — phân trang, cache 5 phút. Bao gồm info category trong response.
+- **API game theo tag:** `GET /api/v1/tags/{slug}/games` — phân trang,
+  cache 5 phút. Bao gồm info tag trong response.
+- **JSON-LD WebSite schema** trên home page — Google có thể hiển thị
+  sitelinks searchbox ngay trên kết quả tìm kiếm (rich result).
+
+### ⚡ Hiệu suất
+
+- **If-None-Match 304 cho sitemap/rss:** server thực sự đọc header
+  `If-None-Match` từ client và trả 304 Not Modified khi ETag khớp
+  (exact / wildcard `*` / list ETag cách nhau bởi `,`). Trước đây chỉ
+  set ETag header mà không check, client vẫn phải tải lại payload.
+
+### 🧪 Test
+
+- **5 unit test mới** (tổng cộng 18): `etag_matches` exact/wildcard/
+  list/missing-header, `short_hash` deterministic + 16 hex chars,
+  mở rộng `extract_youtube_id` với 4 case mới (embed, shorts, query
+  param đi kèm, ID rỗng).
+
+### 🔧 Bảo trì
+
+- `examples/*.rs`: fix clippy pedantic warnings (uninlined_format_args,
+  unnecessary_debug_formatting, duration_suboptimal_units).
+- README: cập nhật danh sách API endpoint đầy đủ, bump version badge.
+
 ## [0.6.0] — 2026-08-24
 
 ### 🔒 Bảo mật & đúng đắn
