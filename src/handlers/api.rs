@@ -336,8 +336,15 @@ pub async fn rss(State(state): State<Arc<AppState>>) -> AppResult<Response> {
         chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000"),
         items
     );
+    // ETag đơn giản dựa trên hash nội dung — client gửi If-None-Match khớp
+    // → server trả 304 Not Modified, không cần chuyển payload XML.
+    let etag = format!("\"{}\"", short_hash(&xml));
     Ok((
-        [(header::CONTENT_TYPE, "application/rss+xml; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=600"),
+            (header::ETAG, etag.as_str()),
+        ],
         xml,
     )
         .into_response())
@@ -357,6 +364,7 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
         "/games/trending",
         "/games/top-rated",
         "/games/downloads",
+        "/games/featured",
         "/categories",
         "/repos",
         "/search",
@@ -373,6 +381,15 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
                 r#"  <url><loc>{}/c/{}</loc><changefreq>daily</changefreq><priority>0.6</priority></url>
 "#,
                 base, c.slug
+            ));
+        }
+    }
+    if let Ok(tags) = TagRepo::popular(&state.db, 50).await {
+        for t in tags {
+            urls.push_str(&format!(
+                r#"  <url><loc>{}/t/{}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+"#,
+                base, t.slug
             ));
         }
     }
@@ -393,11 +410,26 @@ pub async fn sitemap(State(state): State<Arc<AppState>>) -> AppResult<Response> 
 {}</urlset>"#,
         urls
     );
+    let etag = format!("\"{}\"", short_hash(&xml));
     Ok((
-        [(header::CONTENT_TYPE, "application/xml; charset=utf-8")],
+        [
+            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=600"),
+            (header::ETAG, etag.as_str()),
+        ],
         xml,
     )
         .into_response())
+}
+
+/// Hash ngắn (16 hex chars) cho ETag. Dùng xxHash sẽ nhanh hơn nhưng
+/// thêm dependency; SHA-256 của `sha2` đã có sẵn, cắt 16 ký tự đầu là đủ
+/// chống collision cho mục đích cache validation (không phải mật khẩu).
+fn short_hash(s: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut h = Sha256::new();
+    h.update(s.as_bytes());
+    hex::encode(&h.finalize()[..8])
 }
 
 pub async fn robots(State(state): State<Arc<AppState>>) -> Response {

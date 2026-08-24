@@ -317,4 +317,55 @@ mod tests {
         );
         assert_eq!(parse_date("không phải ngày"), None);
     }
+
+    #[test]
+    fn test_sanitize_redirect() {
+        // Path nội bộ tuyệt đối → giữ nguyên
+        assert_eq!(sanitize_redirect("/games/foo"), "/games/foo");
+        assert_eq!(sanitize_redirect("/"), "/");
+        // URL tuyệt đối có scheme → từ chối (chống redirect mở)
+        assert_eq!(sanitize_redirect("https://evil.com"), "/");
+        assert_eq!(sanitize_redirect("//evil.com"), "/");
+        // Path tương đối → từ chối
+        assert_eq!(sanitize_redirect("foo"), "/");
+    }
+
+    #[test]
+    fn test_truncate() {
+        assert_eq!(truncate("hello", 10), "hello");
+        assert_eq!(truncate("hello world", 5), "hello…");
+        // Cắt theo char (không theo byte) — ký tự tiếng Việt giữ nguyên
+        assert_eq!(truncate("hà nội", 3), "hà …");
+        assert_eq!(truncate("hà nội", 6), "hà nội");
+    }
+
+    #[test]
+    fn test_make_unique_slug() {
+        assert_eq!(make_unique_slug("Hello World", 0), "hello-world");
+        assert_eq!(make_unique_slug("Hello World", 1), "hello-world-2");
+        assert_eq!(make_unique_slug("Hello World", 5), "hello-world-6");
+    }
+
+    #[test]
+    fn test_html_escape() {
+        let s = html_escape("<script>alert('xss')</script>");
+        assert!(s.contains("&lt;script&gt;"));
+        assert!(s.contains("&#x27;"));
+        // & phải escape trước để tránh tạo thực thể giả
+        assert_eq!(html_escape("a & b"), "a &amp; b");
+    }
+
+    #[test]
+    fn test_format_number_edges() {
+        // Số 0
+        assert_eq!(format_number_i64(0), "0");
+        // Số âm
+        assert_eq!(format_number_i64(-999), "-999");
+        assert_eq!(format_number_i64(-1200), "-1.2K");
+        // Ranh giới 999/1000
+        assert_eq!(format_number_i64(999), "999");
+        assert_eq!(format_number_i64(1000), "1.0K");
+        // Lớn
+        assert_eq!(format_number_i64(2_500_000_000), "2.5B");
+    }
 }

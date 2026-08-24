@@ -8,7 +8,9 @@ use axum::routing::{get, post};
 use axum::Router;
 use std::sync::Arc;
 use tower_http::compression::CompressionLayer;
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -233,7 +235,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api", internal_routes)
         .nest("/ai", ai_internal_routes)
         .merge(admin_routes)
-        .nest_service("/static", ServeDir::new("static"))
+        // Static assets: cache 7 ngày (immutable) để browser tái dụng,
+        // giảm tải server & tăng tốc trang. CSS/JS/ảnh ít khi đổi; nếu đổi
+        // thì sẽ bump version qua URL query (?v=0.6.0) hoặc đổi tên file.
+        .nest_service(
+            "/static",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static(
+                        "public, max-age=604800, stale-while-revalidate=86400",
+                    ),
+                ))
+                .service(ServeDir::new("static")),
+        )
         .route("/rss.xml", get(handlers::api::rss))
         .route("/sitemap.xml", get(handlers::api::sitemap))
         .route("/robots.txt", get(handlers::api::robots))
@@ -252,7 +267,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             maintenance_guard,
         ))
+        .layer(PropagateRequestIdLayer::new(
+            axum::http::HeaderName::from_static("x-request-id"),
+        ))
         .layer(TraceLayer::new_for_http())
+        .layer(SetRequestIdLayer::new(
+            axum::http::HeaderName::from_static("x-request-id"),
+            MakeRequestUuid,
+        ))
         .layer(CompressionLayer::new())
         .with_state(state)
 }
