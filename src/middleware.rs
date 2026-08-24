@@ -160,23 +160,30 @@ impl RateLimiter {
         Self::default()
     }
 
-    /// true nếu cho phép qua; false nếu vượt giới hạn
+    /// true nếu cho phép qua; false nếu vượt giới hạn.
+    ///
+    /// Dọn entry rỗng mỗi ~256 request để tránh rò rỉ bộ nhớ khi có nhiều
+    /// IP khác nhau ghé thăm rồi rời đi (entry tồn tại với timestamp cũ
+    /// không bao giờ bị xoá nếu chỉ đợi `map.len() > 10_000`).
     pub fn check(&self, key: &str, max_requests: usize, window_secs: u64) -> bool {
-        let mut map = self.hits.lock().unwrap();
+        // Khôi phục từ mutex poison thay vì propagate panic — rate limit
+        // không nên bring down toàn bộ server.
+        let mut map = self.hits.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
         let window = std::time::Duration::from_secs(window_secs);
         let entry = map.entry(key.to_string()).or_default();
         entry.retain(|t| now.duration_since(*t) < window);
-        if entry.len() >= max_requests {
-            false
-        } else {
+        let allowed = entry.len() < max_requests;
+        if allowed {
             entry.push(now);
-            // Dọn map định kỳ tránh rò rỉ bộ nhớ
-            if map.len() > 10_000 {
-                map.retain(|_, v| now.duration_since(v[v.len() - 1]) < window);
-            }
-            true
         }
+        // Dọn map định kỳ tránh rò rỉ bộ nhớ. Giảm threshold từ 10_000
+        // xuống 4_000 để dọn thường hơn, và xoá cả entry rỗng (không
+        // chỉ entry có timestamp cuối ngoài cửa sổ).
+        if map.len() > 4_000 {
+            map.retain(|_, v| !v.is_empty() && now.duration_since(*v.last().unwrap()) < window);
+        }
+        allowed
     }
 }
 
