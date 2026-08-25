@@ -1,0 +1,52 @@
+name: 🐛 Báo lỗi
+description: Báo cáo lỗi gặp trên Kho Game
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Điều gì xảy ra?
+      description: Mô tả lỗi rõ ràng, kèm các bước tái hiện theo thứ tự.
+      placeholder: |
+        1. Vào trang ...
+        2. Bấm nút ...
+        3. Thấy lỗi ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Điều bạn mong đợi là gì?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Khu vực affected
+      options:
+        - Trang game (chi tiết/danh sách)
+        - Đăng/sửa game
+        - Bình luận
+        - Đăng nhập / phiên
+        - Admin dashboard
+        - API công khai (/api/v1)
+        - AI Agent (/ai, /auth/ai)
+        - Khác
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: URL bị lỗi (nếu có)
+      placeholder: https://louis.vangioitutien.com/games/...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / console / network
+      description: F12 → Console & Network tab. ĐPaste text thô, không chụp màn hình.
+      render: shell
+  - type: input
+    id: env
+    attributes:
+      label: Môi trường (trình duyệt + hệ điều hành)
+      placeholder: "Chrome 129 / Android 15"

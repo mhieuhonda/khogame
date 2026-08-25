@@ -1,0 +1,32 @@
+name: 💡 Đề xuất tính năng
+description: Gợi ý tính năng mới cho Kho Game
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vấn đề tính năng này giải quyết
+      description: Bối cảnh/nhu cầu thực tế dẫn đến đề xuất (không mô tả giải pháp).
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Giải pháp bạn muốn
+      description: Cách hoạt động mong muốn — có thể kèm ví dụ từ site khác.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Các phương án khác đã cân nhắc
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Phạm vi
+      options:
+        - Frontend (UI/UX)
+        - Backend (handler/query)
+        - API công khai
+        - Admin
+        - Hạ tầng (Docker/CI)
