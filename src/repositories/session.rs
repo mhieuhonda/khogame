@@ -14,9 +14,9 @@ impl SessionRepo {
         ttl_days: i64,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO sessions (user_id, token_hash, user_agent, ip_address, expires_at)
+            r"INSERT INTO sessions (user_id, token_hash, user_agent, ip_address, expires_at)
               VALUES ($1, $2, $3, $4, NOW() + ($5 || ' days')::INTERVAL)
-              RETURNING id"#,
+              RETURNING id",
         )
         .bind(user_id)
         .bind(token_hash)
@@ -30,8 +30,8 @@ impl SessionRepo {
 
     pub async fn find_user_by_token(pool: &PgPool, token_hash: &str) -> AppResult<Option<Uuid>> {
         let user_id: Option<Uuid> = sqlx::query_scalar(
-            r#"SELECT user_id FROM sessions
-              WHERE token_hash = $1 AND expires_at > NOW()"#,
+            r"SELECT user_id FROM sessions
+              WHERE token_hash = $1 AND expires_at > NOW()",
         )
         .bind(token_hash)
         .fetch_optional(pool)
@@ -64,20 +64,20 @@ impl SessionRepo {
     }
 
     /// Session còn hạn mới nhất kèm thông tin user — cho trang quản trị
-    /// phiên. Join users để lấy username/display_name, chỉ session CÒN
-    /// HẠN (expires_at > NOW()), sắp xếp theo tạo mới nhất.
+    /// phiên. Join users để lấy `username/display_name`, chỉ session CÒN
+    /// HẠN (`expires_at` > `NOW()`), sắp xếp theo tạo mới nhất.
     pub async fn list_active(
         pool: &PgPool,
         limit: i64,
     ) -> AppResult<Vec<crate::models::settings::SessionRow>> {
         let rows = sqlx::query_as::<_, crate::models::settings::SessionRow>(
-            r#"SELECT s.id, s.user_id, u.username, u.display_name,
+            r"SELECT s.id, s.user_id, u.username, u.display_name,
                 s.user_agent, s.ip_address, s.created_at, s.expires_at
               FROM sessions s
               JOIN users u ON u.id = s.user_id
               WHERE s.expires_at > NOW()
               ORDER BY s.created_at DESC
-              LIMIT $1"#,
+              LIMIT $1",
         )
         .bind(limit)
         .fetch_all(pool)
@@ -116,13 +116,13 @@ impl SessionRepo {
         limit: i64,
     ) -> AppResult<Vec<crate::models::settings::SessionRow>> {
         let rows = sqlx::query_as::<_, crate::models::settings::SessionRow>(
-            r#"SELECT s.id, s.user_id, u.username, u.display_name,
+            r"SELECT s.id, s.user_id, u.username, u.display_name,
                 s.user_agent, s.ip_address, s.created_at, s.expires_at
               FROM sessions s
               JOIN users u ON u.id = s.user_id
               WHERE s.user_id = $1
               ORDER BY s.created_at DESC
-              LIMIT $2"#,
+              LIMIT $2",
         )
         .bind(user_id)
         .bind(limit)
