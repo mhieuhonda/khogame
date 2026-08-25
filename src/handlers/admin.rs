@@ -1487,7 +1487,15 @@ pub async fn news_unfeature(
         return Err(AppError::Forbidden("Chỉ admin".into()));
     }
     NewsRepo::set_featured(&state.db, id, false).await?;
-    audit(&state, user.id, "news_unfeature", "news", &id.to_string(), "").await;
+    audit(
+        &state,
+        user.id,
+        "news_unfeature",
+        "news",
+        &id.to_string(),
+        "",
+    )
+    .await;
     Ok(Redirect::to("/admin/news/all").into_response())
 }
 

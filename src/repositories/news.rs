@@ -1,5 +1,7 @@
 use crate::error::{AppError, AppResult};
-use crate::models::news::{News, NewsComment, NewsCommentWithAuthor, NewsForAdmin, NewsStatus, NewsWithAuthor};
+use crate::models::news::{
+    News, NewsComment, NewsCommentWithAuthor, NewsForAdmin, NewsStatus, NewsWithAuthor,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -117,11 +119,9 @@ impl NewsRepo {
 
     /// Đếm tổng số tin đã published (cho phân trang).
     pub async fn count_published(pool: &PgPool) -> AppResult<i64> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM news WHERE status = 'published'",
-        )
-        .fetch_one(pool)
-        .await?;
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = 'published'")
+            .fetch_one(pool)
+            .await?;
         Ok(count)
     }
 
@@ -207,7 +207,10 @@ impl NewsRepo {
     }
 
     /// Lấy chi tiết tin theo slug (chỉ published hoặc archived cho người dùng thường).
-    pub async fn find_by_slug_public(pool: &PgPool, slug: &str) -> AppResult<Option<NewsWithAuthor>> {
+    pub async fn find_by_slug_public(
+        pool: &PgPool,
+        slug: &str,
+    ) -> AppResult<Option<NewsWithAuthor>> {
         let item = sqlx::query_as::<_, NewsWithAuthor>(
             r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
@@ -294,19 +297,14 @@ impl NewsRepo {
     }
 
     pub async fn count_pending(pool: &PgPool) -> AppResult<i64> {
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = 'pending'")
-                .fetch_one(pool)
-                .await?;
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = 'pending'")
+            .fetch_one(pool)
+            .await?;
         Ok(count)
     }
 
     /// Duyệt tin: pending → published, set published_at + reviewed_by.
-    pub async fn approve(
-        pool: &PgPool,
-        id: Uuid,
-        admin_id: Uuid,
-    ) -> AppResult<()> {
+    pub async fn approve(pool: &PgPool, id: Uuid, admin_id: Uuid) -> AppResult<()> {
         sqlx::query(
             r#"UPDATE news SET
                 status = 'published',
@@ -323,12 +321,7 @@ impl NewsRepo {
     }
 
     /// Từ chối tin: pending → rejected, kèm review_note.
-    pub async fn reject(
-        pool: &PgPool,
-        id: Uuid,
-        admin_id: Uuid,
-        note: &str,
-    ) -> AppResult<()> {
+    pub async fn reject(pool: &PgPool, id: Uuid, admin_id: Uuid, note: &str) -> AppResult<()> {
         sqlx::query(
             r#"UPDATE news SET
                 status = 'rejected',
@@ -415,18 +408,21 @@ impl NewsRepo {
         // DELETE-first pattern: tránh double-increment khi race condition.
         // Trả về true nếu đã like (sau khi INSERT), false nếu đã unlike (sau khi DELETE).
         let mut tx = pool.begin().await?;
-        let deleted: u64 = sqlx::query("DELETE FROM news_likes WHERE user_id = $1 AND news_id = $2")
-            .bind(user_id)
-            .bind(news_id)
-            .execute(&mut *tx)
-            .await?
-            .rows_affected();
-        let liked = if deleted == 0 {
-            sqlx::query("INSERT INTO news_likes (user_id, news_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
+        let deleted: u64 =
+            sqlx::query("DELETE FROM news_likes WHERE user_id = $1 AND news_id = $2")
                 .bind(user_id)
                 .bind(news_id)
                 .execute(&mut *tx)
-                .await?;
+                .await?
+                .rows_affected();
+        let liked = if deleted == 0 {
+            sqlx::query(
+                "INSERT INTO news_likes (user_id, news_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            )
+            .bind(user_id)
+            .bind(news_id)
+            .execute(&mut *tx)
+            .await?;
             true
         } else {
             false
@@ -513,7 +509,12 @@ impl NewsRepo {
         Ok(items)
     }
 
-    pub async fn delete_comment(pool: &PgPool, id: Uuid, user_id: Uuid, is_admin: bool) -> AppResult<()> {
+    pub async fn delete_comment(
+        pool: &PgPool,
+        id: Uuid,
+        user_id: Uuid,
+        is_admin: bool,
+    ) -> AppResult<()> {
         let affected = if is_admin {
             sqlx::query("DELETE FROM news_comments WHERE id = $1")
                 .bind(id)
@@ -529,7 +530,9 @@ impl NewsRepo {
                 .rows_affected()
         };
         if affected == 0 {
-            return Err(AppError::NotFound("Bình luận không tồn tại hoặc không phải của bạn".into()));
+            return Err(AppError::NotFound(
+                "Bình luận không tồn tại hoặc không phải của bạn".into(),
+            ));
         }
         Ok(())
     }
@@ -547,16 +550,19 @@ impl NewsRepo {
         Ok(item)
     }
 
-    pub async fn toggle_comment_like(pool: &PgPool, user_id: Uuid, comment_id: Uuid) -> AppResult<bool> {
+    pub async fn toggle_comment_like(
+        pool: &PgPool,
+        user_id: Uuid,
+        comment_id: Uuid,
+    ) -> AppResult<bool> {
         let mut tx = pool.begin().await?;
-        let deleted: u64 = sqlx::query(
-            "DELETE FROM news_comment_likes WHERE user_id = $1 AND comment_id = $2",
-        )
-        .bind(user_id)
-        .bind(comment_id)
-        .execute(&mut *tx)
-        .await?
-        .rows_affected();
+        let deleted: u64 =
+            sqlx::query("DELETE FROM news_comment_likes WHERE user_id = $1 AND comment_id = $2")
+                .bind(user_id)
+                .bind(comment_id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
         let liked = if deleted == 0 {
             sqlx::query(
                 "INSERT INTO news_comment_likes (user_id, comment_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
@@ -584,12 +590,11 @@ impl NewsRepo {
             NewsStatus::Archived => "archived",
             NewsStatus::Rejected => "rejected",
         };
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM news WHERE status = $1::news_status",
-        )
-        .bind(status_str)
-        .fetch_one(pool)
-        .await?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = $1::news_status")
+                .bind(status_str)
+                .fetch_one(pool)
+                .await?;
         Ok(count)
     }
 

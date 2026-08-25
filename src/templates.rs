@@ -1017,6 +1017,6 @@ pub struct AdminUserDetailTemplate {
     pub news_count: i64,
     pub active_sessions: i64,
     pub sessions: Vec<crate::models::settings::SessionRow>,
-    pub is_self: bool, // true nếu admin đang xem chính mình
+    pub is_self: bool,                      // true nếu admin đang xem chính mình
     pub now: chrono::DateTime<chrono::Utc>, // cho check session expires_at > now
 }

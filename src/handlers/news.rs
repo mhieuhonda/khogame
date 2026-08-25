@@ -2,8 +2,8 @@ use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::news::NewsStatus;
-use crate::repositories::NewsRepo;
 use crate::repositories::news::NewsForm;
+use crate::repositories::NewsRepo;
 use crate::state::AppState;
 use crate::templates::*;
 use askama::Template;
@@ -52,7 +52,9 @@ fn validate_url(url: &str) -> Result<String, AppError> {
     }
     if url.starts_with("http://") || url.starts_with("https://") {
         if url.len() > 2048 {
-            return Err(AppError::BadRequest("URL quá dài (tối đa 2048 ký tự)".into()));
+            return Err(AppError::BadRequest(
+                "URL quá dài (tối đa 2048 ký tự)".into(),
+            ));
         }
         Ok(url.to_string())
     } else {
@@ -138,7 +140,9 @@ pub async fn list(
 
     let total_pages = ((total + NEWS_PER_PAGE - 1) / NEWS_PER_PAGE).max(1);
     let featured = if page == 1 && q.is_empty() && category.is_empty() {
-        NewsRepo::list_featured(&state.db, 3).await.unwrap_or_default()
+        NewsRepo::list_featured(&state.db, 3)
+            .await
+            .unwrap_or_default()
     } else {
         Vec::new()
     };
@@ -160,10 +164,7 @@ pub async fn list(
             .map(|(_, v)| v.to_string())
             .unwrap_or_default(),
         query: q.to_string(),
-        categories: NEWS_CATEGORIES
-            .iter()
-            .map(|(k, v)| (*k, *v))
-            .collect(),
+        categories: NEWS_CATEGORIES.iter().map(|(k, v)| (*k, *v)).collect(),
     })
 }
 
@@ -212,9 +213,13 @@ pub async fn show(
     let _ = NewsRepo::increment_views(&state.db, news.id).await;
 
     let unread = unread_for(&state, current_user.as_ref()).await;
-    let comments = NewsRepo::list_comments(&state.db, news.id, 50, 0).await.unwrap_or_default();
+    let comments = NewsRepo::list_comments(&state.db, news.id, 50, 0)
+        .await
+        .unwrap_or_default();
     let has_liked = match &current_user {
-        Some(u) => NewsRepo::has_liked(&state.db, u.id, news.id).await.unwrap_or(false),
+        Some(u) => NewsRepo::has_liked(&state.db, u.id, news.id)
+            .await
+            .unwrap_or(false),
         None => false,
     };
 
@@ -344,7 +349,13 @@ pub async fn create(
         .collect::<String>();
 
     let cover_image = match validate_url(params.cover_image.as_deref().unwrap_or("")) {
-        Ok(u) => if u.is_empty() { None } else { Some(u) },
+        Ok(u) => {
+            if u.is_empty() {
+                None
+            } else {
+                Some(u)
+            }
+        }
         Err(e) => {
             errors.push(e.to_string());
             None
@@ -451,10 +462,21 @@ pub async fn update(
         title: params.title.trim().to_string(),
         excerpt: params.excerpt.trim().to_string(),
         content: params.content.trim().to_string(),
-        cover_image: params.cover_image.as_deref().filter(|s| !s.is_empty()).map(|s| s.to_string()),
+        cover_image: params
+            .cover_image
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string()),
         category: validate_category(params.category.as_deref().unwrap_or(""))?,
         source_url: validate_url(params.source_url.as_deref().unwrap_or(""))?,
-        source_name: params.source_name.as_deref().unwrap_or("").trim().chars().take(150).collect(),
+        source_name: params
+            .source_name
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .chars()
+            .take(150)
+            .collect(),
     };
     if form.title.is_empty() {
         return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
@@ -512,9 +534,7 @@ pub async fn toggle_like(
     // HTMX response — thay nút like
     let html = format!(
         r#"<button class="btn btn-outline btn-sm" hx-post="/news/{}/like" hx-swap="outerHTML" aria-pressed="{}">❤️ {}</button>"#,
-        news.slug,
-        liked,
-        like_count
+        news.slug, liked, like_count
     );
     Ok(Html(html).into_response())
 }
@@ -535,7 +555,9 @@ pub async fn create_comment(
 ) -> AppResult<Response> {
     let content = form.content.trim();
     if content.is_empty() {
-        return Err(AppError::BadRequest("Nội dung bình luận không được để trống".into()));
+        return Err(AppError::BadRequest(
+            "Nội dung bình luận không được để trống".into(),
+        ));
     }
     if content.chars().count() > 2000 {
         return Err(AppError::BadRequest("Bình luận tối đa 2000 ký tự".into()));

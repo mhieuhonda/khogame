@@ -1,6 +1,8 @@
 use crate::error::{AppError, AppResult};
 use crate::middleware::AuthUser;
-use crate::repositories::{CategoryRepo, GameRepo, NewsRepo, RepoRepo, SettingsRepo, TagRepo, UserRepo};
+use crate::repositories::{
+    CategoryRepo, GameRepo, NewsRepo, RepoRepo, SettingsRepo, TagRepo, UserRepo,
+};
 use crate::state::AppState;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::header;
@@ -453,7 +455,9 @@ pub async fn news_suggest(
     let suggestions = if query.chars().count() < 2 {
         Vec::new()
     } else {
-        NewsRepo::suggest_titles(&state.db, query, 8).await.unwrap_or_default()
+        NewsRepo::suggest_titles(&state.db, query, 8)
+            .await
+            .unwrap_or_default()
     };
     let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
     let descs: Vec<String> = suggestions
@@ -507,7 +511,8 @@ pub async fn news_check_duplicate(
     Ok(Json(serde_json::json!({
         "exists": count > 0,
         "count": count,
-    })).into_response())
+    }))
+    .into_response())
 }
 
 /// Gợi ý tìm kiếm (autocomplete) — trả tối đa 8 title + slug khớp
@@ -690,7 +695,9 @@ pub async fn news_rss(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
 ) -> AppResult<Response> {
-    let news = NewsRepo::list_published(&state.db, 1, 20).await.unwrap_or_default();
+    let news = NewsRepo::list_published(&state.db, 1, 20)
+        .await
+        .unwrap_or_default();
     let base = &state.config.base_url;
     let mut items = String::new();
     for n in &news {
@@ -706,7 +713,10 @@ pub async fn news_rss(
             })
             .unwrap_or_default();
         let category_tag = if !n.category.is_empty() {
-            format!("\n      <category>{}</category>", crate::utils::xml_escape(&n.category))
+            format!(
+                "\n      <category>{}</category>",
+                crate::utils::xml_escape(&n.category)
+            )
         } else {
             String::new()
         };
