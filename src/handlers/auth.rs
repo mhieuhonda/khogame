@@ -163,24 +163,7 @@ pub async fn google_callback(
         .chars()
         .take(255)
         .collect::<String>();
-    let ip = {
-        // Ưu tiên header proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP)
-        // do Traefik đặt; fallback về IP TCP nếu chạy trực tiếp không proxy.
-        let proxy_ip = headers
-            .get("x-forwarded-for")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.split(',').next())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                headers
-                    .get("x-real-ip")
-                    .and_then(|v| v.to_str().ok())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-            });
-        proxy_ip.unwrap_or_else(|| connect_info.0.ip().to_string())
-    };
+    let ip = crate::middleware::client_ip_from_parts(&headers, Some(&connect_info.0));
     SessionRepo::create(
         &state.db,
         user.id,
