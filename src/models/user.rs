@@ -165,4 +165,65 @@ mod tests {
         // thiếu quyền tốt hơn thừa quyền)
         assert_eq!(UserRole::default(), UserRole::User);
     }
+
+    #[test]
+    fn test_user_tracking_fields_are_optional() {
+        // Migration 009 thêm 5 cột tracking. Tất cả đều Option<> để
+        // user cũ (tạo trước v0.8.0) không có dữ liệu cũng load được
+        // — DB trả NULL → Option::None → template render "—".
+        // Verify struct compile và field tồn tại.
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "test@example.com".into(),
+            username: "test".into(),
+            display_name: "Test".into(),
+            avatar_url: None,
+            bio: None,
+            google_sub: "sub".into(),
+            role: UserRole::User,
+            is_banned: false,
+            last_seen_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            signup_ip: None,
+            signup_ua: None,
+            last_login_ip: None,
+            last_login_ua: None,
+            last_login_at: None,
+        };
+        // IP/UA None khi user chưa login lần nào
+        assert!(user.signup_ip.is_none());
+        assert!(user.signup_ua.is_none());
+        assert!(user.last_login_ip.is_none());
+        assert!(user.last_login_ua.is_none());
+        assert!(user.last_login_at.is_none());
+    }
+
+    #[test]
+    fn test_user_with_tracking_fields() {
+        // Simulate user đã login — có IP/UA
+        let user = User {
+            id: Uuid::new_v4(),
+            email: "test@example.com".into(),
+            username: "test".into(),
+            display_name: "Test".into(),
+            avatar_url: None,
+            bio: None,
+            google_sub: "sub".into(),
+            role: UserRole::User,
+            is_banned: false,
+            last_seen_at: Some(chrono::Utc::now()),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            signup_ip: Some("203.0.113.42".into()),
+            signup_ua: Some("Mozilla/5.0".into()),
+            last_login_ip: Some("203.0.113.99".into()),
+            last_login_ua: Some("Mozilla/5.0 Chrome".into()),
+            last_login_at: Some(chrono::Utc::now()),
+        };
+        // Admin có thể xem IP signup + last login để truy vết abuse
+        assert_eq!(user.signup_ip.as_deref(), Some("203.0.113.42"));
+        assert_eq!(user.last_login_ip.as_deref(), Some("203.0.113.99"));
+        assert!(user.last_login_at.is_some());
+    }
 }
