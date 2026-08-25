@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq, Default)]
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 pub enum UserRole {
     #[default]
@@ -19,25 +19,25 @@ pub enum UserRole {
 
 impl UserRole {
     #[must_use]
-    pub fn is_admin(&self) -> bool {
-        matches!(self, UserRole::Admin)
+    pub const fn is_admin(&self) -> bool {
+        matches!(self, Self::Admin)
     }
     #[must_use]
-    pub fn is_staff(&self) -> bool {
-        matches!(self, UserRole::Admin | UserRole::Moderator)
+    pub const fn is_staff(&self) -> bool {
+        matches!(self, Self::Admin | Self::Moderator)
     }
     /// True nếu đây là tài khoản AI Agent (khác hẳn user thường).
     #[must_use]
-    pub fn is_ai_agent(&self) -> bool {
-        matches!(self, UserRole::AiAgent)
+    pub const fn is_ai_agent(&self) -> bool {
+        matches!(self, Self::AiAgent)
     }
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            UserRole::User => "Thành viên",
-            UserRole::Moderator => "Điều hành viên",
-            UserRole::Admin => "Quản trị viên",
-            UserRole::AiAgent => "Tác nhân AI",
+            Self::User => "Thành viên",
+            Self::Moderator => "Điều hành viên",
+            Self::Admin => "Quản trị viên",
+            Self::AiAgent => "Tác nhân AI",
         }
     }
 }
