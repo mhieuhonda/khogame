@@ -34,12 +34,52 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     tracing::info!("Listening on http://{}", addr);
     // Dùng into_make_service_with_connect_info để middleware có thể lấy IP thật
     // của client qua ConnectInfo<SocketAddr> extractor (chống giả mạo X-Forwarded-For).
+    //
+    // Graceful shutdown: khi nhận SIGTERM (docker stop / kubectl drain) hoặc
+    // SIGINT (Ctrl+C), server ngừng nhận connection mới nhưng chờ tối đa
+    // GRACEFUL_SHUTDOWN_TIMEOUT_SECS (mặc định 30s) cho các request đang
+    // xử lý hoàn tất trước khi thoát — tránh drop request giữa chừng gây
+    // lỗi 5xx cho người dùng cuối lúc deploy.
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+    tracing::info!("Server đã dừng an toàn (graceful shutdown hoàn tất)");
     Ok(())
+}
+
+/// Lắng nghe tín hiệu dừng: SIGTERM (container/orchestrator) và SIGINT (Ctrl+C).
+///
+/// Trả về khi nhận được tín hiệu đầu tiên. Tín hiệu thứ hai (nhấn Ctrl+C
+/// lần nữa trong lúc chờ grace period) sẽ buộc thoát ngay nhờ hành vi
+/// mặc định của tokio (không swallow).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(e) => {
+                tracing::error!("Không đăng ký được SIGTERM handler: {}", e);
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("Nhận SIGINT — bắt đầu graceful shutdown"),
+        _ = terminate => tracing::info!("Nhận SIGTERM — bắt đầu graceful shutdown"),
+    }
 }
 
 pub fn static_service() -> ServeDir {
