@@ -217,11 +217,15 @@
     };
 
     // ===== Char counter for textareas =====
+    // Dùng Array.from (code points Unicode) thay vì .length (UTF-16 code
+    // units) để khớp cách đếm .chars().count() phía Rust server — emoji
+    // 😀 là 1 ký tự Rust nhưng 2 units trong JS, đếm lệch làm user tưởng
+    // còn chỗ nhưng submit bị chặn.
     document.addEventListener('input', function(e) {
         if (e.target.tagName === 'TEXTAREA' && e.target.maxLength > 0) {
             const counter = e.target.parentElement.querySelector('.char-counter span');
             if (counter) {
-                counter.textContent = e.target.value.length;
+                counter.textContent = Array.from(e.target.value).length;
             }
         }
     });
