@@ -11,7 +11,7 @@ use uuid::Uuid;
 /// - Admin từ chối → `Rejected` (kèm `review_note` lý do)
 /// - Admin lưu trữ tin cũ → `Archived` (ẩn khỏi list chính, vẫn truy cập qua direct link)
 /// - Draft: status này dành cho tương lai khi có autosave (chưa dùng trong v0.8.0)
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "news_status", rename_all = "snake_case")]
 pub enum NewsStatus {
     Draft,
@@ -24,38 +24,38 @@ pub enum NewsStatus {
 
 impl NewsStatus {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            NewsStatus::Draft => "Bản nháp",
-            NewsStatus::Pending => "Chờ duyệt",
-            NewsStatus::Published => "Đã xuất bản",
-            NewsStatus::Archived => "Lưu trữ",
-            NewsStatus::Rejected => "Bị từ chối",
+            Self::Draft => "Bản nháp",
+            Self::Pending => "Chờ duyệt",
+            Self::Published => "Đã xuất bản",
+            Self::Archived => "Lưu trữ",
+            Self::Rejected => "Bị từ chối",
         }
     }
 
     /// True nếu status này có thể hiển thị công khai với mọi người.
     /// Pending/Draft/Rejected chỉ tác giả + admin xem được.
     #[must_use]
-    pub fn is_public(&self) -> bool {
-        matches!(self, NewsStatus::Published | NewsStatus::Archived)
+    pub const fn is_public(&self) -> bool {
+        matches!(self, Self::Published | Self::Archived)
     }
 
     /// True nếu cần admin xử lý (xuất hiện trong queue /admin/news/pending).
     #[must_use]
-    pub fn needs_review(&self) -> bool {
-        matches!(self, NewsStatus::Pending)
+    pub const fn needs_review(&self) -> bool {
+        matches!(self, Self::Pending)
     }
 
     /// Badge CSS class cho template — để admin dashboard render màu sắc khác nhau.
     #[must_use]
-    pub fn badge_class(&self) -> &'static str {
+    pub const fn badge_class(&self) -> &'static str {
         match self {
-            NewsStatus::Draft => "badge-neutral",
-            NewsStatus::Pending => "badge-warning",
-            NewsStatus::Published => "badge-success",
-            NewsStatus::Archived => "badge-muted",
-            NewsStatus::Rejected => "badge-danger",
+            Self::Draft => "badge-neutral",
+            Self::Pending => "badge-warning",
+            Self::Published => "badge-success",
+            Self::Archived => "badge-muted",
+            Self::Rejected => "badge-danger",
         }
     }
 
@@ -63,12 +63,12 @@ impl NewsStatus {
     #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "draft" => NewsStatus::Draft,
-            "pending" => NewsStatus::Pending,
-            "published" => NewsStatus::Published,
-            "archived" => NewsStatus::Archived,
-            "rejected" => NewsStatus::Rejected,
-            _ => NewsStatus::Pending,
+            "draft" => Self::Draft,
+            "pending" => Self::Pending,
+            "published" => Self::Published,
+            "archived" => Self::Archived,
+            "rejected" => Self::Rejected,
+            _ => Self::Pending,
         }
     }
 }
