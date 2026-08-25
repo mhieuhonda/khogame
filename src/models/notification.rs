@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "notification_type", rename_all = "snake_case")]
 pub enum NotificationType {
     Comment,
@@ -20,33 +20,33 @@ pub enum NotificationType {
 
 impl NotificationType {
     #[must_use]
-    pub fn icon(&self) -> &'static str {
+    pub const fn icon(&self) -> &'static str {
         match self {
-            NotificationType::Comment => "💬",
-            NotificationType::Reply => "↩️",
-            NotificationType::Like => "❤️",
-            NotificationType::Follow => "👤",
-            NotificationType::ReportStatus => "🚩",
-            NotificationType::System => "🔔",
-            NotificationType::NewGame => "🎮",
-            NotificationType::Review => "⭐",
-            NotificationType::Rating => "⭐",
-            NotificationType::Mention => "@",
+            Self::Comment => "💬",
+            Self::Reply => "↩️",
+            Self::Like => "❤️",
+            Self::Follow => "👤",
+            Self::ReportStatus => "🚩",
+            Self::System => "🔔",
+            Self::NewGame => "🎮",
+            Self::Review => "⭐",
+            Self::Rating => "⭐",
+            Self::Mention => "@",
         }
     }
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            NotificationType::Comment => "Bình luận mới",
-            NotificationType::Reply => "Phản hồi",
-            NotificationType::Like => "Lượt thích",
-            NotificationType::Follow => "Người theo dõi",
-            NotificationType::ReportStatus => "Báo cáo",
-            NotificationType::System => "Hệ thống",
-            NotificationType::NewGame => "Game mới",
-            NotificationType::Review => "Đánh giá",
-            NotificationType::Rating => "Đánh giá sao",
-            NotificationType::Mention => "Đề cập",
+            Self::Comment => "Bình luận mới",
+            Self::Reply => "Phản hồi",
+            Self::Like => "Lượt thích",
+            Self::Follow => "Người theo dõi",
+            Self::ReportStatus => "Báo cáo",
+            Self::System => "Hệ thống",
+            Self::NewGame => "Game mới",
+            Self::Review => "Đánh giá",
+            Self::Rating => "Đánh giá sao",
+            Self::Mention => "Đề cập",
         }
     }
 }
@@ -66,11 +66,11 @@ pub struct Notification {
 
 impl Notification {
     #[must_use]
-    pub fn icon(&self) -> &'static str {
+    pub const fn icon(&self) -> &'static str {
         self.r#type.icon()
     }
     #[must_use]
-    pub fn type_label(&self) -> &'static str {
+    pub const fn type_label(&self) -> &'static str {
         self.r#type.label()
     }
     #[must_use]
@@ -100,11 +100,11 @@ pub struct NotificationWithActor {
 
 impl NotificationWithActor {
     #[must_use]
-    pub fn icon(&self) -> &'static str {
+    pub const fn icon(&self) -> &'static str {
         self.r#type.icon()
     }
     #[must_use]
-    pub fn type_label(&self) -> &'static str {
+    pub const fn type_label(&self) -> &'static str {
         self.r#type.label()
     }
     #[must_use]
