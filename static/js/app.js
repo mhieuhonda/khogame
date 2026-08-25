@@ -421,5 +421,6 @@
         }
     });
 
-    console.log('🎮 Kho Game loaded successfully!');
+    // Không console.log ở prod: noise trong devtools người dùng cuối,
+    // một số công ty quét console.log khi audit vendor JS.
 })();
