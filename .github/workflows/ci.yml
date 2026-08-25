@@ -11,7 +11,7 @@ jobs:
     name: Kiểm tra (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cài Rust 1.98
         uses: dtolnay/rust-toolchain@stable
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     # Chạy song song với job check — không chặn nếu DB test cần lâu
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cài cargo-audit
         uses: taiki-e/install-action@v2

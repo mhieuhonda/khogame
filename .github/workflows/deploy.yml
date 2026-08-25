@@ -23,7 +23,7 @@ jobs:
     name: Kiểm tra (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cài Rust 1.98
         uses: dtolnay/rust-toolchain@stable
@@ -53,7 +53,7 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -99,7 +99,7 @@ jobs:
     needs: build-push
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Pin image theo digest vào compose prod
         run: |
