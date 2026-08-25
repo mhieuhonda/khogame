@@ -1157,8 +1157,17 @@ pub async fn share_game(
     // model (2 nguồn truth dễ lệch khi thêm platform mới). Giá trị lạ
     // → "copy" (from_str default) — share vẫn được ghi nhận analytics.
     let platform = crate::models::interaction::SharePlatform::from_str(&form.platform).as_str();
-    let _ = InteractionRepo::record_share(&state.db, game.id, user_id, platform).await;
-    let _ = GameRepo::increment_share_count(&state.db, game.id).await;
+    // Share analytics chạy nền — response trả ngay để JS copy link
+    // clipboard không chờ DB (cùng pattern view/download counters).
+    {
+        let db = state.db.clone();
+        let game_id = game.id;
+        let platform_str = platform.to_string();
+        tokio::spawn(async move {
+            let _ = InteractionRepo::record_share(&db, game_id, user_id, &platform_str).await;
+            let _ = GameRepo::increment_share_count(&db, game_id).await;
+        });
+    }
     Ok(Html("<span></span>".into()))
 }
 
