@@ -19,6 +19,19 @@
     </div>
     {% endif %}
 
+    <div class="form-tips">
+        <details>
+            <summary>📋 Hướng dẫn viết tin chất lượng</summary>
+            <ul>
+                <li><strong>Tiêu đề rõ ràng</strong> — không giật tít, không viết hoa toàn bộ</li>
+                <li><strong>Tóm tắt 1-2 câu</strong> — người đọc quyết định click hay không dựa trên tóm tắt</li>
+                <li><strong>Nội dung chi tiết</strong> — trả lời 5W1H (Who, What, When, Where, Why, How)</li>
+                <li><strong>Ghi nguồn</strong> — nếu không phải tin gốc do bạn tự viết</li>
+                <li><strong>Ảnh bìa</strong> — tỉ lệ 16:9, không có watermark logo khác</li>
+            </ul>
+        </details>
+    </div>
+
     <form method="post" action="/news" class="form-section" id="news-form">
         <label for="title">Tiêu đề <span class="req">*</span></label>
         <input type="text" id="title" name="title" value="{{ form.title }}" maxlength="200" required

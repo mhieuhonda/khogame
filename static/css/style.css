@@ -2837,3 +2837,36 @@ a:hover { color: var(--accent-light); }
     overflow-y: auto;
     z-index: 50;
 }
+
+/* Form tips (collapsible help) */
+.form-tips {
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    max-width: 760px;
+}
+.form-tips summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.95rem;
+    user-select: none;
+}
+.form-tips summary:hover {
+    color: var(--text-primary);
+}
+.form-tips ul {
+    margin-top: 0.75rem;
+    padding-left: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.7;
+}
+.form-tips li {
+    margin-bottom: 0.3rem;
+}
+.form-tips li strong {
+    color: var(--text-primary);
+}
