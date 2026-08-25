@@ -1,12 +1,14 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
   check:
-    name: Kiểm tra PR (Rust 1.98)
+    name: Kiểm tra (Rust 1.98)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,8 +24,11 @@ jobs:
       - name: Cargo check (--locked)
         run: cargo check --locked
 
+      - name: Cargo test
+        run: cargo test --locked
+
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings || echo "::warning::Clippy có cảnh báo"
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Rustfmt
-        run: cargo fmt --all -- --check || echo "::warning::Code chưa format"
+        run: cargo fmt --all -- --check
