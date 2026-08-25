@@ -179,6 +179,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let internal_routes = Router::new()
         .route("/announcement", get(handlers::api::announcement))
         .route("/check-duplicate", get(handlers::api::check_duplicate))
+        .route("/news-check-duplicate", get(handlers::api::news_check_duplicate))
         .route("/suggest", get(handlers::api::games_suggest))
         .route("/news-suggest", get(handlers::api::news_suggest))
         .route("/preferences/theme", post(handlers::api::set_theme));

@@ -483,6 +483,7 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         "health",
         "maintenance",
         "check-duplicate",
+        "news-check-duplicate",
         "suggest",
         "preferences",
         "theme",

@@ -477,6 +477,36 @@ pub struct DuplicateQuery {
     pub title: String,
 }
 
+/// Kiểm tra trùng tiêu đề tin tức khi tạo mới — cảnh báo user nếu
+/// tin cùng tên đã có (giống check_duplicate của game).
+pub async fn news_check_duplicate(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<DuplicateQuery>,
+) -> AppResult<Response> {
+    let title = q.title.trim();
+    if title.chars().count() < 3 {
+        return Ok(Json(serde_json::json!({"exists": false, "count": 0})).into_response());
+    }
+    // Đếm tin published + pending có cùng title (case-insensitive)
+    let pattern = format!(
+        "%{}%",
+        crate::utils::escape_like(&title.chars().take(200).collect::<String>())
+    );
+    let count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM news
+           WHERE status IN ('published', 'pending')
+             AND title ILIKE $1 ESCAPE '\'"#,
+    )
+    .bind(&pattern)
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+    Ok(Json(serde_json::json!({
+        "exists": count > 0,
+        "count": count,
+    })).into_response())
+}
+
 /// Gợi ý tìm kiếm (autocomplete) — trả tối đa 8 title + slug khớp
 /// tiền tố/chứa từ khóa. Query nhẹ (chỉ 2 cột) cho dropdown realtime.
 #[derive(Deserialize)]
