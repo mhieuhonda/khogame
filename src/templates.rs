@@ -183,6 +183,8 @@ pub struct GameListTemplate {
     /// Đường dẫn gốc của trang list để dựng link sort/pagination
     /// (vd /games/latest, /c/hanh-dong, /t/2d) — tránh link sort 404.
     pub base_url: String,
+    /// URL gốc của site (https://...) để dựng canonical tuyệt đối
+    pub site_url: String,
     pub category: Option<category::Category>,
     pub tag: Option<tag::Tag>,
 }

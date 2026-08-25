@@ -639,6 +639,7 @@ async fn build_list_template(
         sort,
         list_type: list_type.into(),
         base_url: base,
+        site_url: state.config.base_url.clone(),
         category: None,
         tag: None,
     })
@@ -765,6 +766,7 @@ pub async fn list_by_category(
         sort,
         list_type: "category".into(),
         base_url: format!("/c/{}", cat_slug),
+        site_url: state.config.base_url.clone(),
         category: Some(category),
         tag: None,
     })
@@ -799,6 +801,7 @@ pub async fn list_by_tag(
         sort,
         list_type: "tag".into(),
         base_url: format!("/t/{}", tag_slug),
+        site_url: state.config.base_url.clone(),
         category: None,
         tag: Some(tag),
     })

@@ -2,6 +2,14 @@
 
 {% block title %}{{ title }}{% endblock %}
 
+{% block description %}{% match category %}{% when Option::Some with (cat) %}Danh sách game thể loại {{ cat.name }} trên Kho Game{% when Option::None %}{% match tag %}{% when Option::Some with (t) %}Danh sách game gắn tag {{ t.name }}{% when Option::None %}Khám phá {{ total }} game trên Kho Game — nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam{% endmatch %}{% endmatch %}{% endblock %}
+
+{% block og_title %}{{ title }}{% endblock %}
+
+{% block head_extra %}
+<link rel="canonical" href="{{ site_url }}{{ base_url }}">
+{% endblock %}
+
 {% block content %}
 <section class="list-page">
     <div class="page-header">
