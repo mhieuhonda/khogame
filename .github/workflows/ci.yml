@@ -32,3 +32,19 @@ jobs:
 
       - name: Rustfmt
         run: cargo fmt --all -- --check
+
+  audit:
+    name: Bảo mật dependency (cargo-audit)
+    runs-on: ubuntu-latest
+    # Chạy song song với job check — không chặn nếu DB test cần lâu
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Audit RustSec advisories (Cargo.lock)
+        run: cargo audit --deny warnings
+        continue-on-error: false
