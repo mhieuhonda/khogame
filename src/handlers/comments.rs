@@ -103,6 +103,16 @@ pub async fn edit_comment(
     if content.is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
     }
+    // Giới hạn 1000 ký tự phải áp dụng cả khi sửa (trước đây chỉ kiểm tra
+    // lúc tạo — user có thể sửa comment thành chuỗi dài vô hạn, DB field
+    // TEXT không có constraint).
+    let char_count = content.chars().count();
+    if char_count > 1000 {
+        return Err(AppError::BadRequest(format!(
+            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {})",
+            char_count
+        )));
+    }
     let existing = CommentRepo::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
