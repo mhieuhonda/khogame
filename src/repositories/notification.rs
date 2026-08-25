@@ -116,7 +116,11 @@ impl NotificationRepo {
         Ok(())
     }
 
-    /// Gửi thông báo hệ thống tới toàn bộ người dùng đang hoạt động
+    /// Gửi thông báo hệ thống tới toàn bộ người dùng đang hoạt động.
+    /// Loại trừ AI Agent: tài khoản bot không bao giờ đọc notification
+    /// (endpoint /notifications là giao diện người) — mỗi lần broadcast
+    /// tạo N dòng chết trong bảng, phình bảng và làm số liệu 'đã gửi'
+    /// theo SAO số user thật.
     pub async fn broadcast(
         pool: &PgPool,
         title: &str,
@@ -126,7 +130,7 @@ impl NotificationRepo {
         let res = sqlx::query(
             r#"INSERT INTO notifications (user_id, type, title, content, link)
                SELECT id, 'system'::notification_type, $1, $2, $3 FROM users
-               WHERE NOT is_banned"#,
+               WHERE NOT is_banned AND role != 'ai_agent'"#,
         )
         .bind(title)
         .bind(content)
