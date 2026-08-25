@@ -684,6 +684,8 @@ pub async fn download_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
+    headers: axum::http::HeaderMap,
+    connect_info: axum::extract::ConnectInfo<std::net::SocketAddr>,
     Form(form): Form<DownloadForm>,
 ) -> AppResult<Response> {
     let game = GameRepo::find_by_slug(&state.db, &slug)
@@ -705,12 +707,21 @@ pub async fn download_game(
     // có thể là "ANDROID"/"Mac OS" vẫn parse được nhờ from_str lowercase
     // nhưng cast $3::platform_type trong INSERT sẽ fail ngầm (let _ =
     // nuốt error) → mất dòng stats mà không ai biết.
+    //
+    // IP client ghi kèm để phân tích fraud (1 IP tải cùng game hàng
+    // trăm lần = bump download_count ảo). Tôn trọng TRUST_PROXY_HEADERS
+    // như rate-limit middleware.
+    let ip = crate::middleware::client_ip_from_parts(
+        &headers,
+        Some(&connect_info.0),
+        state.config.trust_proxy_headers,
+    );
     let _ = InteractionRepo::record_download(
         &state.db,
         game.id,
         Some(user.id),
         platform.as_str(),
-        None,
+        Some(&ip),
     )
     .await;
     let _ = GameRepo::increment_download_count(&state.db, game.id).await;
