@@ -36,8 +36,14 @@ jobs:
       - name: Cargo check (--locked)
         run: cargo check --locked
 
+      - name: Cargo test
+        run: cargo test --locked
+
       - name: Clippy
-        run: cargo clippy --all-targets -- -D warnings || echo "::warning::Clippy có cảnh báo"
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
 
   build-push:
     name: Build & Push Docker Image (Rust 1.98)
