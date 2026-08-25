@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "share_platform", rename_all = "lowercase")]
 pub enum SharePlatform {
     Facebook,
@@ -17,14 +17,14 @@ pub enum SharePlatform {
 impl SharePlatform {
     /// Chuỗi enum DB (`share_platform`) — dùng khi bind cast $`n::share_platform`.
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            SharePlatform::Facebook => "facebook",
-            SharePlatform::Twitter => "twitter",
-            SharePlatform::Telegram => "telegram",
-            SharePlatform::Whatsapp => "whatsapp",
-            SharePlatform::Copy => "copy",
-            SharePlatform::Native => "native",
+            Self::Facebook => "facebook",
+            Self::Twitter => "twitter",
+            Self::Telegram => "telegram",
+            Self::Whatsapp => "whatsapp",
+            Self::Copy => "copy",
+            Self::Native => "native",
         }
     }
 
@@ -32,24 +32,24 @@ impl SharePlatform {
     #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "facebook" => SharePlatform::Facebook,
-            "twitter" => SharePlatform::Twitter,
-            "telegram" => SharePlatform::Telegram,
-            "whatsapp" => SharePlatform::Whatsapp,
-            "native" => SharePlatform::Native,
-            _ => SharePlatform::Copy,
+            "facebook" => Self::Facebook,
+            "twitter" => Self::Twitter,
+            "telegram" => Self::Telegram,
+            "whatsapp" => Self::Whatsapp,
+            "native" => Self::Native,
+            _ => Self::Copy,
         }
     }
 
     #[must_use]
-    pub fn all() -> &'static [SharePlatform] {
+    pub const fn all() -> &'static [Self] {
         &[
-            SharePlatform::Facebook,
-            SharePlatform::Twitter,
-            SharePlatform::Telegram,
-            SharePlatform::Whatsapp,
-            SharePlatform::Copy,
-            SharePlatform::Native,
+            Self::Facebook,
+            Self::Twitter,
+            Self::Telegram,
+            Self::Whatsapp,
+            Self::Copy,
+            Self::Native,
         ]
     }
 }
