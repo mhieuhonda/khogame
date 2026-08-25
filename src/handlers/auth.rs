@@ -163,7 +163,11 @@ pub async fn google_callback(
         .chars()
         .take(255)
         .collect::<String>();
-    let ip = crate::middleware::client_ip_from_parts(&headers, Some(&connect_info.0));
+    let ip = crate::middleware::client_ip_from_parts(
+        &headers,
+        Some(&connect_info.0),
+        state.config.trust_proxy_headers,
+    );
     SessionRepo::create(
         &state.db,
         user.id,

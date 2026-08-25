@@ -363,14 +363,22 @@ mod path_normalization_tests {
     }
 }
 
-/// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc ConnectInfo
+/// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc ConnectInfo.
+///
+/// `trust_proxy`: chỉ tin headers khi app chạy sau reverse proxy kiểm soát
+/// được (Traefik/Coolify/CDN). Khi expose trực tiếp, header X-Forwarded-For
+/// do CLIENT tự gắn là dữ liệu attacker điều khiển — dùng sẽ bị giả IP
+/// để lách rate-limit. Tắt qua env TRUST_PROXY_HEADERS=false.
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
     connect_info: Option<&SocketAddr>,
+    trust_proxy: bool,
 ) -> String {
-    for h in ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
-        if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
-            return v.split(',').next().unwrap_or("unknown").trim().to_string();
+    if trust_proxy {
+        for h in ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
+            if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
+                return v.split(',').next().unwrap_or("unknown").trim().to_string();
+            }
         }
     }
     connect_info
@@ -514,7 +522,11 @@ pub async fn rate_limit(
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
         .copied();
-    let ip = client_ip_from_parts(request.headers(), connect_info.map(|ci| ci.0).as_ref());
+    let ip = client_ip_from_parts(
+        request.headers(),
+        connect_info.map(|ci| ci.0).as_ref(),
+        state.config.trust_proxy_headers,
+    );
     // Tăng giới hạn nghiêm ngặt cho các endpoint AI Agent & auth để
     // chống brute-force token hoặc spam progress.
     // - /auth/ai/register: 5 / 10 phút (rất hiếm, chỉ AI admin mới gọi)

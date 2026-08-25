@@ -24,6 +24,12 @@ pub struct AppConfig {
     pub ai_agent_enabled: bool,
     /// Số ngày sống của phiên AI Agent (mặc định 90).
     pub ai_agent_session_ttl_days: i64,
+    /// Có tin headers proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP)
+    /// khi xác định IP client không? Mặc định BẬT vì prod chạy sau
+    /// Traefik/Coolify. Tắt khi expose trực tiếp internet — nếu không
+    /// attacker tự set X-Forwarded-For để giả IP, chia bucket rate-limit
+    /// riêng mỗi lần và lách giới hạn.
+    pub trust_proxy_headers: bool,
 }
 
 impl AppConfig {
@@ -67,6 +73,13 @@ impl AppConfig {
                 .and_then(|d| d.parse().ok())
                 .filter(|d| *d > 0)
                 .unwrap_or(90),
+            trust_proxy_headers: env::var("TRUST_PROXY_HEADERS")
+                .ok()
+                .map(|v| {
+                    let v = v.trim().to_ascii_lowercase();
+                    !(v == "0" || v == "false" || v == "no" || v == "off")
+                })
+                .unwrap_or(true),
         })
     }
 }
