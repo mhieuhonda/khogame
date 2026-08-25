@@ -1,8 +1,8 @@
-# Chính sách Bảo mật — Kho Game
+# Chính sách Bảo mật — Louis Space
 
 ## Các phiên bản được hỗ trợ
 
-Kho Game là một dịch vụ web triển khai liên tục (CD). Chỉ phiên bản
+Louis Space là một dịch vụ web triển khai liên tục (CD). Chỉ phiên bản
 mới nhất đang chạy trên production được hỗ trợ bảo mật.
 
 | Phiên bản | Được hỗ trợ |

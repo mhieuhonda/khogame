@@ -1,5 +1,5 @@
 name: 🐛 Báo lỗi
-description: Báo cáo lỗi gặp trên Kho Game
+description: Báo cáo lỗi gặp trên Louis Space
 labels: ["bug"]
 body:
   - type: textarea

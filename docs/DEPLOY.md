@@ -2,6 +2,10 @@
 
 Kiến trúc production: **1 Coolify Docker Compose Stack = app + PostgreSQL 17**
 
+> **Lưu ý rebrand v0.8.0**: Web đã đổi tên hiển thị từ "Kho Game" → "Louis Space"
+> nhưng tên stack/volume/DB user trên Coolify giữ nguyên `khogame` để bảo toàn
+> dữ liệu prod hiện có. Brand hiển thị nằm trong app.
+
 ```
 GitHub push main / tag v*
   └─► GitHub Actions (deploy.yml): cargo check → docker build (Rust 1.98)

@@ -1,5 +1,5 @@
 # ============================================================
-# Kho Game - Multi-stage Dockerfile (Rust 1.98)
+# Louis Space - Multi-stage Dockerfile (Rust 1.98)
 # Stage 1: builder với BuildKit cache mounts
 # Stage 2: runtime debian-slim tối giản, non-root
 # ============================================================

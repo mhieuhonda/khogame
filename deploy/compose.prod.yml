@@ -1,10 +1,14 @@
 # ============================================================
-# Kho Game - Production Compose (chạy trên Coolify)
+# Louis Space - Production Compose (chạy trên Coolify)
 # Source of truth cho stack prod: app + PostgreSQL 17.
 #
 # __IMAGE_REF__ được GitHub Actions thay bằng image pin digest
 # (ghcr.io/mhieuhonda/khogame@sha256:...) trước mỗi lần deploy
 # → Coolify luôn pull đúng phiên bản vừa build.
+#
+# Lưu ý: tên service / DB user / volume giữ 'khogame' để tương thích
+# lùi với dữ liệu prod hiện có (đổi tên sẽ mất volume + dữ liệu user).
+# Brand hiển thị với end-user nằm trong app (logo, layout, manifest).
 #
 # Secrets (DB_PASSWORD, SESSION_KEY, GOOGLE_CLIENT_ID/SECRET)
 # KHÔNG nằm trong repo — khai báo trong tab Environment Variables
