@@ -3,7 +3,7 @@ use crate::middleware::AuthUser;
 use crate::models::game::GameStatus;
 use crate::repositories::{GameRepo, InteractionRepo};
 use crate::state::AppState;
-use crate::templates::*;
+use crate::templates::{LikeButtonPartial, BookmarkButtonPartial, RatingStarsPartial, FollowButtonPartial};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;
@@ -42,8 +42,7 @@ pub async fn toggle_like(
     // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
     let like_count = GameRepo::find_by_id(&state.db, game.id)
         .await?
-        .map(|g| g.like_count)
-        .unwrap_or(game.like_count);
+        .map_or(game.like_count, |g| g.like_count);
     let partial = LikeButtonPartial {
         game_id: game.id,
         slug: slug.clone(),
