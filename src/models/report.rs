@@ -137,13 +137,12 @@ mod tests {
                 ReportReason::Illegal => "illegal",
                 ReportReason::Other => "other",
             };
-            assert_eq!(ReportReason::from_str(key), Some(r.clone()), "key={}", key);
+            assert_eq!(ReportReason::from_str(key), Some(r.clone()), "key={key}");
             // Case-insensitive
             assert_eq!(
                 ReportReason::from_str(&key.to_uppercase()),
                 Some(r.clone()),
-                "uppercase key={}",
-                key
+                "uppercase key={key}"
             );
         }
     }
@@ -174,8 +173,7 @@ mod tests {
             let c = s.color();
             assert!(
                 c.starts_with('#') && c.len() == 7,
-                "color={} phải là hex",
-                c
+                "color={c} phải là hex"
             );
             assert!(!s.label().is_empty());
         }
