@@ -1339,3 +1339,114 @@ mod tests_v2 {
         assert!(validate_game_form(&f).is_ok());
     }
 }
+
+#[cfg(test)]
+mod tests_json_ld {
+    use super::*;
+    use crate::models::game::{AgeRating, Game, GameStatus};
+    use crate::models::user::{User, UserRole};
+
+    /// Dựng Game đủ field để test JSON-LD — không cần DB.
+    fn sample_game() -> Game {
+        Game {
+            id: uuid::Uuid::new_v4(),
+            user_id: uuid::Uuid::new_v4(),
+            title: "Game Thử Nghiệm".into(),
+            slug: "game-thu-nghiem".into(),
+            excerpt: Some("Mô tả ngắn".into()),
+            content: Some("Nội dung".into()),
+            status: GameStatus::Published,
+            version: Some("1.0".into()),
+            developer: Some("Studio".into()),
+            publisher: None,
+            release_date: chrono::NaiveDate::from_ymd_opt(2026, 1, 15),
+            file_size: Some("100MB".into()),
+            age_rating: AgeRating::Teen,
+            languages: vec!["vi".into()],
+            trailer_url: None,
+            cover_image: Some("https://cdn.example.com/c.png".into()),
+            category_id: None,
+            view_count: 10,
+            download_count: 5,
+            like_count: 3,
+            comment_count: 2,
+            share_count: 1,
+            rating_avg: bigdecimal::BigDecimal::from(45) / 10, // 4.5
+            rating_count: 4,
+            is_featured: false,
+            published_at: Some(chrono::Utc::now()),
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    fn sample_author() -> User {
+        User {
+            id: uuid::Uuid::new_v4(),
+            email: "a@b.c".into(),
+            username: "tester".into(),
+            display_name: "Tester".into(),
+            avatar_url: None,
+            bio: None,
+            google_sub: "sub".into(),
+            role: UserRole::User,
+            is_banned: false,
+            last_seen_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[test]
+    fn test_json_ld_core_fields() {
+        let g = sample_game();
+        let author = sample_author();
+        let html = build_game_json_ld("https://example.com", &g, &author, &[], &[], None);
+        // Bọc trong thẻ script đúng loại
+        assert!(html.contains(r#"<script type="application/ld+json">"#));
+        // Parse được JSON hợp lệ (nội dung giữa 2 thẻ script)
+        let start = html.find('>').map(|i| i + 1).unwrap();
+        let end = html.rfind("</script>").unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(html[start..end].trim()).expect("JSON-LD phải là JSON hợp lệ");
+        assert_eq!(json["@type"], "VideoGame");
+        assert_eq!(json["name"], "Game Thử Nghiệm");
+        assert_eq!(json["url"], "https://example.com/games/game-thu-nghiem");
+        assert_eq!(json["author"]["name"], "Tester");
+    }
+
+    #[test]
+    fn test_json_ld_rating_only_when_has_ratings() {
+        let g = sample_game();
+        let author = sample_author();
+        let html = build_game_json_ld("https://example.com", &g, &author, &[], &[], None);
+        assert!(html.contains("aggregateRating"));
+        assert!(html.contains("4.5"));
+
+        // Game chưa ai đánh giá → KHÔNG có aggregateRating (Google rich
+        // result error khi ratingCount = 0)
+        let mut g0 = sample_game();
+        g0.rating_count = 0;
+        let html0 = build_game_json_ld("https://example.com", &g0, &author, &[], &[], None);
+        assert!(!html0.contains("aggregateRating"));
+    }
+
+    #[test]
+    fn test_json_ld_genre_and_keywords() {
+        let g = sample_game();
+        let author = sample_author();
+        let cat = crate::models::category::Category {
+            id: uuid::Uuid::new_v4(),
+            name: "Hành động".into(),
+            slug: "hanh-dong".into(),
+            description: None,
+            icon: None,
+            created_at: chrono::Utc::now(),
+        };
+        let tags = vec!["coop".to_string(), "pixel".to_string()];
+        let html = build_game_json_ld("https://example.com", &g, &author, &[], &tags, Some(&cat));
+        assert!(html.contains(r#""genre": "Hành động""#));
+        assert!(html.contains("coop"));
+        assert!(html.contains("pixel"));
+    }
+}
