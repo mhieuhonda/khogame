@@ -12,7 +12,7 @@ use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
 /// Trạng thái một task mà AI Agent báo cáo.
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq, Default)]
 #[sqlx(type_name = "ai_task_status", rename_all = "lowercase")]
 pub enum AiTaskStatus {
     #[default]
@@ -26,25 +26,25 @@ pub enum AiTaskStatus {
 impl AiTaskStatus {
     /// Nhãn tiếng Việt hiển thị ra UI.
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            AiTaskStatus::Queued => "Đã xếp hàng",
-            AiTaskStatus::Running => "Đang chạy",
-            AiTaskStatus::Done => "Hoàn thành",
-            AiTaskStatus::Failed => "Lỗi",
-            AiTaskStatus::Cancelled => "Đã huỷ",
+            Self::Queued => "Đã xếp hàng",
+            Self::Running => "Đang chạy",
+            Self::Done => "Hoàn thành",
+            Self::Failed => "Lỗi",
+            Self::Cancelled => "Đã huỷ",
         }
     }
 
     /// Màu sắc (CSS) cho badge trạng thái.
     #[must_use]
-    pub fn color(&self) -> &'static str {
+    pub const fn color(&self) -> &'static str {
         match self {
-            AiTaskStatus::Queued => "#6b7280",
-            AiTaskStatus::Running => "#3b82f6",
-            AiTaskStatus::Done => "#10b981",
-            AiTaskStatus::Failed => "#ef4444",
-            AiTaskStatus::Cancelled => "#9ca3af",
+            Self::Queued => "#6b7280",
+            Self::Running => "#3b82f6",
+            Self::Done => "#10b981",
+            Self::Failed => "#ef4444",
+            Self::Cancelled => "#9ca3af",
         }
     }
 }
@@ -78,25 +78,25 @@ impl AiPrivacyLevel {
     /// Mặc định Public nếu không nhận diện được.
     #[allow(clippy::should_implement_trait)]
     #[must_use]
-    pub fn from_str(s: &str) -> Self {
+    pub const fn from_str(s: &str) -> Self {
         if s.eq_ignore_ascii_case("anonymous") {
-            AiPrivacyLevel::Anonymous
+            Self::Anonymous
         } else {
-            AiPrivacyLevel::Public
+            Self::Public
         }
     }
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            AiPrivacyLevel::Public => "public",
-            AiPrivacyLevel::Anonymous => "anonymous",
+            Self::Public => "public",
+            Self::Anonymous => "anonymous",
         }
     }
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            AiPrivacyLevel::Public => "Công khai",
-            AiPrivacyLevel::Anonymous => "Ẩn danh",
+            Self::Public => "Công khai",
+            Self::Anonymous => "Ẩn danh",
         }
     }
 }
