@@ -190,23 +190,24 @@ impl CommentRepo {
     }
 
     pub async fn toggle_like(pool: &PgPool, comment_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let liked: Option<bool> = sqlx::query_scalar(
-            "SELECT 1 FROM comment_likes WHERE comment_id = $1 AND user_id = $2",
-        )
-        .bind(comment_id)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
-        if liked.is_some() {
+        // DELETE-first trong transaction — cùng pattern InteractionRepo.
+        // Mẫu cũ (SELECT → INSERT + UPDATE like_count rời rạc) có race
+        // double-click: 2 request cùng thấy 'chưa like' → cả hai chạy
+        // UPDATE like_count + 1 trong khi INSERT thứ 2 là no-op →
+        // like_count = 2 dù chỉ 1 dòng comment_likes.
+        let mut tx = pool.begin().await?;
+        let deleted =
             sqlx::query("DELETE FROM comment_likes WHERE comment_id = $1 AND user_id = $2")
                 .bind(comment_id)
                 .bind(user_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
+        if deleted.rows_affected() > 0 {
             sqlx::query("UPDATE comments SET like_count = like_count - 1 WHERE id = $1")
                 .bind(comment_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
+            tx.commit().await?;
             Ok(false)
         } else {
             sqlx::query(
@@ -214,12 +215,13 @@ impl CommentRepo {
             )
             .bind(comment_id)
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
             sqlx::query("UPDATE comments SET like_count = like_count + 1 WHERE id = $1")
                 .bind(comment_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
+            tx.commit().await?;
             Ok(true)
         }
     }
