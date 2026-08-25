@@ -9,8 +9,8 @@ pub struct CategoryRepo;
 impl CategoryRepo {
     pub async fn list_all(pool: &PgPool) -> AppResult<Vec<Category>> {
         let cats = sqlx::query_as::<_, Category>(
-            r#"SELECT id, name, slug, description, icon, created_at
-              FROM categories ORDER BY name"#,
+            r"SELECT id, name, slug, description, icon, created_at
+              FROM categories ORDER BY name",
         )
         .fetch_all(pool)
         .await?;
@@ -19,12 +19,12 @@ impl CategoryRepo {
 
     pub async fn list_with_counts(pool: &PgPool) -> AppResult<Vec<CategoryWithCount>> {
         let cats = sqlx::query_as::<_, CategoryWithCount>(
-            r#"SELECT c.id, c.name, c.slug, c.description, c.icon,
+            r"SELECT c.id, c.name, c.slug, c.description, c.icon,
                 COUNT(g.id) as games_count
               FROM categories c
               LEFT JOIN games g ON g.category_id = c.id AND g.status = 'published'
               GROUP BY c.id, c.name, c.slug, c.description, c.icon
-              ORDER BY c.name"#,
+              ORDER BY c.name",
         )
         .fetch_all(pool)
         .await?;
@@ -33,7 +33,7 @@ impl CategoryRepo {
 
     pub async fn find_by_slug(pool: &PgPool, slug: &str) -> AppResult<Option<Category>> {
         let c = sqlx::query_as::<_, Category>(
-            r#"SELECT id, name, slug, description, icon, created_at FROM categories WHERE slug = $1"#,
+            r"SELECT id, name, slug, description, icon, created_at FROM categories WHERE slug = $1",
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -55,10 +55,10 @@ impl CategoryRepo {
         icon: &str,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO categories (name, slug, description, icon)
+            r"INSERT INTO categories (name, slug, description, icon)
                VALUES ($1, $2, $3, $4)
                ON CONFLICT (slug) DO NOTHING
-               RETURNING id"#,
+               RETURNING id",
         )
         .bind(name)
         .bind(slug)
@@ -68,8 +68,7 @@ impl CategoryRepo {
         .await?
         .ok_or_else(|| {
             crate::error::AppError::Conflict(format!(
-                "Thể loại với đường dẫn '{}' đã tồn tại (có thể trùng tên sau khi bỏ dấu). Hãy đổi tên khác.",
-                slug
+                "Thể loại với đường dẫn '{slug}' đã tồn tại (có thể trùng tên sau khi bỏ dấu). Hãy đổi tên khác."
             ))
         })?;
         Ok(id)
@@ -102,7 +101,7 @@ impl CategoryRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: uuid::Uuid) -> AppResult<Option<Category>> {
         let c = sqlx::query_as::<_, Category>(
-            r#"SELECT id, name, slug, description, icon, created_at FROM categories WHERE id = $1"#,
+            r"SELECT id, name, slug, description, icon, created_at FROM categories WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)

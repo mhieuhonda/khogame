@@ -15,8 +15,8 @@ impl CommentRepo {
         content: &str,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO comments (game_id, user_id, parent_id, content)
-              VALUES ($1, $2, $3, $4) RETURNING id"#,
+            r"INSERT INTO comments (game_id, user_id, parent_id, content)
+              VALUES ($1, $2, $3, $4) RETURNING id",
         )
         .bind(game_id)
         .bind(user_id)
@@ -47,15 +47,15 @@ impl CommentRepo {
         .await?;
 
         if let Some((owner_id, game_slug, parent_author_id)) = info_row {
-            let link = format!("/games/{}", game_slug);
+            let link = format!("/games/{game_slug}");
             if parent_id.is_some() {
                 // Reply: thông báo tác giả bình luận cha (nếu không phải
                 // chính người reply)
                 if let Some(pa) = parent_author_id {
                     if pa != user_id {
                         let _ = sqlx::query(
-                            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                              VALUES ($1, $2, 'reply'::notification_type, $3, $4)"#,
+                            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                              VALUES ($1, $2, 'reply'::notification_type, $3, $4)",
                         )
                         .bind(pa)
                         .bind(user_id)
@@ -68,8 +68,8 @@ impl CommentRepo {
                     // chủ game cũng nên biết có hoạt động mới (comment msg)
                     if owner_id != user_id && owner_id != pa {
                         let _ = sqlx::query(
-                            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                              VALUES ($1, $2, 'comment'::notification_type, $3, $4)"#,
+                            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                              VALUES ($1, $2, 'comment'::notification_type, $3, $4)",
                         )
                         .bind(owner_id)
                         .bind(user_id)
@@ -82,8 +82,8 @@ impl CommentRepo {
             } else if owner_id != user_id {
                 // Comment gốc: thông báo chủ game
                 let _ = sqlx::query(
-                    r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                      VALUES ($1, $2, 'comment'::notification_type, $3, $4)"#,
+                    r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                      VALUES ($1, $2, 'comment'::notification_type, $3, $4)",
                 )
                 .bind(owner_id)
                 .bind(user_id)
@@ -105,7 +105,7 @@ impl CommentRepo {
         offset: i64,
     ) -> AppResult<Vec<CommentWithUser>> {
         let comments = sqlx::query_as::<_, CommentWithUser>(
-            r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
                 EXISTS(
@@ -115,7 +115,7 @@ impl CommentRepo {
               JOIN users u ON u.id = c.user_id
               WHERE c.game_id = $1 AND c.parent_id IS NULL
               ORDER BY c.is_pinned DESC, c.created_at DESC
-              LIMIT $3 OFFSET $4"#,
+              LIMIT $3 OFFSET $4",
         )
         .bind(game_id)
         .bind(viewer_id.unwrap_or_else(Uuid::nil))
@@ -136,7 +136,7 @@ impl CommentRepo {
         viewer_id: Option<Uuid>,
     ) -> AppResult<Vec<CommentWithUser>> {
         let comments = sqlx::query_as::<_, CommentWithUser>(
-            r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
                 EXISTS(
@@ -145,7 +145,7 @@ impl CommentRepo {
               FROM comments c
               JOIN users u ON u.id = c.user_id
               WHERE c.parent_id = $1
-              ORDER BY c.created_at ASC"#,
+              ORDER BY c.created_at ASC",
         )
         .bind(parent_id)
         .bind(viewer_id.unwrap_or_else(Uuid::nil))
@@ -156,13 +156,13 @@ impl CommentRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<CommentWithUser>> {
         let c = sqlx::query_as::<_, CommentWithUser>(
-            r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
                 FALSE as is_liked
               FROM comments c
               JOIN users u ON u.id = c.user_id
-              WHERE c.id = $1"#,
+              WHERE c.id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -227,7 +227,7 @@ impl CommentRepo {
     }
 
     /// Sửa bình luận (chỉ trong 5 phút đầu).
-    /// Trả về lỗi NotFound nếu bình luận không tồn tại, không thuộc user, hoặc đã quá 5 phút.
+    /// Trả về lỗi `NotFound` nếu bình luận không tồn tại, không thuộc user, hoặc đã quá 5 phút.
     pub async fn update_content(
         pool: &PgPool,
         id: Uuid,
@@ -236,7 +236,7 @@ impl CommentRepo {
     ) -> AppResult<CommentWithUser> {
         // Kiểm tra quyền và thời hạn trước khi update để phân biệt lỗi rõ ràng
         let existing: Option<(Uuid, Uuid, chrono::DateTime<chrono::Utc>)> =
-            sqlx::query_as(r#"SELECT id, user_id, created_at FROM comments WHERE id = $1"#)
+            sqlx::query_as(r"SELECT id, user_id, created_at FROM comments WHERE id = $1")
                 .bind(id)
                 .fetch_optional(pool)
                 .await?;
@@ -255,8 +255,8 @@ impl CommentRepo {
         }
 
         sqlx::query(
-            r#"UPDATE comments SET content = $1, updated_at = NOW()
-              WHERE id = $2 AND user_id = $3"#,
+            r"UPDATE comments SET content = $1, updated_at = NOW()
+              WHERE id = $2 AND user_id = $3",
         )
         .bind(content)
         .bind(id)
@@ -308,14 +308,14 @@ impl CommentRepo {
         offset: i64,
     ) -> AppResult<Vec<CommentWithGame>> {
         let rows = sqlx::query_as::<_, CommentWithGame>(
-            r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
                 g.title as game_title, g.slug as game_slug
               FROM comments c
               JOIN users u ON u.id = c.user_id
               JOIN games g ON g.id = c.game_id
-              ORDER BY c.created_at DESC LIMIT $1 OFFSET $2"#,
+              ORDER BY c.created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
