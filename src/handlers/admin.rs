@@ -1003,19 +1003,38 @@ pub async fn broadcast(
 // ============================================================
 // ADMIN: AUDIT LOG
 // ============================================================
+#[derive(Deserialize, Default)]
+pub struct AuditQuery {
+    pub page: Option<i64>,
+}
+
 pub async fn audit_log(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    Query(q): Query<AuditQuery>,
 ) -> AppResult<AdminAuditTemplate> {
     if !user.role.is_admin() {
         return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
     }
-    let logs = AdminLogRepo::list(&state.db, 200).await?;
+    // Phân trang: trước đây list(200) cứng — audit log tích lũy vô hạn
+    // (mọi action admin), quá 200 dòng là lịch sử cũ không xem được.
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 100;
+    let offset = (page - 1) * per_page;
+    let (logs_res, total_res) = tokio::join!(
+        AdminLogRepo::list(&state.db, per_page, offset),
+        AdminLogRepo::count(&state.db),
+    );
+    let logs = logs_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminAuditTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         logs,
+        page,
+        per_page,
+        total,
     })
 }
 

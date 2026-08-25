@@ -80,17 +80,26 @@ impl AdminLogRepo {
         Ok(())
     }
 
-    pub async fn list(pool: &PgPool, limit: i64) -> AppResult<Vec<AdminLogWithAdmin>> {
+    pub async fn list(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<AdminLogWithAdmin>> {
         let rows = sqlx::query_as::<_, AdminLogWithAdmin>(
             r#"SELECT l.id, u.display_name as admin_name, u.username as admin_username,
                 l.action, l.target_type, l.target_id, l.detail, l.ip, l.created_at
               FROM admin_logs l JOIN users u ON u.id = l.admin_id
-              ORDER BY l.created_at DESC LIMIT $1"#,
+              ORDER BY l.created_at DESC LIMIT $1 OFFSET $2"#,
         )
         .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Tổng số dòng audit log — phân trang trang /admin/audit.
+    pub async fn count(pool: &PgPool) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM admin_logs")
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
     }
 
     #[allow(dead_code)]

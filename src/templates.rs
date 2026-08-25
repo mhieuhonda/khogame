@@ -375,6 +375,9 @@ pub struct AdminAuditTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub logs: Vec<settings::AdminLogWithAdmin>,
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
 }
 
 /// Admin: quản lý phiên đăng nhập đang hoạt động
