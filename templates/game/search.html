@@ -26,10 +26,10 @@
     </div>
 
     <form class="search-filters" method="get" action="/search">
-        <input type="hidden" name="q" value="{{ query }}">
+        <input type="hidden" name="q" id="f-q" value="{{ query }}">
         <div class="filter-group">
-            <label>Thể loại:</label>
-            <select name="category" class="form-control">
+            <label for="f-category">Thể loại:</label>
+            <select name="category" id="f-category" class="form-control">
                 <option value="">Tất cả</option>
                 {% for cat in categories %}
                 <option value="{{ cat.slug }}" {% if category_slug.as_deref() == Some(cat.slug.as_str()) %}selected{% endif %}>{{ cat.name }}</option>
@@ -37,8 +37,8 @@
             </select>
         </div>
         <div class="filter-group">
-            <label>Nền tảng:</label>
-            <select name="platform" class="form-control">
+            <label for="f-platform">Nền tảng:</label>
+            <select name="platform" id="f-platform" class="form-control">
                 <option value="">Tất cả</option>
                 <option value="android" {% if platform.as_deref() == Some("android") %}selected{% endif %}>Android</option>
                 <option value="ios" {% if platform.as_deref() == Some("ios") %}selected{% endif %}>iOS</option>
@@ -48,8 +48,8 @@
             </select>
         </div>
         <div class="filter-group">
-            <label>Sắp xếp:</label>
-            <select name="sort" class="form-control">
+            <label for="f-sort">Sắp xếp:</label>
+            <select name="sort" id="f-sort" class="form-control">
                 <option value="latest" {% if sort == "latest" %}selected{% endif %}>Mới nhất</option>
                 <option value="trending" {% if sort == "trending" %}selected{% endif %}>Thịnh hành</option>
                 <option value="downloads" {% if sort == "downloads" %}selected{% endif %}>Tải nhiều</option>
