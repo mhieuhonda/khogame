@@ -79,6 +79,9 @@
                     if (active) {
                         a.id = 'suggest-opt-' + i;
                         searchInput.setAttribute('aria-activedescendant', 'suggest-opt-' + i);
+                        // Cuộn option vào vùng nhìn thấy — dropdown max-height
+                        // 320px, option thứ 8+ bị khuất nếu chỉ mũi tên xuống.
+                        if (a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
                     }
                 });
             }
