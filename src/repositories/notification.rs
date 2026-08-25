@@ -125,4 +125,17 @@ impl NotificationRepo {
         .await?;
         Ok(())
     }
+
+    /// Xoá notification ĐÃ ĐỌC cũ hơn `days` ngày. Notification chưa đọc
+    /// được giữ nguyên toàn bộ. Trả về số dòng đã xoá.
+    pub async fn cleanup_read_older_than(pool: &PgPool, days: i64) -> AppResult<u64> {
+        let res = sqlx::query(
+            r#"DELETE FROM notifications
+               WHERE is_read = TRUE AND created_at < NOW() - ($1 || ' days')::INTERVAL"#,
+        )
+        .bind(days.to_string())
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
 }

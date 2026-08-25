@@ -3,6 +3,7 @@ pub mod config;
 pub mod db;
 pub mod error;
 pub mod handlers;
+pub mod janitor;
 pub mod middleware;
 pub mod models;
 pub mod repositories;
@@ -27,7 +28,14 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
 
-    let app = routes::build_router(Arc::new(state));
+    let state = Arc::new(state);
+
+    // Janitor nền: dọn session hết hạn & notification cũ mỗi 6h
+    // (override bằng JANITOR_INTERVAL_SECS). Detached task — tự kết thúc
+    // cùng process khi shutdown.
+    tokio::spawn(janitor::run_janitor((*state).clone()));
+
+    let app = routes::build_router(state);
 
     let addr = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;

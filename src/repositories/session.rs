@@ -55,10 +55,11 @@ impl SessionRepo {
         Ok(())
     }
 
-    pub async fn cleanup_expired(pool: &PgPool) -> AppResult<()> {
-        sqlx::query("DELETE FROM sessions WHERE expires_at < NOW()")
+    /// Xoá các session hết hạn. Trả về số dòng đã xoá (để janitor log).
+    pub async fn cleanup_expired(pool: &PgPool) -> AppResult<u64> {
+        let res = sqlx::query("DELETE FROM sessions WHERE expires_at < NOW()")
             .execute(pool)
             .await?;
-        Ok(())
+        Ok(res.rows_affected())
     }
 }
