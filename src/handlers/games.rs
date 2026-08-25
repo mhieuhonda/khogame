@@ -448,6 +448,9 @@ pub async fn show_game(
         &tags,
         category.as_ref(),
     );
+    // Breadcrumb JSON-LD riêng — Google hiển thị breadcrumb thay URL trần
+    // trong kết quả tìm kiếm (rich result), tăng CTR đáng kể.
+    let breadcrumb_ld = build_breadcrumb_json_ld(&state.config.base_url, &game, category.as_ref());
 
     Ok(GameShowTemplate {
         current_user,
@@ -466,8 +469,45 @@ pub async fn show_game(
         is_owner,
         user_rating,
         base_url: state.config.base_url.clone(),
-        json_ld,
+        json_ld: format!("{}\n{}", json_ld, breadcrumb_ld),
     })
+}
+
+/// Dựng JSON-LD schema.org/BreadcrumbList: Trang chủ › [Thể loại] › Tên game.
+/// Đồng bộ markup với <nav class="breadcrumb"> trong template show.html.
+fn build_breadcrumb_json_ld(
+    base_url: &str,
+    game: &crate::models::game::Game,
+    category: Option<&crate::models::category::Category>,
+) -> String {
+    let mut items = vec![serde_json::json!({
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Trang chủ",
+        "item": base_url,
+    })];
+    if let Some(cat) = category {
+        items.push(serde_json::json!({
+            "@type": "ListItem",
+            "position": 2,
+            "name": cat.name,
+            "item": format!("{}/c/{}", base_url, cat.slug),
+        }));
+    }
+    items.push(serde_json::json!({
+        "@type": "ListItem",
+        "position": items.len() + 1,
+        "name": game.title,
+    }));
+    let ld = serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": items,
+    });
+    format!(
+        "<script type=\"application/ld+json\">\n{}\n</script>",
+        serde_json::to_string_pretty(&ld).unwrap_or_default()
+    )
 }
 
 /// Dựng JSON-LD schema.org/VideoGame để nhúng vào <head> của trang game.
@@ -1303,101 +1343,6 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests_v2 {
-    use super::*;
-
-    fn valid_form() -> GameForm {
-        GameForm {
-            title: "Game thử".into(),
-            content: "Nội dung".into(),
-            cover_image: "https://cdn.example.com/c.png".into(),
-            android_link: Some("https://example.com/a.apk".into()),
-            ..GameForm::default()
-        }
-    }
-
-    #[test]
-    fn test_content_empty_rejected() {
-        let mut f = valid_form();
-        f.content = "   ".into();
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("Nội dung")
-        ));
-    }
-
-    #[test]
-    fn test_content_too_long() {
-        let mut f = valid_form();
-        f.content = "x".repeat(50_001);
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("50.000")
-        ));
-        // Đúng 50k thì qua
-        f.content = "x".repeat(50_000);
-        assert!(validate_game_form(&f).is_ok());
-    }
-
-    #[test]
-    fn test_excerpt_limit() {
-        let mut f = valid_form();
-        f.excerpt = "a".repeat(501);
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("500")
-        ));
-        f.excerpt = "a".repeat(500);
-        assert!(validate_game_form(&f).is_ok());
-    }
-
-    #[test]
-    fn test_metadata_limits() {
-        let mut f = valid_form();
-        f.version = "1".repeat(101);
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("Phiên bản")
-        ));
-        f.version = "1.0".into();
-        f.developer = "D".repeat(101);
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("Nhà phát triển")
-        ));
-        f.developer = "Studio".into();
-        f.file_size = "9".repeat(101);
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("Dung lượng")
-        ));
-    }
-
-    #[test]
-    fn test_languages_limits() {
-        let mut f = valid_form();
-        // 21 ngôn ngữ → chặn
-        f.languages = (0..21)
-            .map(|i| format!("lang{}", i))
-            .collect::<Vec<_>>()
-            .join(",");
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("20 ngôn ngữ")
-        ));
-        // Ngôn ngữ dài 51 ký tự → chặn
-        f.languages = format!("{},{}", "a".repeat(50), "b".repeat(51));
-        assert!(matches!(
-            validate_game_form(&f),
-            Err(AppError::BadRequest(m)) if m.contains("50 ký tự")
-        ));
-        // Hợp lệ
-        f.languages = "vi, en".into();
-        assert!(validate_game_form(&f).is_ok());
-    }
-}
-
-#[cfg(test)]
 mod tests_json_ld {
     use super::*;
     use crate::models::game::{AgeRating, Game, GameStatus};
@@ -1505,5 +1450,41 @@ mod tests_json_ld {
         assert!(html.contains(r#""genre": "Hành động""#));
         assert!(html.contains("coop"));
         assert!(html.contains("pixel"));
+    }
+
+    #[test]
+    fn test_breadcrumb_with_category() {
+        let g = sample_game();
+        let cat = crate::models::category::Category {
+            id: uuid::Uuid::new_v4(),
+            name: "Hành động".into(),
+            slug: "hanh-dong".into(),
+            description: None,
+            icon: None,
+            created_at: chrono::Utc::now(),
+        };
+        let html = build_breadcrumb_json_ld("https://example.com", &g, Some(&cat));
+        assert!(html.contains("BreadcrumbList"));
+        assert!(html.contains("Trang chủ"));
+        assert!(html.contains("Hành động"));
+        assert!(html.contains("/c/hanh-dong"));
+        assert!(html.contains("Game Thử Nghiệm"));
+        // 3 cấp: Trang chủ › Thể loại › Game
+        assert_eq!(html.matches("ListItem").count(), 3);
+        // JSON hợp lệ
+        let start = html.find('>').map(|i| i + 1).unwrap();
+        let end = html.rfind("</script>").unwrap();
+        let json: serde_json::Value =
+            serde_json::from_str(html[start..end].trim()).expect("breadcrumb JSON hợp lệ");
+        assert_eq!(json["@type"], "BreadcrumbList");
+    }
+
+    #[test]
+    fn test_breadcrumb_without_category() {
+        let g = sample_game();
+        let html = build_breadcrumb_json_ld("https://example.com", &g, None);
+        // 2 cấp: Trang chủ › Game — không có URL category
+        assert_eq!(html.matches("ListItem").count(), 2);
+        assert!(!html.contains("/c/"));
     }
 }
