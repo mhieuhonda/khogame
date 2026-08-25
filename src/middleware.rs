@@ -187,6 +187,61 @@ impl RateLimiter {
     }
 }
 
+#[cfg(test)]
+mod rate_limiter_tests {
+    use super::*;
+
+    #[test]
+    fn test_allows_under_limit() {
+        let rl = RateLimiter::new();
+        for i in 0..5 {
+            assert!(rl.check("ip1", 5, 60), "request #{} phải được phép", i + 1);
+        }
+    }
+
+    #[test]
+    fn test_blocks_over_limit() {
+        let rl = RateLimiter::new();
+        for _ in 0..3 {
+            assert!(rl.check("ip2", 3, 60));
+        }
+        // Request thứ 4 trong cùng cửa sổ → bị chặn
+        assert!(!rl.check("ip2", 3, 60));
+        // Vẫn bị chặn ở request sau đó
+        assert!(!rl.check("ip2", 3, 60));
+    }
+
+    #[test]
+    fn test_keys_are_independent() {
+        let rl = RateLimiter::new();
+        for _ in 0..2 {
+            assert!(rl.check("ipA", 2, 60));
+        }
+        assert!(!rl.check("ipA", 2, 60));
+        // IP khác không bị ảnh hưởng bởi IP A
+        assert!(rl.check("ipB", 2, 60));
+    }
+
+    #[test]
+    fn test_window_expiry_frees_quota() {
+        let rl = RateLimiter::new();
+        // Cửa sổ 0 giây: mọi timestamp đều "quá hạn" ngay lập tức
+        // (duration_since >= window) → quota tự do lại.
+        assert!(rl.check("ipC", 1, 0));
+        assert!(rl.check("ipC", 1, 0));
+        assert!(rl.check("ipC", 1, 0));
+    }
+
+    #[test]
+    fn test_reject_then_recover_after_window() {
+        let rl = RateLimiter::new();
+        assert!(rl.check("ipD", 1, 60));
+        assert!(!rl.check("ipD", 1, 60));
+        // Sau khi "hết hạn" (dùng window 0) → cho phép lại
+        assert!(rl.check("ipD", 1, 0));
+    }
+}
+
 /// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc ConnectInfo
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
