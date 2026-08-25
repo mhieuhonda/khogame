@@ -42,6 +42,11 @@ impl CategoryRepo {
     }
 
     // ===== CRUD cho admin =====
+    /// Tạo category mới. Trả Conflict nếu slug đã tồn tại — trước đây
+    /// ON CONFLICT DO UPDATE SET name âm thầm ĐỔI TÊN category cũ khi
+    /// admin tạo category có tên khác nhưng slugify trùng (vd 'GIẢI TRÍ'
+    /// và 'Giải Trí' cùng ra slug 'giai-tri'): user tưởng đã tạo category
+    /// mới, thật ra vừa ghi đè tên category đang dùng.
     pub async fn create(
         pool: &PgPool,
         name: &str,
@@ -52,15 +57,21 @@ impl CategoryRepo {
         let id: Uuid = sqlx::query_scalar(
             r#"INSERT INTO categories (name, slug, description, icon)
                VALUES ($1, $2, $3, $4)
-               ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
+               ON CONFLICT (slug) DO NOTHING
                RETURNING id"#,
         )
         .bind(name)
         .bind(slug)
         .bind(description)
         .bind(icon)
-        .fetch_one(pool)
-        .await?;
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| {
+            crate::error::AppError::Conflict(format!(
+                "Thể loại với đường dẫn '{}' đã tồn tại (có thể trùng tên sau khi bỏ dấu). Hãy đổi tên khác.",
+                slug
+            ))
+        })?;
         Ok(id)
     }
 
