@@ -126,11 +126,22 @@ pub async fn create(
             .map(|v| v == "on")
             .unwrap_or(true);
 
-    // Liên kết game (nếu có)
+    // Liên kết game (nếu có) — slug sai báo lỗi rõ ràng thay vì lặng lẽ
+    // bỏ liên kết (trước đây user chọn game trong dropdown nhưng slug
+    // đã bị đổi/xóa giữa chừng → repo đăng thành công mà KHÔNG liên kết
+    // game nào, user tưởng đã liên kết).
     let game_id = match form.game_slug.as_deref().filter(|s| !s.is_empty()) {
-        Some(slug) => crate::repositories::GameRepo::find_by_slug(&state.db, slug)
-            .await?
-            .map(|g| g.id),
+        Some(slug) => Some(
+            crate::repositories::GameRepo::find_by_slug(&state.db, slug)
+                .await?
+                .ok_or_else(|| {
+                    AppError::BadRequest(format!(
+                        "Game '{}' không tồn tại (có thể đã bị đổi tên hoặc xóa). Vui lòng chọn lại.",
+                        slug
+                    ))
+                })?
+                .id,
+        ),
         None => None,
     };
 
