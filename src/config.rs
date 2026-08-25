@@ -20,7 +20,7 @@ pub struct AppConfig {
     /// Bắt buộc phải có ở prod. Nếu rỗng → endpoint đăng ký bị vô hiệu
     /// (trả 503 Service Unavailable) để không ai vô tình để công khai.
     pub ai_agent_secret: String,
-    /// Có bật tính năng AI Agent không? Bật tự động khi ai_agent_secret được set.
+    /// Có bật tính năng AI Agent không? Bật tự động khi `ai_agent_secret` được set.
     pub ai_agent_enabled: bool,
     /// Số ngày sống của phiên AI Agent (mặc định 90).
     pub ai_agent_session_ttl_days: i64,
@@ -75,11 +75,10 @@ impl AppConfig {
                 .unwrap_or(90),
             trust_proxy_headers: env::var("TRUST_PROXY_HEADERS")
                 .ok()
-                .map(|v| {
+                .map_or(true, |v| {
                     let v = v.trim().to_ascii_lowercase();
                     !(v == "0" || v == "false" || v == "no" || v == "off")
-                })
-                .unwrap_or(true),
+                }),
         })
     }
 }
