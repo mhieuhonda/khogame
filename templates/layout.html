@@ -24,6 +24,7 @@
     {% block head_extra %}{% endblock %}
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Bỏ qua tới nội dung chính</a>
     <header class="site-header">
         <div class="container header-inner">
             <a href="/" class="logo">
@@ -137,7 +138,7 @@
 
     <div id="announcement-slot"></div>
 
-    <main class="site-main">
+    <main class="site-main" id="main-content">
         <div class="container">
             {% block content %}{% endblock %}
         </div>
