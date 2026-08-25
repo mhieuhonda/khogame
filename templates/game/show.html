@@ -141,7 +141,12 @@
             <section class="detail-section">
                 <h2 class="section-heading">🎬 Trailer</h2>
                 <div class="trailer-container">
-                    <iframe width="100%" height="450" src="{{ game.trailer_url.clone().unwrap_or_default()|youtube_embed }}" frameborder="0" allowfullscreen></iframe>
+                    {% let embed = game.trailer_url.clone().unwrap_or_default()|youtube_embed %}
+                    {% if !embed.is_empty() %}
+                    <iframe width="100%" height="450" src="{{ embed }}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Trailer {{ game.title }}"></iframe>
+                    {% else %}
+                    <p><a href="{{ game.trailer_url.clone().unwrap_or_default() }}" target="_blank" rel="noopener">▶ Xem trailer tại nguồn ngoài</a> (trailer không phải YouTube nên không nhúng được)</p>
+                    {% endif %}
                 </div>
             </section>
             {% endif %}

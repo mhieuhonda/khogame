@@ -644,10 +644,16 @@ pub mod filters {
         Ok(s.as_ref().to_lowercase())
     }
 
-    /// URL YouTube -> URL embed
+    /// URL YouTube -> URL embed. Trả về chuỗi RỖNG nếu không tách được
+    /// ID (URL không phải YouTube) — template dùng điều kiện này để
+    /// fallback sang link thường thay vì render iframe hỏng
+    /// (https://www.youtube.com/embed/ trống trắng).
     #[askama::filter_fn]
     pub fn youtube_embed(url: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let id = u::extract_youtube_id(url.as_ref()).unwrap_or_default();
+        if id.is_empty() {
+            return Ok(String::new());
+        }
         Ok(format!("https://www.youtube.com/embed/{}", id))
     }
 
