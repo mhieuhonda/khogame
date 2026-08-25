@@ -247,6 +247,21 @@ pub fn sanitize_redirect(s: &str) -> String {
     }
 }
 
+/// Escape ký tự wildcard của ILIKE/LIKE (% _ \) để tìm kiếm THEO CHUẨI
+/// ký tự. ILIKE không escape tự động: tìm "100%" tạo pattern "%100%%"
+/// match sai mọi tiêu đề có "100". Sau khi escape cần thêm ESCAPE '\\'
+/// vào câu ILIKE (mặc định PostgreSQL hiểu ESCAPE '\\').
+pub fn escape_like(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if c == '%' || c == '_' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
 /// Validate một URL là http(s) — chống javascript:/data:/file: scheme
 /// nguy hiểm khi dùng URL làm href hoặc src trong HTML. Trả về true nếu
 /// URL rỗng (không bắt buộc) hoặc là http(s)://.
@@ -455,6 +470,19 @@ mod tests {
             "expected 'game' prefix, got: {}",
             slug
         );
+    }
+
+    #[test]
+    fn test_escape_like() {
+        // Wildcard bị escape → khớp literal
+        assert_eq!(escape_like("100%"), "100\\%");
+        assert_eq!(escape_like("a_b"), "a\\_b");
+        // Backslash cũng phải escape (tránh thành escape char trái ý)
+        assert_eq!(escape_like("a\\b"), "a\\\\b");
+        // Chuỗi thường không đổi
+        assert_eq!(escape_like("game hay"), "game hay");
+        // Tiếng Việt giữ nguyên
+        assert_eq!(escape_like("Hà Nội"), "Hà Nội");
     }
 
     #[test]

@@ -441,7 +441,7 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published'
-                AND (g.title ILIKE $1 OR g.excerpt ILIKE $1 OR g.content ILIKE $1)"#
+                AND (g.title ILIKE $1 ESCAPE '\\' OR g.excerpt ILIKE $1 ESCAPE '\\' OR g.content ILIKE $1 ESCAPE '\\')"#
             .to_string();
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");
@@ -471,7 +471,9 @@ impl GameRepo {
             }
         ));
 
-        let pattern = format!("%{}%", query);
+        // Escape wildcard %/_ để user tìm theo literal (tìm "100%" không
+        // còn match cả "1001", "100x"...)
+        let pattern = format!("%{}%", crate::utils::escape_like(query));
         // order/where clause được ghép từ hằng số nội bộ, an toàn injection
         let mut q = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str())).bind(pattern);
         if let Some(cs) = category_slug {
@@ -677,7 +679,7 @@ impl GameRepo {
             r#"SELECT COUNT(*) FROM games g
                LEFT JOIN categories c ON c.id = g.category_id
                WHERE g.status = 'published'
-                 AND (g.title ILIKE $1 OR g.excerpt ILIKE $1 OR g.content ILIKE $1)"#,
+                 AND (g.title ILIKE $1 ESCAPE '\' OR g.excerpt ILIKE $1 ESCAPE '\' OR g.content ILIKE $1 ESCAPE '\')"#,
         );
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");
@@ -688,7 +690,7 @@ impl GameRepo {
                 if category_slug.is_some() { 3 } else { 2 }
             ));
         }
-        let pattern = format!("%{}%", query);
+        let pattern = format!("%{}%", crate::utils::escape_like(query));
         let mut q = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str())).bind(pattern);
         if let Some(cs) = category_slug {
             q = q.bind(cs);
@@ -880,9 +882,9 @@ impl GameRepo {
     /// Đếm game trùng tiêu đề (cảnh báo khi tạo)
     pub async fn count_similar_title(pool: &PgPool, title: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM games WHERE status = 'published' AND title ILIKE $1",
+            "SELECT COUNT(*) FROM games WHERE status = 'published' AND title ILIKE $1 ESCAPE '\\'",
         )
-        .bind(format!("%{}%", title))
+        .bind(format!("%{}%", crate::utils::escape_like(title)))
         .fetch_one(pool)
         .await?;
         Ok(c)
