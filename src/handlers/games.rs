@@ -1042,13 +1042,19 @@ mod tests {
     #[test]
     fn test_validate_too_many_tags() {
         let mut f = valid_form();
-        f.tags = (0..21).map(|i| format!("tag{}", i)).collect::<Vec<_>>().join(",");
+        f.tags = (0..21)
+            .map(|i| format!("tag{}", i))
+            .collect::<Vec<_>>()
+            .join(",");
         assert!(matches!(
             validate_game_form(&f),
             Err(AppError::BadRequest(m)) if m.contains("20 tag")
         ));
         // Đúng 20 tag thì qua (đã dedupe)
-        f.tags = (0..20).map(|i| format!("tag{}", i)).collect::<Vec<_>>().join(",");
+        f.tags = (0..20)
+            .map(|i| format!("tag{}", i))
+            .collect::<Vec<_>>()
+            .join(",");
         assert!(validate_game_form(&f).is_ok());
     }
 

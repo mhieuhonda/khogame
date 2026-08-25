@@ -47,10 +47,12 @@ pub async fn run_janitor(state: AppState) {
 
 /// Thực hiện một vòng dọn dẹp, trả về (sessions_deleted, notifications_deleted).
 async fn do_cleanup(state: &AppState) -> (u64, u64) {
-    let sessions = SessionRepo::cleanup_expired(&state.db).await.unwrap_or_else(|e| {
-        tracing::warn!("Janitor: lỗi dọn sessions: {}", e);
-        0
-    });
+    let sessions = SessionRepo::cleanup_expired(&state.db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Janitor: lỗi dọn sessions: {}", e);
+            0
+        });
     let notifications =
         NotificationRepo::cleanup_read_older_than(&state.db, NOTIFICATION_RETENTION_DAYS)
             .await
@@ -63,12 +65,13 @@ async fn do_cleanup(state: &AppState) -> (u64, u64) {
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn test_janitor_constants_sane() {
-        // Notification retention phải dương và hợp lý (< 10 năm)
-        assert!(super::NOTIFICATION_RETENTION_DAYS > 0);
-        assert!(super::NOTIFICATION_RETENTION_DAYS < 3650);
-        // Interval mặc định phải ≥ 1 giờ (tránh spam DB nếu logic mặc định bị đổi)
-        assert!(super::DEFAULT_INTERVAL_SECS >= 3600);
-    }
+    use super::{DEFAULT_INTERVAL_SECS, NOTIFICATION_RETENTION_DAYS};
+
+    /// Compile-time guards: nếu ai đổi hằng số janitor thành giá trị vô lý
+    /// (retention âm, interval quá ngắn spam DB) thì build fail ngay.
+    const _: () = {
+        assert!(NOTIFICATION_RETENTION_DAYS > 0);
+        assert!(NOTIFICATION_RETENTION_DAYS < 3650);
+        assert!(DEFAULT_INTERVAL_SECS >= 3600);
+    };
 }

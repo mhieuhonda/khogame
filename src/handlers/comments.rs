@@ -43,7 +43,9 @@ pub async fn create_comment(
     // game draft/hidden mà người dùng thường không được xem (lỗ hổng
     // ủy quyền — trước đây POST vẫn hoạt động dù trang show đã chặn).
     let is_owner = game.user_id == user.id;
-    if !is_owner && !user.role.is_staff() && game.status != crate::models::game::GameStatus::Published
+    if !is_owner
+        && !user.role.is_staff()
+        && game.status != crate::models::game::GameStatus::Published
     {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }

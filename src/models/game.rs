@@ -350,25 +350,34 @@ mod tests {
 
     #[test]
     fn test_tags_vec_dedupe_and_trim() {
-        let mut form = GameForm::default();
-        form.tags = " action , Action, 射击, action, RPG ".into();
+        let form = GameForm {
+            tags: " action , Action, 射击, action, RPG ".into(),
+            ..GameForm::default()
+        };
         let tags = form.tags_vec();
-        assert_eq!(tags, vec!["action".to_string(), "射击".to_string(), "RPG".to_string()]);
+        assert_eq!(
+            tags,
+            vec!["action".to_string(), "射击".to_string(), "RPG".to_string()]
+        );
     }
 
     #[test]
     fn test_tags_vec_empty() {
         let form = GameForm::default();
         assert!(form.tags_vec().is_empty());
-        let mut form = GameForm::default();
-        form.tags = " , , ".into();
+        let form = GameForm {
+            tags: " , , ".into(),
+            ..GameForm::default()
+        };
         assert!(form.tags_vec().is_empty());
     }
 
     #[test]
     fn test_languages_vec_dedupe() {
-        let mut form = GameForm::default();
-        form.languages = "vi, VI, en, vi".into();
+        let form = GameForm {
+            languages: "vi, VI, en, vi".into(),
+            ..GameForm::default()
+        };
         assert_eq!(
             form.languages_vec(),
             vec!["vi".to_string(), "en".to_string()]
@@ -377,8 +386,10 @@ mod tests {
 
     #[test]
     fn test_screenshots_vec_lines() {
-        let mut form = GameForm::default();
-        form.screenshots = "https://a.com/1.png\n  https://a.com/2.png  \n\n".into();
+        let form = GameForm {
+            screenshots: "https://a.com/1.png\n  https://a.com/2.png  \n\n".into(),
+            ..GameForm::default()
+        };
         assert_eq!(form.screenshots_vec().len(), 2);
     }
 
