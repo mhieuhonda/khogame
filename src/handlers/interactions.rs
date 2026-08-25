@@ -108,6 +108,15 @@ pub async fn toggle_follow(
     let target = crate::repositories::UserRepo::find_by_username(&state.db, &username)
         .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    // Chặn tự theo dõi tại handler: repo trả Ok(false) thầm lặng nên
+    // trước đây user bấm nút "Theo dõi" trên trang của chính mình mãi
+    // không có phản ứng gì (partial render lại "chưa theo dõi") —
+    // vừa rác query vừa khó hiểu UX.
+    if target.id == user.id {
+        return Err(AppError::BadRequest(
+            "Bạn không thể theo dõi chính mình".into(),
+        ));
+    }
     let is_following = InteractionRepo::toggle_follow(&state.db, user.id, target.id).await?;
     let partial = FollowButtonPartial {
         target_user_id: target.id,
