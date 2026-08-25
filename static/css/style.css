@@ -2199,3 +2199,73 @@ a:hover { color: var(--accent-light); }
     .ai-agent-row { flex-direction: column; align-items: stretch; }
     .ai-agent-actions { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 12px; }
 }
+
+/* ============================================================
+   Accessibility & Print — bổ sung 2026-08
+   ============================================================ */
+
+/* Người dùng nhạy cảm chuyển động (vestibular disorder) — tắt mọi
+   animation/transition khi hệ điều hành bật "Reduce Motion". */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Điều hướng bằng bàn phím: vòng focus rõ ràng trên mọi control.
+   Chỉ áp dụng cho :focus-visible để không phá style khi click chuột. */
+:focus-visible {
+    outline: 2px solid var(--accent, #7c3aed);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* In ấn trang game detail: bỏ header/footer/ads, chữ đen trên trắng. */
+@media print {
+    .site-header,
+    .site-footer,
+    .site-menu,
+    .search-bar,
+    .header-actions,
+    .game-actions,
+    .game-platforms,
+    .share-buttons,
+    .pagination,
+    .comment-form,
+    .related-games,
+    .trailer-container,
+    #announcement-slot,
+    .game-screenshots,
+    nav.breadcrumb {
+        display: none !important;
+    }
+    body {
+        background: #fff !important;
+        color: #000 !important;
+        font-size: 12pt;
+    }
+    .container {
+        max-width: 100%;
+        padding: 0;
+    }
+    .game-card,
+    .game-detail,
+    .detail-section {
+        box-shadow: none !important;
+        border: none !important;
+        page-break-inside: avoid;
+    }
+    a {
+        color: #000 !important;
+        text-decoration: underline;
+    }
+    a[href^="http"]::after {
+        content: " (" attr(href) ")";
+        font-size: 10pt;
+    }
+}
