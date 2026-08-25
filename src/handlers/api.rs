@@ -335,21 +335,52 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Res
 // ===================== Nội bộ dùng chung =====================
 
 /// Banner thông báo toàn site (layout fetch qua htmx)
-pub async fn announcement(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+pub async fn announcement(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> AppResult<Response> {
     // 1 query lấy cả 2 key thay vì 2 query tuần tự (mỗi page view đều gọi)
     let mut map = SettingsRepo::get_map(&state.db, &["announcement", "announcement_type"]).await?;
     let text = map.remove("announcement").unwrap_or_default();
-    // Cache browser 60s: JS fetch endpoint này trên MỌI page view —
-    // không có Cache-Control thì mỗi lần chuyển trang vẫn đánh DB.
-    // Announcement là setting admin đổi hiếm, trễ 1 phút chấp nhận được.
-    let cache = [(header::CACHE_CONTROL, "public, max-age=60")];
-    if text.is_empty() {
-        return Ok((cache, Json(serde_json::json!({"text": "", "kind": ""}))).into_response());
-    }
     let kind = map
         .remove("announcement_type")
         .unwrap_or_else(|| "info".into());
-    Ok((cache, Json(serde_json::json!({"text": text, "kind": kind}))).into_response())
+    // Cache browser 60s: JS fetch endpoint này trên MỌI page view —
+    // không có Cache-Control thì mỗi lần chuyển trang vẫn đánh DB.
+    // Announcement là setting admin đổi hiếm, trễ 1 phút chấp nhận được.
+    //
+    // ETag thêm 1 tầng: nếu nội dung KHÔNG đổi trong cửa sổ 60s,
+    // If-None-Match khớp → 304 rỗng (vài chục byte) thay vì payload
+    // JSON đầy đủ — tiết kiệm băng thông cho user quay lại liên tục.
+    let etag = format!("\"{}\"", short_hash(&format!("{}|{}", text, kind)));
+    if etag_matches(&headers, &etag) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=60"),
+            ],
+        )
+            .into_response());
+    }
+    if text.is_empty() {
+        return Ok((
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=60"),
+            ],
+            Json(serde_json::json!({"text": "", "kind": ""})),
+        )
+            .into_response());
+    }
+    Ok((
+        [
+            (header::ETAG, etag.as_str()),
+            (header::CACHE_CONTROL, "public, max-age=60"),
+        ],
+        Json(serde_json::json!({"text": text, "kind": kind})),
+    )
+        .into_response())
 }
 
 /// Đồng bộ theme sáng/tối lên server
