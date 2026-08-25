@@ -13,6 +13,7 @@ use axum_extra::extract::CookieJar;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use uuid::Uuid;
 
 impl FromRef<Arc<AppState>> for AppState {
     fn from_ref(state: &Arc<AppState>) -> Self {
@@ -31,7 +32,59 @@ pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<
     if user.is_banned {
         return None;
     }
+    // Cập nhật last_seen_at tối đa 1 lần/giờ/user (throttle in-memory):
+    // trước đây chỉ cập nhật lúc đăng nhập → hồ sơ 'hoạt động lần cuối'
+    // và sitemap xếp theo hoạt động đều dùng dữ liệu stale cả tháng.
+    touch_last_seen(state, &user);
     Some(user)
+}
+
+/// Throttle map cho việc cập nhật last_seen_at: user_id → lần cập nhật
+/// gần nhất. Tránh ghi DB mỗi request (CurrentUser extractor có thể chạy
+/// nhiều lần cho cùng request qua các middleware khác nhau).
+static LAST_SEEN_THROTTLE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, std::time::Instant>>,
+> = std::sync::OnceLock::new();
+
+/// Đánh dấu user đang hoạt động — ghi DB nếu đã hơn 1 giờ từ lần gần nhất.
+/// Best-effort: lỗi DB không ảnh hưởng request.
+fn touch_last_seen(state: &AppState, user: &User) {
+    // Chỉ update khi DB cho thấy đã stale > 1h (tránh spam map với user
+    // thường xuyên quay lại trong phiên ngắn).
+    let stale = user
+        .last_seen_at
+        .map(|t| {
+            chrono::Utc::now()
+                .signed_duration_since(t)
+                .num_hours()
+                .abs()
+                >= 1
+        })
+        .unwrap_or(true);
+    if !stale {
+        return;
+    }
+    let map = LAST_SEEN_THROTTLE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    // Khôi phục từ poison — throttle không đáng để panic cả server.
+    let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
+    let now = std::time::Instant::now();
+    match map.get(&user.id) {
+        Some(last) if now.duration_since(*last) < std::time::Duration::from_secs(3600) => {
+            // Đã ghi trong giờ này — bỏ qua
+        }
+        _ => {
+            map.insert(user.id, now);
+            // Dọn map khi phình (nhiều user độc đáo ghé thăm)
+            if map.len() > 5000 {
+                map.retain(|_, t| now.duration_since(*t) < std::time::Duration::from_secs(3600));
+            }
+            let db = state.db.clone();
+            let uid = user.id;
+            tokio::spawn(async move {
+                let _ = UserRepo::update_last_seen(&db, uid).await;
+            });
+        }
+    }
 }
 
 /// Optional current user extractor - returns Option<User>
