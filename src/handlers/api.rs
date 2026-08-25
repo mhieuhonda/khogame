@@ -407,7 +407,7 @@ pub async fn set_theme(
 }
 
 /// OpenSearch Suggestions (application/x-suggestions+json) — format mảng
-/// theo spec: [query, [titles], [descriptions], [urls]] để trình duyệt gợi
+/// theo spec: \[query, \[titles\], \[descriptions\], \[urls\]\] để trình duyệt gợi
 /// ý ngay trong ô tìm kiếm của thanh địa chỉ. Tái dùng query suggest_titles.
 pub async fn opensearch_suggestions(
     State(state): State<Arc<AppState>>,

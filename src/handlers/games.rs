@@ -219,7 +219,7 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
 }
 
 /// Validate category_id trong form: nếu có thì phải tồn tại thật trong DB.
-/// Form là <select> nhưng POST crafted vẫn gửi UUID lạ được → FK
+/// Form là \<select\> nhưng POST crafted vẫn gửi UUID lạ được → FK
 /// violation → 500. Validate trước cho lỗi 400 sạch với thông điệp rõ.
 async fn validate_category(state: &AppState, form: &GameForm) -> AppResult<()> {
     if let Some(cid) = form
@@ -482,7 +482,7 @@ pub async fn show_game(
 }
 
 /// Dựng JSON-LD schema.org/BreadcrumbList: Trang chủ › [Thể loại] › Tên game.
-/// Đồng bộ markup với <nav class="breadcrumb"> trong template show.html.
+/// Đồng bộ markup với \<nav class="breadcrumb"\> trong template show.html.
 fn build_breadcrumb_json_ld(
     base_url: &str,
     game: &crate::models::game::Game,
@@ -518,7 +518,7 @@ fn build_breadcrumb_json_ld(
     )
 }
 
-/// Dựng JSON-LD schema.org/VideoGame để nhúng vào <head> của trang game.
+/// Dựng JSON-LD schema.org/VideoGame để nhúng vào \<head\> của trang game.
 /// Dùng serde_json::Value để tránh lỗi cú pháp JSON (escape không đúng).
 /// Trả về tag <script type="application/ld+json">...</script> hoàn chỉnh.
 fn build_game_json_ld(

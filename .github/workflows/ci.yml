@@ -24,6 +24,14 @@ jobs:
       - name: Cargo check (--locked)
         run: cargo check --locked
 
+      # Doc build fail khi có broken intra-doc link hoặc code block Rust
+      # sai cú pháp trong /// comment — lỗi này không lọt qua cargo check
+      # nhưng làm rustdoc HTML hỏng cho người đọc docs.rs/cargo doc.
+      - name: Rustdoc build (no-deps, warnings as errors)
+        run: cargo doc --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
       - name: Cargo test
         run: cargo test --locked
 

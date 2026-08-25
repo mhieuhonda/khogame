@@ -145,7 +145,7 @@ pub struct GameShowTemplate {
     pub user_rating: Option<i16>,
     /// Base URL tuyệt đối (https://...) để dựng share URL đầy đủ.
     pub base_url: String,
-    /// JSON-LD <script type="application/ld+json"> đã được serialize sẵn
+    /// JSON-LD \<script type="application/ld+json"\> đã được serialize sẵn
     /// trong handler. Tránh phải lặp logic ở template (askama không có
     /// filter json_encode builtin ở 0.16).
     pub json_ld: String,

@@ -87,7 +87,7 @@ fn touch_last_seen(state: &AppState, user: &User) {
     }
 }
 
-/// Optional current user extractor - returns Option<User>
+/// Optional current user extractor - returns `Option<User>`
 #[derive(Clone)]
 pub struct CurrentUser(pub Option<User>);
 
