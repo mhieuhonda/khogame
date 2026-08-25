@@ -266,6 +266,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .service(ServeDir::new("static")),
         )
         .route("/rss.xml", get(handlers::api::rss))
+        .route(
+            "/opensearch-suggest",
+            get(handlers::api::opensearch_suggestions),
+        )
         .route("/sitemap.xml", get(handlers::api::sitemap))
         .route("/robots.txt", get(handlers::api::robots))
         .route("/opensearch.xml", get(handlers::api::opensearch))

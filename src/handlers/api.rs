@@ -361,6 +361,40 @@ pub async fn set_theme(
     Ok(Json(serde_json::json!({"ok": true, "theme": theme})).into_response())
 }
 
+/// OpenSearch Suggestions (application/x-suggestions+json) — format mảng
+/// theo spec: [query, [titles], [descriptions], [urls]] để trình duyệt gợi
+/// ý ngay trong ô tìm kiếm của thanh địa chỉ. Tái dùng query suggest_titles.
+pub async fn opensearch_suggestions(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<SuggestQuery>,
+) -> AppResult<Response> {
+    let query = q.q.trim();
+    let query: String = query.chars().take(100).collect();
+    let empty = query.chars().count() < 2;
+    let suggestions = if empty {
+        Vec::new()
+    } else {
+        GameRepo::suggest_titles(&state.db, &query, 8).await?
+    };
+    let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
+    let descs: Vec<String> = suggestions
+        .iter()
+        .map(|(t, _)| format!("Kho Game — {}", t))
+        .collect();
+    let urls: Vec<String> = suggestions
+        .iter()
+        .map(|(_, s)| format!("{}/games/{}", state.config.base_url, s))
+        .collect();
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            "application/x-suggestions+json; charset=utf-8",
+        )],
+        Json(serde_json::json!([query, titles, descs, urls])),
+    )
+        .into_response())
+}
+
 /// Kiểm tra trùng tiêu đề game khi tạo mới
 #[derive(Deserialize)]
 pub struct DuplicateQuery {
@@ -653,6 +687,7 @@ pub async fn opensearch(State(state): State<Arc<AppState>>) -> Response {
   <OutputEncoding>UTF-8</OutputEncoding>
   <Image width="32" height="32" type="image/svg+xml">{base}/static/img/favicon.svg</Image>
   <Url type="text/html" method="get" template="{base}/search?q={{searchTerms}}"/>
+  <Url type="application/x-suggestions+json" rel="suggestions" template="{base}/opensearch-suggest?q={{searchTerms}}"/>
   <Query role="example" searchTerms="puzzle"/>
   <moz:SearchForm>{base}/search</moz:SearchForm>
 </OpenSearchDescription>"#
