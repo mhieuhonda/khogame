@@ -15,8 +15,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
-impl FromRef<Arc<AppState>> for AppState {
-    fn from_ref(state: &Arc<AppState>) -> Self {
+impl FromRef<Arc<Self>> for AppState {
+    fn from_ref(state: &Arc<Self>) -> Self {
         (**state).clone()
     }
 }
@@ -103,7 +103,7 @@ where
             .await
             .map_err(|_| AppError::Internal(anyhow::anyhow!("Failed to extract cookies")))?;
         let user = current_user_from_jar(&app_state, &jar).await;
-        Ok(CurrentUser(user))
+        Ok(Self(user))
     }
 }
 
@@ -123,7 +123,7 @@ where
             .await?
             .0
             .ok_or(AppError::Unauthorized)?;
-        Ok(AuthUser(user))
+        Ok(Self(user))
     }
 }
 
@@ -744,7 +744,7 @@ where
             .extensions
             .get::<User>()
             .filter(|u| u.role.is_ai_agent())
-            .map(|u| AuthAiAgent(u.clone()))
+            .map(|u| Self(u.clone()))
             .ok_or(StatusCode::UNAUTHORIZED)
     }
 }
