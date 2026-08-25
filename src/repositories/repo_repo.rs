@@ -139,21 +139,22 @@ impl RepoRepo {
         Ok(rows)
     }
 
-    /// Cho admin: tất cả repos, filter theo status
+    /// Cho admin: tất cả repos, filter theo status + phân trang
     pub async fn list_admin(
         pool: &PgPool,
         status: Option<&str>,
         limit: i64,
+        offset: i64,
     ) -> AppResult<Vec<GithubRepoCard>> {
         // Chuẩn hoá status: None / "" / whitespace → None (không filter)
         let status = status.filter(|s| !s.trim().is_empty());
         let sql = match status {
             Some(_) => format!(
-                r#"SELECT {} {} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2"#,
+                r#"SELECT {} {} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2 OFFSET $3"#,
                 CARD_COLS, CARD_JOINS
             ),
             None => format!(
-                r#"SELECT {} {} ORDER BY r.updated_at DESC LIMIT $1"#,
+                r#"SELECT {} {} ORDER BY r.updated_at DESC LIMIT $1 OFFSET $2"#,
                 CARD_COLS, CARD_JOINS
             ),
         };
@@ -162,17 +163,38 @@ impl RepoRepo {
                 sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(s)
                     .bind(limit)
+                    .bind(offset)
                     .fetch_all(pool)
                     .await?
             }
             None => {
                 sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
                     .bind(limit)
+                    .bind(offset)
                     .fetch_all(pool)
                     .await?
             }
         };
         Ok(rows)
+    }
+
+    /// Đếm repos theo bộ lọc — phân trang admin repos đúng tổng.
+    pub async fn count_admin(pool: &PgPool, status: Option<&str>) -> AppResult<i64> {
+        let status = status.filter(|s| !s.trim().is_empty());
+        let c: i64 = match status {
+            Some(s) => {
+                sqlx::query_scalar("SELECT COUNT(*) FROM github_repos WHERE status::text = $1")
+                    .bind(s)
+                    .fetch_one(pool)
+                    .await?
+            }
+            None => {
+                sqlx::query_scalar("SELECT COUNT(*) FROM github_repos")
+                    .fetch_one(pool)
+                    .await?
+            }
+        };
+        Ok(c)
     }
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<GithubRepo>> {

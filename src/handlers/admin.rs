@@ -723,6 +723,7 @@ pub async fn delete_category(
 #[derive(Deserialize, Default)]
 pub struct AdminReposQuery {
     pub status: Option<String>,
+    pub page: Option<i64>,
 }
 
 pub async fn repos(
@@ -733,13 +734,27 @@ pub async fn repos(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let repos = RepoRepo::list_admin(&state.db, q.status.as_deref(), 100).await?;
+    // Chuẩn hoá status filter + phân trang 50/trang (trước đây list 100
+    // cứng — quá 100 repo là repo cũ không duyệt/xem được).
+    let status = q.status.as_deref().filter(|s| !s.trim().is_empty());
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let (repos_res, total_res) = tokio::join!(
+        RepoRepo::list_admin(&state.db, status, per_page, offset),
+        RepoRepo::count_admin(&state.db, status),
+    );
+    let repos = repos_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminReposTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         repos,
         status_filter: q.status,
+        page,
+        per_page,
+        total,
     })
 }
 
@@ -1106,7 +1121,7 @@ pub async fn export(
     let (games_res, users_res, repos_res, comments_res, reports_res) = tokio::join!(
         GameRepo::admin_list(&state.db, None, 10000, 0),
         UserRepo::list_for_admin(&state.db, None, 10000, 0),
-        RepoRepo::list_admin(&state.db, None, 10000),
+        RepoRepo::list_admin(&state.db, None, 10000, 0),
         CommentRepo::list_recent(&state.db, 20000, 0),
         ReportRepo::list(&state.db, None, 20000, 0),
     );
