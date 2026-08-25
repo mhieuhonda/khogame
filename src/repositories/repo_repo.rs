@@ -5,15 +5,15 @@ use uuid::Uuid;
 
 pub struct RepoRepo;
 
-const CARD_COLS: &str = r#"r.id, r.owner, r.repo_name, r.description, r.primary_language,
+const CARD_COLS: &str = r"r.id, r.owner, r.repo_name, r.description, r.primary_language,
     r.stars, r.forks, r.open_issues, r.pushed_at,
     g.slug as game_slug, g.title as game_title,
     u.display_name as author_name, u.username as author_username, u.avatar_url as author_avatar,
-    r.status, r.created_at"#;
+    r.status, r.created_at";
 
-const CARD_JOINS: &str = r#"FROM github_repos r
+const CARD_JOINS: &str = r"FROM github_repos r
     LEFT JOIN games g ON g.id = r.game_id
-    JOIN users u ON u.id = r.user_id"#;
+    JOIN users u ON u.id = r.user_id";
 
 impl RepoRepo {
     #[allow(clippy::too_many_arguments)]
@@ -32,7 +32,7 @@ impl RepoRepo {
         pushed_at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO github_repos
+            r"INSERT INTO github_repos
                 (user_id, game_id, owner, repo_name, description, homepage,
                  primary_language, stars, forks, open_issues, pushed_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
@@ -43,7 +43,7 @@ impl RepoRepo {
                  forks = EXCLUDED.forks,
                  open_issues = EXCLUDED.open_issues,
                  pushed_at = EXCLUDED.pushed_at
-               RETURNING id"#,
+               RETURNING id",
         )
         .bind(user_id)
         .bind(game_id)
@@ -92,10 +92,10 @@ impl RepoRepo {
         repo_name: &str,
     ) -> AppResult<Option<GithubRepo>> {
         let repo = sqlx::query_as::<_, GithubRepo>(
-            r#"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
+            r"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
                 primary_language, stars, forks, open_issues, pushed_at, status,
                 created_at, updated_at
-              FROM github_repos WHERE owner = $1 AND repo_name = $2"#,
+              FROM github_repos WHERE owner = $1 AND repo_name = $2",
         )
         .bind(owner)
         .bind(repo_name)
@@ -116,8 +116,7 @@ impl RepoRepo {
             _ => "r.stars DESC, r.updated_at DESC",
         };
         let sql = format!(
-            r#"SELECT {} {} WHERE r.status = 'approved' ORDER BY {} LIMIT $1 OFFSET $2"#,
-            CARD_COLS, CARD_JOINS, order
+            r"SELECT {CARD_COLS} {CARD_JOINS} WHERE r.status = 'approved' ORDER BY {order} LIMIT $1 OFFSET $2"
         );
         let rows = sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(limit)
@@ -129,8 +128,7 @@ impl RepoRepo {
 
     pub async fn list_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<GithubRepoCard>> {
         let sql = format!(
-            r#"SELECT {} {} WHERE r.user_id = $1 AND r.status != 'hidden' ORDER BY r.created_at DESC"#,
-            CARD_COLS, CARD_JOINS
+            r"SELECT {CARD_COLS} {CARD_JOINS} WHERE r.user_id = $1 AND r.status != 'hidden' ORDER BY r.created_at DESC"
         );
         let rows = sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(user_id)
@@ -150,12 +148,10 @@ impl RepoRepo {
         let status = status.filter(|s| !s.trim().is_empty());
         let sql = match status {
             Some(_) => format!(
-                r#"SELECT {} {} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2 OFFSET $3"#,
-                CARD_COLS, CARD_JOINS
+                r"SELECT {CARD_COLS} {CARD_JOINS} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2 OFFSET $3"
             ),
             None => format!(
-                r#"SELECT {} {} ORDER BY r.updated_at DESC LIMIT $1 OFFSET $2"#,
-                CARD_COLS, CARD_JOINS
+                r"SELECT {CARD_COLS} {CARD_JOINS} ORDER BY r.updated_at DESC LIMIT $1 OFFSET $2"
             ),
         };
         let rows = match status {
@@ -199,10 +195,10 @@ impl RepoRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<GithubRepo>> {
         let repo = sqlx::query_as::<_, GithubRepo>(
-            r#"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
+            r"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
                 primary_language, stars, forks, open_issues, pushed_at, status,
                 created_at, updated_at
-              FROM github_repos WHERE id = $1"#,
+              FROM github_repos WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -249,11 +245,11 @@ impl RepoRepo {
         pushed_at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE github_repos SET
+            r"UPDATE github_repos SET
                 description = NULLIF($2,''), homepage = NULLIF($3,''),
                 primary_language = NULLIF($4,''), stars = $5, forks = $6,
                 open_issues = $7, pushed_at = $8
-              WHERE id = $1"#,
+              WHERE id = $1",
         )
         .bind(id)
         .bind(description)
@@ -284,6 +280,7 @@ impl RepoRepo {
         Ok(c)
     }
 
+    #[must_use]
     pub fn parse_github_url(url: &str) -> Option<(String, String)> {
         // Chấp nhận: owner/repo, https://github.com/owner/repo, https://github.com/owner/repo.git
         let trimmed = url.trim().trim_end_matches(".git");
@@ -331,6 +328,7 @@ impl RepoRepo {
     }
 
     #[allow(dead_code)]
+    #[must_use]
     pub fn status_from_str(s: &str) -> Option<RepoStatus> {
         match s {
             "pending" => Some(RepoStatus::Pending),

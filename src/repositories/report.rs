@@ -14,8 +14,8 @@ impl ReportRepo {
         description: &str,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO reports (game_id, reporter_id, reason, description)
-              VALUES ($1, $2, $3, $4) RETURNING id"#,
+            r"INSERT INTO reports (game_id, reporter_id, reason, description)
+              VALUES ($1, $2, $3, $4) RETURNING id",
         )
         .bind(game_id)
         .bind(reporter_id)
@@ -27,9 +27,9 @@ impl ReportRepo {
         // Notify all admins/moderators — MỘT query INSERT..SELECT thay vì
         // loop INSERT từng staff (N round-trip → 1).
         let _ = sqlx::query(
-            r#"INSERT INTO notifications (user_id, type, title, content, link)
+            r"INSERT INTO notifications (user_id, type, title, content, link)
                SELECT id, 'report_status'::notification_type, $1, $2, $3
-               FROM users WHERE role IN ('admin', 'moderator') AND NOT is_banned"#,
+               FROM users WHERE role IN ('admin', 'moderator') AND NOT is_banned",
         )
         .bind("Có báo cáo mới cần xử lý")
         .bind(format!("Lý do: {}", reason.label()))
@@ -59,14 +59,14 @@ impl ReportRepo {
     ) -> AppResult<Vec<ReportWithGame>> {
         let items = if let Some(status) = status_filter {
             sqlx::query_as::<_, ReportWithGame>(
-                r#"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
+                r"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
                     r.reporter_id, u.display_name as reporter_name,
                     r.reason, r.description, r.status, r.created_at, r.resolved_at
                   FROM reports r
                   JOIN games g ON g.id = r.game_id
                   JOIN users u ON u.id = r.reporter_id
                   WHERE r.status::text = $1
-                  ORDER BY r.created_at DESC LIMIT $2 OFFSET $3"#,
+                  ORDER BY r.created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(status)
             .bind(limit)
@@ -75,13 +75,13 @@ impl ReportRepo {
             .await?
         } else {
             sqlx::query_as::<_, ReportWithGame>(
-                r#"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
+                r"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
                     r.reporter_id, u.display_name as reporter_name,
                     r.reason, r.description, r.status, r.created_at, r.resolved_at
                   FROM reports r
                   JOIN games g ON g.id = r.game_id
                   JOIN users u ON u.id = r.reporter_id
-                  ORDER BY r.created_at DESC LIMIT $1 OFFSET $2"#,
+                  ORDER BY r.created_at DESC LIMIT $1 OFFSET $2",
             )
             .bind(limit)
             .bind(offset)
@@ -95,13 +95,13 @@ impl ReportRepo {
     /// sau khi resolve mà không phải fetch cả danh sách).
     pub async fn find_with_game(pool: &PgPool, id: Uuid) -> AppResult<Option<ReportWithGame>> {
         let r = sqlx::query_as::<_, ReportWithGame>(
-            r#"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
+            r"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
                 r.reporter_id, u.display_name as reporter_name,
                 r.reason, r.description, r.status, r.created_at, r.resolved_at
               FROM reports r
               JOIN games g ON g.id = r.game_id
               JOIN users u ON u.id = r.reporter_id
-              WHERE r.id = $1"#,
+              WHERE r.id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -117,8 +117,8 @@ impl ReportRepo {
         resolution: &str,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE reports SET status = $1::report_status, resolution = $2,
-              resolved_by = $3, resolved_at = NOW() WHERE id = $4"#,
+            r"UPDATE reports SET status = $1::report_status, resolution = $2,
+              resolved_by = $3, resolved_at = NOW() WHERE id = $4",
         )
         .bind(status)
         .bind(resolution)
@@ -136,13 +136,13 @@ impl ReportRepo {
         .await?;
         if let Some((reporter_id, game_slug)) = info_row {
             let _ = sqlx::query(
-                r#"INSERT INTO notifications (user_id, type, title, content, link)
-                  VALUES ($1, 'report_status'::notification_type, $2, $3, $4)"#,
+                r"INSERT INTO notifications (user_id, type, title, content, link)
+                  VALUES ($1, 'report_status'::notification_type, $2, $3, $4)",
             )
             .bind(reporter_id)
             .bind("Báo cáo của bạn đã được xử lý")
             .bind(resolution)
-            .bind(format!("/games/{}", game_slug))
+            .bind(format!("/games/{game_slug}"))
             .execute(pool)
             .await;
         }
@@ -152,9 +152,9 @@ impl ReportRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Report>> {
         let r = sqlx::query_as::<_, Report>(
-            r#"SELECT id, game_id, reporter_id, reason, description, status,
+            r"SELECT id, game_id, reporter_id, reason, description, status,
               resolved_by, resolution, created_at, resolved_at
-            FROM reports WHERE id = $1"#,
+            FROM reports WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
