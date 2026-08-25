@@ -24,23 +24,18 @@ impl ReportRepo {
         .fetch_one(pool)
         .await?;
 
-        // Notify all admins/moderators
-        let staff: Vec<Uuid> =
-            sqlx::query_scalar("SELECT id FROM users WHERE role IN ('admin', 'moderator')")
-                .fetch_all(pool)
-                .await?;
-        for sid in staff {
-            let _ = sqlx::query(
-                r#"INSERT INTO notifications (user_id, type, title, content, link)
-                  VALUES ($1, 'report_status'::notification_type, $2, $3, $4)"#,
-            )
-            .bind(sid)
-            .bind("Có báo cáo mới cần xử lý")
-            .bind(format!("Lý do: {}", reason.label()))
-            .bind("/admin/reports".to_string())
-            .execute(pool)
-            .await;
-        }
+        // Notify all admins/moderators — MỘT query INSERT..SELECT thay vì
+        // loop INSERT từng staff (N round-trip → 1).
+        let _ = sqlx::query(
+            r#"INSERT INTO notifications (user_id, type, title, content, link)
+               SELECT id, 'report_status'::notification_type, $1, $2, $3
+               FROM users WHERE role IN ('admin', 'moderator') AND NOT is_banned"#,
+        )
+        .bind("Có báo cáo mới cần xử lý")
+        .bind(format!("Lý do: {}", reason.label()))
+        .bind("/admin/reports")
+        .execute(pool)
+        .await;
 
         Ok(id)
     }
@@ -132,27 +127,25 @@ impl ReportRepo {
         .execute(pool)
         .await?;
 
-        // Notify reporter
-        let reporter_id: Uuid = sqlx::query_scalar("SELECT reporter_id FROM reports WHERE id = $1")
-            .bind(id)
-            .fetch_one(pool)
-            .await?;
-        let game_slug: String = sqlx::query_scalar(
-            "SELECT g.slug FROM reports r JOIN games g ON g.id = r.game_id WHERE r.id = $1",
+        // Notify reporter — gộp 2 query (reporter_id, game_slug) thành 1
+        let info_row: Option<(Uuid, String)> = sqlx::query_as(
+            "SELECT r.reporter_id, g.slug FROM reports r JOIN games g ON g.id = r.game_id WHERE r.id = $1",
         )
         .bind(id)
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await?;
-        let _ = sqlx::query(
-            r#"INSERT INTO notifications (user_id, type, title, content, link)
-              VALUES ($1, 'report_status'::notification_type, $2, $3, $4)"#,
-        )
-        .bind(reporter_id)
-        .bind("Báo cáo của bạn đã được xử lý")
-        .bind(resolution)
-        .bind(format!("/games/{}", game_slug))
-        .execute(pool)
-        .await;
+        if let Some((reporter_id, game_slug)) = info_row {
+            let _ = sqlx::query(
+                r#"INSERT INTO notifications (user_id, type, title, content, link)
+                  VALUES ($1, 'report_status'::notification_type, $2, $3, $4)"#,
+            )
+            .bind(reporter_id)
+            .bind("Báo cáo của bạn đã được xử lý")
+            .bind(resolution)
+            .bind(format!("/games/{}", game_slug))
+            .execute(pool)
+            .await;
+        }
 
         Ok(())
     }
