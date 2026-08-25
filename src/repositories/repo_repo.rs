@@ -265,9 +265,15 @@ impl RepoRepo {
         if owner.is_empty() || name.is_empty() {
             return None;
         }
-        // Validate ký tự hợp lệ của GitHub
+        // Validate ký tự hợp lệ của GitHub. Ngoài charset, chặn thêm
+        // segment "." và ".." — charset có cho phép dấu chấm nên bản trước
+        // chấp nhận owner "..": parse_github_url("../etc/passwd") trả về
+        // Some(("..", "etc")) và URL API trở thành /repos/../etc
+        // (vector path traversal, phát hiện qua unit test).
         let valid = |s: &str| {
             !s.is_empty()
+                && s != "."
+                && s != ".."
                 && s.chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
         };
@@ -285,5 +291,87 @@ impl RepoRepo {
             "hidden" => Some(RepoStatus::Hidden),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_github_url_full_https() {
+        assert_eq!(
+            RepoRepo::parse_github_url("https://github.com/mhieuhonda/khogame"),
+            Some(("mhieuhonda".into(), "khogame".into()))
+        );
+        // Có .git đuôi
+        assert_eq!(
+            RepoRepo::parse_github_url("https://github.com/user/repo.git"),
+            Some(("user".into(), "repo".into()))
+        );
+        // http (không khuyến nghị nhưng chấp nhận)
+        assert_eq!(
+            RepoRepo::parse_github_url("http://github.com/user/repo"),
+            Some(("user".into(), "repo".into()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_url_short_forms() {
+        // owner/repo thuần
+        assert_eq!(
+            RepoRepo::parse_github_url("owner/repo"),
+            Some(("owner".into(), "repo".into()))
+        );
+        // github.com/owner/repo
+        assert_eq!(
+            RepoRepo::parse_github_url("github.com/owner/repo"),
+            Some(("owner".into(), "repo".into()))
+        );
+        // Khoảng trắng 2 đầu
+        assert_eq!(
+            RepoRepo::parse_github_url("  https://github.com/o/r  "),
+            Some(("o".into(), "r".into()))
+        );
+        // Path sâu hơn (lấy 2 phần đầu)
+        assert_eq!(
+            RepoRepo::parse_github_url("https://github.com/o/r/tree/main"),
+            Some(("o".into(), "r".into()))
+        );
+    }
+
+    #[test]
+    fn test_parse_github_url_rejects_invalid() {
+        // Không có gì
+        assert_eq!(RepoRepo::parse_github_url(""), None);
+        // Chỉ 1 từ, không có slash
+        assert_eq!(RepoRepo::parse_github_url("onlyme"), None);
+        // Ký tự lạ trong owner (path traversal / query injection)
+        assert_eq!(RepoRepo::parse_github_url("../etc/passwd"), None);
+        assert_eq!(
+            RepoRepo::parse_github_url("https://github.com/o w n/e r"),
+            None
+        );
+        assert_eq!(RepoRepo::parse_github_url("owner/repo?x=1"), None);
+        // Host khác giả mạo github
+        assert_eq!(
+            RepoRepo::parse_github_url("https://evil.com/owner/repo"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_parse_github_url_blocks_dot_dot() {
+        // owner chứa ".." — chống path traversal khi build URL API
+        assert_eq!(RepoRepo::parse_github_url("../repo"), None);
+        assert_eq!(RepoRepo::parse_github_url("owner/.."), None);
+    }
+
+    #[test]
+    fn test_status_from_str() {
+        assert!(RepoRepo::status_from_str("pending").is_some());
+        assert!(RepoRepo::status_from_str("approved").is_some());
+        assert!(RepoRepo::status_from_str("hidden").is_some());
+        assert!(RepoRepo::status_from_str("banned").is_none());
     }
 }
