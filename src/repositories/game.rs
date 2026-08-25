@@ -644,14 +644,6 @@ impl GameRepo {
         Ok(cards)
     }
 
-    pub async fn count_slug(pool: &PgPool, slug_base: &str) -> AppResult<i64> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE slug LIKE $1")
-            .bind(format!("{}%", slug_base))
-            .fetch_one(pool)
-            .await?;
-        Ok(count)
-    }
-
     /// Kiểm tra chính xác 1 slug đã tồn tại hay chưa
     pub async fn slug_exists(pool: &PgPool, slug: &str) -> AppResult<bool> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE slug = $1")

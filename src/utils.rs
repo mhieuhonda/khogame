@@ -1,16 +1,3 @@
-use slug::slugify;
-
-/// Sinh slug từ tiêu đề. Việc đảm bảo tính duy nhất được thực hiện ở
-/// `handlers::games::create_game` (kiểm tra DB với hậu tố -2, -3...).
-pub fn make_unique_slug(title: &str, existing_count: i64) -> String {
-    let base = slugify(title);
-    if existing_count == 0 {
-        base
-    } else {
-        format!("{}-{}", base, existing_count + 1)
-    }
-}
-
 pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
@@ -386,13 +373,6 @@ mod tests {
     }
 
     #[test]
-    fn test_make_unique_slug() {
-        assert_eq!(make_unique_slug("Hello World", 0), "hello-world");
-        assert_eq!(make_unique_slug("Hello World", 1), "hello-world-2");
-        assert_eq!(make_unique_slug("Hello World", 5), "hello-world-6");
-    }
-
-    #[test]
     fn test_html_escape() {
         let s = html_escape("<script>alert('xss')</script>");
         assert!(s.contains("&lt;script&gt;"));
@@ -456,20 +436,6 @@ mod tests {
         let five_days = now - chrono::Duration::days(5);
         let s = time_ago(five_days);
         assert!(s.contains("ngày trước"), "got: {}", s);
-    }
-
-    #[test]
-    fn test_make_unique_slug_unicode() {
-        // Tiếng Việt có dấu → slug không dấu
-        assert_eq!(make_unique_slug("Hello Việt Nam", 0), "hello-viet-nam");
-        assert_eq!(make_unique_slug("Hà Nội", 0), "ha-noi");
-        // Ký tự đặc biệt → bị loại bỏ, chỉ còn chữ và số
-        let slug = make_unique_slug("Game!!! @#$", 0);
-        assert!(
-            slug == "game" || slug.starts_with("game"),
-            "expected 'game' prefix, got: {}",
-            slug
-        );
     }
 
     #[test]
