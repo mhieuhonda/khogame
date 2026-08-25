@@ -350,16 +350,10 @@ pub async fn set_theme(
     } else {
         "dark"
     };
-    let pref = UserRepo::get_preferences(&state.db, user.id).await?;
-    UserRepo::update_preferences(
-        &state.db,
-        user.id,
-        theme,
-        pref.email_notifications,
-        pref.show_online,
-        &pref.language,
-    )
-    .await?;
+    // 1 query UPSERT chỉ cột theme — trước đây phải SELECT preferences
+    // rồi UPDATE lại toàn bộ (2 round-trip + có thể ghi đè preference
+    // khác nếu user vừa lưu ở tab thứ hai).
+    UserRepo::update_theme_only(&state.db, user.id, theme).await?;
     Ok(Json(serde_json::json!({"ok": true, "theme": theme})).into_response())
 }
 

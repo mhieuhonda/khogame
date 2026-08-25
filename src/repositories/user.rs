@@ -194,6 +194,23 @@ impl UserRepo {
         Ok(())
     }
 
+    /// Chỉ đổi theme, giữ nguyên mọi preference khác — dùng cho nút
+    /// dark/light toggle gọi mỗi lần user bấm. UPSERT với giá trị mặc
+    /// định cho các cột khác nếu row chưa tồn tại (user chưa lưu pref
+    /// lần nào).
+    pub async fn update_theme_only(pool: &PgPool, user_id: Uuid, theme: &str) -> AppResult<()> {
+        sqlx::query(
+            r#"INSERT INTO user_preferences (user_id, theme)
+              VALUES ($1, $2)
+              ON CONFLICT (user_id) DO UPDATE SET theme = EXCLUDED.theme"#,
+        )
+        .bind(user_id)
+        .bind(theme)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn list_admins(pool: &PgPool) -> AppResult<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
