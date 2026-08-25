@@ -77,6 +77,47 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `share_game` dùng `SharePlatform::from_str` (1 nguồn truth thay
   whitelist string riêng trong handler).
 
+### 🐛 Fixed (batch 2)
+
+- **Admin reports/comments/audit/repos không phân trang**: limit
+  cứng 50-200 không offset — vượt ngưỡng là dữ liệu cũ MẤT DẠNG,
+  admin không thể duyệt/audit. Thêm ?page= cho cả 4 trang (list +
+  count song song, nav giữ filter).
+- **RSS `<pubDate>` rỗng** khi published_at NULL — W3C Feed
+  Validator error, một số reader drop item. Chỉ render khi có giá trị.
+- **7 lỗi rustdoc** (broken links, unclosed HTML tags trong doc
+  comments) — thêm bước Rustdoc -D warnings vào CI.
+
+### ⚡ Performance (batch 2)
+
+- **View/download/share counters chạy nền** (tokio::spawn): 3-4
+  round-trip DB analytics không còn cộng vào TTFB trang game và
+  thời gian chờ bấm nút Tải/Share.
+- **Migration 007**: index like_count DESC partial cho sort "Yêu
+  thích" — 4 sort khác có index từ trước, like_count full scan.
+- **check-duplicate Cache-Control 60s**: hết spam DB theo keystroke.
+
+### ✨ Added (batch 2)
+
+- **Report modal accessibility**: Escape đóng, focus control đầu,
+  role=dialog + aria-modal.
+- **RSS `<generator>` + item `<category>`/`<author>`**.
+- **Theme-color media query** light mode (mobile address bar).
+- **Char counter bình luận** hiển thị + reset đúng sau submit.
+
+### ♿ Accessibility (batch 2)
+
+- **Follow button aria-pressed** (partial + trang profile).
+- **Nút icon aria-label**: bookmark, mark-read, refresh repo admin.
+- **Profile game card img** width/height + decoding (chống CLS).
+
+### 🔄 Changed (batch 2)
+
+- Hero "N nền tảng" lấy từ `Platform::all()` — hết hardcode 5.
+- Double-submit protection form thường (disable nút 10s).
+- Theme sync giữa các tab qua storage event.
+- Trang lỗi đồng bộ theme user + 404 thêm ô tìm kiếm.
+
 ### 🐛 Fixed (trước đó)
 
 - **Graceful shutdown không có timeout**: comment hứa chờ tối đa
