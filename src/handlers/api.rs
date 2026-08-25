@@ -492,7 +492,11 @@ pub async fn check_duplicate(
     // ngược ở các bước sau (clamp 200 chars). JS phía client cũng đếm
     // theo UTF-16 length nên 3 là ngưỡng hợp lý cho cả hai phía.
     if title.chars().count() < 3 {
-        return Ok(Json(serde_json::json!({"similar": 0})).into_response());
+        return Ok((
+            [(header::CACHE_CONTROL, "public, max-age=60")],
+            Json(serde_json::json!({"similar": 0})),
+        )
+            .into_response());
     }
     // Clamp 200 ký tự như giới hạn title khi tạo game — chống gửi pattern
     // dài hàng chục KB làm ILIKE quét chậm (DoS nhẹ nhưng thật).
@@ -500,7 +504,14 @@ pub async fn check_duplicate(
     let similar = GameRepo::count_similar_title(&state.db, &title)
         .await
         .unwrap_or(0);
-    Ok(Json(serde_json::json!({"similar": similar})).into_response())
+    // Cache 60s: input debounce 500ms nhưng user chỉnh đi chỉnh lại cùng
+    // tiêu đề (thêm dấu, sửa chính tả) vẫn spam DB từng keystroke. Kết
+    // quả trùng-lặp không cần real-time (chỉ là cảnh báo mềm).
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!({"similar": similar})),
+    )
+        .into_response())
 }
 
 // ===================== SEO: RSS, Sitemap, robots =====================
