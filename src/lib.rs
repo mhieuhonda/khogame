@@ -17,7 +17,6 @@ pub use error::{AppError, AppResult};
 pub use state::AppState;
 
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     let state = AppState::new(config.clone()).await?;
@@ -94,7 +93,6 @@ async fn shutdown_signal() {
         _ = ctrl_c => tracing::info!("Nhận SIGINT — bắt đầu graceful shutdown"),
         _ = terminate => tracing::info!("Nhận SIGTERM — bắt đầu graceful shutdown"),
     }
-
     // Cưỡng chế grace period — bỏ qua giá trị 0/âm để tránh exit tức thì
     let grace_secs: u64 = std::env::var("GRACEFUL_SHUTDOWN_TIMEOUT_SECS")
         .ok()
@@ -109,8 +107,4 @@ async fn shutdown_signal() {
         );
         std::process::exit(0);
     });
-}
-
-pub fn static_service() -> ServeDir {
-    ServeDir::new("static")
 }
