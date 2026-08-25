@@ -301,8 +301,12 @@ impl CommentRepo {
         Ok(ids)
     }
 
-    /// Danh sách bình luận mới nhất cho admin
-    pub async fn list_recent(pool: &PgPool, limit: i64) -> AppResult<Vec<CommentWithGame>> {
+    /// Danh sách bình luận mới nhất cho admin (phân trang)
+    pub async fn list_recent(
+        pool: &PgPool,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<CommentWithGame>> {
         let rows = sqlx::query_as::<_, CommentWithGame>(
             r#"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
@@ -311,11 +315,20 @@ impl CommentRepo {
               FROM comments c
               JOIN users u ON u.id = c.user_id
               JOIN games g ON g.id = c.game_id
-              ORDER BY c.created_at DESC LIMIT $1"#,
+              ORDER BY c.created_at DESC LIMIT $1 OFFSET $2"#,
         )
         .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Tổng số bình luận toàn site — phân trang admin comments.
+    pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comments")
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
     }
 }

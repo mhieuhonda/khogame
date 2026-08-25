@@ -26,5 +26,13 @@
     {% if comments.is_empty() %}
     <div class="empty-state"><p>Chưa có bình luận nào.</p></div>
     {% endif %}
+    {% set total_pages = (total + per_page - 1) / per_page %}
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang bình luận">
+        {% if page > 1 %}<a href="/admin/comments?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="/admin/comments?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+    </nav>
+    {% endif %}
 </section>
 {% endblock %}

@@ -74,7 +74,7 @@ pub async fn dashboard(
         ReportRepo::count_pending(db),
         ReportRepo::list(db, Some("pending"), 10, 0),
         GameRepo::list_published(db, 10, 0, "latest"),
-        CommentRepo::list_recent(db, 5),
+        CommentRepo::list_recent(db, 5, 0),
         StatsRepo::daily_last_7_days(db),
         RepoRepo::count_approved(db),
         RepoRepo::pending_count(db),
@@ -538,19 +538,38 @@ pub async fn set_banned(
 // ============================================================
 // ADMIN: COMMENTS
 // ============================================================
+#[derive(Deserialize, Default)]
+pub struct AdminCommentsQuery {
+    pub page: Option<i64>,
+}
+
 pub async fn comments(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    Query(q): Query<AdminCommentsQuery>,
 ) -> AppResult<AdminCommentsTemplate> {
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let comments = CommentRepo::list_recent(&state.db, 100).await?;
+    // Phân trang: trước đây list_recent(100) cứng — quá 100 comment là
+    // comment cũ mất dạng, admin không thể kiểm duyệt.
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let (comments_res, total_res) = tokio::join!(
+        CommentRepo::list_recent(&state.db, per_page, offset),
+        CommentRepo::count_all(&state.db),
+    );
+    let comments = comments_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminCommentsTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         comments,
+        page,
+        per_page,
+        total,
     })
 }
 
@@ -1069,7 +1088,7 @@ pub async fn export(
         GameRepo::admin_list(&state.db, None, 10000, 0),
         UserRepo::list_for_admin(&state.db, None, 10000, 0),
         RepoRepo::list_admin(&state.db, None, 10000),
-        CommentRepo::list_recent(&state.db, 20000),
+        CommentRepo::list_recent(&state.db, 20000, 0),
         ReportRepo::list(&state.db, None, 20000, 0),
     );
     let games = games_res?;

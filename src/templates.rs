@@ -328,6 +328,9 @@ pub struct AdminCommentsTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub comments: Vec<comment::CommentWithGame>,
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
 }
 
 /// Admin categories
