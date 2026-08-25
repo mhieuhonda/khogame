@@ -753,6 +753,37 @@ mod filter_tests {
         assert_eq!(out, "ha-noi");
     }
 
+    /// Slug là URL của MỌI game/category/tag — test giới hạn tổng quát hơn:
+    /// dấu tiếng Việt bỏ hết, emoji rơi, ký tự đặc biệt thành separator.
+    #[test]
+    fn test_slugify_filter_vi_full() {
+        assert_eq!(
+            filters::slugify::default()
+                .execute("Trận Chiến Thượng Ny", &())
+                .unwrap(),
+            "tran-chien-thuong-ny"
+        );
+        assert_eq!(
+            filters::slugify::default()
+                .execute("Đế Chế 2026!", &())
+                .unwrap(),
+            "de-che-2026"
+        );
+        // Emoji bị loại — slug chỉ [a-z0-9-]
+        let s = filters::slugify::default()
+            .execute("🎮 Game Siêu Hay 🎮", &())
+            .unwrap();
+        assert!(
+            s.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
+            "slug phải ascii: {}",
+            s
+        );
+        // Chuỗi rỗng / chỉ ký tự đặc biệt → rỗng (caller có fallback 'game')
+        assert_eq!(filters::slugify::default().execute("   ", &()).unwrap(), "");
+        assert_eq!(filters::slugify::default().execute("!!!", &()).unwrap(), "");
+    }
+
     #[test]
     fn test_youtube_embed_valid() {
         let out = filters::youtube_embed::default()
