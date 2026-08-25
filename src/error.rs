@@ -63,9 +63,17 @@ impl IntoResponse for AppError {
         }
 
         if status == StatusCode::UNAUTHORIZED {
+            // HX-Redirect cho client HTMX; Location + 303 cho browser
+            // thường (form POST truyền thống) — trước đây trình duyệt
+            // thường thấy body text trơ trọi 'Redirecting to login...'
+            // thay vì được chuyển trang.
             return (
-                StatusCode::UNAUTHORIZED,
-                [("HX-Redirect", "/login")],
+                StatusCode::SEE_OTHER,
+                [
+                    ("HX-Redirect", "/login"),
+                    ("Location", "/login"),
+                    ("Cache-Control", "no-store"),
+                ],
                 "Redirecting to login...",
             )
                 .into_response();
