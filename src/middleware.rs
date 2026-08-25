@@ -182,9 +182,11 @@ pub async fn maintenance_guard(
     }
     Html(
         r#"<!DOCTYPE html>
-<html lang="vi" data-theme="dark">
+<html lang="vi">
 <head><meta charset="UTF-8"><title>Bảo trì - Louis Space</title>
-<link rel="stylesheet" href="/static/css/style.css"></head>
+<link rel="stylesheet" href="/static/css/style.css">
+<script>(function(){try{var t=localStorage.getItem('ls-theme')||localStorage.getItem('kg-theme');if(t!=='dark'&&t!=='light'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+</head>
 <body>
 <main class="site-main"><div class="container" style="text-align:center;padding:80px 16px">
 <div style="font-size:72px">🛠️</div>

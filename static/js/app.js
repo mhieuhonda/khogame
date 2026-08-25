@@ -39,17 +39,19 @@
 
     // Lần đầu (chưa chọn theme): theo hệ điều hành của người dùng.
     // Sau khi user chủ động bấm toggle thì luôn tôn trọng lựa chọn đó.
+    // Louis Space ưu tiên light mode (white primary) — nếu hệ điều hành
+    // không có preference, default là light.
     function initialTheme() {
         var stored = getStoredTheme();
         if (stored === 'dark' || stored === 'light') return stored;
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-            return 'light';
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            return 'dark';
         }
-        return 'dark';
+        return 'light'; // default white primary
     }
 
     function toggleTheme() {
-        const current = document.documentElement.getAttribute('data-theme') || 'dark';
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
         const next = current === 'dark' ? 'light' : 'dark';
         applyTheme(next);
         // Đồng bộ theme lên server (nếu đã đăng nhập)

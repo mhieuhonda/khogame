@@ -46,7 +46,9 @@ pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
 pub async fn maintenance(State(_state): State<Arc<AppState>>) -> AppResult<Html<String>> {
     // Trang này cố tình đứng ngoài layout: hiển thị khi site đang bảo trì
     Ok(Html(r#"
-    <!DOCTYPE html><html lang="vi" data-theme="dark"><head><meta charset="UTF-8"><title>Bảo trì - Louis Space</title><link rel="stylesheet" href="/static/css/style.css"></head>
+    <!DOCTYPE html><html lang="vi"><head><meta charset="UTF-8"><title>Bảo trì - Louis Space</title><link rel="stylesheet" href="/static/css/style.css">
+    <script>(function(){try{var t=localStorage.getItem('ls-theme')||localStorage.getItem('kg-theme');if(t!=='dark'&&t!=='light'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){document.documentElement.setAttribute('data-theme','light');}})();</script>
+    </head>
     <body><main class="site-main"><div class="container" style="text-align:center;padding:80px 16px">
     <div style="font-size:72px">🛠️</div>
     <h1>Hệ thống đang bảo trì</h1>

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" data-theme="dark">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,10 +8,36 @@
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="manifest" href="/static/manifest.json">
     <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="Louis Space">
-    <meta name="theme-color" content="#7c3aed">
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fafc">
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <link rel="stylesheet" href="/static/css/style.css?v=0.8.0">
     <script src="/static/js/htmx.min.js?v=0.8.0" defer></script>
+    {# Set theme trước khi paint để tránh FOUC (flash of unstyled content)
+       khi user đã set light mode nhưng default HTML không có data-theme. #}
+    <script>
+    (function() {
+        try {
+            var t = localStorage.getItem('ls-theme');
+            // Tương thích lùi: migrate kg-theme cũ sang ls-theme
+            if (t === null) {
+                var legacy = localStorage.getItem('kg-theme');
+                if (legacy === 'dark' || legacy === 'light') {
+                    localStorage.setItem('ls-theme', legacy);
+                    localStorage.removeItem('kg-theme');
+                    t = legacy;
+                }
+            }
+            if (t !== 'dark' && t !== 'light') {
+                // Mặc định theo hệ điều hành — ưu tiên light primary
+                t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+            }
+            document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {
+            // Fail-safe: light theme
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    })();
+    </script>
     <meta property="og:site_name" content="Louis Space">
     <meta property="og:type" content="website">
     <meta property="og:title" content="{% block og_title %}Louis Space{% endblock %}">

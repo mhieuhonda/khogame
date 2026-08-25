@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="vi" data-theme="dark">
+<html lang="vi">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,11 +13,21 @@
     (function() {
         try {
             var t = localStorage.getItem('ls-theme');
+            if (t === null) {
+                var legacy = localStorage.getItem('kg-theme');
+                if (legacy === 'dark' || legacy === 'light') {
+                    localStorage.setItem('ls-theme', legacy);
+                    localStorage.removeItem('kg-theme');
+                    t = legacy;
+                }
+            }
             if (t !== 'light' && t !== 'dark') {
                 t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
             }
             document.documentElement.setAttribute('data-theme', t);
-        } catch (e) {}
+        } catch (e) {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
     })();
     </script>
 </head>

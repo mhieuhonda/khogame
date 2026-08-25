@@ -1,49 +1,66 @@
 /* ============================================
-   Kho Game - Main Stylesheet
+   Louis Space - Main Stylesheet
+   White-primary theme với dark mode (mặc định theo hệ điều hành).
+   Mobile-first, responsive, editorial typography.
    ============================================ */
 
 :root {
-    /* Dark theme (default) */
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #15151f;
-    --bg-tertiary: #1f1f2e;
-    --bg-card: #1a1a26;
-    --bg-hover: #252535;
-    --border: #2a2a3a;
-    --text-primary: #f5f5fa;
-    --text-secondary: #a8a8b8;
-    --text-muted: #6b6b7e;
-    --accent: #7c3aed;
-    --accent-hover: #8b4df5;
-    --accent-light: #a78bfa;
-    --success: #10b981;
-    --warning: #f59e0b;
-    --danger: #ef4444;
-    --info: #3b82f6;
-    --gradient-primary: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
-    --gradient-accent: linear-gradient(135deg, #8b4df5 0%, #f472b6 100%);
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
-    --shadow: 0 4px 12px rgba(0,0,0,0.4);
-    --shadow-lg: 0 10px 30px rgba(0,0,0,0.5);
+    /* Light theme (default — ưu tiên white primary) */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f5f9;
+    --bg-muted: #f8fafc;
+    --border: #e2e8f0;
+    --border-strong: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #334155;
+    --text-muted: #64748b;
+    --accent: #4f46e5;          /* indigo-600 */
+    --accent-hover: #4338ca;
+    --accent-light: #6366f1;
+    --accent-soft: #eef2ff;
+    --success: #059669;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --info: #0284c7;
+    --gradient-primary: linear-gradient(135deg, #0f172a 0%, #312e81 50%, #7c3aed 100%);
+    --gradient-accent: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    --shadow-sm: 0 1px 2px rgba(15,23,42,0.04);
+    --shadow: 0 4px 12px rgba(15,23,42,0.08);
+    --shadow-lg: 0 10px 30px rgba(15,23,42,0.12);
     --radius: 12px;
     --radius-sm: 8px;
     --radius-lg: 20px;
     --container: 1280px;
+    --header-h: 64px;
 }
 
-[data-theme="light"] {
-    --bg-primary: #fafafa;
-    --bg-secondary: #ffffff;
-    --bg-tertiary: #f3f4f6;
-    --bg-card: #ffffff;
-    --bg-hover: #f3f4f6;
-    --border: #e5e7eb;
-    --text-primary: #1f2937;
-    --text-secondary: #4b5563;
-    --text-muted: #9ca3af;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
-    --shadow: 0 4px 12px rgba(0,0,0,0.08);
-    --shadow-lg: 0 10px 30px rgba(0,0,0,0.12);
+[data-theme="dark"] {
+    /* Dark theme — chủ đạo tối, contrast cao hơn cho readability */
+    --bg-primary: #0b0f1a;
+    --bg-secondary: #131826;
+    --bg-tertiary: #1e2435;
+    --bg-card: #131826;
+    --bg-hover: #1e2435;
+    --bg-muted: #1e2435;
+    --border: #2a3142;
+    --border-strong: #3a4256;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-light: #c7d2fe;
+    --accent-soft: #1e1b4b;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --info: #38bdf8;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow: 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.6);
 }
 
 * {
