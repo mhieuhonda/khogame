@@ -299,40 +299,5 @@
         }
     });
 
-    // ===== Infinite scroll for game grids =====
-    const observer = new IntersectionObserver(function(entries) {
-        entries.forEach(function(entry) {
-            if (entry.isIntersecting) {
-                const trigger = entry.target;
-                const url = trigger.getAttribute('data-load-more');
-                if (url && !trigger.dataset.loading) {
-                    trigger.dataset.loading = 'true';
-                    fetch(url).then(r => r.text()).then(function(html) {
-                        const grid = trigger.previousElementSibling;
-                        if (grid) {
-                            grid.insertAdjacentHTML('beforeend', html);
-                        }
-                        trigger.remove();
-                    }).catch(function() {
-                        delete trigger.dataset.loading;
-                    });
-                }
-            }
-        });
-    }, { rootMargin: '200px' });
-
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('[data-load-more]').forEach(function(el) {
-            observer.observe(el);
-        });
-    });
-
-    // ===== Re-observe new load-more triggers after HTMX swaps =====
-    document.addEventListener('htmx:afterSwap', function() {
-        document.querySelectorAll('[data-load-more]').forEach(function(el) {
-            observer.observe(el);
-        });
-    });
-
     console.log('🎮 Kho Game loaded successfully!');
 })();
