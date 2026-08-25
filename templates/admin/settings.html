@@ -11,16 +11,16 @@
         <section class="admin-section">
             <div class="section-header"><h2>🌐 Thông tin site</h2></div>
             <label>Tên site</label>
-            <input type="text" name="site_name" value="{{ site_name }}">
+            <input type="text" name="site_name" value="{{ site_name }}" maxlength="100" required>
             <label>Mô tả site (SEO)</label>
-            <textarea name="site_description" rows="2">{{ site_description }}</textarea>
+            <textarea name="site_description" rows="2" maxlength="500">{{ site_description }}</textarea>
             <label>Chân trang</label>
-            <input type="text" name="footer_text" value="{{ footer_text }}">
+            <input type="text" name="footer_text" value="{{ footer_text }}" maxlength="500">
         </section>
         <section class="admin-section">
             <div class="section-header"><h2>📢 Thông báo toàn site</h2></div>
             <label>Nội dung thông báo (để trống nếu không hiển thị)</label>
-            <textarea name="announcement" rows="2" placeholder="Ví dụ: Chào mừng bạn đến với Kho Game v0.1!">{{ announcement }}</textarea>
+            <textarea name="announcement" rows="2" maxlength="500" placeholder="Ví dụ: Chào mừng bạn đến với Kho Game v0.1!">{{ announcement }}</textarea>
             <label>Loại</label>
             <select name="announcement_type">
                 <option value="info" {% if announcement_type == "info" %}selected{% endif %}>Thông tin (xanh)</option>
@@ -32,9 +32,9 @@
         <section class="admin-section">
             <div class="section-header"><h2>🔔 Gửi thông báo đến người dùng</h2></div>
             <form hx-post="/admin/broadcast" hx-target="#broadcast-result" hx-swap="innerHTML" class="admin-form-row">
-                <input type="text" name="title" placeholder="Tiêu đề thông báo" required>
-                <input type="text" name="link" placeholder="Link (tuỳ chọn, vd: /games/abc)">
-                <textarea name="content" rows="2" placeholder="Nội dung (tuỳ chọn)"></textarea>
+                <input type="text" name="title" placeholder="Tiêu đề thông báo" maxlength="200" required>
+                <input type="text" name="link" placeholder="Link (tuỳ chọn, vd: /games/abc)" maxlength="2048">
+                <textarea name="content" rows="2" maxlength="1000" placeholder="Nội dung (tuỳ chọn)"></textarea>
                 <button class="btn btn-primary" type="submit">Gửi tới tất cả</button>
             </form>
             <div id="broadcast-result"></div>
