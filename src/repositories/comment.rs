@@ -92,18 +92,11 @@ impl CommentRepo {
         .bind(offset)
         .fetch_all(pool)
         .await?;
-
-        // For each top-level comment, load replies
-        // (not ideal performance-wise but for simplicity)
-        let mut result = Vec::with_capacity(comments.len());
-        for c in comments {
-            // Don't load replies here; we'll fetch them per-comment via list_replies
-            // For listing, just leave empty
-            // We won't pre-load replies to keep this simple
-            // (HTMX will load replies lazily)
-            result.push(c);
-        }
-        Ok(result)
+        // Ghi chú kiến trúc: replies KHÔNG được nạp sẵn ở đây — UI dùng
+        // HTMX lazy-load từng nhánh qua list_replies khi người dùng mở
+        // "Xem N trả lời". Điều này giữ truy vấn chính O(top-level) thay vì
+        // O(top-level × replies) cho game có hàng nghìn bình luận.
+        Ok(comments)
     }
 
     pub async fn list_replies(
