@@ -49,6 +49,9 @@ Service trên Coolify, compose (`deploy/compose.prod.yml`) tham chiếu `${VAR}`
 | `DB_MIN_CONNECTIONS` | (tuỳ chọn, mặc định 1) Connection giữ ấm |
 | `DB_ACQUIRE_TIMEOUT_SECS` | (tuỳ chọn, mặc định 10) Thời gian chờ connection rảnh trước khi 500 |
 | `JANITOR_INTERVAL_SECS` | (tuỳ chọn, mặc định 21600 = 6h) Chu kỳ dọn session hết hạn & notification đã đọc cũ 90 ngày |
+| `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` | (tuỳ chọn, mặc định 30) Force exit nếu còn connection treo sau khi nhận SIGTERM — nên khớp `stop_grace_period` |
+| `AI_AGENT_SECRET` | (tuỳ chọn) Bật hệ thống AI Agent; để trống = endpoint `/auth/ai/*` trả 403 |
+| `AI_AGENT_SESSION_TTL_DAYS` | (tuỳ chọn, mặc định 90) Thời gian sống phiên AI Agent |
 
 GitHub Secrets cho CI/CD: `COOLIFY_URL`, `COOLIFY_API_TOKEN`,
 `COOLIFY_SERVICE_UUID` (= UUID stack).
@@ -73,11 +76,21 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
 
 - App bắt **SIGTERM/SIGINT** (docker stop) và chờ tối đa 30s cho các request
   đang xử lý hoàn tất (`stop_grace_period: 30s` đã set trong compose) — tránh
-  5xx lúc deploy khi có người đang tải game.
+  5xx lúc deploy khi có người đang tải game. Hết grace period mà còn connection
+  treo → force exit sạch (`GRACEFUL_SHUTDOWN_TIMEOUT_SECS`).
 - `/api/v1/health` trả kèm `pool` (size/idle/in_use) và `uptime_secs` — dùng
   để alert khi pool cạn (leak) hoặc restart-loop (uptime luôn thấp).
 - Janitor nền tự dọn `sessions` hết hạn + `notifications` đã đọc > 90 ngày
   mỗi 6h (đổi qua `JANITOR_INTERVAL_SECS`), log dòng `Janitor: đã xoá ...`.
+
+## Quản trị phiên đăng nhập
+
+Trang `/admin/sessions` (chỉ admin) liệt kê 200 phiên còn hạn mới nhất:
+thiết bị (UA chuẩn hoá), IP, thời gian đăng nhập/hết hạn. Bấm **Thu hồi**
+để buộc đăng xuất một thiết bị cụ thể (audit log ghi `session.revoke`) —
+dùng khi nghi ngờ tài khoản bị truy cập trái phép mà không cần ban cả user.
+User thường tự thu hồi toàn bộ phiên qua nút "Đăng xuất mọi thiết bị" ở
+trang sửa hồ sơ (`POST /auth/logout-all`).
 
 ## Khắc phục sự cố đã gặp
 
