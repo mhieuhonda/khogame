@@ -243,7 +243,10 @@
                 const item = this.closest('.notification-item');
                 if (item) {
                     const id = item.id.replace('notif-', '');
-                    fetch('/notifications/' + id + '/read', { method: 'POST' });
+                    // keepalive: fetch sống sót qua navigation — click link là
+                    // browser rời trang NGAY, POST không keepalive bị hủy giữa
+                    // chừng → notification vẫn unread khi quay lại.
+                    fetch('/notifications/' + id + '/read', { method: 'POST', keepalive: true });
                 }
             });
         });
