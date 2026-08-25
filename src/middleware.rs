@@ -1,7 +1,7 @@
 use crate::auth::{hash_token, SESSION_COOKIE};
 use crate::error::AppError;
 use crate::models::user::User;
-use crate::repositories::{AiAgentRepo, SessionRepo, SettingsRepo, UserRepo};
+use crate::repositories::{AiAgentRepo, SessionRepo, UserRepo};
 use crate::state::AppState;
 use axum::{
     extract::{ConnectInfo, FromRef, FromRequestParts, Request, State},
@@ -302,25 +302,6 @@ pub async fn rate_limit(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
     Ok(next.run(request).await)
-}
-
-#[allow(dead_code)]
-pub async fn get_client_ip(ConnectInfo(addr): ConnectInfo<SocketAddr>) -> String {
-    addr.ip().to_string()
-}
-
-#[allow(dead_code)]
-pub async fn seed_admin_email(state: &AppState) {
-    let email = &state.config.admin_email;
-    if email.is_empty() {
-        return;
-    }
-    match UserRepo::ensure_admin_by_email(&state.db, email).await {
-        Ok(true) => tracing::info!("Seeded admin role for {}", email),
-        Ok(false) => {}
-        Err(e) => tracing::warn!("Failed seeding admin: {}", e),
-    }
-    let _ = SettingsRepo::set(&state.db, "admin_email", email, None).await;
 }
 
 // ============================================================
