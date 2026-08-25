@@ -63,7 +63,7 @@
     {% if !daily_stats.is_empty() %}
     <section class="admin-section">
         <div class="section-header"><h2>📈 7 ngày qua</h2></div>
-        <div class="admin-chart">
+        <div class="admin-chart" role="img" aria-label="Biểu đồ 7 ngày gần nhất: {% for d in daily_stats %}ngày {{ d.day.format("%d/%m") }} {{ d.views }} lượt xem, {{ d.downloads }} tải{% if !loop.last %}; {% endif %}{% endfor %}">
             {% for d in daily_stats %}
             <div class="chart-col" title="{{ d.day.format("%d/%m") }}: {{ d.views }} lượt xem, {{ d.downloads }} tải, {{ d.new_games }} game mới, {{ d.new_users }} user mới">
                 <div class="chart-bars">
