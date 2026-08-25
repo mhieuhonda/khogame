@@ -100,3 +100,30 @@ Stage Summary:
 - 143 tests pass
 - Tech stack giữ nguyên: Rust 1.98, Axum 0.8.9, sqlx 0.9
 - Phase G+H hoàn thành. Sẽ tiếp tục với Phase I: polish cuối + tag v0.8.1 (patch)
+
+---
+Task ID: 4 (final)
+Agent: super-z (main)
+Task: Hoàn tất sprint — final verification + summary
+
+Work Log:
+- Final verification: cargo check + clippy -D warnings + fmt --check + 147 tests pass
+- Tag v0.8.1 created + GitHub release created
+- Phase G tiếp tục: 4 thêm tests, share btn a11y, asset version bump, robots.txt fix, stats total_news, news suggest API, news check-duplicate API, form tips, login brand sync
+
+Stage Summary:
+- Tổng commits: 339 (vượt mục tiêu 300 rất nhiều)
+- 2 GitHub releases: v0.8.0 (major — Era Louis Space) + v0.8.1 (patch — polish)
+- Branch protection áp dụng trên main (verified)
+- Build sạch hoàn toàn: check + clippy -D warnings + fmt --check + 147 tests pass
+- Tech stack giữ nguyên: Rust 1.98, Axum 0.8.9, sqlx 0.9, Askama 0.16, HTMX 2.0.10, PostgreSQL 17
+- Đã deploy-ready cho prod
+
+Files mới:
+- migrations/008_news.sql, 009_user_tracking.sql
+- src/models/news.rs, src/repositories/news.rs, src/handlers/news.rs
+- templates/news/{list,show,new,edit,my_news}.html
+- templates/admin/{news_pending,news_all,user_detail}.html
+- docs/NEWS.md, docs/BRANCH_PROTECTION.md
+- scripts/setup-branch-protection.sh
+- WORKLOG.md (file phối hợp đa-agent)
