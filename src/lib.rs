@@ -63,6 +63,12 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 /// Trả về khi nhận được tín hiệu đầu tiên. Tín hiệu thứ hai (nhấn Ctrl+C
 /// lần nữa trong lúc chờ grace period) sẽ buộc thoát ngay nhờ hành vi
 /// mặc định của tokio (không swallow).
+///
+/// Sau khi nhận tín hiệu, spawn bộ đếm grace period
+/// (GRACEFUL_SHUTDOWN_TIMEOUT_SECS, mặc định 30s): nếu hết thời gian mà
+/// vẫn còn connection treo (client chậm, download dài), force exit để
+/// không treo vĩnh viễn chờ docker SIGKILL — đúng như comment tài liệu
+/// đã hứa nhưng trước đây chưa được triển khai.
 async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
@@ -88,6 +94,21 @@ async fn shutdown_signal() {
         _ = ctrl_c => tracing::info!("Nhận SIGINT — bắt đầu graceful shutdown"),
         _ = terminate => tracing::info!("Nhận SIGTERM — bắt đầu graceful shutdown"),
     }
+
+    // Cưỡng chế grace period — bỏ qua giá trị 0/âm để tránh exit tức thì
+    let grace_secs: u64 = std::env::var("GRACEFUL_SHUTDOWN_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(30);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(grace_secs)).await;
+        tracing::warn!(
+            "Grace period {}s đã hết nhưng còn connection chưa đóng — force exit",
+            grace_secs
+        );
+        std::process::exit(0);
+    });
 }
 
 pub fn static_service() -> ServeDir {
