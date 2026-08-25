@@ -6,10 +6,14 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#0f0f23",
   "theme_color": "#7c3aed",
   "lang": "vi",
+  "dir": "ltr",
+  "orientation": "portrait-primary",
   "categories": ["games", "entertainment"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/static/img/favicon.svg",
@@ -28,17 +32,26 @@
     {
       "name": "Game mới nhất",
       "short_name": "Mới nhất",
-      "url": "/games/latest"
+      "url": "/games/latest",
+      "description": "Danh sách game vừa xuất bản"
     },
     {
       "name": "Đang thịnh hành",
       "short_name": "Thịnh hành",
-      "url": "/games/trending"
+      "url": "/games/trending",
+      "description": "Game đang được xem và tải nhiều nhất"
     },
     {
       "name": "Tìm kiếm game",
       "short_name": "Tìm",
-      "url": "/search"
+      "url": "/search",
+      "description": "Tìm game theo tên, thể loại, tag"
+    },
+    {
+      "name": "Đăng game",
+      "short_name": "Đăng game",
+      "url": "/games/new",
+      "description": "Chia sẻ game của bạn lên Kho Game"
     }
   ]
 }
