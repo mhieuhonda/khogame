@@ -1,0 +1,10 @@
+{# Trang comment tiếp theo (fetch qua HTMX khi bấm "Tải thêm") #}
+{% include "partials/comment_list_loop.html" %}
+{% if has_more %}
+<div class="comments-load-more">
+    <button class="btn btn-ghost btn-sm"
+            hx-get="/games/{{ game_slug }}/comments?page={{ page + 1 }}"
+            hx-target="closest .comments-load-more"
+            hx-swap="outerHTML">Tải thêm bình luận ({% if remaining > 0 %}còn {{ remaining }}{% endif %})</button>
+</div>
+{% endif %}

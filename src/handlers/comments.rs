@@ -4,7 +4,7 @@ use crate::repositories::CommentRepo;
 use crate::state::AppState;
 use crate::templates::CommentItemPartial;
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Html;
 use axum::Form;
 use serde::Deserialize;
@@ -189,4 +189,46 @@ pub async fn list_replies(
         html.push_str(&partial.render()?);
     }
     Ok(Html(html))
+}
+
+// ============= Load-more comments (GET, HTMX) =============
+#[derive(Deserialize, Default)]
+pub struct CommentsPageQuery {
+    pub page: Option<i64>,
+}
+
+/// GET /games/{slug}/comments?page=N — trả về HTML các comment trang N
+/// để nút "Tải thêm" chèn vào cuối danh sách. Trước đây trang game chỉ
+/// load 50 comment đầu và KHÔNG có cách nào xem phần cũ.
+pub async fn list_comments_page(
+    State(state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+    Path(slug): Path<String>,
+    Query(q): Query<CommentsPageQuery>,
+) -> AppResult<Html<String>> {
+    let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let comments = CommentRepo::list_by_game(
+        &state.db,
+        game.id,
+        current_user.as_ref().map(|u| u.id),
+        per_page,
+        offset,
+    )
+    .await?;
+    let loaded = offset + comments.len() as i64;
+    let remaining = (game.comment_count as i64 - loaded).max(0);
+    let tpl = crate::templates::CommentsPageTemplate {
+        current_user,
+        comments,
+        game_slug: slug,
+        page,
+        has_more: remaining > 0,
+        remaining,
+    };
+    Ok(Html(tpl.render()?))
 }

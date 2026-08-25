@@ -227,6 +227,18 @@ pub struct BookmarksTemplate {
     pub total: i64,
 }
 
+/// Trang comment cho load-more (GET /games/{slug}/comments?page=N)
+#[derive(Template)]
+#[template(path = "partials/comments_page.html")]
+pub struct CommentsPageTemplate {
+    pub current_user: Option<user::User>,
+    pub comments: Vec<comment::CommentWithUser>,
+    pub game_slug: String,
+    pub page: i64,
+    pub has_more: bool,
+    pub remaining: i64,
+}
+
 /// Notifications
 #[derive(Template)]
 #[template(path = "notifications/index.html")]

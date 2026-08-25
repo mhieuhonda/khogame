@@ -1,0 +1,75 @@
+                    {% for comment in comments %}
+                    <div class="comment-item {% if comment.is_pinned %}pinned{% endif %}" id="comment-{{ comment.id }}">
+                        <div class="comment-avatar">
+                            {% match comment.user_avatar %}
+                            {% when Option::Some with (url) %}
+                            <img src="{{ url }}" alt="" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                            {% when Option::None %}
+                            <div class="avatar avatar-sm avatar-fallback">{{ comment.user_name|initials }}</div>
+                            {% endmatch %}
+                        </div>
+                        <div class="comment-body">
+                            <div class="comment-header">
+                                <span class="comment-author">{{ comment.user_name }}</span>
+                                {% if comment.is_pinned %}<span class="pin-badge">📌 Ghim</span>{% endif %}
+                                <span class="comment-time" title="{{ comment.created_at.to_rfc3339() }}">{{ comment.created_at.to_rfc3339()|time_ago }}</span>
+                                {% if comment.updated_at > comment.created_at %}<span class="comment-time">(đã sửa)</span>{% endif %}
+                            </div>
+                            <div class="comment-content">{{ comment.content|nl2br }}</div>
+                            <div class="comment-actions">
+                                <button class="comment-action {% if comment.is_liked %}active{% endif %}"
+                                        hx-post="/comments/{{ comment.id }}/like"
+                                        hx-target="find .like-count"
+                                        hx-swap="innerHTML">❤️ <span class="like-count">{{ comment.like_count }}</span></button>
+                                {% match current_user %}
+                                {% when Option::Some with (cu) %}
+                                <button class="comment-action" onclick="toggleReplyForm('{{ comment.id }}')">💬 Trả lời</button>
+                                    {% if cu.id == comment.user_id %}
+                                    <button class="comment-action" onclick="toggleEditForm('{{ comment.id }}')">✏️ Sửa</button>
+                                    <button class="comment-action danger" hx-delete="/comments/{{ comment.id }}" hx-target="closest .comment-item" hx-swap="outerHTML" hx-confirm="Xóa bình luận này?">🗑️ Xóa</button>
+                                    {% endif %}
+                                    {% if cu.role.is_staff() %}
+                                    <button class="comment-action" hx-post="/admin/comments/{{ comment.id }}/pin" hx-target="closest .comment-item" hx-swap="outerHTML">📌 {% if comment.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}</button>
+                                    {% endif %}
+                                {% when Option::None %}
+                                {% endmatch %}
+                            </div>
+                            {# Form sửa bình luận — chỉ chủ sở hữu, giới hạn 5 phút #}
+                            {% match current_user %}
+                            {% when Option::Some with (cu) %}
+                                {% if cu.id == comment.user_id %}
+                                <div class="reply-form-container edit-form-container" id="edit-form-{{ comment.id }}" style="display:none;">
+                                    <form hx-post="/comments/{{ comment.id }}/edit" hx-target="closest .comment-item" hx-swap="outerHTML">
+                                        <textarea name="content" required rows="2" maxlength="1000">{{ comment.content }}</textarea>
+                                        <div>
+                                            <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
+                                            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('edit-form-{{ comment.id }}').style.display='none'">Hủy</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                {% endif %}
+                            {% when Option::None %}
+                            {% endmatch %}
+                            <div class="reply-form-container" id="reply-form-{{ comment.id }}" style="display:none;">
+                                <form hx-post="/games/{{ game_slug }}/comments"
+                                      hx-target="#replies-{{ comment.id }}"
+                                      hx-swap="innerHTML">
+                                    <input type="hidden" name="parent_id" value="{{ comment.id }}">
+                                    <textarea name="content" placeholder="Trả lời..." required rows="2"></textarea>
+                                    <div>
+                                        <button type="submit" class="btn btn-primary btn-sm">Gửi</button>
+                                        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reply-form-{{ comment.id }}').style.display='none'">Hủy</button>
+                                    </div>
+                                </form>
+                            </div>
+                            {# Replies tải lười khi cuộn tới — trước đây không có chỗ
+                               render nên reply không bao giờ hiện ra #}
+                            <div class="comment-replies" id="replies-{{ comment.id }}"
+                                 hx-get="/comments/{{ comment.id }}/replies"
+                                 hx-trigger="revealed"
+                                 hx-swap="innerHTML"></div>
+                        </div>
+                    </div>
+
+
+{ 0.000000e+00ndfor {% endfor %}

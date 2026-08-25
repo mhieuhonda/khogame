@@ -68,7 +68,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/games/{slug}/share", post(handlers::games::share_game))
         .route(
             "/games/{slug}/comments",
-            post(handlers::comments::create_comment),
+            get(handlers::comments::list_comments_page).post(handlers::comments::create_comment),
         )
         // Game của tôi
         .route("/my-games", get(handlers::games::my_games))
