@@ -724,16 +724,28 @@ pub async fn download_game(
         Some(&connect_info.0),
         state.config.trust_proxy_headers,
     );
-    let _ = InteractionRepo::record_download(
-        &state.db,
-        game.id,
-        Some(user.id),
-        platform.as_str(),
-        Some(&ip),
-    )
-    .await;
-    let _ = GameRepo::increment_download_count(&state.db, game.id).await;
-    let _ = crate::repositories::StatsRepo::record_download(&state.db, game.id).await;
+    // Analytics download chạy nền — response redirect cho user ngay
+    // (trước đây 4 await tuần tự cộng vào thời gian chờ bấm nút Tải).
+    // Redirect URL đã có sẵn trong `url`, không phụ thuộc kết quả ghi.
+    {
+        let db = state.db.clone();
+        let game_id = game.id;
+        let user_id = user.id;
+        let platform_str = platform.as_str().to_string();
+        let ip = ip.clone();
+        tokio::spawn(async move {
+            let _ = InteractionRepo::record_download(
+                &db,
+                game_id,
+                Some(user_id),
+                &platform_str,
+                Some(&ip),
+            )
+            .await;
+            let _ = GameRepo::increment_download_count(&db, game_id).await;
+            let _ = crate::repositories::StatsRepo::record_download(&db, game_id).await;
+        });
+    }
 
     Ok((
         StatusCode::OK,
