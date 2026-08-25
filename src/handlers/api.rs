@@ -301,7 +301,11 @@ pub async fn check_duplicate(
     Query(q): Query<DuplicateQuery>,
 ) -> AppResult<Response> {
     let title = q.title.trim();
-    if title.len() < 3 {
+    // Đếm theo KÝ TỰ (không phải byte): "Độ" là 2 chars nhưng 5 bytes
+    // UTF-8 — dùng len() sẽ cho qua chuỗi 2 chữ tiếng Việt rồi bị chặn
+    // ngược ở các bước sau (clamp 200 chars). JS phía client cũng đếm
+    // theo UTF-16 length nên 3 là ngưỡng hợp lý cho cả hai phía.
+    if title.chars().count() < 3 {
         return Ok(Json(serde_json::json!({"similar": 0})).into_response());
     }
     // Clamp 200 ký tự như giới hạn title khi tạo game — chống gửi pattern
