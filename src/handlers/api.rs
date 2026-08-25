@@ -234,8 +234,12 @@ pub async fn repos_list(
     let per_page: i64 = 30;
     let offset = (page - 1) * per_page;
     let sort = q.sort.unwrap_or_else(|| "stars".into());
-    let repos = RepoRepo::list_approved(&state.db, per_page, offset, &sort).await?;
-    let total = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
+    let (repos_res, total_res) = tokio::join!(
+        RepoRepo::list_approved(&state.db, per_page, offset, &sort),
+        RepoRepo::count_approved(&state.db),
+    );
+    let repos = repos_res?;
+    let total = total_res.unwrap_or(0);
     let data: Vec<serde_json::Value> = repos
         .iter()
         .map(|r| {
@@ -272,17 +276,28 @@ pub async fn repos_list(
 }
 
 pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Response> {
-    let total_games = GameRepo::count_published(&state.db).await.unwrap_or(0);
-    let total_users = UserRepo::count_all(&state.db).await.unwrap_or(0);
-    let total_repos = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
-    let total_downloads: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM downloads")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
-    let total_comments: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comments")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
+    // 5 COUNT độc lập — join! song song (cache 60s đã giảm tần suất,
+    // giờ giảm cả latency của mỗi lần cache miss).
+    let (total_games, total_users, total_repos, total_downloads, total_comments) = tokio::join!(
+        GameRepo::count_published(&state.db),
+        UserRepo::count_all(&state.db),
+        RepoRepo::count_approved(&state.db),
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads")
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(0)
+        },
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM comments")
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(0)
+        },
+    );
+    let total_games = total_games.unwrap_or(0);
+    let total_users = total_users.unwrap_or(0);
+    let total_repos = total_repos.unwrap_or(0);
     // Cache 60s: số liệu thống kê không cần real-time, giảm 5 COUNT(*)
     // xuống còn tối đa 1 lần/phút mỗi client.
     Ok((
