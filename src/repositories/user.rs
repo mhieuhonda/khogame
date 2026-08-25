@@ -212,7 +212,17 @@ impl UserRepo {
         limit: i64,
         offset: i64,
     ) -> AppResult<Vec<UserWithGameCount>> {
-        let pattern = format!("%{}%", search.unwrap_or_default());
+        // Escape wildcard + clamp 200 ký tự như search công khai
+        let pattern = format!(
+            "%{}%",
+            crate::utils::escape_like(
+                &search
+                    .unwrap_or_default()
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
+            )
+        );
         let users = sqlx::query_as::<_, UserWithGameCount>(
             r#"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
                 u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
@@ -241,7 +251,16 @@ impl UserRepo {
 
     /// Đếm user theo bộ lọc tìm kiếm (phân trang admin đúng tổng số)
     pub async fn count_for_admin(pool: &PgPool, search: Option<&str>) -> AppResult<i64> {
-        let pattern = format!("%{}%", search.unwrap_or_default());
+        let pattern = format!(
+            "%{}%",
+            crate::utils::escape_like(
+                &search
+                    .unwrap_or_default()
+                    .chars()
+                    .take(200)
+                    .collect::<String>()
+            )
+        );
         let c: i64 = sqlx::query_scalar(
             r#"SELECT COUNT(*) FROM users
                WHERE ($1 = '%%' OR email ILIKE $1 OR username ILIKE $1 OR display_name ILIKE $1)"#,
