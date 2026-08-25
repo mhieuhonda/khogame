@@ -46,7 +46,7 @@ impl From<sqlx::Error> for AppError {
 
 impl AppError {
     /// HTTP status + thông điệp người dùng cho lỗi này. Tách riêng để
-    /// unit test được (IntoResponse cần render template, khó test hơn).
+    /// unit test được (`IntoResponse` cần render template, khó test hơn).
     pub fn status_and_message(&self) -> (StatusCode, String) {
         let status = match self {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
@@ -96,9 +96,7 @@ impl IntoResponse for AppError {
             message: msg,
             status: status.as_u16(),
         }
-        .render()
-        .map(|html| (status, html).into_response())
-        .unwrap_or_else(|_| (status, "Internal Server Error").into_response())
+        .render().map_or_else(|_| (status, "Internal Server Error").into_response(), |html| (status, html).into_response())
     }
 }
 
