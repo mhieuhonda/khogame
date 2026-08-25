@@ -35,7 +35,8 @@
                         hx-post="/notifications/{{ n.id }}/read"
                         hx-target="closest .notification-item"
                         hx-swap="outerHTML"
-                        title="Đánh dấu đã đọc">✓</button>
+                        title="Đánh dấu đã đọc"
+                        aria-label="Đánh dấu thông báo '{{ n.title }}' đã đọc">✓</button>
                 {% endif %}
             </a>
         </div>
