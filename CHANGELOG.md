@@ -20,29 +20,49 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Tên stack/volume/DB user trên Coolify **giữ nguyên `khogame`** để
   bảo toàn dữ liệu prod hiện có.
 
-### 📰 Mảng tin tức (News) — preview
-- Bảng `news` với workflow `draft → pending → published → archived`.
+### 📰 News module — hoàn chỉnh
+- Bảng `news` (migration 008) với workflow `draft → pending → published → archived → rejected`.
 - User đăng tin → vào hàng đợi `pending`, admin duyệt mới xuất bản
-  (tránh lan truyền tin giả). Chi tiết triển khai tiếp tục ở v0.8.x.
+  (tránh lan truyền tin giả).
+- Lưu IP/UA lúc đăng tin để admin truy vết spam/abuse.
+- Tách 2 struct: `NewsWithAuthor` (public, không IP/UA) và `NewsForAdmin` (có IP/UA/email).
+- Admin duyệt/reject có notify tác giả + audit log.
+- Public JSON API: `GET /api/v1/news`, `GET /api/v1/news/{slug}`.
+- RSS feed riêng: `/news.rss`.
+- Sitemap mở rộng: `/news` + 50 URL tin published.
+- Trang chủ hiển thị 3 tin mới + total_news stat.
+- 8 categories: game, tech, industry, esports, community, review, update, other.
+- News likes + comments (tách bảng riêng, có triggers counter).
+- Admin dashboard hiển thị total_news + pending_news (link đến queue duyệt).
+- Nav admin thêm 'Tin tức' + 'Duyệt tin'.
 
-### 🛡️ Admin detail view — preview
-- Admin xem được toàn bộ thông tin user: email, IP, user-agent, last seen,
-  session count…
-- Moderator (role=mod) KHÔNG thấy được email/IP/UA, chỉ thấy metadata
-  công khai — tách biệt quyền theo nguyên tắc least-privilege.
+### 🛡️ Admin user detail view
+- Migration 009: thêm 5 cột users (`signup_ip`, `signup_ua`, `last_login_ip`, `last_login_ua`, `last_login_at`).
+- Trang `/admin/users/{id}` hiển thị toàn bộ: avatar, username, email, google_sub, IP/UA signup+last login, list sessions, count game/news/active_sessions.
+- **Chỉ admin** được xem (moderator không thấy IP/email/UA).
+- `UserForModerator` struct rút gọn (không email/IP/UA) cho tương lai.
+- Auth handler: `create_from_google` capture IP/UA lúc signup, `record_login` cập nhật mỗi lần đăng nhập.
+- Backfill last_login từ sessions cũ cho user đã tồn tại.
 
-### 🎨 UI redesign — preview
-- Chủ đạo **màu trắng** cho light mode (mặc định theo `prefers-color-scheme`
-  hệ điều hành thay vì cứng dark).
-- Dark mode tối ưu: contrast cao hơn, viền sáng hơn.
-- Mobile-first: tối ưu cho điện thoại trước, scale lên desktop.
+### 🎨 UI redesign
+- CSS `:root` đổi từ dark-default sang **light-default** (white #ffffff + slate text).
+- `[data-theme='dark']` giờ là override với contrast cao hơn (bg #0b0f1a, accent indigo-400).
+- FOUC-prevention script: set theme trước khi paint, migrate `kg-theme` cũ.
+- Header backdrop-filter dùng `color-mix()` thay vì rgba hardcode — tự adapt với mọi theme.
+- Mobile-first responsive: grid auto-fill minmax, single-column ở < 640px.
+- Badges CSS: success/warning/danger/muted/neutral.
+- Admin tabs (pending/all) cho news queue.
 
-### 🔐 Repo branch protection — preview
+### 🔐 Repo branch protection
 - Rule: chỉ admin (hoặc PAT holder) mới push trực tiếp `main`.
 - Người khác bắt buộc phải tạo branch → mở PR → review → merge.
+- Áp dụng qua GitHub API: `required_linear_history=true`, `allow_force_pushes=false`, `allow_deletions=false`, `enforce_admins=false`.
+- Script `scripts/setup-branch-protection.sh` để cấu hình lại nếu cần.
+- **Đã áp dụng trên main** (verified qua GET /repos/.../branches/main/protection).
 
 ### 📦 Releases
-- Tag `v0.8.0` trở đi được phát hành qua GitHub Releases với changelog đầy đủ.
+- Tag `v0.8.0` được phát hành qua GitHub Releases với changelog đầy đủ.
+- URL: https://github.com/mhieuhonda/khogame/releases/tag/v0.8.0
 
 ---
 

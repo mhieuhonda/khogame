@@ -1260,6 +1260,8 @@ pub async fn root(State(state): State<Arc<AppState>>) -> Response {
             {"method": "GET", "path": "/api/v1/tags/{slug}/games", "description": "Game theo tag"},
             {"method": "GET", "path": "/api/v1/users/{username}", "description": "Hồ sơ user công khai"},
             {"method": "GET", "path": "/api/v1/repos", "description": "Repo GitHub đã duyệt"},
+            {"method": "GET", "path": "/api/v1/news", "description": "Tin tức đã xuất bản (page, category)"},
+            {"method": "GET", "path": "/api/v1/news/{slug}", "description": "Chi tiết 1 bài tin tức"},
             {"method": "GET", "path": "/api/v1/stats", "description": "Thống kê tổng quan"},
             {"method": "GET", "path": "/api/v1/health", "description": "Health check (no-store)"},
         ],
