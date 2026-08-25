@@ -1,8 +1,50 @@
 # Changelog
 
-Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại tại đây.
+Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho Game,
+đổi tên từ v0.8.0) được ghi lại tại đây.
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.8.0] — 2026-08-25 — Era Louis Space
+
+### 🌐 Rebrand toàn diện
+- Đổi tên web **"Kho Game" → "Louis Space"** ở toàn bộ giao diện:
+  layout, manifest, OpenSearch, RSS, JSON-LD, maintenance, error page,
+  terms, README, SECURITY, Dockerfile, deploy, issue templates.
+- Logo + favicon mới: chữ **L monogram** trên gradient
+  slate-indigo-violet, kèm ngôi sao nhấn.
+- localStorage key theme: `kg-theme` → `ls-theme` (kèm migrate lùi
+  cho user cũ chưa reload tab).
+- Cargo `version` 0.7.0 → 0.8.0; authors = "Louis Space Team";
+  description nhấn mạnh cả mảng tin tức.
+- Tên stack/volume/DB user trên Coolify **giữ nguyên `khogame`** để
+  bảo toàn dữ liệu prod hiện có.
+
+### 📰 Mảng tin tức (News) — preview
+- Bảng `news` với workflow `draft → pending → published → archived`.
+- User đăng tin → vào hàng đợi `pending`, admin duyệt mới xuất bản
+  (tránh lan truyền tin giả). Chi tiết triển khai tiếp tục ở v0.8.x.
+
+### 🛡️ Admin detail view — preview
+- Admin xem được toàn bộ thông tin user: email, IP, user-agent, last seen,
+  session count…
+- Moderator (role=mod) KHÔNG thấy được email/IP/UA, chỉ thấy metadata
+  công khai — tách biệt quyền theo nguyên tắc least-privilege.
+
+### 🎨 UI redesign — preview
+- Chủ đạo **màu trắng** cho light mode (mặc định theo `prefers-color-scheme`
+  hệ điều hành thay vì cứng dark).
+- Dark mode tối ưu: contrast cao hơn, viền sáng hơn.
+- Mobile-first: tối ưu cho điện thoại trước, scale lên desktop.
+
+### 🔐 Repo branch protection — preview
+- Rule: chỉ admin (hoặc PAT holder) mới push trực tiếp `main`.
+- Người khác bắt buộc phải tạo branch → mở PR → review → merge.
+
+### 📦 Releases
+- Tag `v0.8.0` trở đi được phát hành qua GitHub Releases với changelog đầy đủ.
+
+---
 
 ## [Unreleased]
 
