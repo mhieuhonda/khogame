@@ -63,7 +63,7 @@
                 <a href="/u/{{ user.username }}" class="avatar-link" title="Hồ sơ của tôi">
                     {% match user.avatar_url %}
                     {% when Option::Some with (url) %}
-                        <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-sm">
+                        <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-sm" width="32" height="32" decoding="async">
                     {% when Option::None %}
                         <div class="avatar avatar-sm avatar-fallback">{{ user.display_name|initials }}</div>
                     {% endmatch %}

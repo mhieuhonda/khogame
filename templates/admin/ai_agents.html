@@ -35,7 +35,7 @@
             <div class="ai-agent-info">
                 {% match a.avatar_url %}
                 {% when Option::Some with (url) %}
-                <img src="{{ url }}" alt="{{ a.display_name }}" class="avatar avatar-sm">
+                <img src="{{ url }}" alt="{{ a.display_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
                 {% when Option::None %}
                 <div class="avatar avatar-sm avatar-fallback">{{ a.display_name|initials }}</div>
                 {% endmatch %}

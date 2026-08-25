@@ -17,7 +17,7 @@
                     <td>
                         <div class="user-cell">
                             {% match u.avatar_url %}
-                            {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ u.display_name }}">
+                            {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ u.display_name }}" width="24" height="24" loading="lazy" decoding="async">
                             {% when Option::None %}<div class="avatar avatar-xs avatar-fallback">{{ u.display_name|initials }}</div>
                             {% endmatch %}
                             <a href="/u/{{ u.username }}">{{ u.display_name }}</a> <small>@{{ u.username }}</small>

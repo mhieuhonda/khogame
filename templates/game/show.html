@@ -41,7 +41,7 @@
             {% match game.cover_image %}
             {% when Option::Some with (url) %}
                 {% if !url.is_empty() %}
-                <img src="{{ url }}" alt="{{ game.title }}">
+                <img src="{{ url }}" alt="{{ game.title }}" width="480" height="270" decoding="async">
                 {% else %}
                 <div class="cover-fallback cover-fallback-lg">{{ game.title|initials }}</div>
                 {% endif %}
@@ -67,7 +67,7 @@
                 <a href="/u/{{ author.username }}" class="author-link">
                     {% match author.avatar_url %}
                     {% when Option::Some with (url) %}
-                    <img src="{{ url }}" alt="" class="avatar avatar-sm">
+                    <img src="{{ url }}" alt="" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
                     {% when Option::None %}
                     <div class="avatar avatar-sm avatar-fallback">{{ author.display_name|initials }}</div>
                     {% endmatch %}
@@ -130,7 +130,7 @@
                 <div class="screenshots-grid">
                     {% for shot in screenshots %}
                     <a href="{{ shot.url }}" class="screenshot-item" target="_blank">
-                        <img src="{{ shot.url }}" alt="{{ shot.caption.clone().unwrap_or_default() }}" loading="lazy">
+                        <img src="{{ shot.url }}" alt="{{ shot.caption.clone().unwrap_or_default() }}" loading="lazy" decoding="async" width="320" height="180">
                     </a>
                     {% endfor %}
                 </div>
@@ -197,7 +197,7 @@
                         <div class="comment-avatar">
                             {% match comment.user_avatar %}
                             {% when Option::Some with (url) %}
-                            <img src="{{ url }}" alt="" class="avatar avatar-sm">
+                            <img src="{{ url }}" alt="" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
                             {% when Option::None %}
                             <div class="avatar avatar-sm avatar-fallback">{{ comment.user_name|initials }}</div>
                             {% endmatch %}
@@ -390,7 +390,7 @@
                     <div class="game-card-cover">
                         {% match game.cover_image %}
                         {% when Option::Some with (url) %}
-                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy" decoding="async" width="320" height="180">
                             {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
                         {% when Option::None %}
                         <div class="cover-fallback">{{ game.title|initials }}</div>

@@ -33,7 +33,7 @@
             <div class="repo-foot">
                 <a href="/u/{{ r.author_username }}" class="repo-author">
                     {% match r.author_avatar %}
-                    {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ r.author_name }}">
+                    {% when Option::Some with (url) %}<img src="{{ url }}" class="avatar avatar-xs" alt="{{ r.author_name }}" width="24" height="24" loading="lazy" decoding="async">
                     {% when Option::None %}<div class="avatar avatar-xs avatar-fallback">{{ r.author_name|initials }}</div>
                     {% endmatch %}
                     {{ r.author_name }}
