@@ -8,8 +8,10 @@
                 hx-target="#rating-stars-{{ slug }}"
                 hx-swap="outerHTML"
                 hx-disabled-elt="this"
-                title="{{ i }} sao">
-            ★
+                title="{{ i }} sao"
+                aria-label="Đánh giá {{ i }} trên 5 sao"
+                {% if user_rating.unwrap_or(0) >= i %}aria-checked="true"{% else %}aria-checked="false"{% endif %}>
+            <span aria-hidden="true">★</span>
         </button>
         {% endfor %}
     </div>
