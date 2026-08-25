@@ -950,3 +950,152 @@ pub async fn publish_game(
         "<div class='alert alert-success'>Đã xuất bản game.</div>".into(),
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Tạo form hợp lệ tối thiểu để các test chỉ cần sửa field liên quan.
+    fn valid_form() -> GameForm {
+        GameForm {
+            title: "Game thử nghiệm".into(),
+            excerpt: "Mô tả ngắn".into(),
+            content: "Nội dung đầy đủ".into(),
+            status: "published".into(),
+            version: "1.0".into(),
+            developer: "Studio A".into(),
+            publisher: "Publisher B".into(),
+            release_date: Some("2026-01-01".into()),
+            file_size: "100MB".into(),
+            age_rating: "everyone".into(),
+            languages: "vi, en".into(),
+            trailer_url: "https://youtube.com/watch?v=abc".into(),
+            cover_image: "https://cdn.example.com/cover.png".into(),
+            category_id: None,
+            tags: "action, rpg".into(),
+            screenshots: "https://cdn.example.com/1.png".into(),
+            android_link: Some("https://example.com/apk".into()),
+            ios_link: None,
+            windows_link: None,
+            linux_link: None,
+            macos_link: None,
+        }
+    }
+
+    #[test]
+    fn test_validate_game_form_ok() {
+        assert!(validate_game_form(&valid_form()).is_ok());
+    }
+
+    #[test]
+    fn test_validate_title_empty() {
+        let mut f = valid_form();
+        f.title = "   ".into();
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("trống")
+        ));
+    }
+
+    #[test]
+    fn test_validate_title_too_long() {
+        let mut f = valid_form();
+        f.title = "x".repeat(201);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("200")
+        ));
+        // Đúng 200 ký tự thì qua
+        f.title = "y".repeat(200);
+        assert!(validate_game_form(&f).is_ok());
+    }
+
+    #[test]
+    fn test_validate_cover_image_javascript_blocked() {
+        let mut f = valid_form();
+        f.cover_image = "javascript:alert(1)".into();
+        assert!(validate_game_form(&f).is_err());
+        f.cover_image = "data:image/png;base64,xxx".into();
+        assert!(validate_game_form(&f).is_err());
+    }
+
+    #[test]
+    fn test_validate_trailer_url_scheme() {
+        let mut f = valid_form();
+        f.trailer_url = "ftp://evil.com/x.mp4".into();
+        assert!(validate_game_form(&f).is_err());
+        f.trailer_url = "https://youtube.com/watch?v=ok".into();
+        assert!(validate_game_form(&f).is_ok());
+    }
+
+    #[test]
+    fn test_validate_screenshot_lines() {
+        let mut f = valid_form();
+        // Dòng 2 là scheme nguy hiểm → chặn kèm số thứ tự dòng
+        f.screenshots = "https://ok.com/1.png\njavascript:evil\nhttps://ok.com/2.png".into();
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("#2")
+        ));
+    }
+
+    #[test]
+    fn test_validate_too_many_tags() {
+        let mut f = valid_form();
+        f.tags = (0..21).map(|i| format!("tag{}", i)).collect::<Vec<_>>().join(",");
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("20 tag")
+        ));
+        // Đúng 20 tag thì qua (đã dedupe)
+        f.tags = (0..20).map(|i| format!("tag{}", i)).collect::<Vec<_>>().join(",");
+        assert!(validate_game_form(&f).is_ok());
+    }
+
+    #[test]
+    fn test_validate_tag_too_long() {
+        let mut f = valid_form();
+        f.tags = format!("{},{}", "a".repeat(50), "b".repeat(51));
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("50 ký tự")
+        ));
+    }
+
+    #[test]
+    fn test_validate_download_link_schemes() {
+        let mut f = valid_form();
+        f.android_link = Some("javascript:alert(1)".into());
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Android")
+        ));
+        f.android_link = None;
+        f.windows_link = Some("file:///C:/evil.exe".into());
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Windows")
+        ));
+    }
+
+    #[test]
+    fn test_validate_url_length_limits() {
+        let mut f = valid_form();
+        f.cover_image = format!("https://example.com/{}", "a".repeat(2100));
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("2048")
+        ));
+    }
+
+    #[test]
+    fn test_validate_25_tags_after_dedupe_ok() {
+        // 25 tag nhưng sau dedupe chỉ còn 20 → phải pass
+        let mut f = valid_form();
+        f.tags = (0..20)
+            .map(|i| format!("tag{}, TAG{}", i, i))
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(validate_game_form(&f).is_ok());
+    }
+}
