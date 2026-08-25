@@ -744,6 +744,7 @@ pub async fn sitemap(
         "/search",
         "/terms",
         "/privacy",
+        "/news",
     ] {
         urls.push_str(&format!(
             r#"  <url><loc>{}{}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
@@ -794,6 +795,18 @@ pub async fn sitemap(
                 base,
                 crate::utils::xml_escape(&slug),
                 updated.format("%Y-%m-%d")
+            ));
+        }
+    }
+    // News URLs — 50 tin published mới nhất (tránh sitemap quá lớn)
+    if let Ok(news) = NewsRepo::list_published(&state.db, 1, 50).await {
+        for n in news {
+            urls.push_str(&format!(
+                r#"  <url><loc>{}/news/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
+"#,
+                base,
+                crate::utils::xml_escape(&n.slug),
+                n.published_at.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default()
             ));
         }
     }
