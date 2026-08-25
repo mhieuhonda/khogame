@@ -333,16 +333,19 @@ pub async fn rss(
     }
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Kho Game - Game mới nhất</title>
     <link>{}</link>
     <description>Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam</description>
     <language>vi</language>
+    <atom:link href="{}/rss.xml" rel="self" type="application/rss+xml"/>
+    <ttl>60</ttl>
     <lastBuildDate>{}</lastBuildDate>
 {}
   </channel>
 </rss>"#,
+        base,
         base,
         chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000"),
         items
