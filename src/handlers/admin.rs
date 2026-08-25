@@ -1047,13 +1047,22 @@ pub async fn export(
     if !user.role.is_admin() {
         return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
     }
-    let games = GameRepo::admin_list(&state.db, None, 10000, 0).await?;
-    let users = UserRepo::list_for_admin(&state.db, None, 10000, 0).await?;
-    let repos = RepoRepo::list_admin(&state.db, None, 10000).await?;
+    // 5 truy vấn export độc lập (games/users/repos/comments/reports) —
+    // join! song song; với limit 10-20k dòng mỗi bảng mức tiết kiệm đáng kể.
+    let (games_res, users_res, repos_res, comments_res, reports_res) = tokio::join!(
+        GameRepo::admin_list(&state.db, None, 10000, 0),
+        UserRepo::list_for_admin(&state.db, None, 10000, 0),
+        RepoRepo::list_admin(&state.db, None, 10000),
+        CommentRepo::list_recent(&state.db, 20000),
+        ReportRepo::list(&state.db, None, 20000, 0),
+    );
+    let games = games_res?;
+    let users = users_res?;
+    let repos = repos_res?;
     // Bình luận + report cũng là dữ liệu cần backup — trước đây export
     // thiếu hoàn toàn, mất dữ liệu kiểm duyệt khi restore.
-    let comments = CommentRepo::list_recent(&state.db, 20000).await?;
-    let reports = ReportRepo::list(&state.db, None, 20000, 0).await?;
+    let comments = comments_res?;
+    let reports = reports_res?;
     let body = serde_json::json!({
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "version": env!("CARGO_PKG_VERSION"),
