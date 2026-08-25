@@ -10,6 +10,18 @@
 
 {% block head_extra %}
 {{ json_ld|safe }}
+<link rel="canonical" href="{{ base_url }}/games/{{ game.slug }}">
+<meta property="og:type" content="article">
+{% match game.cover_image %}
+{% when Option::Some with (img) %}
+{% if !img.is_empty() %}
+<meta property="og:image" content="{{ img }}">
+<meta name="twitter:image" content="{{ img }}">
+<meta property="og:image:alt" content="{{ game.title }}">
+{% endif %}
+{% when Option::None %}
+{% endmatch %}
+<meta property="article:published_time" content="{{ game.created_at }}">
 {% endblock %}
 
 {% block content %}
