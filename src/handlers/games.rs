@@ -516,6 +516,12 @@ pub async fn download_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ tải game đã xuất bản (owner/staff vẫn tải được game của mình
+    // để test). Trước đây POST /games/{slug}/download không kiểm tra
+    // status — ai biết slug đều tải được game ẩn/nháp.
+    if game.user_id != user.id && !user.role.is_staff() && game.status != GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     let platform = Platform::from_str(&form.platform)
         .ok_or_else(|| AppError::BadRequest("Nền tảng không hợp lệ".into()))?;
     let url = GameRepo::get_link_for_platform(&state.db, game.id, &platform)
