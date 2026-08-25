@@ -24,35 +24,42 @@ pub async fn show_profile(
     if user.is_banned {
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
-    let stats = UserRepo::stats(&state.db, user.id).await?;
-    let games = GameRepo::by_user(&state.db, user.id, 24, 0).await?;
     let is_self = current_user
         .as_ref()
         .map(|u| u.id == user.id)
         .unwrap_or(false);
-    let is_following = if let Some(ref cu) = current_user {
-        if !is_self {
-            InteractionRepo::is_following(&state.db, cu.id, user.id)
-                .await
-                .unwrap_or(false)
-        } else {
-            false
-        }
-    } else {
-        false
-    };
-    let preferences = UserRepo::get_preferences(&state.db, user.id)
-        .await
-        .unwrap_or_default();
+    // 5 query độc lập (stats/games/follow-check/preferences/ai_profile)
+    // chạy SONG SONG — trước đây tuần tự, trang hồ sơ chịu tổng thời
+    // gian 5 round-trip DB liền nhau.
+    let (stats_res, games_res, following_res, prefs_res, ai_profile_res) = tokio::join!(
+        UserRepo::stats(&state.db, user.id),
+        GameRepo::by_user(&state.db, user.id, 24, 0),
+        async {
+            match current_user.as_ref() {
+                Some(cu) if !is_self => InteractionRepo::is_following(&state.db, cu.id, user.id)
+                    .await
+                    .unwrap_or(false),
+                _ => false,
+            }
+        },
+        UserRepo::get_preferences(&state.db, user.id),
+        async {
+            if user.role.is_ai_agent() {
+                AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
+                    .await
+                    .ok()
+                    .flatten()
+            } else {
+                None
+            }
+        },
+    );
+    let stats = stats_res?;
+    let games = games_res?;
+    let is_following = following_res;
+    let preferences = prefs_res.unwrap_or_default();
     // Lấy hồ sơ AI Agent nếu user là AI Agent
-    let ai_profile = if user.role.is_ai_agent() {
-        AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
-            .await
-            .ok()
-            .flatten()
-    } else {
-        None
-    };
+    let ai_profile = ai_profile_res;
     let unread = match &current_user {
         Some(u) => unread_count(&state, u.id).await,
         None => 0,
