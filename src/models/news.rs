@@ -8,7 +8,7 @@ use uuid::Uuid;
 /// Workflow:
 /// - User đăng tin mới → `Pending` (chờ admin duyệt)
 /// - Admin duyệt → `Published` (công khai, hiện trên /news)
-/// - Admin từ chối → `Rejected` (kèm review_note lý do)
+/// - Admin từ chối → `Rejected` (kèm `review_note` lý do)
 /// - Admin lưu trữ tin cũ → `Archived` (ẩn khỏi list chính, vẫn truy cập qua direct link)
 /// - Draft: status này dành cho tương lai khi có autosave (chưa dùng trong v0.8.0)
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq)]
@@ -23,6 +23,7 @@ pub enum NewsStatus {
 }
 
 impl NewsStatus {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             NewsStatus::Draft => "Bản nháp",
@@ -35,16 +36,19 @@ impl NewsStatus {
 
     /// True nếu status này có thể hiển thị công khai với mọi người.
     /// Pending/Draft/Rejected chỉ tác giả + admin xem được.
+    #[must_use]
     pub fn is_public(&self) -> bool {
         matches!(self, NewsStatus::Published | NewsStatus::Archived)
     }
 
     /// True nếu cần admin xử lý (xuất hiện trong queue /admin/news/pending).
+    #[must_use]
     pub fn needs_review(&self) -> bool {
         matches!(self, NewsStatus::Pending)
     }
 
     /// Badge CSS class cho template — để admin dashboard render màu sắc khác nhau.
+    #[must_use]
     pub fn badge_class(&self) -> &'static str {
         match self {
             NewsStatus::Draft => "badge-neutral",
@@ -56,6 +60,7 @@ impl NewsStatus {
     }
 
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
             "draft" => NewsStatus::Draft,
