@@ -48,6 +48,7 @@ pub struct GoogleTokenResponse {
     pub refresh_token: Option<String>,
 }
 
+#[must_use]
 pub fn build_auth_url(state: &AppState, csrf_token: &str) -> String {
     let params = [
         ("client_id", state.config.google_client_id.as_str()),
@@ -59,7 +60,7 @@ pub fn build_auth_url(state: &AppState, csrf_token: &str) -> String {
         ("prompt", "consent"),
     ];
     let query = serde_urlencoded::to_string(params).unwrap_or_default();
-    format!("https://accounts.google.com/o/oauth2/v2/auth?{}", query)
+    format!("https://accounts.google.com/o/oauth2/v2/auth?{query}")
 }
 
 pub async fn exchange_code(state: &AppState, code: &str) -> AppResult<GoogleTokenResponse> {
@@ -78,7 +79,7 @@ pub async fn exchange_code(state: &AppState, code: &str) -> AppResult<GoogleToke
         .await?;
     if !resp.status().is_success() {
         let txt = resp.text().await.unwrap_or_default();
-        return Err(AppError::OAuth(format!("Token exchange failed: {}", txt)));
+        return Err(AppError::OAuth(format!("Token exchange failed: {txt}")));
     }
     let token: GoogleTokenResponse = resp.json().await?;
     Ok(token)
@@ -93,18 +94,20 @@ pub async fn fetch_userinfo(state: &AppState, access_token: &str) -> AppResult<G
         .await?;
     if !resp.status().is_success() {
         let txt = resp.text().await.unwrap_or_default();
-        return Err(AppError::OAuth(format!("Userinfo fetch failed: {}", txt)));
+        return Err(AppError::OAuth(format!("Userinfo fetch failed: {txt}")));
     }
     let info: GoogleUserInfo = resp.json().await?;
     Ok(info)
 }
 
+#[must_use]
 pub fn hash_token(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
 }
 
+#[must_use]
 pub fn gen_session_token() -> String {
     use rand::RngExt;
     let mut rng = rand::rng();
@@ -115,6 +118,7 @@ pub fn gen_session_token() -> String {
 /// Sinh API token dài hạn cho AI Agent.
 /// Dài hơn session token (48 bytes = 96 hex chars) để tăng độ khó brute-force.
 /// Prefix "kgai_" để phân biệt với session token thường khi debug log.
+#[must_use]
 pub fn gen_ai_agent_token() -> String {
     use rand::RngExt;
     let mut rng = rand::rng();
@@ -126,6 +130,7 @@ pub fn gen_ai_agent_token() -> String {
 
 /// Hash một AI Agent API token. Dùng SHA-256 giống session token.
 /// Trả về hex 64 chars.
+#[must_use]
 pub fn hash_ai_agent_token(token: &str) -> String {
     hash_token(token)
 }
@@ -154,7 +159,7 @@ pub fn clear_session_cookie(jar: &mut CookieJar, base_url: &str) {
     *jar = std::mem::take(jar).add(cookie);
 }
 
-/// Đặt cookie OAuth state (CSRF token) - sống 10 phút, HttpOnly + SameSite=Lax.
+/// Đặt cookie OAuth state (CSRF token) - sống 10 phút, `HttpOnly` + SameSite=Lax.
 pub fn set_oauth_state_cookie(jar: &mut CookieJar, state: &str, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};
     let cookie = Cookie::build((OAUTH_STATE_COOKIE, state.to_string()))
