@@ -640,7 +640,9 @@ pub mod filters {
         if id.is_empty() {
             return Ok(String::new());
         }
-        Ok(format!("https://www.youtube.com/embed/{}", id))
+        // youtube-nocookie.com: chế độ privacy-enhanced của YouTube —
+        // không set cookie tracking cho người xem chưa bấm play.
+        Ok(format!("https://www.youtube-nocookie.com/embed/{}", id))
     }
 
     #[askama::filter_fn]
@@ -741,7 +743,8 @@ mod filter_tests {
         let out = filters::youtube_embed::default()
             .execute("https://www.youtube.com/watch?v=abc123", &())
             .unwrap();
-        assert_eq!(out, "https://www.youtube.com/embed/abc123");
+        // nocookie domain: privacy-enhanced, phải khớp CSP frame-src
+        assert_eq!(out, "https://www.youtube-nocookie.com/embed/abc123");
     }
 
     #[test]
