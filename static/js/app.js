@@ -238,7 +238,16 @@
 
     document.addEventListener('htmx:responseError', function(evt) {
         console.error('HTMX response error', evt.detail);
-        showToast('Có lỗi xảy ra. Vui lòng thử lại.', 'error');
+        const status = evt.detail.xhr.status;
+        if (status === 429) {
+            // Server rate-limit (10 bình luận/phút, 20 tải/phút...)
+            // — thông báo rõ thay vì lỗi chung chung.
+            showToast('Bạn thao tác quá nhanh. Vui lòng chờ khoảng 1 phút rồi thử lại.', 'error');
+        } else if (status === 503) {
+            showToast('Hệ thống đang bảo trì. Vui lòng thử lại sau ít phút.', 'error');
+        } else {
+            showToast('Có lỗi xảy ra. Vui lòng thử lại.', 'error');
+        }
     });
 
     // ===== Image lazy loading fallback =====

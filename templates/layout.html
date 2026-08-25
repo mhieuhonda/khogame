@@ -9,8 +9,8 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="Kho Game">
     <meta name="theme-color" content="#7c3aed">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <script src="/static/js/htmx.min.js" defer></script>
+    <link rel="stylesheet" href="/static/css/style.css?v=0.6.5">
+    <script src="/static/js/htmx.min.js?v=0.6.5" defer></script>
     <meta property="og:site_name" content="Kho Game">
     <meta property="og:type" content="website">
     <meta property="og:title" content="{% block og_title %}Kho Game{% endblock %}">
@@ -41,12 +41,12 @@
                 <span>Kho Game</span>
             </a>
 
-            <form class="search-bar" action="/search" method="get">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <form class="search-bar" action="/search" method="get" role="search">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <circle cx="11" cy="11" r="8"/>
                     <path d="m21 21-4.3-4.3"/>
                 </svg>
-                <input type="text" name="q" placeholder="Tìm kiếm game..." value="" autocomplete="off">
+                <input type="text" name="q" placeholder="Tìm kiếm game..." value="{% block search_value %}{% endblock %}" autocomplete="off" aria-label="Tìm kiếm game">
                 <button type="submit">Tìm</button>
             </form>
 
@@ -189,7 +189,7 @@
         </div>
     </footer>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=0.6.5"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
