@@ -287,6 +287,9 @@ pub struct AdminTemplate {
     pub status_counts: Vec<StatusCountChip>,
     pub max_views: i64,
     pub max_downloads: i64,
+    /// News stats cho admin dashboard
+    pub pending_news: i64,
+    pub total_news: i64,
 }
 
 /// Admin reports

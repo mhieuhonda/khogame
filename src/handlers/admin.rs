@@ -48,7 +48,7 @@ pub async fn dashboard(
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
     // 10 truy vấn độc lập — join! chạy song song thay vì cộng dồn
-    // round-trip DB khi admin mở dashboard.
+    // round-trip DB khi admin mở dashboard. Thêm news stats (pending + total).
     let db = &state.db;
     let (
         total_games,
@@ -62,6 +62,8 @@ pub async fn dashboard(
         total_repos,
         pending_repos,
         status_counts,
+        pending_news,
+        total_news,
     ) = tokio::join!(
         GameRepo::count_published(db),
         UserRepo::count_all(db),
@@ -79,6 +81,8 @@ pub async fn dashboard(
         RepoRepo::count_approved(db),
         RepoRepo::pending_count(db),
         GameRepo::count_by_status(db),
+        NewsRepo::count_pending(db),
+        NewsRepo::count_by_status(db, crate::models::news::NewsStatus::Published),
     );
     let total_games = total_games.unwrap_or(0);
     let total_users = total_users.unwrap_or(0);
@@ -129,6 +133,8 @@ pub async fn dashboard(
         status_counts,
         max_views,
         max_downloads,
+        pending_news: pending_news.unwrap_or(0),
+        total_news: total_news.unwrap_or(0),
     })
 }
 

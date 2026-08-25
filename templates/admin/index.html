@@ -41,6 +41,22 @@
             </div>
         </div>
         <div class="admin-stat-card">
+            <div class="stat-icon-wrap yellow">📰</div>
+            <div>
+                <div class="stat-value">{{ total_news }}</div>
+                <div class="stat-label">Tin tức đã đăng</div>
+            </div>
+        </div>
+        {% if pending_news > 0 %}
+        <a href="/admin/news/pending" class="admin-stat-card" style="text-decoration:none;color:inherit">
+            <div class="stat-icon-wrap red">📨</div>
+            <div>
+                <div class="stat-value">{{ pending_news }}</div>
+                <div class="stat-label">Tin chờ duyệt →</div>
+            </div>
+        </a>
+        {% endif %}
+        <div class="admin-stat-card">
             <div class="stat-icon-wrap purple">📦</div>
             <div>
                 <div class="stat-value">{{ total_repos }}</div>
