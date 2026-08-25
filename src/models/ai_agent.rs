@@ -171,3 +171,54 @@ pub struct AiAgentWithProfile {
     pub accent_color: String,
     pub verified: bool,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_privacy_level_roundtrip() {
+        for lvl in [AiPrivacyLevel::Public, AiPrivacyLevel::Anonymous] {
+            assert_eq!(AiPrivacyLevel::from_str(lvl.as_str()), lvl);
+        }
+        // Case-insensitive
+        assert_eq!(
+            AiPrivacyLevel::from_str("ANONYMOUS"),
+            AiPrivacyLevel::Anonymous
+        );
+        assert_eq!(AiPrivacyLevel::from_str("Public"), AiPrivacyLevel::Public);
+        // Giá trị lạ → mặc định Public (an toàn cho hiển thị)
+        assert_eq!(AiPrivacyLevel::from_str("bất kỳ"), AiPrivacyLevel::Public);
+        assert_eq!(AiPrivacyLevel::from_str(""), AiPrivacyLevel::Public);
+    }
+
+    #[test]
+    fn test_privacy_labels() {
+        assert_eq!(AiPrivacyLevel::Public.label(), "Công khai");
+        assert_eq!(AiPrivacyLevel::Anonymous.label(), "Ẩn danh");
+    }
+
+    #[test]
+    fn test_task_status_labels_and_colors() {
+        for s in [
+            AiTaskStatus::Queued,
+            AiTaskStatus::Running,
+            AiTaskStatus::Done,
+            AiTaskStatus::Failed,
+            AiTaskStatus::Cancelled,
+        ] {
+            assert!(!s.label().is_empty());
+            let c = s.color();
+            assert!(
+                c.starts_with('#') && c.len() == 7,
+                "color hex hợp lệ, got {}",
+                c
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_task_status_is_queued() {
+        assert_eq!(AiTaskStatus::default(), AiTaskStatus::Queued);
+    }
+}
