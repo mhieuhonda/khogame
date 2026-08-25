@@ -608,6 +608,29 @@ impl NewsRepo {
         .await?;
         Ok(rows)
     }
+
+    /// Gợi ý tiêu đề tin tức khi user gõ vào ô search.
+    /// Trả về Vec<(title, slug)> cho tối đa `limit` kết quả, chỉ tin published.
+    pub async fn suggest_titles(
+        pool: &PgPool,
+        query: &str,
+        limit: i64,
+    ) -> AppResult<Vec<(String, String)>> {
+        // Escape wildcard + clamp 100 ký tự như search công khai
+        let q: String = query.chars().take(100).collect();
+        let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT title, slug FROM news
+              WHERE status = 'published' AND title ILIKE $1
+              ORDER BY published_at DESC NULLS LAST
+              LIMIT $2"#,
+        )
+        .bind(&pattern)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
 }
 
 #[cfg(test)]

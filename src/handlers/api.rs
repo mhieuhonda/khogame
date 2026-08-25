@@ -440,6 +440,37 @@ pub async fn opensearch_suggestions(
         .into_response())
 }
 
+/// Gợi ý tìm kiếm tin tức (autocomplete) — trả tối đa 8 title + slug.
+/// Dùng cho dropdown khi user gõ ở ô search news.
+pub async fn news_suggest(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<SuggestQuery>,
+) -> AppResult<Response> {
+    let query = q.q.trim();
+    let suggestions = if query.chars().count() < 2 {
+        Vec::new()
+    } else {
+        NewsRepo::suggest_titles(&state.db, query, 8).await.unwrap_or_default()
+    };
+    let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
+    let descs: Vec<String> = suggestions
+        .iter()
+        .map(|(t, _)| format!("Louis Space — {}", t))
+        .collect();
+    let urls: Vec<String> = suggestions
+        .iter()
+        .map(|(_, s)| format!("{}/news/{}", state.config.base_url, s))
+        .collect();
+    Ok((
+        [(
+            header::CONTENT_TYPE,
+            "application/x-suggestions+json; charset=utf-8",
+        )],
+        Json(serde_json::json!([query, titles, descs, urls])),
+    )
+        .into_response())
+}
+
 /// Kiểm tra trùng tiêu đề game khi tạo mới
 #[derive(Deserialize)]
 pub struct DuplicateQuery {
