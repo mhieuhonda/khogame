@@ -1,6 +1,6 @@
-# 🎮 Kho Game
+# 🚀 Louis Space
 
-> Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam, xây dựng bằng Rust.
+> Nền tảng chia sẻ game độc lập & tin tức cộng đồng cho Việt Nam, xây dựng bằng Rust.
 
 ![Rust](https://img.shields.io/badge/Rust-1.98-orange?logo=rust)
 ![Axum](https://img.shields.io/badge/Axum-0.8.9-blue)
@@ -9,7 +9,7 @@
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
 ![Tests](https://img.shields.io/badge/tests-128%2B-brightgreen)
-![Version](https://img.shields.io/badge/version-0.7.0-7c3aed)
+![Version](https://img.shields.io/badge/version-0.8.0-0f172a)
 
 ## 🛠️ Công nghệ
 
@@ -105,14 +105,14 @@ Loại tài khoản thứ 4 (sau User / Moderator / Admin) dành riêng cho AI A
 
 ### ✨ Tính năng mới
 - 📱 **PWA manifest** (`/manifest.json`) — "Add to Home Screen" hoạt động.
-- 🔍 **OpenSearch** (`/opensearch.xml`) — thêm Kho Game vào ô tìm kiếm của
+- 🔍 **OpenSearch** (`/opensearch.xml`) — thêm Louis Space vào ô tìm kiếm của
   thanh địa chỉ Chrome / Firefox / Edge.
 - 🛡️ **security.txt** (`/.well-known/security.txt`, RFC 9116) — thông tin
   liên hệ báo lỗ hổng, mailto:admin, Expires 6 tháng.
 - 🎯 **JSON-LD VideoGame** — trang `/games/{slug}` nhúng structured data
   schema.org → Google hiển thị rich snippet (rating, lượt xem/tải/like).
 - 🚧 **404 fallback page** — route không khớp → trang 404 với giao diện
-  Kho Game thay vì plain text "Not Found".
+  Louis Space thay vì plain text "Not Found".
 - 📡 **API catalog mới**: `GET /api/v1/tags`, `GET /api/v1/categories`.
 - 📦 **API game detail đầy đủ**: thêm `category`, `screenshots`, `label` &
   `url` cho từng platform, `published_at`.
@@ -388,3 +388,46 @@ curl -X POST https://your-domain.com/ai/progress.json \
 
 ## 📜 License
 MIT
+
+---
+
+## 🚀 Cải thiện trong v0.8.0 — Era Louis Space
+
+### 🌐 Rebrand toàn diện
+- Đổi tên web **"Kho Game" → "Louis Space"** ở toàn bộ giao diện (layout,
+  manifest, OpenSearch, RSS, JSON-LD, maintenance, error page, terms).
+- Logo + favicon mới: chữ **L monogram** trên gradient slate-indigo-violet,
+  kèm ngôi sao nhấn — phong cách riêng không đụng hàng.
+- localStorage key `kg-theme` → `ls-theme` (kèm migrate lùi cho user cũ).
+- Cargo `version` 0.7.0 → 0.8.0; authors = "Louis Space Team"; description
+  nhấn mạnh cả mảng tin tức.
+
+### 📰 Mảng tin tức (News) — đang hoàn thiện trong v0.8.x
+- Bảng `news` với workflow `draft → pending → published → archived`.
+- User đăng tin → vào hàng đợi `pending`, admin duyệt mới xuất bản.
+- Lý do: tránh lan truyền tin giả trên nền tảng cộng đồng.
+- Chi tiết triển khai sẽ được commit dần trong các bản 0.8.1, 0.8.2…
+
+### 🛡️ Admin detail view — đang hoàn thiện
+- Admin xem được toàn bộ thông tin user: email, IP, user-agent, last seen,
+  session count…
+- Moderator (role=mod) KHÔNG thấy được các trường nhạy cảm (email/IP/UA),
+  chỉ thấy metadata công khai (username, display_name, role, banned status,
+  game count).
+- Lý do: tách biệt quyền theo nguyên tắc least-privilege.
+
+### 🎨 UI redesign — đang hoàn thiện
+- Chủ đạo **màu trắng** cho light mode (không còn nền tối mặc định khi chưa
+  chọn theme — giờ theo `prefers-color-scheme` hệ điều hành).
+- Dark mode vẫn giữ nhưng làm tối ưu hơn: contrast cao hơn, viền sáng hơn.
+- Mobile-first: tối ưu cho điện thoại trước, scale lên desktop.
+- Phong cách "editorial" với typography rõ ràng, không rập khuôn số đông.
+
+### 🔐 Repo branch protection
+- Rule: chỉ admin (hoặc PAT holder) mới push trực tiếp `main`.
+- Người khác bắt buộc phải tạo branch → mở PR → review → merge.
+- Áp dụng qua GitHub API (script `scripts/setup-branch-protection.sh`).
+
+### 📦 Releases
+- Tag `v0.8.0` trở đi được phát hành qua GitHub Releases với changelog đầy đủ.
+
