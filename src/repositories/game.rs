@@ -69,16 +69,19 @@ impl GameRepo {
         // Insert links
         Self::sync_links(pool, id, form).await?;
 
-        // Insert screenshots
+        // Insert screenshots — propagate lỗi: screenshot là nội dung user
+        // chủ động thêm; fail im lặng (let _ =) khiến user tưởng đã lưu
+        // nhưng trang game thiếu ảnh mà không có thông báo nào. Lỗi thật
+        // (DB down, FK lỗi) phải hiện ra để user biết submit lại.
         for (i, url) in form.screenshots_vec().iter().enumerate() {
-            let _ = sqlx::query(
+            sqlx::query(
                 r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
             )
             .bind(id)
             .bind(url)
             .bind(i as i32)
             .execute(pool)
-            .await;
+            .await?;
         }
 
         // Insert tags
@@ -139,20 +142,20 @@ impl GameRepo {
             .await?;
         Self::sync_links(pool, id, form).await?;
 
-        // Replace screenshots
+        // Replace screenshots — propagate lỗi (đồng bộ với create)
         sqlx::query("DELETE FROM game_screenshots WHERE game_id = $1")
             .bind(id)
             .execute(pool)
             .await?;
         for (i, url) in form.screenshots_vec().iter().enumerate() {
-            let _ = sqlx::query(
+            sqlx::query(
                 r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
             )
             .bind(id)
             .bind(url)
             .bind(i as i32)
             .execute(pool)
-            .await;
+            .await?;
         }
 
         // Replace tags
@@ -213,7 +216,11 @@ impl GameRepo {
         ];
         for (_name, platform, link_opt) in links {
             if let Some(url) = link_opt.as_deref().filter(|s| !s.is_empty()) {
-                let _ = sqlx::query(
+                // Propagate lỗi: link tải là trường BẮT BUỘC của form
+                // (validate đã chặn rỗng) — INSERT fail mà nuốt lỗi thì
+                // game được tạo KHÔNG có link tải nào, trang chi tiết
+                // render nút tải trống.
+                sqlx::query(
                     r#"INSERT INTO game_links (game_id, platform, url) VALUES ($1, $2, $3)
                        ON CONFLICT (game_id, platform) DO UPDATE SET url = EXCLUDED.url"#,
                 )
@@ -221,7 +228,7 @@ impl GameRepo {
                 .bind(platform)
                 .bind(url)
                 .execute(pool)
-                .await;
+                .await?;
             }
         }
         Ok(())
