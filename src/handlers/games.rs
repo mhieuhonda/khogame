@@ -955,35 +955,46 @@ pub async fn search(
     // Clamp từ khóa 200 ký tự (bằng giới hạn title game) — chống gửi
     // pattern khổng lồ làm ILIKE quét chậm toàn bảng games.
     let q_q: String = q.q.chars().take(200).collect();
-    let games = if q_q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
-        GameRepo::list_published(&state.db, per_page, offset, &sort).await?
-    } else {
-        GameRepo::search(
-            &state.db,
-            q_q.trim(),
-            q.category.as_deref(),
-            q.platform.as_deref(),
-            &sort,
-            per_page,
-            offset,
-        )
-        .await?
-    };
-    // Đếm đúng số kết quả khớp bộ lọc (trước đây lấy tổng game đã đăng
-    // → "N kết quả" và phân trang sai khi có từ khóa/bộ lọc)
-    let total = if q_q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
-        GameRepo::count_published(&state.db).await.unwrap_or(0)
-    } else {
-        GameRepo::count_search(
-            &state.db,
-            q_q.trim(),
-            q.category.as_deref(),
-            q.platform.as_deref(),
-        )
-        .await
-        .unwrap_or(0)
-    };
-    let categories = CategoryRepo::list_all(&state.db).await?;
+    let has_filter = !q_q.trim().is_empty() || q.category.is_some() || q.platform.is_some();
+    // 3 truy vấn độc lập (games/total/categories) — join! song song,
+    // trước đây search + count + categories cộng dồn 3 round-trip.
+    let (games, total, categories) = tokio::join!(
+        async {
+            if !has_filter {
+                GameRepo::list_published(&state.db, per_page, offset, &sort).await
+            } else {
+                GameRepo::search(
+                    &state.db,
+                    q_q.trim(),
+                    q.category.as_deref(),
+                    q.platform.as_deref(),
+                    &sort,
+                    per_page,
+                    offset,
+                )
+                .await
+            }
+        },
+        async {
+            // Đếm đúng số kết quả khớp bộ lọc (trước đây lấy tổng game
+            // đã đăng → 'N kết quả' và phân trang sai khi có từ khóa)
+            if !has_filter {
+                GameRepo::count_published(&state.db).await.unwrap_or(0)
+            } else {
+                GameRepo::count_search(
+                    &state.db,
+                    q_q.trim(),
+                    q.category.as_deref(),
+                    q.platform.as_deref(),
+                )
+                .await
+                .unwrap_or(0)
+            }
+        },
+        CategoryRepo::list_all(&state.db),
+    );
+    let games = games?;
+    let categories = categories?;
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(SearchTemplate {
         current_user,
