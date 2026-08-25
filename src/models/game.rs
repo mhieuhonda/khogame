@@ -436,8 +436,8 @@ mod tests {
         assert_eq!(Platform::from_str(""), None);
     }
 
-    /// Roundtrip: from_str(as_str(p)) == p cho mọi platform — đảm bảo
-    /// chuỗi bind vào $n::platform_type luôn parse ngược được (commit
+    /// Roundtrip: `from_str(as_str(p))` == p cho mọi platform — đảm bảo
+    /// chuỗi bind vào $`n::platform_type` luôn parse ngược được (commit
     /// fix download analytics dựa trên bất biến này).
     #[test]
     fn test_platform_as_str_roundtrip() {
@@ -496,14 +496,12 @@ mod tests {
     fn test_age_rating_label_format() {
         for r in AgeRating::all() {
             let l = r.label();
-            assert!(l.contains(" - "), "label phải dạng 'X - mô tả': {}", l);
+            assert!(l.contains(" - "), "label phải dạng 'X - mô tả': {l}");
             assert!(
                 l.chars()
                     .next()
-                    .map(|c| c.is_ascii_uppercase())
-                    .unwrap_or(false),
-                "prefix phân loại viết hoa: {}",
-                l
+                    .is_some_and(|c| c.is_ascii_uppercase()),
+                "prefix phân loại viết hoa: {l}"
             );
         }
     }
