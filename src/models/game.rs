@@ -460,9 +460,32 @@ mod tests {
 
     #[test]
     fn test_age_rating_from_str() {
+        // Đủ cả 4 variant + default path
+        assert_eq!(AgeRating::from_str("everyone"), AgeRating::Everyone);
         assert_eq!(AgeRating::from_str("teen"), AgeRating::Teen);
+        assert_eq!(AgeRating::from_str("mature"), AgeRating::Mature);
         assert_eq!(AgeRating::from_str("adult"), AgeRating::Adult);
+        // Giá trị lạ/empty → Everyone (an toàn cho form cũ)
         assert_eq!(AgeRating::from_str("xyz"), AgeRating::Everyone);
+        assert_eq!(AgeRating::from_str(""), AgeRating::Everyone);
+    }
+
+    /// Label hiển thị UI phải có prefix phân loại (E/T/M/A) + mô tả tuổi —
+    /// guard format để không render nhãn mơ hồ khi đổi chuỗi.
+    #[test]
+    fn test_age_rating_label_format() {
+        for r in AgeRating::all() {
+            let l = r.label();
+            assert!(l.contains(" - "), "label phải dạng 'X - mô tả': {}", l);
+            assert!(
+                l.chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false),
+                "prefix phân loại viết hoa: {}",
+                l
+            );
+        }
     }
 
     #[test]
