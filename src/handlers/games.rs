@@ -369,25 +369,28 @@ pub async fn show_game(
     .await?;
     let related_games = GameRepo::related(&state.db, game.id, game.category_id, 6).await?;
 
+    // 4 check trạng thái tương tác (like/bookmark/follow/rating) độc lập
+    // — join! chạy đồng thời thay vì 4 lần chờ tuần tự.
     let (is_liked, is_bookmarked, is_following_author, user_rating) =
         if let Some(ref u) = current_user {
-            let liked = InteractionRepo::is_liked(&state.db, game.id, u.id)
-                .await
-                .unwrap_or(false);
-            let bm = InteractionRepo::is_bookmarked(&state.db, game.id, u.id)
-                .await
-                .unwrap_or(false);
-            let following = if u.id != author.id {
-                InteractionRepo::is_following(&state.db, u.id, author.id)
-                    .await
-                    .unwrap_or(false)
-            } else {
-                false
-            };
-            let rating = InteractionRepo::get_user_rating(&state.db, game.id, u.id)
-                .await
-                .unwrap_or(None);
-            (liked, bm, following, rating)
+            let (liked_res, bm_res, following_res, rating_res) = tokio::join!(
+                InteractionRepo::is_liked(&state.db, game.id, u.id),
+                InteractionRepo::is_bookmarked(&state.db, game.id, u.id),
+                async {
+                    if u.id != author.id {
+                        InteractionRepo::is_following(&state.db, u.id, author.id).await
+                    } else {
+                        Ok(false)
+                    }
+                },
+                InteractionRepo::get_user_rating(&state.db, game.id, u.id),
+            );
+            (
+                liked_res.unwrap_or(false),
+                bm_res.unwrap_or(false),
+                following_res.unwrap_or(false),
+                rating_res.unwrap_or(None),
+            )
         } else {
             (false, false, false, None)
         };
