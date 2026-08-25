@@ -488,6 +488,74 @@
         }
     });
 
+    // ===== News title duplicate check (form đăng tin) =====
+    // Khi user gõ title ở form /news/new, gọi /api/news-check-duplicate
+    // để cảnh báo nếu tin cùng tên đã có (giống check duplicate game).
+    const newsTitleInput = document.querySelector('input[name="title"][form="news-form"], #news-title-input');
+    if (newsTitleInput) {
+        let dupTimer = null;
+        let dupBox = null;
+        newsTitleInput.addEventListener('input', function() {
+            const title = newsTitleInput.value.trim();
+            if (dupTimer) clearTimeout(dupTimer);
+            if (dupBox) { dupBox.remove(); dupBox = null; }
+            if (title.length < 3) return;
+            dupTimer = setTimeout(function() {
+                fetch('/api/news-check-duplicate?title=' + encodeURIComponent(title))
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (dupBox) { dupBox.remove(); dupBox = null; }
+                        if (!data.exists) return;
+                        dupBox = document.createElement('div');
+                        dupBox.className = 'dup-warning';
+                        dupBox.setAttribute('role', 'alert');
+                        dupBox.innerHTML = '<strong>⚠️ Tin trùng tiêu đề</strong><br><small>Đã có ' + data.count + ' tin tương tự. Hãy đổi tiêu đề hoặc kiểm tra nội dung trùng.</small>';
+                        newsTitleInput.parentNode.insertBefore(dupBox, newsTitleInput.nextSibling);
+                    })
+                    .catch(function() {});
+            }, 400);
+        });
+    }
+
+    // ===== News search autocomplete (ô tìm tin tức) =====
+    const newsSearchInput = document.querySelector('.news-filters input[name="q"]');
+    if (newsSearchInput) {
+        let nsTimer = null;
+        let nsBox = null;
+        newsSearchInput.addEventListener('input', function() {
+            const q = newsSearchInput.value.trim();
+            if (nsTimer) clearTimeout(nsTimer);
+            if (nsBox) { nsBox.remove(); nsBox = null; }
+            if (q.length < 2) return;
+            nsTimer = setTimeout(function() {
+                fetch('/api/news-suggest?q=' + encodeURIComponent(q))
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (nsBox) { nsBox.remove(); nsBox = null; }
+                        if (!data[1] || data[1].length === 0) return;
+                        nsBox = document.createElement('div');
+                        nsBox.className = 'search-suggest news-search-suggest';
+                        nsBox.setAttribute('role', 'listbox');
+                        nsBox.setAttribute('aria-label', 'Gợi ý tìm tin tức');
+                        for (var i = 0; i < data[1].length; i++) {
+                            var a = document.createElement('a');
+                            a.className = 'search-suggest-item';
+                            a.href = data[3][i];
+                            a.textContent = data[1][i];
+                            a.setAttribute('role', 'option');
+                            nsBox.appendChild(a);
+                        }
+                        newsSearchInput.parentNode.style.position = 'relative';
+                        newsSearchInput.parentNode.appendChild(nsBox);
+                    })
+                    .catch(function() {});
+            }, 250);
+        });
+        newsSearchInput.addEventListener('blur', function() {
+            setTimeout(function() { if (nsBox) { nsBox.remove(); nsBox = null; } }, 200);
+        });
+    }
+
     // Không console.log ở prod: noise trong devtools người dùng cuối,
     // một số công ty quét console.log khi audit vendor JS.
 })();

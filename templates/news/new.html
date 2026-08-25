@@ -19,7 +19,7 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/news" class="form-section">
+    <form method="post" action="/news" class="form-section" id="news-form">
         <label for="title">Tiêu đề <span class="req">*</span></label>
         <input type="text" id="title" name="title" value="{{ form.title }}" maxlength="200" required
                placeholder="Ví dụ: GameX công bố phiên bản 2.0 với nhiều tính năng mới">

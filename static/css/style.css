@@ -2796,3 +2796,42 @@ a:hover { color: var(--accent-light); }
         flex-wrap: wrap;
     }
 }
+
+/* Duplicate warning (news title check) */
+.dup-warning {
+    background: #fef3c7;
+    color: #92400e;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+    border-left: 3px solid #f59e0b;
+}
+[data-theme="dark"] .dup-warning {
+    background: #422006;
+    color: #fbbf24;
+}
+.dup-warning strong {
+    color: inherit;
+}
+.dup-warning small {
+    display: block;
+    margin-top: 0.2rem;
+    opacity: 0.9;
+}
+
+/* News search suggest dropdown */
+.news-search-suggest {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    max-height: 320px;
+    overflow-y: auto;
+    z-index: 50;
+}
