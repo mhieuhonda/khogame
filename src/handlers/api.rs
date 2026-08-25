@@ -554,11 +554,23 @@ pub async fn manifest() -> Response {
 
 // ===================== Health nâng cao =====================
 
+/// Thời điểm process khởi động (dùng cho uptime trong health check).
+/// Lazy-init một lần duy nhất khi được gọi đầu tiên.
+static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
 pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
+    let started = START_TIME.get_or_init(std::time::Instant::now);
+    let uptime_secs = started.elapsed().as_secs();
+    let pool = &state.db;
     let db_ok = sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&state.db)
+        .fetch_one(pool)
         .await
         .is_ok();
+    // Pool stats giúp phát hiện connection leak / cạn pool trên prod
+    // mà không cần kết nối trực tiếp vào PostgreSQL để chạy pg_stat_activity.
+    let pool_size = pool.size();
+    let pool_idle = pool.num_idle() as u32;
+    let in_use = pool_size.saturating_sub(pool_idle);
     let (status, body) = if db_ok {
         (
             axum::http::StatusCode::OK,
@@ -566,6 +578,12 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
                 "status": "ok",
                 "version": env!("CARGO_PKG_VERSION"),
                 "database": "up",
+                "pool": {
+                    "size": pool_size,
+                    "idle": pool_idle,
+                    "in_use": in_use,
+                },
+                "uptime_secs": uptime_secs,
                 "time": chrono::Utc::now().to_rfc3339(),
             }),
         )
@@ -576,6 +594,12 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
                 "status": "degraded",
                 "version": env!("CARGO_PKG_VERSION"),
                 "database": "down",
+                "pool": {
+                    "size": pool_size,
+                    "idle": pool_idle,
+                    "in_use": in_use,
+                },
+                "uptime_secs": uptime_secs,
                 "time": chrono::Utc::now().to_rfc3339(),
             }),
         )
