@@ -3,7 +3,7 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
 use crate::state::AppState;
-use crate::templates::*;
+use crate::templates::{ProfileTemplate, EditProfileTemplate, BookmarksTemplate};
 use axum::extract::{Path, Query, State};
 use axum::response::Redirect;
 use axum::Form;
@@ -26,8 +26,7 @@ pub async fn show_profile(
     }
     let is_self = current_user
         .as_ref()
-        .map(|u| u.id == user.id)
-        .unwrap_or(false);
+        .is_some_and(|u| u.id == user.id);
     // 5 query độc lập (stats/games/follow-check/preferences/ai_profile)
     // chạy SONG SONG — trước đây tuần tự, trang hồ sơ chịu tổng thời
     // gian 5 round-trip DB liền nhau.
