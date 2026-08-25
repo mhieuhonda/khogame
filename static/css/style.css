@@ -107,8 +107,10 @@ a:hover { color: var(--accent-light); }
     position: sticky;
     top: 0;
     z-index: 100;
-    backdrop-filter: blur(12px);
-    background: rgba(21, 21, 31, 0.9);
+    /* backdrop-filter cho modern browsers — fallback opaque nếu không support */
+    backdrop-filter: blur(12px) saturate(180%);
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
 }
 
 .header-inner {
