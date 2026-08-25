@@ -4,6 +4,16 @@
 
 {% block search_value %}{{ query }}{% endblock %}
 
+{% block head_extra %}
+{# Trang kết quả search là thin content (trùng danh sách game theo
+   từ khoá tuỳ ý) — Google khuyến nghị noindex, để crawler tập trung
+   budget vào trang game/category/tag thật. Chỉ noindex khi CÓ từ
+   khóa; /search trống vẫn index như trang khám phá. #}
+{% if !query.is_empty() %}
+<meta name="robots" content="noindex, follow">
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <section class="search-page">
     <div class="page-header">
