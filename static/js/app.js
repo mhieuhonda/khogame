@@ -15,6 +15,15 @@
         localStorage.setItem('kg-theme', theme);
     }
 
+    // Đồng bộ theme giữa các tab đang mở của cùng site: user đổi theme
+    // ở tab A → tab B (đang mở trang game) cũng đổi theo ngay lập tức
+    // thay vì đến khi reload mới thấy chớp nhác theme cũ.
+    window.addEventListener('storage', function(e) {
+        if (e.key === 'kg-theme' && (e.newValue === 'dark' || e.newValue === 'light')) {
+            document.documentElement.setAttribute('data-theme', e.newValue);
+        }
+    });
+
     // Lần đầu (chưa chọn theme): theo hệ điều hành của người dùng.
     // Sau khi user chủ động bấm toggle thì luôn tôn trọng lựa chọn đó.
     function initialTheme() {
