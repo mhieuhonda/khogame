@@ -32,14 +32,14 @@ pub enum AppError {
 impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         match e {
-            sqlx::Error::RowNotFound => AppError::NotFound("Bản ghi không tồn tại".into()),
+            sqlx::Error::RowNotFound => Self::NotFound("Bản ghi không tồn tại".into()),
             // Unique violation (23505): map sang Conflict để handler phân
             // biệt được race trùng slug/UNIQUE constraint thay vì nhận 500
             // chung chung. as_database_error() trả &[u8] code chuẩn SQLSTATE.
             sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-                AppError::Conflict("Dữ liệu đã tồn tại (trùng khóa duy nhất)".into())
+                Self::Conflict("Dữ liệu đã tồn tại (trùng khóa duy nhất)".into())
             }
-            _ => AppError::Database(e),
+            _ => Self::Database(e),
         }
     }
 }
@@ -49,11 +49,11 @@ impl AppError {
     /// unit test được (`IntoResponse` cần render template, khó test hơn).
     pub fn status_and_message(&self) -> (StatusCode, String) {
         let status = match self {
-            AppError::NotFound(_) => StatusCode::NOT_FOUND,
-            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
-            AppError::Forbidden(_) => StatusCode::FORBIDDEN,
-            AppError::BadRequest(_) | AppError::Conflict(_) => StatusCode::BAD_REQUEST,
-            AppError::Database(e) => {
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::Unauthorized => StatusCode::UNAUTHORIZED,
+            Self::Forbidden(_) => StatusCode::FORBIDDEN,
+            Self::BadRequest(_) | Self::Conflict(_) => StatusCode::BAD_REQUEST,
+            Self::Database(e) => {
                 tracing::error!("DB error: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             }
