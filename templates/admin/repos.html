@@ -33,7 +33,7 @@
                 {% if r.status.label() != "Đã ẩn" %}
                 <form hx-post="/admin/repos/{{ r.id }}/status" hx-vals='{"status":"hidden"}' hx-target="#repo-status-{{ r.id }}" hx-swap="outerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
                 {% endif %}
-                <form hx-post="/repos/{{ r.id }}/refresh" hx-swap="none" title="Làm mới số sao từ GitHub"><button class="btn btn-outline btn-sm" type="submit">↻</button></form>
+                <form hx-post="/repos/{{ r.id }}/refresh" hx-swap="none" title="Làm mới số sao từ GitHub"><button class="btn btn-outline btn-sm" type="submit" aria-label="Làm mới metadata repo {{ r.full_name() }} từ GitHub">↻</button></form>
             </div>
         </div>
         {% endfor %}
