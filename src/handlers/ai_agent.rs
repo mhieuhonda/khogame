@@ -572,3 +572,35 @@ pub async fn info(
         verified: profile.verified,
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_constant_time_eq_basic() {
+        assert!(constant_time_eq(b"secret123", b"secret123"));
+        assert!(!constant_time_eq(b"secret123", b"secret124"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+    }
+
+    #[test]
+    fn test_constant_time_eq_length_mismatch() {
+        // Khác độ dài → false ngay (không rò timing đáng kể vì长度
+        // là public qua nhiều kênh khác)
+        assert!(!constant_time_eq(b"short", b"longer-string"));
+        assert!(!constant_time_eq(b"", b"x"));
+        assert!(constant_time_eq(b"", b""));
+    }
+
+    #[test]
+    fn test_constant_time_eq_no_early_exit() {
+        // Khác nhau ở byte ĐẦU phải cho kết quả giống khác nhau ở byte CUỐI
+        // (nếu có early-return theo vị trí byte sẽ lệch timing)
+        let a = b"aaaaaaaaaaaaaaaa";
+        let first = b"baaaaaaaaaaaaaaa";
+        let last = b"aaaaaaaaaaaaaab";
+        assert!(!constant_time_eq(a, first));
+        assert!(!constant_time_eq(a, last));
+    }
+}
