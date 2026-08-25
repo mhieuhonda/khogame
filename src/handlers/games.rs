@@ -725,18 +725,21 @@ async fn build_list_template(
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
 
-    // Trang "featured" chỉ liệt kê game nổi bật, không phải toàn bộ game
-    let (games, total) = if list_type == "featured" {
-        (
-            GameRepo::featured(&state.db, per_page, offset).await?,
-            GameRepo::count_featured(&state.db).await.unwrap_or(0),
+    // Trang "featured" chỉ liệt kê game nổi bật, không phải toàn bộ game.
+    // games + total độc lập — join! song song.
+    let (games_res, total_res) = if list_type == "featured" {
+        tokio::join!(
+            GameRepo::featured(&state.db, per_page, offset),
+            GameRepo::count_featured(&state.db),
         )
     } else {
-        (
-            GameRepo::list_published(&state.db, per_page, offset, &sort).await?,
-            GameRepo::count_published(&state.db).await.unwrap_or(0),
+        tokio::join!(
+            GameRepo::list_published(&state.db, per_page, offset, &sort),
+            GameRepo::count_published(&state.db),
         )
     };
+    let games = games_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_for(state, current_user.as_ref()).await;
     let base = if list_type == "all" {
         "/games".to_string()
@@ -863,12 +866,14 @@ pub async fn list_by_category(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    let games = GameRepo::by_category(&state.db, &cat_slug, per_page, offset).await?;
     // Đếm đúng tổng số game của thể loại (trước đây lấy games.len() →
     // pagination luôn báo 1 trang dù còn game ở trang sau)
-    let total = GameRepo::count_by_category(&state.db, &cat_slug)
-        .await
-        .unwrap_or(0);
+    let (games_res, total_res) = tokio::join!(
+        GameRepo::by_category(&state.db, &cat_slug, per_page, offset),
+        GameRepo::count_by_category(&state.db, &cat_slug),
+    );
+    let games = games_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(GameListTemplate {
         current_user,
@@ -900,10 +905,12 @@ pub async fn list_by_tag(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    let games = GameRepo::by_tag(&state.db, &tag_slug, per_page, offset).await?;
-    let total = GameRepo::count_by_tag(&state.db, &tag_slug)
-        .await
-        .unwrap_or(0);
+    let (games_res, total_res) = tokio::join!(
+        GameRepo::by_tag(&state.db, &tag_slug, per_page, offset),
+        GameRepo::count_by_tag(&state.db, &tag_slug),
+    );
+    let games = games_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
     Ok(GameListTemplate {
         current_user,
