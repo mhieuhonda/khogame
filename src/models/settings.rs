@@ -100,3 +100,68 @@ impl SessionRow {
         ua.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session_with_ua(ua: &str) -> SessionRow {
+        SessionRow {
+            id: Uuid::nil(),
+            user_id: Uuid::nil(),
+            username: "tester".into(),
+            display_name: "Tester".into(),
+            user_agent: if ua.is_empty() { None } else { Some(ua.into()) },
+            ip_address: None,
+            created_at: chrono::Utc::now(),
+            expires_at: chrono::Utc::now() + chrono::Duration::days(30),
+        }
+    }
+
+    #[test]
+    fn test_ua_summary_detects_browsers() {
+        // Edge phải nhận trước Chrome (chuỗi Edg có chứa Chrome token)
+        assert_eq!(
+            session_with_ua("Mozilla/5.0 Windows NT 10.0 Chrome/120.0.0.0 Edg/120.0.0.0")
+                .ua_summary(),
+            "Edge"
+        );
+        assert_eq!(
+            session_with_ua("Mozilla/5.0 (X11; Linux x86_64) Chrome/119.0.0.0 Safari/537.36")
+                .ua_summary(),
+            "Chrome"
+        );
+        assert_eq!(
+            session_with_ua("Mozilla/5.0 Firefox/121.0").ua_summary(),
+            "Firefox"
+        );
+        assert_eq!(
+            session_with_ua("Mozilla/5.0 iPhone Safari/604.1 Mobile/15E148").ua_summary(),
+            "Safari Mobile"
+        );
+    }
+
+    #[test]
+    fn test_ua_summary_special_clients() {
+        assert_eq!(
+            session_with_ua("ai-agent-web").ua_summary(),
+            "AI Agent (web)"
+        );
+        assert_eq!(session_with_ua("curl/8.5.0").ua_summary(), "curl");
+        assert_eq!(
+            session_with_ua("python-requests/2.31.0").ua_summary(),
+            "Python client"
+        );
+        assert_eq!(
+            session_with_ua("Go-http-client/2.0").ua_summary(),
+            "Go client"
+        );
+    }
+
+    #[test]
+    fn test_ua_summary_empty_and_unknown() {
+        // UA rỗng → dấu gạch (session do hệ thống tạo không kèm UA)
+        assert_eq!(session_with_ua("").ua_summary(), "—");
+        assert_eq!(session_with_ua("SomeWeirdBot/9.9").ua_summary(), "Khác");
+    }
+}
