@@ -32,12 +32,12 @@ impl NewsRepo {
         author_ua: Option<&str>,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO news (
+            r"INSERT INTO news (
                 user_id, title, slug, excerpt, content, cover_image,
                 category, source_url, source_name, status,
                 author_ip, author_ua
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', $10, $11)
-              RETURNING id"#,
+              RETURNING id",
         )
         .bind(user_id)
         .bind(&form.title)
@@ -57,8 +57,7 @@ impl NewsRepo {
             if let sqlx::Error::Database(ref db) = e {
                 if db.code().as_deref() == Some("23505") {
                     return AppError::Conflict(format!(
-                        "Tin tức với đường dẫn '{}' đã tồn tại. Hãy đổi tiêu đề.",
-                        slug
+                        "Tin tức với đường dẫn '{slug}' đã tồn tại. Hãy đổi tiêu đề."
                     ));
                 }
             }
@@ -72,10 +71,10 @@ impl NewsRepo {
     /// approve/reject/archive endpoints riêng.
     pub async fn update(pool: &PgPool, id: Uuid, form: &NewsForm) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE news SET
+            r"UPDATE news SET
                 title = $1, excerpt = $2, content = $3, cover_image = $4,
                 category = $5, source_url = $6, source_name = $7
-              WHERE id = $8"#,
+              WHERE id = $8",
         )
         .bind(&form.title)
         .bind(&form.excerpt)
@@ -98,7 +97,7 @@ impl NewsRepo {
     ) -> AppResult<Vec<NewsWithAuthor>> {
         let offset = (page - 1).max(0) * per_page;
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+            r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
                      n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
@@ -108,7 +107,7 @@ impl NewsRepo {
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published'
               ORDER BY n.is_featured DESC, n.published_at DESC NULLS LAST, n.created_at DESC
-              LIMIT $1 OFFSET $2"#,
+              LIMIT $1 OFFSET $2",
         )
         .bind(per_page)
         .bind(offset)
@@ -125,10 +124,10 @@ impl NewsRepo {
         Ok(count)
     }
 
-    /// Lấy tin nổi bật (is_featured=true, status=published).
+    /// Lấy tin nổi bật (`is_featured=true`, status=published).
     pub async fn list_featured(pool: &PgPool, limit: i64) -> AppResult<Vec<NewsWithAuthor>> {
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+            r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
                      n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
@@ -138,7 +137,7 @@ impl NewsRepo {
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published' AND n.is_featured = TRUE
               ORDER BY n.published_at DESC NULLS LAST
-              LIMIT $1"#,
+              LIMIT $1",
         )
         .bind(limit)
         .fetch_all(pool)
@@ -155,7 +154,7 @@ impl NewsRepo {
     ) -> AppResult<Vec<NewsWithAuthor>> {
         let offset = (page - 1).max(0) * per_page;
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+            r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
                      n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
@@ -165,7 +164,7 @@ impl NewsRepo {
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published' AND n.category = $1
               ORDER BY n.published_at DESC NULLS LAST, n.created_at DESC
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(category)
         .bind(per_page)
@@ -185,7 +184,7 @@ impl NewsRepo {
         let offset = (page - 1).max(0) * per_page;
         let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+            r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
                      n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
@@ -196,7 +195,7 @@ impl NewsRepo {
               WHERE n.status = 'published'
                 AND (n.title ILIKE $1 OR n.content ILIKE $1)
               ORDER BY n.published_at DESC NULLS LAST
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(&pattern)
         .bind(per_page)
@@ -212,7 +211,7 @@ impl NewsRepo {
         slug: &str,
     ) -> AppResult<Option<NewsWithAuthor>> {
         let item = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+            r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
                      n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
@@ -221,7 +220,7 @@ impl NewsRepo {
               FROM news n
               JOIN users u ON u.id = n.user_id
               WHERE n.slug = $1
-                AND n.status IN ('published', 'archived')"#,
+                AND n.status IN ('published', 'archived')",
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -232,12 +231,12 @@ impl NewsRepo {
     /// Lấy tin theo slug — không check status (admin xem).
     pub async fn find_by_slug_admin(pool: &PgPool, slug: &str) -> AppResult<Option<NewsForAdmin>> {
         let item = sqlx::query_as::<_, NewsForAdmin>(
-            r#"SELECT n.*, u.display_name AS author_name,
+            r"SELECT n.*, u.display_name AS author_name,
                      u.username AS author_username, u.email AS author_email,
                      u.avatar_url AS author_avatar
               FROM news n
               JOIN users u ON u.id = n.user_id
-              WHERE n.slug = $1"#,
+              WHERE n.slug = $1",
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -248,11 +247,11 @@ impl NewsRepo {
     /// Lấy tin theo id — dùng cho admin actions (approve/reject/archive).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<News>> {
         let item = sqlx::query_as::<_, News>(
-            r#"SELECT id, user_id, title, slug, excerpt, content, cover_image,
+            r"SELECT id, user_id, title, slug, excerpt, content, cover_image,
                      category, source_url, source_name, status, author_ip, author_ua,
                      reviewed_by, review_note, view_count, like_count, comment_count,
                      is_featured, published_at, created_at, updated_at
-              FROM news WHERE id = $1"#,
+              FROM news WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -260,7 +259,7 @@ impl NewsRepo {
         Ok(item)
     }
 
-    /// Bump view_count +1. Best-effort, không ảnh hưởng request chính.
+    /// Bump `view_count` +1. Best-effort, không ảnh hưởng request chính.
     pub async fn increment_views(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE news SET view_count = view_count + 1 WHERE id = $1")
             .bind(id)
@@ -272,7 +271,7 @@ impl NewsRepo {
     // ===== Admin: workflow duyệt =====
 
     /// Danh sách tin đang chờ duyệt (status='pending'), mới trước.
-    /// Trả về NewsForAdmin để admin xem được IP/UA/email tác giả.
+    /// Trả về `NewsForAdmin` để admin xem được IP/UA/email tác giả.
     pub async fn list_pending(
         pool: &PgPool,
         page: i64,
@@ -280,14 +279,14 @@ impl NewsRepo {
     ) -> AppResult<Vec<NewsForAdmin>> {
         let offset = (page - 1).max(0) * per_page;
         let items = sqlx::query_as::<_, NewsForAdmin>(
-            r#"SELECT n.*, u.display_name AS author_name,
+            r"SELECT n.*, u.display_name AS author_name,
                      u.username AS author_username, u.email AS author_email,
                      u.avatar_url AS author_avatar
               FROM news n
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'pending'
               ORDER BY n.created_at ASC
-              LIMIT $1 OFFSET $2"#,
+              LIMIT $1 OFFSET $2",
         )
         .bind(per_page)
         .bind(offset)
@@ -303,15 +302,15 @@ impl NewsRepo {
         Ok(count)
     }
 
-    /// Duyệt tin: pending → published, set published_at + reviewed_by.
+    /// Duyệt tin: pending → published, set `published_at` + `reviewed_by`.
     pub async fn approve(pool: &PgPool, id: Uuid, admin_id: Uuid) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE news SET
+            r"UPDATE news SET
                 status = 'published',
                 published_at = COALESCE(published_at, NOW()),
                 reviewed_by = $2,
                 review_note = ''
-              WHERE id = $1"#,
+              WHERE id = $1",
         )
         .bind(id)
         .bind(admin_id)
@@ -320,14 +319,14 @@ impl NewsRepo {
         Ok(())
     }
 
-    /// Từ chối tin: pending → rejected, kèm review_note.
+    /// Từ chối tin: pending → rejected, kèm `review_note`.
     pub async fn reject(pool: &PgPool, id: Uuid, admin_id: Uuid, note: &str) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE news SET
+            r"UPDATE news SET
                 status = 'rejected',
                 reviewed_by = $2,
                 review_note = $3
-              WHERE id = $1"#,
+              WHERE id = $1",
         )
         .bind(id)
         .bind(admin_id)
@@ -346,11 +345,11 @@ impl NewsRepo {
         Ok(())
     }
 
-    /// Toggle is_featured (chỉ tác động tới published).
+    /// Toggle `is_featured` (chỉ tác động tới published).
     pub async fn set_featured(pool: &PgPool, id: Uuid, featured: bool) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE news SET is_featured = $2
-              WHERE id = $1 AND status = 'published'"#,
+            r"UPDATE news SET is_featured = $2
+              WHERE id = $1 AND status = 'published'",
         )
         .bind(id)
         .bind(featured)
@@ -376,24 +375,24 @@ impl NewsRepo {
     ) -> AppResult<Vec<News>> {
         let items = if include_unpublished {
             sqlx::query_as::<_, News>(
-                r#"SELECT id, user_id, title, slug, excerpt, content, cover_image,
+                r"SELECT id, user_id, title, slug, excerpt, content, cover_image,
                           category, source_url, source_name, status, author_ip, author_ua,
                           reviewed_by, review_note, view_count, like_count, comment_count,
                           is_featured, published_at, created_at, updated_at
                    FROM news WHERE user_id = $1
-                   ORDER BY created_at DESC"#,
+                   ORDER BY created_at DESC",
             )
             .bind(user_id)
             .fetch_all(pool)
             .await?
         } else {
             sqlx::query_as::<_, News>(
-                r#"SELECT id, user_id, title, slug, excerpt, content, cover_image,
+                r"SELECT id, user_id, title, slug, excerpt, content, cover_image,
                           category, source_url, source_name, status, author_ip, author_ua,
                           reviewed_by, review_note, view_count, like_count, comment_count,
                           is_featured, published_at, created_at, updated_at
                    FROM news WHERE user_id = $1 AND status IN ('published', 'archived')
-                   ORDER BY published_at DESC NULLS LAST, created_at DESC"#,
+                   ORDER BY published_at DESC NULLS LAST, created_at DESC",
             )
             .bind(user_id)
             .fetch_all(pool)
@@ -452,8 +451,8 @@ impl NewsRepo {
         content: &str,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO news_comments (news_id, user_id, parent_id, content)
-              VALUES ($1, $2, $3, $4) RETURNING id"#,
+            r"INSERT INTO news_comments (news_id, user_id, parent_id, content)
+              VALUES ($1, $2, $3, $4) RETURNING id",
         )
         .bind(news_id)
         .bind(user_id)
@@ -471,7 +470,7 @@ impl NewsRepo {
         offset: i64,
     ) -> AppResult<Vec<NewsCommentWithAuthor>> {
         let items = sqlx::query_as::<_, NewsCommentWithAuthor>(
-            r#"SELECT c.id, c.news_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.news_id, c.user_id, c.parent_id, c.content,
                      c.like_count, c.is_pinned, c.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -479,7 +478,7 @@ impl NewsRepo {
               JOIN users u ON u.id = c.user_id
               WHERE c.news_id = $1 AND c.parent_id IS NULL
               ORDER BY c.is_pinned DESC, c.created_at DESC
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(news_id)
         .bind(limit)
@@ -494,14 +493,14 @@ impl NewsRepo {
         parent_id: Uuid,
     ) -> AppResult<Vec<NewsCommentWithAuthor>> {
         let items = sqlx::query_as::<_, NewsCommentWithAuthor>(
-            r#"SELECT c.id, c.news_id, c.user_id, c.parent_id, c.content,
+            r"SELECT c.id, c.news_id, c.user_id, c.parent_id, c.content,
                      c.like_count, c.is_pinned, c.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
               FROM news_comments c
               JOIN users u ON u.id = c.user_id
               WHERE c.parent_id = $1
-              ORDER BY c.created_at ASC"#,
+              ORDER BY c.created_at ASC",
         )
         .bind(parent_id)
         .fetch_all(pool)
@@ -537,12 +536,12 @@ impl NewsRepo {
         Ok(())
     }
 
-    /// Lấy 1 NewsComment theo id (kiểm tra quyền).
+    /// Lấy 1 `NewsComment` theo id (kiểm tra quyền).
     pub async fn find_comment_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<NewsComment>> {
         let item = sqlx::query_as::<_, NewsComment>(
-            r#"SELECT id, news_id, user_id, parent_id, content, like_count,
+            r"SELECT id, news_id, user_id, parent_id, content, like_count,
                      is_pinned, created_at, updated_at
-              FROM news_comments WHERE id = $1"#,
+              FROM news_comments WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -601,12 +600,12 @@ impl NewsRepo {
     /// Top tác giả tin tức (cho dashboard).
     pub async fn top_authors(pool: &PgPool, limit: i64) -> AppResult<Vec<(Uuid, String, i64)>> {
         let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(
-            r#"SELECT n.user_id, u.display_name, COUNT(*)::BIGINT AS cnt
+            r"SELECT n.user_id, u.display_name, COUNT(*)::BIGINT AS cnt
               FROM news n JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published'
               GROUP BY n.user_id, u.display_name
               ORDER BY cnt DESC
-              LIMIT $1"#,
+              LIMIT $1",
         )
         .bind(limit)
         .fetch_all(pool)
@@ -625,10 +624,10 @@ impl NewsRepo {
         let q: String = query.chars().take(100).collect();
         let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
         let rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT title, slug FROM news
+            r"SELECT title, slug FROM news
               WHERE status = 'published' AND title ILIKE $1
               ORDER BY published_at DESC NULLS LAST
-              LIMIT $2"#,
+              LIMIT $2",
         )
         .bind(&pattern)
         .bind(limit)
