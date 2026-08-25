@@ -3,6 +3,7 @@
         hx-post="/u/{{ target_username }}/follow"
         hx-target="this"
         hx-swap="outerHTML"
-        hx-disabled-elt="this">
+        hx-disabled-elt="this"
+        aria-pressed="{% if is_following %}true{% else %}false{% endif %}">
     {% if is_following %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
 </button>

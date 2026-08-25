@@ -92,7 +92,9 @@
                         hx-post="/u/{{ user.username }}/follow"
                         hx-target="this"
                         hx-swap="outerHTML"
-                        hx-disabled-elt="this">
+                        hx-disabled-elt="this"
+                        aria-pressed="{% if is_following %}true{% else %}false{% endif %}"
+                        aria-label="{% if is_following %}Bỏ theo dõi {{ user.display_name }}{% else %}Theo dõi {{ user.display_name }}{% endif %}">
                     {% if is_following %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
                 </button>
                 {% endif %}
@@ -145,7 +147,7 @@
                     <div class="game-card-cover">
                         {% match game.cover_image %}
                         {% when Option::Some with (url) %}
-                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                            {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy" decoding="async" width="320" height="180">
                             {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
                         {% when Option::None %}
                         <div class="cover-fallback">{{ game.title|initials }}</div>
