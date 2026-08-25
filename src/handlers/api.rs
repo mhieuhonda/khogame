@@ -45,6 +45,9 @@ pub struct ApiListQuery {
     pub page: Option<i64>,
     pub sort: Option<String>,
     pub q: Option<String>,
+    /// Số game mỗi trang — client kiểm soát (1-50, mặc định 24).
+    /// Cạnh trên 50 chống AI crawler kéo toàn bảng trong 1 request.
+    pub per_page: Option<i64>,
 }
 
 pub async fn games_list(
@@ -52,7 +55,7 @@ pub async fn games_list(
     Query(q): Query<ApiListQuery>,
 ) -> AppResult<Response> {
     let page = q.page.unwrap_or(1).max(1);
-    let per_page: i64 = 24;
+    let per_page: i64 = q.per_page.unwrap_or(24).clamp(1, 50);
     let offset = (page - 1) * per_page;
     let sort = q.sort.clone().unwrap_or_else(|| "latest".into());
 
@@ -997,7 +1000,7 @@ pub async fn root(State(state): State<Arc<AppState>>) -> Response {
         "documentation": format!("{}/api/v1", base),
         "endpoints": [
             {"method": "GET", "path": "/api/v1", "description": "Discovery — danh sách endpoint"},
-            {"method": "GET", "path": "/api/v1/games", "description": "Danh sách game (có phân trang, sort, search)"},
+            {"method": "GET", "path": "/api/v1/games", "description": "Danh sách game (phân trang: page, per_page 1-50; sort; search q)"},
             {"method": "GET", "path": "/api/v1/games/{slug}", "description": "Chi tiết game"},
             {"method": "GET", "path": "/api/v1/games/{slug}/related", "description": "Game liên quan"},
             {"method": "GET", "path": "/api/v1/games/{slug}/comments", "description": "Bình luận của game (phân trang)"},
