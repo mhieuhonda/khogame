@@ -454,20 +454,6 @@ pub struct PrivacyPageTemplate {
 // ============= HTMX partials =============
 
 #[derive(Template)]
-#[template(path = "partials/game_card.html")]
-pub struct GameCardPartial<'a> {
-    pub game: &'a GameCard,
-    pub current_user: Option<&'a user::User>,
-}
-
-#[derive(Template)]
-#[template(path = "partials/game_grid.html")]
-pub struct GameGridPartial<'a> {
-    pub games: &'a [GameCard],
-    pub current_user: Option<&'a user::User>,
-}
-
-#[derive(Template)]
 #[template(path = "partials/like_button.html")]
 pub struct LikeButtonPartial {
     pub game_id: uuid::Uuid,
@@ -491,16 +477,6 @@ pub struct CommentItemPartial<'a> {
     pub game_slug: &'a str,
     pub current_user: Option<&'a user::User>,
     /// Chỉ bật lazy-load replies cho bình luận cấp 1 (reply không có con)
-    pub load_replies: bool,
-}
-
-#[derive(Template)]
-#[template(path = "partials/comment_list.html")]
-pub struct CommentListPartial<'a> {
-    pub comments: &'a [comment::CommentWithUser],
-    pub game_slug: &'a str,
-    pub current_user: Option<&'a user::User>,
-    /// Truyền xuống từng comment item (lazy-load replies cấp 1)
     pub load_replies: bool,
 }
 
@@ -551,26 +527,9 @@ pub struct DownloadButtonsPartial<'a> {
 }
 
 #[derive(Template)]
-#[template(path = "partials/share_buttons.html")]
-pub struct ShareButtonsPartial<'a> {
-    pub slug: &'a str,
-    pub title: &'a str,
-    /// URL tuyệt đối (vd https://domain.com/games/slug)
-    pub share_url: String,
-}
-
-#[derive(Template)]
 #[template(path = "partials/report_modal.html")]
 pub struct ReportModalPartial<'a> {
     pub slug: &'a str,
-}
-
-#[derive(Template)]
-#[template(path = "partials/empty_state.html")]
-pub struct EmptyStatePartial {
-    pub icon: String,
-    pub title: String,
-    pub message: String,
 }
 
 // Helper functions exposed to templates (Askama 0.16 custom filters)
