@@ -62,7 +62,14 @@ pub async fn games_list(
         }
         None => GameRepo::list_published(&state.db, per_page, offset, &sort).await?,
     };
-    let total = GameRepo::count_published(&state.db).await.unwrap_or(0);
+    // Bug fix: khi có search query, total phải là số kết quả khớp query
+    // chứ không phải tổng số game — nếu không client tính số trang sai.
+    let total = match q.q.as_deref().filter(|s| !s.trim().is_empty()) {
+        Some(query) => GameRepo::count_search(&state.db, query.trim(), None, None)
+            .await
+            .unwrap_or(0),
+        None => GameRepo::count_published(&state.db).await.unwrap_or(0),
+    };
 
     let data: Vec<ApiGame> = cards
         .iter()
