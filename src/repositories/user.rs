@@ -9,10 +9,10 @@ pub struct UserRepo;
 impl UserRepo {
     pub async fn find_by_google_sub(pool: &PgPool, sub: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
                 signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE google_sub = $1"#,
+              FROM users WHERE google_sub = $1",
         )
         .bind(sub)
         .fetch_optional(pool)
@@ -22,10 +22,10 @@ impl UserRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
                 signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE id = $1"#,
+              FROM users WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -35,10 +35,10 @@ impl UserRepo {
 
     pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
                 signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE username = $1"#,
+              FROM users WHERE username = $1",
         )
         .bind(username)
         .fetch_optional(pool)
@@ -66,12 +66,12 @@ impl UserRepo {
         let username = Self::ensure_unique_username(pool, &base_username).await;
 
         let user = sqlx::query_as::<_, User>(
-            r#"INSERT INTO users (email, username, display_name, avatar_url, google_sub,
+            r"INSERT INTO users (email, username, display_name, avatar_url, google_sub,
                   signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $7, NOW())
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at"#,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
         )
         .bind(email)
         .bind(&username)
@@ -94,7 +94,7 @@ impl UserRepo {
         Ok(user)
     }
 
-    /// Cập nhật last_login_ip/ua/at khi user đăng nhập lại.
+    /// Cập nhật `last_login_ip/ua/at` khi user đăng nhập lại.
     /// Best-effort: lỗi không block login flow.
     pub async fn record_login(
         pool: &PgPool,
@@ -103,11 +103,11 @@ impl UserRepo {
         ua: Option<&str>,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"UPDATE users SET
+            r"UPDATE users SET
                 last_login_ip = $2,
                 last_login_ua = $3,
                 last_login_at = NOW()
-              WHERE id = $1"#,
+              WHERE id = $1",
         )
         .bind(user_id)
         .bind(ip)
@@ -142,11 +142,11 @@ impl UserRepo {
         };
 
         let user = sqlx::query_as::<_, User>(
-            r#"UPDATE users SET display_name = $1, bio = $2, avatar_url = COALESCE($3, avatar_url)
+            r"UPDATE users SET display_name = $1, bio = $2, avatar_url = COALESCE($3, avatar_url)
               WHERE id = $4
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at"#,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
         )
         .bind(display_name)
         .bind(bio)
@@ -201,8 +201,8 @@ impl UserRepo {
 
     pub async fn get_preferences(pool: &PgPool, user_id: Uuid) -> AppResult<UserPreference> {
         let pref = sqlx::query_as::<_, UserPreference>(
-            r#"SELECT theme, email_notifications, show_online, language
-              FROM user_preferences WHERE user_id = $1"#,
+            r"SELECT theme, email_notifications, show_online, language
+              FROM user_preferences WHERE user_id = $1",
         )
         .bind(user_id)
         .fetch_optional(pool)
@@ -219,13 +219,13 @@ impl UserRepo {
         language: &str,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO user_preferences (user_id, theme, email_notifications, show_online, language)
+            r"INSERT INTO user_preferences (user_id, theme, email_notifications, show_online, language)
               VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT (user_id) DO UPDATE SET
                 theme = EXCLUDED.theme,
                 email_notifications = EXCLUDED.email_notifications,
                 show_online = EXCLUDED.show_online,
-                language = EXCLUDED.language"#,
+                language = EXCLUDED.language",
         )
         .bind(user_id)
         .bind(theme)
@@ -243,9 +243,9 @@ impl UserRepo {
     /// lần nào).
     pub async fn update_theme_only(pool: &PgPool, user_id: Uuid, theme: &str) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO user_preferences (user_id, theme)
+            r"INSERT INTO user_preferences (user_id, theme)
               VALUES ($1, $2)
-              ON CONFLICT (user_id) DO UPDATE SET theme = EXCLUDED.theme"#,
+              ON CONFLICT (user_id) DO UPDATE SET theme = EXCLUDED.theme",
         )
         .bind(user_id)
         .bind(theme)
@@ -256,9 +256,9 @@ impl UserRepo {
 
     pub async fn list_admins(pool: &PgPool) -> AppResult<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
-            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at
-              FROM users WHERE role IN ('admin', 'moderator') ORDER BY created_at"#,
+              FROM users WHERE role IN ('admin', 'moderator') ORDER BY created_at",
         )
         .fetch_all(pool)
         .await?;
@@ -284,7 +284,7 @@ impl UserRepo {
             )
         );
         let users = sqlx::query_as::<_, UserWithGameCount>(
-            r#"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
+            r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
                 u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
                 u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
                 COUNT(g.id) FILTER (WHERE g.status = 'published')::bigint AS games_count
@@ -293,7 +293,7 @@ impl UserRepo {
               WHERE ($1 = '%%' OR u.email ILIKE $1 OR u.username ILIKE $1 OR u.display_name ILIKE $1)
               GROUP BY u.id
               ORDER BY u.created_at DESC
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(pattern)
         .bind(limit)
@@ -315,10 +315,10 @@ impl UserRepo {
     /// URL để giữ sitemap dưới giới hạn 50k URL của Google.
     pub async fn sitemap_usernames(pool: &PgPool) -> AppResult<Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
-            r#"SELECT username FROM users
+            r"SELECT username FROM users
                WHERE NOT is_banned AND role != 'ai_agent'
                ORDER BY last_seen_at DESC NULLS LAST
-               LIMIT 1000"#,
+               LIMIT 1000",
         )
         .fetch_all(pool)
         .await?;
@@ -338,8 +338,8 @@ impl UserRepo {
             )
         );
         let c: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM users
-               WHERE ($1 = '%%' OR email ILIKE $1 OR username ILIKE $1 OR display_name ILIKE $1)"#,
+            r"SELECT COUNT(*) FROM users
+               WHERE ($1 = '%%' OR email ILIKE $1 OR username ILIKE $1 OR display_name ILIKE $1)",
         )
         .bind(pattern)
         .fetch_one(pool)
@@ -350,10 +350,10 @@ impl UserRepo {
     /// Tìm user theo email (dùng cho seed admin)
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
                 signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE email = $1"#,
+              FROM users WHERE email = $1",
         )
         .bind(email)
         .fetch_optional(pool)
@@ -399,7 +399,7 @@ impl UserRepo {
             let candidate = if i == 0 {
                 base.clone()
             } else {
-                format!("{}_{}", base, i)
+                format!("{base}_{i}")
             };
             let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM users WHERE username = $1")
                 .bind(&candidate)
