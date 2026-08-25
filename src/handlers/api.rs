@@ -695,6 +695,28 @@ pub async fn user_profile(
     Ok(([(header::CACHE_CONTROL, "public, max-age=120")], Json(body)).into_response())
 }
 
+/// Map một GameCard thành JSON object dùng chung cho các endpoint liệt
+/// kê game (by_category, by_tag, related). Trước đây 3 handler lặp lại
+/// cùng khối ~20 dòng này — thêm field mới phải sửa 3 chỗ dễ lệch nhau.
+fn game_card_to_json(g: &crate::models::game::GameCard) -> serde_json::Value {
+    serde_json::json!({
+        "slug": g.slug,
+        "title": g.title,
+        "excerpt": g.excerpt,
+        "cover_image": g.cover_image,
+        "category": g.category_name,
+        "category_slug": g.category_slug,
+        "author": g.author_name,
+        "platforms": g.platforms,
+        "view_count": g.view_count,
+        "download_count": g.download_count,
+        "like_count": g.like_count,
+        "rating_avg": g.rating_avg_f64(),
+        "rating_count": g.rating_count,
+        "published_at": g.published_at.map(|d| d.to_rfc3339()),
+    })
+}
+
 /// Game liên quan — cùng category (hoặc top downloads nếu không có
 /// category). Lợi cho sidebar "Related games" ở client bên ngoài.
 pub async fn game_related(
@@ -705,26 +727,7 @@ pub async fn game_related(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let related = GameRepo::related(&state.db, g.id, g.category_id, 10).await?;
-    let data: Vec<serde_json::Value> = related
-        .iter()
-        .map(|g| {
-            serde_json::json!({
-                "slug": g.slug,
-                "title": g.title,
-                "excerpt": g.excerpt,
-                "cover_image": g.cover_image,
-                "category": g.category_name,
-                "category_slug": g.category_slug,
-                "author": g.author_name,
-                "platforms": g.platforms,
-                "view_count": g.view_count,
-                "download_count": g.download_count,
-                "like_count": g.like_count,
-                "rating_avg": g.rating_avg_f64(),
-                "rating_count": g.rating_count,
-            })
-        })
-        .collect();
+    let data: Vec<serde_json::Value> = related.iter().map(game_card_to_json).collect();
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=300")],
         Json(serde_json::json!({"data": data})),
@@ -749,27 +752,7 @@ pub async fn games_by_category(
     let total = GameRepo::count_by_category(&state.db, &cat_slug)
         .await
         .unwrap_or(0);
-    let data: Vec<serde_json::Value> = games
-        .iter()
-        .map(|g| {
-            serde_json::json!({
-                "slug": g.slug,
-                "title": g.title,
-                "excerpt": g.excerpt,
-                "cover_image": g.cover_image,
-                "category": g.category_name,
-                "category_slug": g.category_slug,
-                "author": g.author_name,
-                "platforms": g.platforms,
-                "view_count": g.view_count,
-                "download_count": g.download_count,
-                "like_count": g.like_count,
-                "rating_avg": g.rating_avg_f64(),
-                "rating_count": g.rating_count,
-                "published_at": g.published_at.map(|d| d.to_rfc3339()),
-            })
-        })
-        .collect();
+    let data: Vec<serde_json::Value> = games.iter().map(game_card_to_json).collect();
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=300")],
         Json(serde_json::json!({
@@ -799,27 +782,7 @@ pub async fn games_by_tag(
     let total = GameRepo::count_by_tag(&state.db, &tag_slug)
         .await
         .unwrap_or(0);
-    let data: Vec<serde_json::Value> = games
-        .iter()
-        .map(|g| {
-            serde_json::json!({
-                "slug": g.slug,
-                "title": g.title,
-                "excerpt": g.excerpt,
-                "cover_image": g.cover_image,
-                "category": g.category_name,
-                "category_slug": g.category_slug,
-                "author": g.author_name,
-                "platforms": g.platforms,
-                "view_count": g.view_count,
-                "download_count": g.download_count,
-                "like_count": g.like_count,
-                "rating_avg": g.rating_avg_f64(),
-                "rating_count": g.rating_count,
-                "published_at": g.published_at.map(|d| d.to_rfc3339()),
-            })
-        })
-        .collect();
+    let data: Vec<serde_json::Value> = games.iter().map(game_card_to_json).collect();
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=300")],
         Json(serde_json::json!({
