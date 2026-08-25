@@ -345,6 +345,20 @@ impl GameRepo {
         Ok(())
     }
 
+    /// Xuất bản game: đặt status='published' và giữ published_at cũ nếu
+    /// đã có (COALESCE) — để re-publish không reset mốc xuất bản gốc,
+    /// ảnh hưởng đến thứ tự sort "latest" và sitemap lastmod.
+    pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<()> {
+        sqlx::query(
+            "UPDATE games SET status = 'published', \
+             published_at = COALESCE(published_at, NOW()) WHERE id = $1",
+        )
+        .bind(id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     pub async fn set_featured(pool: &PgPool, id: Uuid, featured: bool) -> AppResult<()> {
         sqlx::query("UPDATE games SET is_featured = $1 WHERE id = $2")
             .bind(featured)

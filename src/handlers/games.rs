@@ -945,13 +945,7 @@ pub async fn publish_game(
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền".into()));
     }
-    sqlx::query(
-        "UPDATE games SET status = 'published', \
-         published_at = COALESCE(published_at, NOW()) WHERE id = $1",
-    )
-    .bind(game.id)
-    .execute(&state.db)
-    .await?;
+    GameRepo::publish(&state.db, game.id).await?;
     Ok(Html(
         "<div class='alert alert-success'>Đã xuất bản game.</div>".into(),
     ))
