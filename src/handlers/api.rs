@@ -349,6 +349,42 @@ pub struct DuplicateQuery {
     pub title: String,
 }
 
+/// Gợi ý tìm kiếm (autocomplete) — trả tối đa 8 title + slug khớp
+/// tiền tố/chứa từ khóa. Query nhẹ (chỉ 2 cột) cho dropdown realtime.
+#[derive(Deserialize)]
+pub struct SuggestQuery {
+    pub q: String,
+}
+
+pub async fn games_suggest(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<SuggestQuery>,
+) -> AppResult<Response> {
+    let query = q.q.trim();
+    // Tối thiểu 2 ký tự (chars) — 1 ký tự tạo pattern quá rộng, quét chậm
+    // mà gợi ý ít ý nghĩa.
+    let query: String = query.chars().take(100).collect();
+    if query.chars().count() < 2 {
+        return Ok((
+            [(header::CACHE_CONTROL, "public, max-age=60")],
+            Json(serde_json::json!({"data": []})),
+        )
+            .into_response());
+    }
+    let suggestions = GameRepo::suggest_titles(&state.db, &query, 8).await?;
+    let data: Vec<serde_json::Value> = suggestions
+        .iter()
+        .map(|(title, slug)| {
+            serde_json::json!({"title": title, "slug": slug, "url": format!("/games/{}", slug)})
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!({"data": data})),
+    )
+        .into_response())
+}
+
 pub async fn check_duplicate(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DuplicateQuery>,

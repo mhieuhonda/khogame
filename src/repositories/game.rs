@@ -491,6 +491,27 @@ impl GameRepo {
         Ok(cards)
     }
 
+    /// Gợi ý tiêu đề game cho autocomplete ô tìm kiếm. Chỉ title + slug
+    /// (query nhẹ), ưu tiên game nhiều view. Trả về tối đa `limit` gợi ý.
+    pub async fn suggest_titles(
+        pool: &PgPool,
+        query: &str,
+        limit: i64,
+    ) -> AppResult<Vec<(String, String)>> {
+        let pattern = format!("%{}%", crate::utils::escape_like(query));
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"SELECT title, slug FROM games
+               WHERE status = 'published' AND title ILIKE $1 ESCAPE '\'
+               ORDER BY view_count DESC, published_at DESC NULLS LAST
+               LIMIT $2"#,
+        )
+        .bind(pattern)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     pub async fn by_user(
         pool: &PgPool,
         user_id: Uuid,

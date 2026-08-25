@@ -161,6 +161,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     let internal_routes = Router::new()
         .route("/announcement", get(handlers::api::announcement))
         .route("/check-duplicate", get(handlers::api::check_duplicate))
+        .route("/suggest", get(handlers::api::games_suggest))
         .route("/preferences/theme", post(handlers::api::set_theme));
 
     // === AI Agent internal routes: yêu cầu AI Agent auth ===
