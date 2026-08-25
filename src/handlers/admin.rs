@@ -835,36 +835,42 @@ pub async fn save_settings(
         .filter(|s| matches!(*s, "info" | "success" | "warning" | "danger"))
         .unwrap_or("info");
     let uid = user.id;
-    async fn set(state: &AppState, uid: Uuid, k: &str, v: &str) -> AppResult<()> {
-        SettingsRepo::set(&state.db, k, v, Some(uid)).await
-    }
-    set(&state, uid, "site_name", site_name).await?;
-    set(&state, uid, "site_description", site_description).await?;
-    set(
-        &state,
-        uid,
-        "maintenance_mode",
-        if form.maintenance_mode.is_some() {
-            "on"
-        } else {
-            "off"
-        },
-    )
-    .await?;
-    set(&state, uid, "announcement", announcement).await?;
-    set(&state, uid, "announcement_type", announcement_type).await?;
-    set(&state, uid, "footer_text", footer_text).await?;
-    set(
-        &state,
-        uid,
-        "repo_auto_approve",
-        if form.repo_auto_approve.is_some() {
-            "on"
-        } else {
-            "off"
-        },
-    )
-    .await?;
+    // 7 lần ghi settings độc lập — join! song song thay vì tuần tự
+    // (trước đây 7 round-trip liên tiếp mỗi lần admin bấm Lưu).
+    let (r1, r2, r3, r4, r5, r6, r7) = tokio::join!(
+        SettingsRepo::set(&state.db, "site_name", site_name, Some(uid)),
+        SettingsRepo::set(&state.db, "site_description", site_description, Some(uid)),
+        SettingsRepo::set(
+            &state.db,
+            "maintenance_mode",
+            if form.maintenance_mode.is_some() {
+                "on"
+            } else {
+                "off"
+            },
+            Some(uid),
+        ),
+        SettingsRepo::set(&state.db, "announcement", announcement, Some(uid)),
+        SettingsRepo::set(&state.db, "announcement_type", announcement_type, Some(uid)),
+        SettingsRepo::set(&state.db, "footer_text", footer_text, Some(uid)),
+        SettingsRepo::set(
+            &state.db,
+            "repo_auto_approve",
+            if form.repo_auto_approve.is_some() {
+                "on"
+            } else {
+                "off"
+            },
+            Some(uid),
+        ),
+    );
+    r1?;
+    r2?;
+    r3?;
+    r4?;
+    r5?;
+    r6?;
+    r7?;
     audit(&state, user.id, "settings.save", "settings", "", "").await;
 
     let mut map = SettingsRepo::get_map(
