@@ -126,6 +126,21 @@ pub async fn update_profile(
             "Giới thiệu bản thân tối đa 500 ký tự".into(),
         ));
     }
+    // Avatar URL chỉ nhận http(s) — chặn javascript:/data: scheme lọt vào
+    // src của <img> trên mọi trang hiển thị avatar (cùng chuẩn is_safe_url
+    // đã dùng cho cover_image/trailer của game).
+    if let Some(url) = form.avatar_url.as_deref().filter(|s| !s.is_empty()) {
+        if !crate::utils::is_safe_url(url) {
+            return Err(AppError::BadRequest(
+                "Avatar URL phải là http:// hoặc https://".into(),
+            ));
+        }
+        if url.len() > 2048 {
+            return Err(AppError::BadRequest(
+                "Avatar URL quá dài (tối đa 2048 ký tự)".into(),
+            ));
+        }
+    }
     let avatar_url = form.avatar_url.as_deref().filter(|s| !s.is_empty());
 
     UserRepo::update_profile(&state.db, user.id, display_name, bio, avatar_url).await?;
