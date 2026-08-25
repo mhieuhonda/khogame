@@ -1158,3 +1158,98 @@ mod tests {
         assert!(validate_game_form(&f).is_ok());
     }
 }
+
+#[cfg(test)]
+mod tests_v2 {
+    use super::*;
+
+    fn valid_form() -> GameForm {
+        GameForm {
+            title: "Game thử".into(),
+            content: "Nội dung".into(),
+            cover_image: "https://cdn.example.com/c.png".into(),
+            android_link: Some("https://example.com/a.apk".into()),
+            ..GameForm::default()
+        }
+    }
+
+    #[test]
+    fn test_content_empty_rejected() {
+        let mut f = valid_form();
+        f.content = "   ".into();
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Nội dung")
+        ));
+    }
+
+    #[test]
+    fn test_content_too_long() {
+        let mut f = valid_form();
+        f.content = "x".repeat(50_001);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("50.000")
+        ));
+        // Đúng 50k thì qua
+        f.content = "x".repeat(50_000);
+        assert!(validate_game_form(&f).is_ok());
+    }
+
+    #[test]
+    fn test_excerpt_limit() {
+        let mut f = valid_form();
+        f.excerpt = "a".repeat(501);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("500")
+        ));
+        f.excerpt = "a".repeat(500);
+        assert!(validate_game_form(&f).is_ok());
+    }
+
+    #[test]
+    fn test_metadata_limits() {
+        let mut f = valid_form();
+        f.version = "1".repeat(101);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Phiên bản")
+        ));
+        f.version = "1.0".into();
+        f.developer = "D".repeat(101);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Nhà phát triển")
+        ));
+        f.developer = "Studio".into();
+        f.file_size = "9".repeat(101);
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("Dung lượng")
+        ));
+    }
+
+    #[test]
+    fn test_languages_limits() {
+        let mut f = valid_form();
+        // 21 ngôn ngữ → chặn
+        f.languages = (0..21)
+            .map(|i| format!("lang{}", i))
+            .collect::<Vec<_>>()
+            .join(",");
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("20 ngôn ngữ")
+        ));
+        // Ngôn ngữ dài 51 ký tự → chặn
+        f.languages = format!("{},{}", "a".repeat(50), "b".repeat(51));
+        assert!(matches!(
+            validate_game_form(&f),
+            Err(AppError::BadRequest(m)) if m.contains("50 ký tự")
+        ));
+        // Hợp lệ
+        f.languages = "vi, en".into();
+        assert!(validate_game_form(&f).is_ok());
+    }
+}
