@@ -1,9 +1,17 @@
 #!/bin/bash
 # Helper: xác nhận build + clippy + fmt + test pass rồi mới commit
 # Usage: ./scripts/cmt.sh "commit message"
+#
+# Tự dò repo root (nơi có Cargo.toml) từ vị trí script — trước đây hardcode
+# đường dẫn tuyệt đối /home/z/my-project/khogame khiến script fail trên VPS
+# hay máy khác clone ở chỗ khác.
 set -e
-cd /home/z/my-project/khogame
-source "$HOME/.cargo/env"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+if [ ! -f Cargo.toml ]; then
+  echo "[cmt] Không tìm thấy Cargo.toml ở $REPO_ROOT — không phải repo khogame?"; exit 1
+fi
+source "$HOME/.cargo/env" 2>/dev/null || true
 
 if cargo build 2>&1 | grep -q "^error"; then
   echo "[cmt] BUILD FAILED — từ chối commit"; cargo build 2>&1 | grep "^error" | head -5; exit 1
