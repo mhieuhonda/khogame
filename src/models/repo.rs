@@ -14,6 +14,7 @@ pub enum RepoStatus {
 }
 
 impl RepoStatus {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             RepoStatus::Pending => "Chờ duyệt",
@@ -21,6 +22,7 @@ impl RepoStatus {
             RepoStatus::Hidden => "Đã ẩn",
         }
     }
+    #[must_use]
     pub fn color(&self) -> &'static str {
         match self {
             RepoStatus::Pending => "#f59e0b",
@@ -50,15 +52,19 @@ pub struct GithubRepo {
 }
 
 impl GithubRepo {
+    #[must_use]
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.owner, self.repo_name)
     }
+    #[must_use]
     pub fn html_url(&self) -> String {
         format!("https://github.com/{}/{}", self.owner, self.repo_name)
     }
+    #[must_use]
     pub fn description_or(&self) -> String {
         self.description.clone().unwrap_or_default()
     }
+    #[must_use]
     pub fn language_or(&self) -> String {
         self.primary_language.clone().unwrap_or_default()
     }
@@ -86,12 +92,15 @@ pub struct GithubRepoCard {
 }
 
 impl GithubRepoCard {
+    #[must_use]
     pub fn full_name(&self) -> String {
         format!("{}/{}", self.owner, self.repo_name)
     }
+    #[must_use]
     pub fn html_url(&self) -> String {
         format!("https://github.com/{}/{}", self.owner, self.repo_name)
     }
+    #[must_use]
     pub fn language_or(&self) -> String {
         self.primary_language.clone().unwrap_or_default()
     }
