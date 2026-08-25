@@ -340,6 +340,11 @@ pub async fn rate_limit(
         (10, 600)
     } else if path.starts_with("/ai/") {
         (120, 60)
+    } else if path.starts_with("/api/suggest") {
+        // Autocomplete: debounce 250ms client-side → gõ liên tục 1 phút
+        // có thể phát ~200 request. Ngưỡng mặc định 120/phút sẽ chặn giữa
+        // chừng người dùng đang gõ. 240/phút vẫn chặn spam script tốt.
+        (240, 60)
     } else if path.contains("/download") {
         (20, 60) // 20 download/phút
     } else if path.contains("/comments") {
