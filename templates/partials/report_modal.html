@@ -1,9 +1,9 @@
 {# Report modal - shown as dialog #}
 <div class="modal-overlay" id="report-modal-{{ slug }}" onclick="if(event.target===this) this.remove()">
-    <div class="modal report-modal">
+    <div class="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title-{{ slug }}">
         <div class="modal-header">
-            <h3>🚩 Báo cáo game</h3>
-            <button class="modal-close" onclick="document.getElementById('report-modal-{{ slug }}').remove()">×</button>
+            <h3 id="report-modal-title-{{ slug }}">🚩 Báo cáo game</h3>
+            <button class="modal-close" onclick="document.getElementById('report-modal-{{ slug }}').remove()" aria-label="Đóng hộp thoại báo cáo">×</button>
         </div>
         <div class="modal-body">
             <p class="modal-desc">Hãy cho chúng tôi biết vấn đề bạn gặp phải với game này. Báo cáo của bạn sẽ được đội ngũ kiểm duyệt xem xét.</p>

@@ -357,9 +357,20 @@
 <script>
 function openReportModal(slug) {
     fetch(`/games/${slug}/report-form`).then(r => r.text()).then(html => {
-        document.getElementById('modal-container').innerHTML = html;
+        const container = document.getElementById('modal-container');
+        container.innerHTML = html;
+        // Focus control đầu tiên — keyboard user không phải Tab từ đầu
+        // trang vào modal (WCAG 2.4.3 focus order).
+        const first = container.querySelector('select, textarea, input, button');
+        if (first) first.focus();
     });
 }
+// Escape đóng modal report — quy ước modal chuẩn (WAI-ARIA dialog).
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    const overlay = document.querySelector('.modal-overlay');
+    if (overlay) overlay.remove();
+});
 function toggleReplyForm(id) {
     const el = document.getElementById('reply-form-' + id);
     if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
