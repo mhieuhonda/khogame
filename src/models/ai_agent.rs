@@ -216,8 +216,7 @@ mod tests {
             let c = s.color();
             assert!(
                 c.starts_with('#') && c.len() == 7,
-                "color hex hợp lệ, got {}",
-                c
+                "color hex hợp lệ, got {c}"
             );
         }
     }
