@@ -374,8 +374,16 @@ pub async fn show_game(
 
     let mut game = game;
     if !is_owner {
-        let _ = GameRepo::increment_view_count(&state.db, game.id).await;
-        let _ = crate::repositories::StatsRepo::record_view(&state.db, game.id).await;
+        // View/download counters là best-effort analytics — KHÔNG block
+        // render trang: spawn task nền ghi 2 UPDATE, template hiển thị
+        // số đã +1 thủ công. Trước đây await tuần tự 2 query này cộng
+        // thẳng vào latency TTFB của mọi lượt xem game.
+        let db = state.db.clone();
+        let game_id = game.id;
+        tokio::spawn(async move {
+            let _ = GameRepo::increment_view_count(&db, game_id).await;
+            let _ = crate::repositories::StatsRepo::record_view(&db, game_id).await;
+        });
         game.view_count += 1;
     }
 
