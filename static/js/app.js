@@ -274,10 +274,23 @@
     document.addEventListener('click', function(e) {
         const link = e.target.closest('a[href^="#"]');
         if (link) {
-            const target = document.querySelector(link.getAttribute('href'));
-            if (target) {
+            const href = link.getAttribute('href');
+            // href="#" hoặc "#!" (placeholder link) → không scroll, chỉ chặn
+            // nhảy lên đầu trang. querySelector('#') sẽ throw DOMException.
+            if (href === '#' || href.length < 2) {
                 e.preventDefault();
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
+            }
+            try {
+                const target = document.querySelector(href);
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } catch (err) {
+                // selector không hợp lệ (vd href="#a b") — bỏ qua, để browser
+                // xử lý default thay vì crash listener này cho các click sau.
+                console.warn('Bỏ qua anchor không hợp lệ:', href);
             }
         }
     });
