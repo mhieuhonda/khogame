@@ -1,12 +1,12 @@
 {% extends "layout.html" %}
 {% block title %}Tất cả thể loại{% endblock %}
-{% block description %}Khám phá game theo thể loại trên Kho Game{% endblock %}
+{% block description %}Khám phá game theo thể loại trên Louis Space{% endblock %}
 
 {% block content %}
 <section class="categories-page">
     <div class="page-header">
         <h1>📁 Tất cả thể loại</h1>
-        <p>{{ categories.len() }} thể loại đang có game trên Kho Game.</p>
+        <p>{{ categories.len() }} thể loại đang có game trên Louis Space.</p>
     </div>
 
     {% if categories.is_empty() %}

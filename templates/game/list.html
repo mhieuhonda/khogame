@@ -2,7 +2,7 @@
 
 {% block title %}{{ title }}{% endblock %}
 
-{% block description %}{% match category %}{% when Option::Some with (cat) %}Danh sách game thể loại {{ cat.name }} trên Kho Game{% when Option::None %}{% match tag %}{% when Option::Some with (t) %}Danh sách game gắn tag {{ t.name }}{% when Option::None %}Khám phá {{ total }} game trên Kho Game — nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam{% endmatch %}{% endmatch %}{% endblock %}
+{% block description %}{% match category %}{% when Option::Some with (cat) %}Danh sách game thể loại {{ cat.name }} trên Louis Space{% when Option::None %}{% match tag %}{% when Option::Some with (t) %}Danh sách game gắn tag {{ t.name }}{% when Option::None %}Khám phá {{ total }} game trên Louis Space — nền tảng chia sẻ game độc lập & tin tức cộng đồng Việt Nam{% endmatch %}{% endmatch %}{% endblock %}
 
 {% block og_title %}{{ title }}{% endblock %}
 
