@@ -482,14 +482,31 @@ pub async fn rss(
     let base = &state.config.base_url;
     let mut items = String::new();
     for g in &games {
-        let esc_title = crate::utils::html_escape(&g.title);
-        let esc_excerpt = crate::utils::html_escape(&g.excerpt.clone().unwrap_or_default());
+        let esc_title = crate::utils::xml_escape(&g.title);
+        let esc_excerpt = crate::utils::xml_escape(&g.excerpt.clone().unwrap_or_default());
+        // <category>/<author> theo RSS 2.0 spec — reader hiển thị nguồn
+        // lọc theo thể loại/tác giả thay vì chỉ list phẳng.
+        let category_tag = g
+            .category_name
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .map(|c| {
+                format!(
+                    "\n      <category>{}</category>",
+                    crate::utils::xml_escape(c)
+                )
+            })
+            .unwrap_or_default();
+        let author_tag = format!(
+            "\n      <author>{}</author>",
+            crate::utils::xml_escape(&g.author_name)
+        );
         items.push_str(&format!(
             r#"    <item>
       <title>{}</title>
       <link>{}/games/{}</link>
-      <guid isPermaLink="true">{}/games/{}</guid>
-      <description>{}</description>
+      <guid isPermaLink="true">{}/games/{}</guid>{}
+      <description>{}</description>{}
       <pubDate>{}</pubDate>
     </item>
 "#,
@@ -498,7 +515,9 @@ pub async fn rss(
             g.slug,
             base,
             g.slug,
+            category_tag,
             esc_excerpt,
+            author_tag,
             g.published_at
                 .map(|d| d.format("%a, %d %b %Y %H:%M:%S +0000").to_string())
                 .unwrap_or_default()
