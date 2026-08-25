@@ -930,7 +930,7 @@ fn short_hash(s: &str) -> String {
 pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
     let txt = format!(
-        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /bookmarks\nDisallow: /my-games\nDisallow: /auth\nDisallow: /api/\nDisallow: /ai\n\nSitemap: {}/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /bookmarks\nDisallow: /my-games\nDisallow: /my-news\nDisallow: /news/new\nDisallow: /news/*/edit\nDisallow: /auth\nDisallow: /api/\nDisallow: /ai\n\nSitemap: {}/sitemap.xml\n",
         base
     );
     (
