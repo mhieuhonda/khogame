@@ -39,6 +39,14 @@ pub async fn create_comment(
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ cho bình luận trên game đã xuất bản: tránh việc comment vào
+    // game draft/hidden mà người dùng thường không được xem (lỗ hổng
+    // ủy quyền — trước đây POST vẫn hoạt động dù trang show đã chặn).
+    let is_owner = game.user_id == user.id;
+    if !is_owner && !user.role.is_staff() && game.status != crate::models::game::GameStatus::Published
+    {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     let mut parent_id = form
         .parent_id
         .as_deref()
