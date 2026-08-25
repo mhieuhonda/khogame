@@ -1,7 +1,10 @@
 {# Rating stars - interactive via htmx #}
 <div class="rating-stars" id="rating-stars-{{ slug }}">
-    <div class="stars-input">
+    <div class="stars-input" role="group" aria-label="Chọn số sao đánh giá game">
         {% for i in 1..=5 %}
+        {# aria-pressed là thuộc tính toggle chuẩn cho <button>; aria-checked
+           chỉ hợp lệ trên role checkbox/radio/option — button thường kèm
+           aria-checked là ARIA không hợp lệ, screen reader bỏ qua. #}
         <button class="star {% if user_rating.unwrap_or(0) >= i %}filled{% endif %} {% if user_rating.is_some() %}user-rated{% endif %}"
                 hx-post="/games/{{ slug }}/rate"
                 hx-vals='{"score": {{ i }} }'
@@ -10,7 +13,7 @@
                 hx-disabled-elt="this"
                 title="{{ i }} sao"
                 aria-label="Đánh giá {{ i }} trên 5 sao"
-                {% if user_rating.unwrap_or(0) >= i %}aria-checked="true"{% else %}aria-checked="false"{% endif %}>
+                {% if user_rating.unwrap_or(0) >= i %}aria-pressed="true"{% else %}aria-pressed="false"{% endif %}>
             <span aria-hidden="true">★</span>
         </button>
         {% endfor %}
