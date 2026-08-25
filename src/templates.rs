@@ -281,6 +281,9 @@ pub struct AdminReportsTemplate {
     pub unread_notifications: i64,
     pub reports: Vec<report::ReportWithGame>,
     pub status_filter: Option<String>,
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
 }
 
 /// Chip lọc trạng thái game cho trang admin (key + nhãn tiếng Việt + số lượng)

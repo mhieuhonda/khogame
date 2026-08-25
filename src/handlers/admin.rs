@@ -135,9 +135,10 @@ pub async fn dashboard(
 // ============================================================
 // REPORTS (giữ hành vi cũ)
 // ============================================================
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct ReportsQuery {
     pub status: Option<String>,
+    pub page: Option<i64>,
 }
 
 pub async fn reports(
@@ -148,13 +149,28 @@ pub async fn reports(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let reports = ReportRepo::list(&state.db, q.status.as_deref(), 50, 0).await?;
+    // Chuẩn hoá status: None/""/whitespace → không filter (tránh branch
+    // SQL lệch nhau giữa list và count).
+    let status = q.status.as_deref().filter(|s| !s.trim().is_empty());
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    // list + count độc lập — join! song song
+    let (reports_res, total_res) = tokio::join!(
+        ReportRepo::list(&state.db, status, per_page, offset),
+        ReportRepo::count(&state.db, status),
+    );
+    let reports = reports_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminReportsTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         reports,
         status_filter: q.status,
+        page,
+        per_page,
+        total,
     })
 }
 

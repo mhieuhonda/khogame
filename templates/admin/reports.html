@@ -58,6 +58,22 @@
         </div>
         {% endfor %}
     </div>
+    {% set total_pages = (total + per_page - 1) / per_page %}
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang báo cáo">
+        {% match status_filter %}
+        {% when Option::Some with (s) %}
+        {% if page > 1 %}<a href="/admin/reports?status={{ s }}&page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="/admin/reports?status={{ s }}&page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+        {% when Option::None %}
+        {% if page > 1 %}<a href="/admin/reports?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="/admin/reports?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+        {% endmatch %}
+    </nav>
+    <p style="color:var(--text-muted);font-size:13px">{{ total }} báo cáo · {{ per_page }}/trang</p>
+    {% endif %}
     {% endif %}
 </section>
 {% endblock %}

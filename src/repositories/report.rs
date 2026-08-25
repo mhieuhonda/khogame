@@ -168,4 +168,20 @@ impl ReportRepo {
             .await?;
         Ok(c)
     }
+
+    /// Đếm reports theo bộ lọc (phân trang admin đúng tổng số) — None
+    /// đếm tất cả.
+    pub async fn count(pool: &PgPool, status_filter: Option<&str>) -> AppResult<i64> {
+        let c: i64 = if let Some(status) = status_filter {
+            sqlx::query_scalar("SELECT COUNT(*) FROM reports WHERE status::text = $1")
+                .bind(status)
+                .fetch_one(pool)
+                .await?
+        } else {
+            sqlx::query_scalar("SELECT COUNT(*) FROM reports")
+                .fetch_one(pool)
+                .await?
+        };
+        Ok(c)
+    }
 }
