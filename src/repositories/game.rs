@@ -665,13 +665,15 @@ impl GameRepo {
         Ok(cards)
     }
 
-    /// Kiểm tra chính xác 1 slug đã tồn tại hay chưa
+    /// Kiểm tra chính xác 1 slug đã tồn tại hay chưa — dùng EXISTS thay
+    /// vì COUNT(*) để Postgres dừng ngay khi tìm thấy dòng đầu (hàm này
+    /// chạy trong vòng lặp sinh slug duy nhất lúc tạo game).
     pub async fn slug_exists(pool: &PgPool, slug: &str) -> AppResult<bool> {
-        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE slug = $1")
+        let c: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM games WHERE slug = $1)")
             .bind(slug)
             .fetch_one(pool)
             .await?;
-        Ok(c > 0)
+        Ok(c)
     }
 
     pub async fn count_published(pool: &PgPool) -> AppResult<i64> {

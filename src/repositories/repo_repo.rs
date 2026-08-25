@@ -74,14 +74,14 @@ impl RepoRepo {
     }
 
     pub async fn exists(pool: &PgPool, owner: &str, repo_name: &str) -> AppResult<bool> {
-        let c: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM github_repos WHERE owner = $1 AND repo_name = $2",
+        let c: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM github_repos WHERE owner = $1 AND repo_name = $2)",
         )
         .bind(owner)
         .bind(repo_name)
         .fetch_one(pool)
         .await?;
-        Ok(c > 0)
+        Ok(c)
     }
 
     /// Tìm repo theo owner/name (dùng kiểm tra trùng khi đăng ký — chống
