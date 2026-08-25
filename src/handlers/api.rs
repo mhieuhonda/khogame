@@ -493,6 +493,17 @@ pub async fn sitemap(
             ));
         }
     }
+    // Hồ sơ người dùng công khai (không ban, không AI Agent) — Google lập
+    // index trang /u/{username} để tìm game theo tác giả.
+    if let Ok(users) = UserRepo::sitemap_usernames(&state.db).await {
+        for username in users {
+            urls.push_str(&format!(
+                r#"  <url><loc>{}/u/{}</loc><changefreq>weekly</changefreq><priority>0.4</priority></url>
+"#,
+                base, username
+            ));
+        }
+    }
     if let Ok(games) = GameRepo::sitemap_entries(&state.db).await {
         for (slug, updated) in games {
             urls.push_str(&format!(

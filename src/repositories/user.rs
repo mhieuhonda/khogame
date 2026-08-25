@@ -249,6 +249,21 @@ impl UserRepo {
         Ok(c)
     }
 
+    /// Username các user có hồ sơ công khai (không ban, không phải AI
+    /// Agent) — cho sitemap. Ưu tiên user hoạt động gần đây, tối đa 1000
+    /// URL để giữ sitemap dưới giới hạn 50k URL của Google.
+    pub async fn sitemap_usernames(pool: &PgPool) -> AppResult<Vec<String>> {
+        let names: Vec<String> = sqlx::query_scalar(
+            r#"SELECT username FROM users
+               WHERE NOT is_banned AND role != 'ai_agent'
+               ORDER BY last_seen_at DESC NULLS LAST
+               LIMIT 1000"#,
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(names)
+    }
+
     /// Đếm user theo bộ lọc tìm kiếm (phân trang admin đúng tổng số)
     pub async fn count_for_admin(pool: &PgPool, search: Option<&str>) -> AppResult<i64> {
         let pattern = format!(
