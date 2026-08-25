@@ -61,20 +61,25 @@ pub async fn games_list(
         q.q.as_deref()
             .map(|s| s.trim().chars().take(200).collect::<String>())
             .filter(|s| !s.is_empty());
-    let cards = match q_search.as_deref() {
+    // search + count độc lập — join! song song.
+    let (cards_res, total_res) = match q_search.as_deref() {
         Some(query) => {
-            GameRepo::search(&state.db, query, None, None, &sort, per_page, offset).await?
+            tokio::join!(
+                GameRepo::search(&state.db, query, None, None, &sort, per_page, offset),
+                GameRepo::count_search(&state.db, query, None, None),
+            )
         }
-        None => GameRepo::list_published(&state.db, per_page, offset, &sort).await?,
+        None => {
+            tokio::join!(
+                GameRepo::list_published(&state.db, per_page, offset, &sort),
+                GameRepo::count_published(&state.db),
+            )
+        }
     };
+    let cards = cards_res?;
     // Bug fix: khi có search query, total phải là số kết quả khớp query
     // chứ không phải tổng số game — nếu không client tính số trang sai.
-    let total = match q_search.as_deref() {
-        Some(query) => GameRepo::count_search(&state.db, query, None, None)
-            .await
-            .unwrap_or(0),
-        None => GameRepo::count_published(&state.db).await.unwrap_or(0),
-    };
+    let total = total_res.unwrap_or(0);
 
     let data: Vec<ApiGame> = cards
         .iter()
