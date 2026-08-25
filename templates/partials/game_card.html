@@ -5,7 +5,7 @@
             {% match game.cover_image %}
             {% when Option::Some with (url) %}
                 {% if !url.is_empty() %}
-                <img src="{{ url }}" alt="{{ game.title }}" loading="lazy">
+                <img src="{{ url }}" alt="{{ game.title }}" loading="lazy" decoding="async" width="320" height="180">
                 {% else %}
                 <div class="cover-fallback">{{ game.title|initials }}</div>
                 {% endif %}
@@ -51,7 +51,7 @@
             <div class="game-card-author">
                 {% match game.author_avatar %}
                 {% when Option::Some with (url) %}
-                <img src="{{ url }}" alt="" class="avatar avatar-xs">
+                <img src="{{ url }}" alt="" class="avatar avatar-xs" loading="lazy" decoding="async" width="24" height="24">
                 {% when Option::None %}
                 <div class="avatar avatar-xs avatar-fallback">{{ game.author_name|initials }}</div>
                 {% endmatch %}
