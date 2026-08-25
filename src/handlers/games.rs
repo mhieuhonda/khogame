@@ -3,7 +3,7 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
-use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, ReportRepo, TagRepo};
+use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, NewsRepo, ReportRepo, TagRepo};
 use crate::state::AppState;
 use crate::templates::*;
 use askama::Template;
@@ -31,6 +31,7 @@ pub async fn home(
     // 7 truy vấn độc lập chạy SONG SONG bằng join! — trước đây chạy tuần
     // tự, latency trang chủ = tổng thời gian 7 query. PgPool nội bộ là
     // Arc nên clone rẻ; mỗi future mượn connection riêng từ pool.
+    // Thêm news queries (latest 3 published + count) cho section "Tin tức" ở homepage.
     let (
         featured_res,
         latest_res,
@@ -39,6 +40,8 @@ pub async fn home(
         categories_res,
         tags_res,
         total_res,
+        latest_news_res,
+        news_count_res,
     ) = tokio::join!(
         GameRepo::featured(&state.db, 6, 0),
         GameRepo::list_published(&state.db, 12, 0, "latest"),
@@ -47,6 +50,8 @@ pub async fn home(
         CategoryRepo::list_with_counts(&state.db),
         TagRepo::popular(&state.db, 20),
         GameRepo::count_published(&state.db),
+        NewsRepo::list_published(&state.db, 1, 3),
+        NewsRepo::count_published(&state.db),
     );
     let featured_games = featured_res.unwrap_or_default();
     let latest_games = latest_res?;
@@ -55,6 +60,8 @@ pub async fn home(
     let categories = categories_res?;
     let popular_tags = tags_res.unwrap_or_default();
     let total_games = total_res.unwrap_or(0);
+    let latest_news = latest_news_res.unwrap_or_default();
+    let total_news = news_count_res.unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
 
     // JSON-LD schema.org/WebSite với SearchAction — giúp Google hiển thị
@@ -92,6 +99,8 @@ pub async fn home(
         total_games,
         platforms_count: Platform::all().len(),
         json_ld,
+        latest_news,
+        total_news,
     })
 }
 

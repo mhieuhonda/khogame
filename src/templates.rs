@@ -84,6 +84,9 @@ pub struct IndexTemplate {
     /// JSON-LD WebSite schema (search action) — cho Google hiển thị
     /// sitelinks searchbox trên kết quả tìm kiếm.
     pub json_ld: String,
+    /// 3 tin tức nổi bật mới nhất để hiển thị section "Tin tức" ở homepage
+    pub latest_news: Vec<news::NewsWithAuthor>,
+    pub total_news: i64,
 }
 
 /// Login page
