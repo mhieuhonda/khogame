@@ -2339,3 +2339,19 @@ a:hover { color: var(--accent-light); }
     color: var(--accent-light);
     outline: none;
 }
+
+/* ============================================
+   Reduced motion (a11y — WCAG 2.3.3)
+   Người dùng đặt prefers-reduced-motion (rối loạn tiền đình,
+   say tàu xe) không chịu animation/transition không cần thiết.
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
