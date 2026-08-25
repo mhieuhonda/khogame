@@ -118,17 +118,28 @@ pub async fn game_detail(
     let g = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    let links = GameRepo::get_links(&state.db, g.id).await?;
-    let tags = GameRepo::get_tags(&state.db, g.id).await?;
-    let author = UserRepo::find_by_id(&state.db, g.user_id).await?;
+    // 5 query độc lập (links/tags/author/category/screenshots) chạy SONG
+    // SONG — trước đây tuần tự, latency = tổng 5 lần round-trip DB. Trang
+    // HTML show_game đã song song hoá từ trước nhưng API JSON bị bỏ sót.
+    let (links_res, tags_res, author_res, category_res, screenshots_res) = tokio::join!(
+        GameRepo::get_links(&state.db, g.id),
+        GameRepo::get_tags(&state.db, g.id),
+        UserRepo::find_by_id(&state.db, g.user_id),
+        async {
+            match g.category_id {
+                Some(cat_id) => CategoryRepo::find_by_id(&state.db, cat_id).await,
+                None => Ok(None),
+            }
+        },
+        GameRepo::get_screenshots(&state.db, g.id),
+    );
+    let links = links_res?;
+    let tags = tags_res?;
+    let author = author_res?;
     // Lấy thêm category & screenshots để API public đầy đủ hơn (trước đây
     // API thiếu các trường này, khiến client phải gọi thêm nhiều endpoint).
-    let category = if let Some(cat_id) = g.category_id {
-        CategoryRepo::find_by_id(&state.db, cat_id).await?
-    } else {
-        None
-    };
-    let screenshots = GameRepo::get_screenshots(&state.db, g.id).await?;
+    let category = category_res?;
+    let screenshots = screenshots_res?;
     let body = serde_json::json!({
         "id": g.id,
         "slug": g.slug,
