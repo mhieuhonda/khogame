@@ -174,6 +174,17 @@ fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)
     ))
 }
 
+/// Escape ký tự đặc biệt XML 1.0 cho nội dung text + giá trị attribute.
+/// & phải escape trước để tránh tạo thực thể giả (giống html_escape).
+/// Dùng cho sitemap.xml / RSS / OpenSearch XML dựng bằng format!.
+pub fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -457,6 +468,19 @@ mod tests {
         let s = html_escape(r#"<a href="x" title='y'>"#);
         assert!(s.contains("&lt;a href=&quot;x&quot;"));
         assert!(s.contains("title=&#x27;y&#x27;"));
+    }
+
+    #[test]
+    fn test_xml_escape() {
+        // & trước các ký tự khác — tránh tạo thực thể giả
+        assert_eq!(xml_escape("a & b"), "a &amp; b");
+        assert_eq!(xml_escape("<tag>"), "&lt;tag&gt;");
+        assert_eq!(xml_escape(r#"a "b" 'c'"#), "a &quot;b&quot; &apos;c&apos;");
+        // Chuỗi thường không đổi
+        assert_eq!(xml_escape("game-hay-2026"), "game-hay-2026");
+        assert_eq!(xml_escape("hà-nội"), "hà-nội");
+        // & đã escape không bị escape kép
+        assert_eq!(xml_escape("a&amp;b"), "a&amp;amp;b");
     }
 }
 

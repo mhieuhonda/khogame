@@ -549,6 +549,15 @@ pub async fn sitemap(
     headers: axum::http::HeaderMap,
 ) -> AppResult<Response> {
     let base = &state.config.base_url;
+    // 4 query độc lập (categories/tags/users/games) chạy SONG SONG —
+    // trước đây tuần tự, mỗi lần bot/axios fetch sitemap chịu tổng 4
+    // round-trip DB liền nhau.
+    let (cats_res, tags_res, users_res, games_res) = tokio::join!(
+        CategoryRepo::list_with_counts(&state.db),
+        TagRepo::popular(&state.db, 50),
+        UserRepo::sitemap_usernames(&state.db),
+        GameRepo::sitemap_entries(&state.db),
+    );
     let mut urls = String::new();
     urls.push_str(&format!(
         r#"  <url><loc>{}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>
@@ -574,42 +583,48 @@ pub async fn sitemap(
             base, page
         ));
     }
-    if let Ok(cats) = CategoryRepo::list_with_counts(&state.db).await {
+    // Escape XML mọi giá trị chèn vào <loc> — ký tự & < > trong
+    // slug/username (dù hiếm) sẽ làm sitemap XML invalid, Google
+    // Search Console báo lỗi parse và bỏ toàn bộ sitemap.
+    if let Ok(cats) = cats_res {
         for c in cats {
             urls.push_str(&format!(
                 r#"  <url><loc>{}/c/{}</loc><changefreq>daily</changefreq><priority>0.6</priority></url>
 "#,
-                base, c.slug
+                base,
+                crate::utils::xml_escape(&c.slug)
             ));
         }
     }
-    if let Ok(tags) = TagRepo::popular(&state.db, 50).await {
+    if let Ok(tags) = tags_res {
         for t in tags {
             urls.push_str(&format!(
                 r#"  <url><loc>{}/t/{}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
 "#,
-                base, t.slug
+                base,
+                crate::utils::xml_escape(&t.slug)
             ));
         }
     }
     // Hồ sơ người dùng công khai (không ban, không AI Agent) — Google lập
     // index trang /u/{username} để tìm game theo tác giả.
-    if let Ok(users) = UserRepo::sitemap_usernames(&state.db).await {
+    if let Ok(users) = users_res {
         for username in users {
             urls.push_str(&format!(
                 r#"  <url><loc>{}/u/{}</loc><changefreq>weekly</changefreq><priority>0.4</priority></url>
 "#,
-                base, username
+                base,
+                crate::utils::xml_escape(&username)
             ));
         }
     }
-    if let Ok(games) = GameRepo::sitemap_entries(&state.db).await {
+    if let Ok(games) = games_res {
         for (slug, updated) in games {
             urls.push_str(&format!(
                 r#"  <url><loc>{}/games/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
 "#,
                 base,
-                slug,
+                crate::utils::xml_escape(&slug),
                 updated.format("%Y-%m-%d")
             ));
         }
