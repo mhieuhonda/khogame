@@ -13,6 +13,7 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
 use serde::Deserialize;
 use std::sync::Arc;
+use uuid::Uuid;
 
 /// Helper to get unread notification count for an optional user
 async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) -> i64 {
@@ -199,6 +200,26 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
     Ok(())
 }
 
+/// Validate category_id trong form: nếu có thì phải tồn tại thật trong DB.
+/// Form là <select> nhưng POST crafted vẫn gửi UUID lạ được → FK
+/// violation → 500. Validate trước cho lỗi 400 sạch với thông điệp rõ.
+async fn validate_category(state: &AppState, form: &GameForm) -> AppResult<()> {
+    if let Some(cid) = form
+        .category_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
+        let exists = CategoryRepo::find_by_id(&state.db, cid).await?.is_some();
+        if !exists {
+            return Err(AppError::BadRequest(
+                "Thể loại không tồn tại. Vui lòng chọn lại.".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
 // ============= New game form =============
 pub async fn new_game_form(
     State(state): State<Arc<AppState>>,
@@ -220,6 +241,7 @@ pub async fn create_game(
     Form(form): Form<GameForm>,
 ) -> AppResult<Redirect> {
     validate_game_form(&form)?;
+    validate_category(&state, &form).await?;
     if form
         .android_link
         .as_deref()
@@ -515,6 +537,7 @@ pub async fn update_game(
     }
     // Validate tất cả URL & length — dùng chung với create_game
     validate_game_form(&form)?;
+    validate_category(&state, &form).await?;
 
     GameRepo::update(&state.db, game.id, &form).await?;
     Ok(Redirect::to(&format!("/games/{}", slug)))
