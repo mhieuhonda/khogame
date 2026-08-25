@@ -159,14 +159,15 @@ pub async fn resolve_report(
         "dismissed" => ReportStatus::Dismissed,
         _ => return Err(AppError::BadRequest("Trạng thái không hợp lệ".into())),
     };
-    ReportRepo::resolve(
-        &state.db,
-        id,
-        user.id,
-        &form.status,
-        &form.resolution.unwrap_or_default(),
-    )
-    .await?;
+    // Resolution ≤ 2000 ký tự — cùng giới hạn với description lúc user
+    // gửi báo cáo (DB TEXT không constraint, chặn sớm ở handler).
+    let resolution = form.resolution.unwrap_or_default();
+    if resolution.chars().count() > 2000 {
+        return Err(AppError::BadRequest(
+            "Nội dung xử lý tối đa 2000 ký tự".into(),
+        ));
+    }
+    ReportRepo::resolve(&state.db, id, user.id, &form.status, &resolution).await?;
     audit(
         &state,
         user.id,
@@ -177,8 +178,9 @@ pub async fn resolve_report(
     )
     .await;
 
-    let reports = ReportRepo::list(&state.db, None, 50, 0).await?;
-    let r = reports.iter().find(|r| r.id == id);
+    // Lấy đúng 1 report đã cập nhật để re-render row (trước đây fetch
+    // cả danh sách 50 report rồi find theo id — 1 query thừa mỗi lần resolve).
+    let r = ReportRepo::find_with_game(&state.db, id).await?;
     // Bọc trong .report-row để khớp hx-target="closest .admin-report-row"
     // outerHTML ở trang admin/reports (trước đây mất wrapper → vỡ layout)
     let html = if let Some(r) = r {

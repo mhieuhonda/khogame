@@ -96,6 +96,24 @@ impl ReportRepo {
         Ok(items)
     }
 
+    /// Lấy 1 report kèm thông tin game + reporter (để re-render row HTMX
+    /// sau khi resolve mà không phải fetch cả danh sách).
+    pub async fn find_with_game(pool: &PgPool, id: Uuid) -> AppResult<Option<ReportWithGame>> {
+        let r = sqlx::query_as::<_, ReportWithGame>(
+            r#"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
+                r.reporter_id, u.display_name as reporter_name,
+                r.reason, r.description, r.status, r.created_at, r.resolved_at
+              FROM reports r
+              JOIN games g ON g.id = r.game_id
+              JOIN users u ON u.id = r.reporter_id
+              WHERE r.id = $1"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(r)
+    }
+
     pub async fn resolve(
         pool: &PgPool,
         id: Uuid,
