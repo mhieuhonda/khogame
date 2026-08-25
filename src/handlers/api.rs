@@ -986,7 +986,13 @@ pub async fn games_by_category(
     let offset = (page - 1) * per_page;
     // games + count độc lập — join! song song
     let (games_res, total_res) = tokio::join!(
-        GameRepo::by_category(&state.db, &cat_slug, per_page, offset),
+        GameRepo::by_category(
+            &state.db,
+            &cat_slug,
+            per_page,
+            offset,
+            q.sort.as_deref().unwrap_or("latest"),
+        ),
         GameRepo::count_by_category(&state.db, &cat_slug),
     );
     let games = games_res?;
@@ -1019,7 +1025,13 @@ pub async fn games_by_tag(
     let offset = (page - 1) * per_page;
     // games + count độc lập — join! song song
     let (games_res, total_res) = tokio::join!(
-        GameRepo::by_tag(&state.db, &tag_slug, per_page, offset),
+        GameRepo::by_tag(
+            &state.db,
+            &tag_slug,
+            per_page,
+            offset,
+            q.sort.as_deref().unwrap_or("latest"),
+        ),
         GameRepo::count_by_tag(&state.db, &tag_slug),
     );
     let games = games_res?;

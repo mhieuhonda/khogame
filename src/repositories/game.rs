@@ -606,13 +606,23 @@ impl GameRepo {
         Ok(cards)
     }
 
+    /// Game theo tag — hỗ trợ sort động (trước đây ORDER BY cứng
+    /// published_at DESC trong khi template vẫn render sort links).
     pub async fn by_tag(
         pool: &PgPool,
         tag_slug: &str,
         limit: i64,
         offset: i64,
+        sort: &str,
     ) -> AppResult<Vec<GameCard>> {
-        let cards = sqlx::query_as::<_, GameCard>(
+        let order = match sort {
+            "trending" => "g.view_count DESC",
+            "downloads" => "g.download_count DESC",
+            "top_rated" => "g.rating_avg DESC, g.rating_count DESC",
+            "liked" => "g.like_count DESC",
+            _ => "g.published_at DESC NULLS LAST",
+        };
+        let sql = format!(
             r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
@@ -629,24 +639,37 @@ impl GameRepo {
               JOIN game_tags gt ON gt.game_id = g.id
               JOIN tags t ON t.id = gt.tag_id
               WHERE t.slug = $1 AND g.status = 'published'
-              ORDER BY g.published_at DESC NULLS LAST
+              ORDER BY {}
               LIMIT $2 OFFSET $3"#,
-        )
-        .bind(tag_slug)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+            order
+        );
+        // order clause là hằng số nội bộ (match ở trên), an toàn injection
+        let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(tag_slug)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
         Ok(cards)
     }
 
+    /// Game theo thể loại — hỗ trợ sort động (trước đây ORDER BY cứng
+    /// published_at DESC trong khi template vẫn render sort links).
     pub async fn by_category(
         pool: &PgPool,
         cat_slug: &str,
         limit: i64,
         offset: i64,
+        sort: &str,
     ) -> AppResult<Vec<GameCard>> {
-        let cards = sqlx::query_as::<_, GameCard>(
+        let order = match sort {
+            "trending" => "g.view_count DESC",
+            "downloads" => "g.download_count DESC",
+            "top_rated" => "g.rating_avg DESC, g.rating_count DESC",
+            "liked" => "g.like_count DESC",
+            _ => "g.published_at DESC NULLS LAST",
+        };
+        let sql = format!(
             r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
@@ -661,14 +684,17 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE c.slug = $1 AND g.status = 'published'
-              ORDER BY g.published_at DESC NULLS LAST
+              ORDER BY {}
               LIMIT $2 OFFSET $3"#,
-        )
-        .bind(cat_slug)
-        .bind(limit)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?;
+            order
+        );
+        // order clause là hằng số nội bộ (match ở trên), an toàn injection
+        let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(cat_slug)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(pool)
+            .await?;
         Ok(cards)
     }
 

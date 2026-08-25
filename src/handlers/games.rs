@@ -945,10 +945,9 @@ pub async fn list_by_category(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    // Đếm đúng tổng số game của thể loại (trước đây lấy games.len() →
-    // pagination luôn báo 1 trang dù còn game ở trang sau)
+    // games + count độc lập — join! song song.
     let (games_res, total_res) = tokio::join!(
-        GameRepo::by_category(&state.db, &cat_slug, per_page, offset),
+        GameRepo::by_category(&state.db, &cat_slug, per_page, offset, &sort),
         GameRepo::count_by_category(&state.db, &cat_slug),
     );
     let games = games_res?;
@@ -985,7 +984,7 @@ pub async fn list_by_tag(
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
     let (games_res, total_res) = tokio::join!(
-        GameRepo::by_tag(&state.db, &tag_slug, per_page, offset),
+        GameRepo::by_tag(&state.db, &tag_slug, per_page, offset, &sort),
         GameRepo::count_by_tag(&state.db, &tag_slug),
     );
     let games = games_res?;
