@@ -22,9 +22,9 @@ impl SettingsRepo {
         updated_by: Option<Uuid>,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO settings (key, value, updated_by)
+            r"INSERT INTO settings (key, value, updated_by)
                VALUES ($1, $2, $3)
-               ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = NOW()"#,
+               ON CONFLICT (key) DO UPDATE SET value = $2, updated_by = $3, updated_at = NOW()",
         )
         .bind(key)
         .bind(value)
@@ -46,7 +46,7 @@ impl SettingsRepo {
     pub async fn get_map(pool: &PgPool, keys: &[&str]) -> AppResult<HashMap<String, String>> {
         let rows: Vec<(String, String)> =
             sqlx::query_as("SELECT key, value FROM settings WHERE key = ANY($1)")
-                .bind(keys.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+                .bind(keys.iter().map(std::string::ToString::to_string).collect::<Vec<_>>())
                 .fetch_all(pool)
                 .await?;
         Ok(rows.into_iter().collect())
@@ -66,8 +66,8 @@ impl AdminLogRepo {
         ip: Option<&str>,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO admin_logs (admin_id, action, target_type, target_id, detail, ip)
-               VALUES ($1,$2,$3,$4,$5,$6)"#,
+            r"INSERT INTO admin_logs (admin_id, action, target_type, target_id, detail, ip)
+               VALUES ($1,$2,$3,$4,$5,$6)",
         )
         .bind(admin_id)
         .bind(action)
@@ -82,10 +82,10 @@ impl AdminLogRepo {
 
     pub async fn list(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<AdminLogWithAdmin>> {
         let rows = sqlx::query_as::<_, AdminLogWithAdmin>(
-            r#"SELECT l.id, u.display_name as admin_name, u.username as admin_username,
+            r"SELECT l.id, u.display_name as admin_name, u.username as admin_username,
                 l.action, l.target_type, l.target_id, l.detail, l.ip, l.created_at
               FROM admin_logs l JOIN users u ON u.id = l.admin_id
-              ORDER BY l.created_at DESC LIMIT $1 OFFSET $2"#,
+              ORDER BY l.created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
@@ -120,7 +120,7 @@ impl StatsRepo {
     /// Thống kê tổng hợp 7 ngày gần nhất cho dashboard chart
     pub async fn daily_last_7_days(pool: &PgPool) -> AppResult<Vec<DailyStatRow>> {
         let rows = sqlx::query_as::<_, DailyStatRow>(
-            r#"WITH days AS (
+            r"WITH days AS (
                   SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date AS day
                )
                SELECT d.day,
@@ -128,7 +128,7 @@ impl StatsRepo {
                  COALESCE((SELECT SUM(downloads) FROM daily_stats ds WHERE ds.day = d.day), 0)::bigint AS downloads,
                  COALESCE((SELECT COUNT(*) FROM games g WHERE g.created_at::date = d.day), 0)::bigint AS new_games,
                  COALESCE((SELECT COUNT(*) FROM users u WHERE u.created_at::date = d.day), 0)::bigint AS new_users
-               FROM days d ORDER BY d.day"#,
+               FROM days d ORDER BY d.day",
         )
         .fetch_all(pool)
         .await?;
@@ -137,8 +137,8 @@ impl StatsRepo {
 
     pub async fn record_view(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO daily_stats (day, game_id, views) VALUES (CURRENT_DATE, $1, 1)
-               ON CONFLICT (day, game_id) DO UPDATE SET views = daily_stats.views + 1"#,
+            r"INSERT INTO daily_stats (day, game_id, views) VALUES (CURRENT_DATE, $1, 1)
+               ON CONFLICT (day, game_id) DO UPDATE SET views = daily_stats.views + 1",
         )
         .bind(game_id)
         .execute(pool)
@@ -148,8 +148,8 @@ impl StatsRepo {
 
     pub async fn record_download(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO daily_stats (day, game_id, downloads) VALUES (CURRENT_DATE, $1, 1)
-               ON CONFLICT (day, game_id) DO UPDATE SET downloads = daily_stats.downloads + 1"#,
+            r"INSERT INTO daily_stats (day, game_id, downloads) VALUES (CURRENT_DATE, $1, 1)
+               ON CONFLICT (day, game_id) DO UPDATE SET downloads = daily_stats.downloads + 1",
         )
         .bind(game_id)
         .execute(pool)
@@ -157,7 +157,7 @@ impl StatsRepo {
         Ok(())
     }
 
-    /// Xoá daily_stats cũ hơn `days` ngày. Chart dashboard chỉ dùng 7 ngày
+    /// Xoá `daily_stats` cũ hơn `days` ngày. Chart dashboard chỉ dùng 7 ngày
     /// gần nhất — giữ 90 ngày làm biên độ phân tích, phần còn lại là rác
     /// làm bảng phình to vô hạn (mỗi game × mỗi ngày 1 dòng).
     pub async fn cleanup_old_daily_stats(pool: &PgPool, days: i64) -> AppResult<u64> {
