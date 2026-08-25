@@ -39,3 +39,21 @@ Stage Summary:
 - Repo hiện có 286 commits
 - Tech stack: Rust 1.98, Axum 0.8.9 + axum-extra 0.12, Askama 0.16, HTMX 2.0.10, PostgreSQL 17, sqlx 0.9, reqwest 0.12
 - Đã có scaffold cho admin/a11y/dark mode — sẽ nâng cấp, không xây lại từ đầu
+
+---
+Task ID: 1
+Agent: super-z (main)
+Task: Hoàn thành Phase B-E (rename, news module, admin detail view, branch protection)
+
+Work Log:
+- Phase B (rename Kho Game → Louis Space): 14 commits
+- Phase D (News module): migration 008 + model + repo + handler + 7 templates + admin approval workflow (~7 commits)
+- Phase E (admin user detail): migration 009 (signup_ip/ua, last_login_ip/ua) + UserRepo::record_login + AdminUserDetailTemplate + user_detail.html (~2 commits)
+- Phase F (branch protection): setup-branch-protection.sh + áp dụng qua GitHub API → đã verify qua GET /repos/.../branches/main/protection
+
+Stage Summary:
+- Tổng commits: 309 (vượt 300)
+- Repo hiện có: News module hoàn chỉnh với workflow duyệt admin, admin user detail view (mod không thấy IP/email/UA), branch protection áp dụng trên main
+- Build: cargo check + clippy clean, 141 tests pass
+- Tech stack giữ nguyên: Rust 1.98, Axum 0.8.9, sqlx 0.9, Askama 0.16
+- Sẽ tiếp tục Phase C (UI redesign), Phase G (tests, fixes, docs), Phase H (releases)
