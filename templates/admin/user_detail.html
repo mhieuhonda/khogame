@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+{% block title %}Chi tiết user: {{ user.display_name }}{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>👤 Chi tiết người dùng</h1>
+        <p><a href="/admin/users">← Quay lại danh sách</a></p>
+    </div>
+
+    {% if is_self %}
+    <p class="warning">⚠️ Đây là tài khoản của chính bạn. Một số hành động (đổi role, cấm) bị hạn chế.</p>
+    {% endif %}
+
+    <div class="user-detail-grid">
+        <div class="user-detail-card">
+            <h2>Thông tin công khai</h2>
+            <div class="user-detail-row">
+                <strong>Avatar:</strong>
+                {% match user.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-md" width="48" height="48" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-md avatar-fallback">{{ user.display_name|initials }}</div>
+                {% endmatch %}
+            </div>
+            <div class="user-detail-row">
+                <strong>Username:</strong>
+                <code>@{{ user.username }}</code>
+                <a href="/u/{{ user.username }}" target="_blank" class="btn btn-ghost btn-sm">Xem profile</a>
+            </div>
+            <div class="user-detail-row">
+                <strong>Display name:</strong>
+                {{ user.display_name }}
+            </div>
+            <div class="user-detail-row">
+                <strong>Bio:</strong>
+                {% match user.bio.clone() %}
+                {% when Option::Some with (b) %}{{ b }}
+                {% when Option::None %}<em>—</em>
+                {% endmatch %}
+            </div>
+            <div class="user-detail-row">
+                <strong>Vai trò:</strong>
+                <span class="badge badge-{% if user.role.is_admin() %}success{% else if user.role.is_staff() %}warning{% else %}muted{% endif %}">{{ user.role.label() }}</span>
+            </div>
+            <div class="user-detail-row">
+                <strong>Trạng thái:</strong>
+                {% if user.is_banned %}<span class="badge badge-danger">Đã cấm</span>{% else %}<span class="badge badge-success">Hoạt động</span>{% endif %}
+            </div>
+            <div class="user-detail-row">
+                <strong>Tham gia:</strong> {{ user.created_at|format_datetime_vn }}
+            </div>
+            <div class="user-detail-row">
+                <strong>Hoạt động cuối:</strong>
+                {% match user.last_seen_at %}{% when Option::Some with (t) %}{{ t|format_datetime_vn }}{% when Option::None %}<em>chưa có</em>{% endmatch %}
+            </div>
+            <div class="user-detail-row">
+                <strong>Stats:</strong>
+                {{ games_count }} game · {{ news_count }} tin tức · {{ active_sessions }} session đang hoạt động
+            </div>
+        </div>
+
+        <div class="user-detail-card">
+            <h2>🔒 Thông tin nhạy cảm <small>(chỉ admin xem được)</small></h2>
+            <p class="hint">IP và User-Agent dùng để truy vết spam/abuse. Moderator không thấy được mục này.</p>
+
+            <h3>Đăng ký</h3>
+            <div class="user-detail-row">
+                <strong>IP:</strong>
+                <code>{% match user.signup_ip %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</code>
+            </div>
+            <div class="user-detail-row">
+                <strong>UA:</strong>
+                <code class="ua-truncate">{% match user.signup_ua %}{% when Option::Some with (ua) %}{{ ua }}{% when Option::None %}—{% endmatch %}</code>
+            </div>
+
+            <h3>Đăng nhập gần nhất</h3>
+            <div class="user-detail-row">
+                <strong>IP:</strong>
+                <code>{% match user.last_login_ip %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</code>
+            </div>
+            <div class="user-detail-row">
+                <strong>UA:</strong>
+                <code class="ua-truncate">{% match user.last_login_ua %}{% when Option::Some with (ua) %}{{ ua }}{% when Option::None %}—{% endmatch %}</code>
+            </div>
+            <div class="user-detail-row">
+                <strong>Thời điểm:</strong>
+                {% match user.last_login_at %}{% when Option::Some with (t) %}{{ t|format_datetime_vn }}{% when Option::None %}<em>chưa có</em>{% endmatch %}
+            </div>
+
+            <h3>Email</h3>
+            <div class="user-detail-row">
+                <strong>Email:</strong>
+                <code>{{ user.email }}</code>
+            </div>
+            <div class="user-detail-row">
+                <strong>Google sub:</strong>
+                <code class="ua-truncate">{{ user.google_sub }}</code>
+            </div>
+        </div>
+    </div>
+
+    <section class="admin-section">
+        <h2>🔑 Phiên đăng nhập ({{ sessions.len() }})</h2>
+        {% if sessions.is_empty() %}
+        <p class="muted">Không có phiên nào.</p>
+        {% else %}
+        <table class="admin-table">
+            <thead>
+                <tr><th>IP</th><th>User-Agent</th><th>Tạo lúc</th><th>Hết hạn</th><th>Trạng thái</th><th>Hành động</th></tr>
+            </thead>
+            <tbody>
+                {% for s in sessions %}
+                <tr>
+                    <td><code>{% match s.ip_address.clone() %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</code></td>
+                    <td><code class="ua-truncate"><small>{% match s.user_agent.clone() %}{% when Option::Some with (ua) %}{{ ua }}{% when Option::None %}—{% endmatch %}</small></code></td>
+                    <td><small>{{ s.created_at|format_datetime_vn }}</small></td>
+                    <td><small>{{ s.expires_at|format_datetime_vn }}</small></td>
+                    <td>
+                        {% if s.expires_at > now %}<span class="badge badge-success">Còn hạn</span>{% else %}<span class="badge badge-muted">Hết hạn</span>{% endif %}
+                    </td>
+                    <td>
+                        <form method="post" action="/admin/sessions/{{ s.id }}/revoke" style="display:inline"
+                              onsubmit="return confirm('Thu hồi phiên này?')">
+                            <button type="submit" class="btn btn-danger btn-sm">Thu hồi</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+
+    <section class="admin-section">
+        <h2>🛠️ Hành động quản trị</h2>
+        {% if !is_self %}
+        <form method="post" action="/admin/users/{{ user.id }}/role" style="display:inline-block;margin-right:8px">
+            <label>Đổi vai trò:</label>
+            <select name="role">
+                <option value="user" {% if user.role.label() == "Thành viên" %}selected{% endif %}>Thành viên</option>
+                <option value="moderator" {% if user.role.label() == "Điều hành viên" %}selected{% endif %}>Điều hành viên</option>
+                <option value="admin" {% if user.role.label() == "Quản trị viên" %}selected{% endif %}>Quản trị viên</option>
+            </select>
+            <button type="submit" class="btn btn-primary btn-sm">Cập nhật</button>
+        </form>
+        <form method="post" action="/admin/users/{{ user.id }}/ban" style="display:inline-block"
+              onsubmit="return confirm({% if user.is_banned %}'Bỏ cấm user này?'{% else %}'Cấm user này?'{% endif %})">
+            {% if user.is_banned %}
+            <button type="submit" class="btn btn-outline btn-sm">Bỏ cấm</button>
+            {% else %}
+            <button type="submit" class="btn btn-danger btn-sm" name="ban" value="1">Cấm user</button>
+            {% endif %}
+        </form>
+        {% else %}
+        <p class="muted">Bạn không thể tự đổi role hoặc cấm chính mình.</p>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}

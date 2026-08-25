@@ -61,6 +61,8 @@ impl_template_response!(
     MyNewsTemplate,
     AdminNewsPendingTemplate,
     AdminNewsAllTemplate,
+    // Admin user detail (chỉ admin, không phải mod)
+    AdminUserDetailTemplate,
 );
 
 /// Home page
@@ -994,4 +996,21 @@ pub struct AdminNewsAllTemplate {
     pub total: i64,
     pub page: i64,
     pub total_pages: i64,
+}
+
+/// Admin user detail — chỉ admin xem được, không phải moderator.
+/// Hiển thị toàn bộ thông tin: email, IP/UA signup, IP/UA last login,
+/// danh sách sessions, số game/news đã đăng.
+#[derive(Template)]
+#[template(path = "admin/user_detail.html")]
+pub struct AdminUserDetailTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub user: user::User,
+    pub games_count: i64,
+    pub news_count: i64,
+    pub active_sessions: i64,
+    pub sessions: Vec<crate::models::settings::SessionRow>,
+    pub is_self: bool, // true nếu admin đang xem chính mình
+    pub now: chrono::DateTime<chrono::Utc>, // cho check session expires_at > now
 }

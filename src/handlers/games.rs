@@ -1431,6 +1431,11 @@ mod tests_json_ld {
             last_seen_at: None,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            signup_ip: None,
+            signup_ua: None,
+            last_login_ip: None,
+            last_login_ua: None,
+            last_login_at: None,
         }
     }
 

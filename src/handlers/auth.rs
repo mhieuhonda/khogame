@@ -130,12 +130,27 @@ pub async fn google_callback(
         }
         Some(u) => u,
         None => {
+            // Capture IP/UA cho admin truy vết (migration 009)
+            let ip_new = crate::middleware::client_ip_from_parts(
+                &headers,
+                Some(&connect_info.0),
+                state.config.trust_proxy_headers,
+            );
+            let ua_new = headers
+                .get(axum::http::header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("")
+                .chars()
+                .take(1024)
+                .collect::<String>();
             UserRepo::create_from_google(
                 &state.db,
                 &userinfo.sub,
                 &userinfo.email,
                 userinfo.name.as_deref().unwrap_or("Người dùng"),
                 userinfo.picture.as_deref(),
+                Some(&ip_new),
+                Some(&ua_new),
             )
             .await?
         }
@@ -178,6 +193,9 @@ pub async fn google_callback(
     )
     .await?;
     UserRepo::update_last_seen(&state.db, user.id).await?;
+    // Record login IP/UA cho admin detail view (migration 009).
+    // Best-effort: lỗi không block login flow.
+    let _ = UserRepo::record_login(&state.db, user.id, Some(&ip), Some(&user_agent)).await;
     // Dọn session hết hạn (best-effort, tránh bảng phình to vô hạn)
     let _ = SessionRepo::cleanup_expired(&state.db).await;
 

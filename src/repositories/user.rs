@@ -10,7 +10,8 @@ impl UserRepo {
     pub async fn find_by_google_sub(pool: &PgPool, sub: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
               FROM users WHERE google_sub = $1"#,
         )
         .bind(sub)
@@ -22,7 +23,8 @@ impl UserRepo {
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
               FROM users WHERE id = $1"#,
         )
         .bind(id)
@@ -34,7 +36,8 @@ impl UserRepo {
     pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
               FROM users WHERE username = $1"#,
         )
         .bind(username)
@@ -49,6 +52,8 @@ impl UserRepo {
         email: &str,
         name: &str,
         avatar_url: Option<&str>,
+        signup_ip: Option<&str>,
+        signup_ua: Option<&str>,
     ) -> AppResult<User> {
         let base_username: String = email
             .split('@')
@@ -61,16 +66,20 @@ impl UserRepo {
         let username = Self::ensure_unique_username(pool, &base_username).await;
 
         let user = sqlx::query_as::<_, User>(
-            r#"INSERT INTO users (email, username, display_name, avatar_url, google_sub)
-              VALUES ($1, $2, $3, $4, $5)
+            r#"INSERT INTO users (email, username, display_name, avatar_url, google_sub,
+                  signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $7, NOW())
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at"#,
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at"#,
         )
         .bind(email)
         .bind(&username)
         .bind(name)
         .bind(avatar_url)
         .bind(google_sub)
+        .bind(signup_ip)
+        .bind(signup_ua)
         .fetch_one(pool)
         .await?;
 
@@ -83,6 +92,29 @@ impl UserRepo {
         .await;
 
         Ok(user)
+    }
+
+    /// Cập nhật last_login_ip/ua/at khi user đăng nhập lại.
+    /// Best-effort: lỗi không block login flow.
+    pub async fn record_login(
+        pool: &PgPool,
+        user_id: Uuid,
+        ip: Option<&str>,
+        ua: Option<&str>,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r#"UPDATE users SET
+                last_login_ip = $2,
+                last_login_ua = $3,
+                last_login_at = NOW()
+              WHERE id = $1"#,
+        )
+        .bind(user_id)
+        .bind(ip)
+        .bind(ua)
+        .execute(pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn update_profile(
@@ -113,7 +145,8 @@ impl UserRepo {
             r#"UPDATE users SET display_name = $1, bio = $2, avatar_url = COALESCE($3, avatar_url)
               WHERE id = $4
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at"#,
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at"#,
         )
         .bind(display_name)
         .bind(bio)
@@ -253,6 +286,7 @@ impl UserRepo {
         let users = sqlx::query_as::<_, UserWithGameCount>(
             r#"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
                 u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
+                u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
                 COUNT(g.id) FILTER (WHERE g.status = 'published')::bigint AS games_count
               FROM users u
               LEFT JOIN games g ON g.user_id = u.id
@@ -317,7 +351,8 @@ impl UserRepo {
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r#"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
               FROM users WHERE email = $1"#,
         )
         .bind(email)

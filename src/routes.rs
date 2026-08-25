@@ -217,6 +217,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // Users
         .route("/admin/users", get(handlers::admin::users))
+        .route("/admin/users/{id}", get(handlers::admin::user_detail))
         .route("/admin/users/{id}/role", post(handlers::admin::set_role))
         .route("/admin/users/{id}/ban", post(handlers::admin::set_banned))
         // Comments

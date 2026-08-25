@@ -52,6 +52,14 @@ pub struct User {
     pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    // === Tracking fields (migration 009) ===
+    // Chỉ admin xem được; moderator không bao giờ thấy.
+    // Lưu để truy vết spam/abuse: ai đăng từ IP nào, dùng thiết bị gì.
+    pub signup_ip: Option<String>,
+    pub signup_ua: Option<String>,
+    pub last_login_ip: Option<String>,
+    pub last_login_ua: Option<String>,
+    pub last_login_at: Option<DateTime<Utc>>,
 }
 
 impl User {
@@ -82,6 +90,29 @@ pub struct UserWithGameCount {
     pub last_seen_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub games_count: i64,
+    // Tracking fields — chỉ admin xem được
+    pub signup_ip: Option<String>,
+    pub signup_ua: Option<String>,
+    pub last_login_ip: Option<String>,
+    pub last_login_ua: Option<String>,
+    pub last_login_at: Option<DateTime<Utc>>,
+}
+
+/// Phiên bản rút gọn cho moderator — KHÔNG chứa email, IP, UA.
+/// Moderator có thể quản lý games/comments của user nhưng không
+/// được xem thông tin nhạy cảm (email cá nhân, IP, UA).
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserForModerator {
+    pub id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub role: UserRole,
+    pub is_banned: bool,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
     pub games_count: i64,
 }
 

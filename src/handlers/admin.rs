@@ -1225,6 +1225,71 @@ pub struct NewsListParams {
 
 const ADMIN_NEWS_PER_PAGE: i64 = 20;
 
+/// GET /admin/users/{id} — trang chi tiết 1 user cho admin.
+///
+/// **QUYỀN**: Chỉ admin (is_admin), không phải moderator.
+/// Moderator không được xem email/IP/UA/sessions của user.
+///
+/// Hiển thị:
+/// - Email, username, display_name, avatar, bio
+/// - Vai trò + trạng thái banned
+/// - IP/UA lúc signup, IP/UA lúc last login, last_seen_at
+/// - Danh sách sessions (có IP/UA/expires_at)
+/// - Số game đã đăng, số news đã đăng
+/// - Nút đổi role, ban/unban, revoke all sessions
+pub async fn user_detail(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<AdminUserDetailTemplate> {
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ admin được xem chi tiết người dùng. Moderator chỉ thấy danh sách rút gọn.".into(),
+        ));
+    }
+    let user = UserRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+
+    // Count song song — pass pool clone (PgPool is Arc internally, clone is cheap)
+    let db_clone1 = state.db.clone();
+    let db_clone2 = state.db.clone();
+    let (games_count, news_count, active_sessions, sessions) = tokio::join!(
+        async move {
+            let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE user_id = $1")
+                .bind(id)
+                .fetch_one(&db_clone1)
+                .await
+                .unwrap_or(0);
+            c
+        },
+        async move {
+            let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE user_id = $1")
+                .bind(id)
+                .fetch_one(&db_clone2)
+                .await
+                .unwrap_or(0);
+            c
+        },
+        SessionRepo::count_active_for_user(&state.db, id),
+        SessionRepo::list_for_user(&state.db, id, 50),
+    );
+    let is_self = id == admin.id;
+    let unread = unread_count(&state, admin.id).await;
+
+    Ok(AdminUserDetailTemplate {
+        current_user: Some(admin),
+        unread_notifications: unread,
+        user,
+        games_count,
+        news_count,
+        active_sessions: active_sessions.unwrap_or(0),
+        sessions: sessions.unwrap_or_default(),
+        is_self,
+        now: chrono::Utc::now(),
+    })
+}
+
 /// /admin/news/pending — hàng đợi tin chờ duyệt (chỉ admin).
 pub async fn news_pending(
     State(state): State<Arc<AppState>>,

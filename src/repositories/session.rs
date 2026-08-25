@@ -106,4 +106,28 @@ impl SessionRepo {
         .await?;
         Ok(c)
     }
+
+    /// Danh sách session cho 1 user (admin xem chi tiết user).
+    /// Trả về cả session cũ lẫn mới (sắp xếp mới nhất trước).
+    /// Limit 50 để không tràn trang khi user có nhiều login history.
+    pub async fn list_for_user(
+        pool: &PgPool,
+        user_id: Uuid,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::settings::SessionRow>> {
+        let rows = sqlx::query_as::<_, crate::models::settings::SessionRow>(
+            r#"SELECT s.id, s.user_id, u.username, u.display_name,
+                s.user_agent, s.ip_address, s.created_at, s.expires_at
+              FROM sessions s
+              JOIN users u ON u.id = s.user_id
+              WHERE s.user_id = $1
+              ORDER BY s.created_at DESC
+              LIMIT $2"#,
+        )
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
 }

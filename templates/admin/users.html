@@ -23,7 +23,7 @@
                             <a href="/u/{{ u.username }}">{{ u.display_name }}</a> <small>@{{ u.username }}</small>
                         </div>
                     </td>
-                    <td>{{ u.email }}</td>
+                    <td>{{ u.email }}{% match u.last_login_ip %}{% when Option::Some with (ip) %}<br><small><code>{{ ip }}</code></small>{% when Option::None %}{% endmatch %}</td>
                     <td id="role-{{ u.id }}">
                         <form hx-post="/admin/users/{{ u.id }}/role" hx-target="#role-{{ u.id }}" hx-swap="outerHTML" class="role-form">
                             <select name="role" onchange="this.form.dispatchEvent(new Event('submit'))">
@@ -40,6 +40,7 @@
                     </td>
                     <td>{{ u.created_at.to_rfc3339()|time_ago }}</td>
                     <td class="admin-actions">
+                        <a href="/admin/users/{{ u.id }}" class="btn btn-outline btn-sm">Chi tiết</a>
                         <form hx-post="/admin/users/{{ u.id }}/ban" hx-target="#ban-{{ u.id }}" hx-swap="innerHTML">
                             {% if u.is_banned %}
                             <button class="btn btn-outline btn-sm" type="submit">Bỏ cấm</button>
