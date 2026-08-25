@@ -39,8 +39,8 @@ pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<
     Some(user)
 }
 
-/// Throttle map cho việc cập nhật last_seen_at: user_id → lần cập nhật
-/// gần nhất. Tránh ghi DB mỗi request (CurrentUser extractor có thể chạy
+/// Throttle map cho việc cập nhật `last_seen_at`: `user_id` → lần cập nhật
+/// gần nhất. Tránh ghi DB mỗi request (`CurrentUser` extractor có thể chạy
 /// nhiều lần cho cùng request qua các middleware khác nhau).
 static LAST_SEEN_THROTTLE: std::sync::OnceLock<
     std::sync::Mutex<std::collections::HashMap<Uuid, std::time::Instant>>,
@@ -53,20 +53,19 @@ fn touch_last_seen(state: &AppState, user: &User) {
     // thường xuyên quay lại trong phiên ngắn).
     let stale = user
         .last_seen_at
-        .map(|t| {
+        .map_or(true, |t| {
             chrono::Utc::now()
                 .signed_duration_since(t)
                 .num_hours()
                 .abs()
                 >= 1
-        })
-        .unwrap_or(true);
+        });
     if !stale {
         return;
     }
     let map = LAST_SEEN_THROTTLE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     // Khôi phục từ poison — throttle không đáng để panic cả server.
-    let mut map = map.lock().unwrap_or_else(|e| e.into_inner());
+    let mut map = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = std::time::Instant::now();
     match map.get(&user.id) {
         Some(last) if now.duration_since(*last) < std::time::Duration::from_secs(3600) => {
@@ -211,6 +210,7 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -223,7 +223,7 @@ impl RateLimiter {
     pub fn check(&self, key: &str, max_requests: usize, window_secs: u64) -> bool {
         // Khôi phục từ mutex poison thay vì propagate panic — rate limit
         // không nên bring down toàn bộ server.
-        let mut map = self.hits.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.hits.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         let window = std::time::Duration::from_secs(window_secs);
         let entry = map.entry(key.to_string()).or_default();
@@ -365,12 +365,13 @@ mod path_normalization_tests {
     }
 }
 
-/// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc ConnectInfo.
+/// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc `ConnectInfo`.
 ///
 /// `trust_proxy`: chỉ tin headers khi app chạy sau reverse proxy kiểm soát
 /// được (Traefik/Coolify/CDN). Khi expose trực tiếp, header X-Forwarded-For
 /// do CLIENT tự gắn là dữ liệu attacker điều khiển — dùng sẽ bị giả IP
-/// để lách rate-limit. Tắt qua env TRUST_PROXY_HEADERS=false.
+/// để lách rate-limit. Tắt qua env `TRUST_PROXY_HEADERS=false`.
+#[must_use]
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
     connect_info: Option<&SocketAddr>,
@@ -383,9 +384,7 @@ pub fn client_ip_from_parts(
             }
         }
     }
-    connect_info
-        .map(|a| a.ip().to_string())
-        .unwrap_or_else(|| "unknown".into())
+    connect_info.map_or_else(|| "unknown".into(), |a| a.ip().to_string())
 }
 
 /// Chuẩn hoá đường dẫn thành "endpoint bucket" cho rate limit: thay mọi
@@ -403,6 +402,7 @@ pub fn client_ip_from_parts(
 /// An toàn theo hướng fail-closed: segment lạ (không nằm trong whitelist
 /// từ routes.rs) được coi là động và chuẩn hoá — nếu route mới quên thêm
 /// keyword thì bucket gộp chung (hơi gắt) chứ không bao giờ nới lỏng.
+#[must_use]
 pub fn normalize_path_for_rate_limit(path: &str) -> String {
     /// Các segment tĩnh của router (routes.rs). Thêm keyword khi thêm route.
     const STATIC_SEGMENTS: &[&str] = &[
@@ -504,11 +504,11 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         if seg.is_empty() {
             continue;
         }
-        if !STATIC_SEGMENTS.contains(&seg) {
-            out.push_str("/{x}");
-        } else {
+        if STATIC_SEGMENTS.contains(&seg) {
             out.push('/');
             out.push_str(seg);
+        } else {
+            out.push_str("/{x}");
         }
     }
     if out.is_empty() {
@@ -517,9 +517,9 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
     out
 }
 
-/// Wrapper response 429 cho middleware rate_limit — Box bên trong để
-/// Result<Response, _> nhỏ (clippy result_large_err), đồng thời impl
-/// IntoResponse để dùng được làm Err-type của axum::middleware::from_fn.
+/// Wrapper response 429 cho middleware `rate_limit` — Box bên trong để
+/// Result<Response, _> nhỏ (clippy `result_large_err`), đồng thời impl
+/// `IntoResponse` để dùng được làm Err-type của `axum::middleware::from_fn`.
 pub struct RateLimited(Box<Response>);
 
 impl IntoResponse for RateLimited {
@@ -688,7 +688,7 @@ pub async fn require_ai_agent(
         .headers()
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
 
     let user_opt = if let Some(h) = auth_header.as_deref() {
         if let Some(token) = h
