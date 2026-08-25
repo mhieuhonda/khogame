@@ -28,35 +28,67 @@ impl CommentRepo {
         // games.comment_count được cập nhật bởi DB trigger
         // (trigger_comment_insert) — không tự cộng lại tại đây.
 
-        // Insert notification for game owner — lấy owner + slug trong
-        // MỘT query thay vì hai (trước đây 2 round-trip DB riêng biệt
-        // cho mỗi comment mới).
-        let owner_row: Option<(Uuid, String)> =
-            sqlx::query_as("SELECT user_id, slug FROM games WHERE id = $1")
-                .bind(game_id)
-                .fetch_optional(pool)
-                .await?;
-        if let Some((oid, game_slug)) = owner_row {
-            if oid != user_id {
-                let title = if parent_id.is_some() {
-                    "Có người vừa trả lời bình luận của bạn"
-                } else {
-                    "Có người vừa bình luận game của bạn"
-                };
-                let ntype = if parent_id.is_some() {
-                    "reply"
-                } else {
-                    "comment"
-                };
+        // === Notification routing (sửa logic sai từ trước) ===
+        // Trước đây: reply cũng thông báo cho CHỦ GAME với nội dung
+        // "Có người vừa trả lời bình luận của bạn" — sai người nhận:
+        // nếu B trả lời bình luận của A trên game của C thì C nhận thông
+        // báo "trả lời bình luận của bạn" (nhầm!) còn A không nhận gì.
+        // Đúng: reply → thông báo cho TÁC GIẢ bình luận cha; comment gốc
+        // → thông báo cho chủ game. Một query lấy đủ 3 giá trị cần thiết.
+        let info_row: Option<(Uuid, String, Option<Uuid>)> = sqlx::query_as(
+            "SELECT g.user_id, g.slug, pc.user_id \
+             FROM games g \
+             LEFT JOIN comments pc ON pc.id = $2 \
+             WHERE g.id = $1",
+        )
+        .bind(game_id)
+        .bind(parent_id)
+        .fetch_optional(pool)
+        .await?;
+
+        if let Some((owner_id, game_slug, parent_author_id)) = info_row {
+            let link = format!("/games/{}", game_slug);
+            if parent_id.is_some() {
+                // Reply: thông báo tác giả bình luận cha (nếu không phải
+                // chính người reply)
+                if let Some(pa) = parent_author_id {
+                    if pa != user_id {
+                        let _ = sqlx::query(
+                            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                              VALUES ($1, $2, 'reply'::notification_type, $3, $4)"#,
+                        )
+                        .bind(pa)
+                        .bind(user_id)
+                        .bind("Có người vừa trả lời bình luận của bạn")
+                        .bind(&link)
+                        .execute(pool)
+                        .await;
+                    }
+                    // Nếu chủ game khác cả người reply LẪN tác giả cha →
+                    // chủ game cũng nên biết có hoạt động mới (comment msg)
+                    if owner_id != user_id && owner_id != pa {
+                        let _ = sqlx::query(
+                            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                              VALUES ($1, $2, 'comment'::notification_type, $3, $4)"#,
+                        )
+                        .bind(owner_id)
+                        .bind(user_id)
+                        .bind("Có người vừa bình luận game của bạn")
+                        .bind(&link)
+                        .execute(pool)
+                        .await;
+                    }
+                }
+            } else if owner_id != user_id {
+                // Comment gốc: thông báo chủ game
                 let _ = sqlx::query(
                     r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                      VALUES ($1, $2, $3::notification_type, $4, $5)"#,
+                      VALUES ($1, $2, 'comment'::notification_type, $3, $4)"#,
                 )
-                .bind(oid)
+                .bind(owner_id)
                 .bind(user_id)
-                .bind(ntype)
-                .bind(title)
-                .bind(format!("/games/{}", game_slug))
+                .bind("Có người vừa bình luận game của bạn")
+                .bind(&link)
                 .execute(pool)
                 .await;
             }
