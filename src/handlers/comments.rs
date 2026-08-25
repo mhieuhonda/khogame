@@ -32,8 +32,7 @@ pub async fn create_comment(
     let char_count = content.chars().count();
     if char_count > 1000 {
         return Err(AppError::BadRequest(format!(
-            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {})",
-            char_count
+            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {char_count})"
         )));
     }
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
@@ -111,8 +110,7 @@ pub async fn edit_comment(
     let char_count = content.chars().count();
     if char_count > 1000 {
         return Err(AppError::BadRequest(format!(
-            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {})",
-            char_count
+            "Nội dung quá dài (tối đa 1000 ký tự, hiện có {char_count})"
         )));
     }
     let existing = CommentRepo::find_by_id(&state.db, id)
@@ -153,7 +151,7 @@ pub async fn delete_comment(
         ));
     }
     CommentRepo::delete(&state.db, id).await?;
-    Ok(Html("".into()))
+    Ok(Html(String::new()))
 }
 
 pub async fn like_comment(
@@ -221,7 +219,7 @@ pub async fn list_comments_page(
     )
     .await?;
     let loaded = offset + comments.len() as i64;
-    let remaining = (game.comment_count as i64 - loaded).max(0);
+    let remaining = (i64::from(game.comment_count) - loaded).max(0);
     let tpl = crate::templates::CommentsPageTemplate {
         current_user,
         comments,
