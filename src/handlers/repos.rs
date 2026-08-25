@@ -141,7 +141,7 @@ pub async fn create(
     let auto_approve = user.role.is_staff()
         || SettingsRepo::get(&state.db, "repo_auto_approve")
             .await?
-            .map_or(true, |v| v == "on");
+            .is_none_or(|v| v == "on");
 
     // Liên kết game (nếu có) — slug sai báo lỗi rõ ràng thay vì lặng lẽ
     // bỏ liên kết (trước đây user chọn game trong dropdown nhưng slug
