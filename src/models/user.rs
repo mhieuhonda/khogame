@@ -92,3 +92,46 @@ pub struct UserPreference {
     pub show_online: bool,
     pub language: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_role_permission_matrix() {
+        // User thường: không phải staff, không phải admin, không phải AI
+        assert!(!UserRole::User.is_staff());
+        assert!(!UserRole::User.is_admin());
+        assert!(!UserRole::User.is_ai_agent());
+
+        // Moderator: staff nhưng không admin
+        assert!(UserRole::Moderator.is_staff());
+        assert!(!UserRole::Moderator.is_admin());
+        assert!(!UserRole::Moderator.is_ai_agent());
+
+        // Admin: vừa staff vừa admin
+        assert!(UserRole::Admin.is_staff());
+        assert!(UserRole::Admin.is_admin());
+        assert!(!UserRole::Admin.is_ai_agent());
+
+        // AI Agent: KHÔNG phải staff (quan trọng — AI không được đụng admin)
+        assert!(!UserRole::AiAgent.is_staff());
+        assert!(!UserRole::AiAgent.is_admin());
+        assert!(UserRole::AiAgent.is_ai_agent());
+    }
+
+    #[test]
+    fn test_role_labels() {
+        assert_eq!(UserRole::User.label(), "Thành viên");
+        assert_eq!(UserRole::Moderator.label(), "Điều hành viên");
+        assert_eq!(UserRole::Admin.label(), "Quản trị viên");
+        assert_eq!(UserRole::AiAgent.label(), "Tác nhân AI");
+    }
+
+    #[test]
+    fn test_default_role_is_user() {
+        // Default của FromRow khi DB trả NULL → phải là User (an toàn nhất:
+        // thiếu quyền tốt hơn thừa quyền)
+        assert_eq!(UserRole::default(), UserRole::User);
+    }
+}
