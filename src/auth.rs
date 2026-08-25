@@ -106,9 +106,9 @@ pub fn hash_token(token: &str) -> String {
 }
 
 pub fn gen_session_token() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 32] = rng.gen();
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    let bytes: [u8; 32] = rng.random();
     hex::encode(bytes)
 }
 
@@ -116,9 +116,9 @@ pub fn gen_session_token() -> String {
 /// Dài hơn session token (48 bytes = 96 hex chars) để tăng độ khó brute-force.
 /// Prefix "kgai_" để phân biệt với session token thường khi debug log.
 pub fn gen_ai_agent_token() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    // rand 0.8 không impl Distribution<[u8; 48]> → dùng fill() với mảng mut.
+    use rand::RngExt;
+    let mut rng = rand::rng();
+    // fill() với mảng mut — 48 bytes ngẫu nhiên (96 hex chars)
     let mut bytes = [0u8; 48];
     rng.fill(&mut bytes[..]);
     format!("kgai_{}", hex::encode(bytes))

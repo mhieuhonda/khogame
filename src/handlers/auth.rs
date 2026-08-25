@@ -8,7 +8,7 @@ use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum_extra::extract::CookieJar;
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -226,8 +226,8 @@ pub async fn logout_all(
 }
 
 fn gen_csrf() -> String {
-    let mut rng = rand::thread_rng();
-    let bytes: [u8; 16] = rng.gen();
+    let mut rng = rand::rng();
+    let bytes: [u8; 16] = rng.random();
     hex::encode(bytes)
 }
 
