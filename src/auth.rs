@@ -205,3 +205,45 @@ pub fn clear_oauth_next_cookie(jar: &mut CookieJar, base_url: &str) {
         .build();
     *jar = std::mem::take(jar).add(cookie);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_hash_token_deterministic_and_hex() {
+        let h1 = hash_token("my-secret-token");
+        let h2 = hash_token("my-secret-token");
+        assert_eq!(h1, h2, "cùng input phải ra cùng hash");
+        assert_eq!(h1.len(), 64, "SHA-256 hex = 64 ký tự");
+        assert!(h1.chars().all(|c| c.is_ascii_hexdigit()));
+        // Input khác → hash khác
+        assert_ne!(h1, hash_token("other-token"));
+    }
+
+    #[test]
+    fn test_gen_session_token_random_and_format() {
+        let t1 = gen_session_token();
+        let t2 = gen_session_token();
+        assert_ne!(t1, t2, "token phải ngẫu nhiên mỗi lần sinh");
+        assert_eq!(t1.len(), 64, "32 bytes hex = 64 ký tự");
+        assert!(t1.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_gen_ai_agent_token_prefix_and_length() {
+        let t = gen_ai_agent_token();
+        assert!(t.starts_with("kgai_"), "phải có prefix kgai_");
+        // 48 bytes = 96 hex chars + prefix 5
+        assert_eq!(t.len(), 5 + 96);
+        let hex_part = &t[5..];
+        assert!(hex_part.chars().all(|c| c.is_ascii_hexdigit()));
+        // Ngẫu nhiên
+        assert_ne!(t, gen_ai_agent_token());
+    }
+
+    #[test]
+    fn test_hash_ai_agent_token_delegates() {
+        assert_eq!(hash_ai_agent_token("kgai_abc"), hash_token("kgai_abc"));
+    }
+}
