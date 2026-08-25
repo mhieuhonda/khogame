@@ -14,19 +14,19 @@ impl NotificationRepo {
         only_unread: bool,
     ) -> AppResult<Vec<NotificationWithActor>> {
         let sql = if only_unread {
-            r#"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
+            r"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
                 u.display_name as actor_name, u.avatar_url as actor_avatar
               FROM notifications n
               LEFT JOIN users u ON u.id = n.actor_id
               WHERE n.user_id = $1 AND n.is_read = FALSE
-              ORDER BY n.created_at DESC LIMIT $2 OFFSET $3"#
+              ORDER BY n.created_at DESC LIMIT $2 OFFSET $3"
         } else {
-            r#"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
+            r"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
                 u.display_name as actor_name, u.avatar_url as actor_avatar
               FROM notifications n
               LEFT JOIN users u ON u.id = n.actor_id
               WHERE n.user_id = $1
-              ORDER BY n.created_at DESC LIMIT $2 OFFSET $3"#
+              ORDER BY n.created_at DESC LIMIT $2 OFFSET $3"
         };
         let items = sqlx::query_as::<_, NotificationWithActor>(sql)
             .bind(user_id)
@@ -66,18 +66,18 @@ impl NotificationRepo {
     }
 
     /// Lấy 1 notification của đúng user (để re-render item HTMX sau khi
-    /// mark_read mà không phải fetch cả danh sách).
+    /// `mark_read` mà không phải fetch cả danh sách).
     pub async fn find_for_user(
         pool: &PgPool,
         id: Uuid,
         user_id: Uuid,
     ) -> AppResult<Option<NotificationWithActor>> {
         let n = sqlx::query_as::<_, NotificationWithActor>(
-            r#"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
+            r"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
                 u.display_name as actor_name, u.avatar_url as actor_avatar
               FROM notifications n
               LEFT JOIN users u ON u.id = n.actor_id
-              WHERE n.id = $1 AND n.user_id = $2"#,
+              WHERE n.id = $1 AND n.user_id = $2",
         )
         .bind(id)
         .bind(user_id)
@@ -104,8 +104,8 @@ impl NotificationRepo {
         link: &str,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO notifications (user_id, type, title, content, link)
-              VALUES ($1, 'system'::notification_type, $2, $3, $4)"#,
+            r"INSERT INTO notifications (user_id, type, title, content, link)
+              VALUES ($1, 'system'::notification_type, $2, $3, $4)",
         )
         .bind(user_id)
         .bind(title)
@@ -128,9 +128,9 @@ impl NotificationRepo {
         link: &str,
     ) -> AppResult<u64> {
         let res = sqlx::query(
-            r#"INSERT INTO notifications (user_id, type, title, content, link)
+            r"INSERT INTO notifications (user_id, type, title, content, link)
                SELECT id, 'system'::notification_type, $1, $2, $3 FROM users
-               WHERE NOT is_banned AND role != 'ai_agent'"#,
+               WHERE NOT is_banned AND role != 'ai_agent'",
         )
         .bind(title)
         .bind(content)
@@ -148,13 +148,13 @@ impl NotificationRepo {
         game_slug: &str,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-              VALUES ($1, $2, 'mention'::notification_type, $3, $4)"#,
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              VALUES ($1, $2, 'mention'::notification_type, $3, $4)",
         )
         .bind(user_id)
         .bind(actor_id)
         .bind("Có người nhắc đến bạn trong một bình luận")
-        .bind(format!("/games/{}", game_slug))
+        .bind(format!("/games/{game_slug}"))
         .execute(pool)
         .await?;
         Ok(())
@@ -164,8 +164,8 @@ impl NotificationRepo {
     /// được giữ nguyên toàn bộ. Trả về số dòng đã xoá.
     pub async fn cleanup_read_older_than(pool: &PgPool, days: i64) -> AppResult<u64> {
         let res = sqlx::query(
-            r#"DELETE FROM notifications
-               WHERE is_read = TRUE AND created_at < NOW() - ($1 || ' days')::INTERVAL"#,
+            r"DELETE FROM notifications
+               WHERE is_read = TRUE AND created_at < NOW() - ($1 || ' days')::INTERVAL",
         )
         .bind(days.to_string())
         .execute(pool)
