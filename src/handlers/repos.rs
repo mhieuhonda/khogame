@@ -12,10 +12,6 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn iso8601_utc(dt: chrono::DateTime<chrono::Utc>) -> String {
-    dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
 // ============= Danh sách repo =============
 #[derive(Deserialize, Default)]
 pub struct RepoListQuery {
@@ -224,6 +220,10 @@ pub async fn user_repos_fragment(
     let user = crate::repositories::UserRepo::find_by_username(&state.db, &username)
         .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    // Ẩn repo của user bị ban (thống nhất với trang /u/{username})
+    if user.is_banned {
+        return Err(AppError::NotFound("Người dùng không tồn tại".into()));
+    }
     let repos = RepoRepo::list_by_user(&state.db, user.id).await?;
     if repos.is_empty() {
         return Ok(Html(
@@ -250,9 +250,4 @@ pub async fn user_repos_fragment(
         r#"<div class="repo-mini-grid">{}</div>"#,
         items.join("\n")
     )))
-}
-
-#[allow(dead_code)]
-fn unused_iso(dt: &Option<chrono::DateTime<chrono::Utc>>) -> String {
-    dt.map(iso8601_utc).unwrap_or_default()
 }
