@@ -90,6 +90,44 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
     if form.title.chars().count() > 200 {
         return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
     }
+    // Excerpt ≤ 500 (khớp maxlength trong form — DB TEXT không constraint)
+    if form.excerpt.chars().count() > 500 {
+        return Err(AppError::BadRequest("Mô tả ngắn tối đa 500 ký tự".into()));
+    }
+    // Content không được rỗng — kiểm tra ở đây (dùng chung create/update)
+    // vì trước đây chỉ create kiểm tra: update có thể xoá trắng nội dung.
+    if form.content.trim().is_empty() {
+        return Err(AppError::BadRequest("Nội dung không được để trống".into()));
+    }
+    // Content ≤ 50_000 — đủ cho mô tả game cực chi tiết có Markdown,
+    // chặn payload hàng trăm MB làm phình DB & trang render chậm
+    // (DB TEXT chấp nhận tới 1GB).
+    if form.content.chars().count() > 50_000 {
+        return Err(AppError::BadRequest(
+            "Nội dung chi tiết tối đa 50.000 ký tự".into(),
+        ));
+    }
+    // Metadata phụ ≤ 100 ký tự mỗi trường (version/developer/publisher/file_size)
+    for (label, v) in [
+        ("Phiên bản", &form.version),
+        ("Nhà phát triển", &form.developer),
+        ("Nhà phát hành", &form.publisher),
+        ("Dung lượng", &form.file_size),
+    ] {
+        if v.chars().count() > 100 {
+            return Err(AppError::BadRequest(format!("{} tối đa 100 ký tự", label)));
+        }
+    }
+    // Ngôn ngữ: tối đa 20, mỗi ngôn ngữ ≤ 50 ký tự
+    let langs = form.languages_vec();
+    if langs.len() > 20 {
+        return Err(AppError::BadRequest("Tối đa 20 ngôn ngữ hỗ trợ".into()));
+    }
+    for l in &langs {
+        if l.chars().count() > 50 {
+            return Err(AppError::BadRequest("Mỗi ngôn ngữ tối đa 50 ký tự".into()));
+        }
+    }
     if !crate::utils::is_safe_url(&form.cover_image) {
         return Err(AppError::BadRequest(
             "Cover image URL phải là http:// hoặc https://".into(),
@@ -182,9 +220,6 @@ pub async fn create_game(
     Form(form): Form<GameForm>,
 ) -> AppResult<Redirect> {
     validate_game_form(&form)?;
-    if form.content.trim().is_empty() {
-        return Err(AppError::BadRequest("Nội dung không được để trống".into()));
-    }
     if form
         .android_link
         .as_deref()
