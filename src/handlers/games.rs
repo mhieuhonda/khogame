@@ -622,9 +622,18 @@ pub async fn download_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Link tải không tồn tại".into()))?;
 
-    let _ =
-        InteractionRepo::record_download(&state.db, game.id, Some(user.id), &form.platform, None)
-            .await;
+    // Ghi analytics với chuỗi enum CHUẨN (đã parse) — form.platform thô
+    // có thể là "ANDROID"/"Mac OS" vẫn parse được nhờ from_str lowercase
+    // nhưng cast $3::platform_type trong INSERT sẽ fail ngầm (let _ =
+    // nuốt error) → mất dòng stats mà không ai biết.
+    let _ = InteractionRepo::record_download(
+        &state.db,
+        game.id,
+        Some(user.id),
+        platform.as_str(),
+        None,
+    )
+    .await;
     let _ = GameRepo::increment_download_count(&state.db, game.id).await;
     let _ = crate::repositories::StatsRepo::record_download(&state.db, game.id).await;
 

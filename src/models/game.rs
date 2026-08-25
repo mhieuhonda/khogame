@@ -51,6 +51,18 @@ pub enum Platform {
 }
 
 impl Platform {
+    /// Chuỗi enum đúng trong DB (platform_type). Dùng khi bind tham số
+    /// cast `$n::platform_type` — chuỗi bất kỳ khác case (vd "ANDROID")
+    /// sẽ làm Postgres từ chối cast và query fail ngầm.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Platform::Android => "android",
+            Platform::Ios => "ios",
+            Platform::Windows => "windows",
+            Platform::Linux => "linux",
+            Platform::Macos => "macos",
+        }
+    }
     pub fn label(&self) -> &'static str {
         match self {
             Platform::Android => "Android",
