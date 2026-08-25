@@ -100,9 +100,9 @@ pub struct Follow {
 mod tests {
     use super::*;
 
-    /// Roundtrip as_str ↔ from_str cho mọi variant — bất biến mà
-    /// record_share dựa vào (bind chuỗi enum phải parse ngược được
-    /// trong cast $n::share_platform).
+    /// Roundtrip `as_str` ↔ `from_str` cho mọi variant — bất biến mà
+    /// `record_share` dựa vào (bind chuỗi enum phải parse ngược được
+    /// trong cast $`n::share_platform`).
     #[test]
     fn test_share_platform_roundtrip() {
         for p in SharePlatform::all() {
@@ -120,8 +120,8 @@ mod tests {
         assert_eq!(SharePlatform::from_str(""), SharePlatform::Copy);
     }
 
-    /// all() phải đủ 6 platform và as_str là lowercase snake — khớp
-    /// rename_all = "lowercase" của sqlx Type derive.
+    /// `all()` phải đủ 6 platform và `as_str` là lowercase snake — khớp
+    /// `rename_all` = "lowercase" của sqlx Type derive.
     #[test]
     fn test_share_platform_all_and_str_format() {
         assert_eq!(SharePlatform::all().len(), 6);
@@ -129,8 +129,7 @@ mod tests {
             let s = p.as_str();
             assert!(
                 s.chars().all(|c| c.is_ascii_lowercase()),
-                "as_str phải lowercase snake: {}",
-                s
+                "as_str phải lowercase snake: {s}"
             );
         }
     }
