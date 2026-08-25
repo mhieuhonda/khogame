@@ -7,9 +7,9 @@
     <section class="admin-section">
         <div class="section-header"><h2>➕ Thêm thể loại mới</h2></div>
         <form action="/admin/categories/save" method="post" class="admin-form-row">
-            <input type="text" name="name" placeholder="Tên thể loại (vd: Đấu vật)" required>
-            <input type="text" name="icon" placeholder="Icon emoji (vd: 🥋)">
-            <input type="text" name="description" placeholder="Mô tả ngắn">
+            <input type="text" name="name" placeholder="Tên thể loại (vd: Đấu vật)" maxlength="50" required>
+            <input type="text" name="icon" placeholder="Icon emoji (vd: 🥋)" maxlength="100">
+            <input type="text" name="description" placeholder="Mô tả ngắn" maxlength="500">
             <button class="btn btn-primary" type="submit">Thêm</button>
         </form>
     </section>
