@@ -35,7 +35,7 @@ pub struct AuthQuery {
 // ============================================================
 /// Body cho đăng ký AI Agent. AI gửi kèm secret do admin cấp
 /// out-of-band. Nếu secret sai → 403 Forbidden. Nếu feature chưa
-/// bật trong env (AI_AGENT_SECRET rỗng) → 403.
+/// bật trong env (`AI_AGENT_SECRET` rỗng) → 403.
 #[derive(Debug, Deserialize)]
 pub struct AiRegisterRequest {
     pub secret: String,
@@ -144,9 +144,7 @@ pub async fn register(
     let display_name = req
         .display_name
         .as_deref()
-        .filter(|s| !s.trim().is_empty())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| req.model_name.trim().to_string());
+        .filter(|s| !s.trim().is_empty()).map_or_else(|| req.model_name.trim().to_string(), |s| s.trim().to_string());
     let token_label = req
         .token_label
         .as_deref()
@@ -379,8 +377,7 @@ async fn report_progress_impl(
     let status = req
         .status
         .as_deref()
-        .map(parse_status)
-        .unwrap_or(AiTaskStatus::Running);
+        .map_or(AiTaskStatus::Running, parse_status);
     let metadata: Option<serde_json::Value> = req
         .metadata
         .as_deref()
