@@ -53,7 +53,7 @@ fn touch_last_seen(state: &AppState, user: &User) {
     // thường xuyên quay lại trong phiên ngắn).
     let stale = user
         .last_seen_at
-        .map_or(true, |t| {
+        .is_none_or(|t| {
             chrono::Utc::now()
                 .signed_duration_since(t)
                 .num_hours()
@@ -321,11 +321,11 @@ mod path_normalization_tests {
         let id1 = "550e8400-e29b-41d4-a716-446655440000";
         let id2 = "123e4567-e89b-12d3-a456-426614174000";
         assert_eq!(
-            norm(&format!("/comments/{}/like", id1)),
-            norm(&format!("/comments/{}/like", id2))
+            norm(&format!("/comments/{id1}/like")),
+            norm(&format!("/comments/{id2}/like"))
         );
         assert_eq!(
-            norm(&format!("/comments/{}/like", id1)),
+            norm(&format!("/comments/{id1}/like")),
             "/comments/{x}/like"
         );
     }
