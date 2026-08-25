@@ -224,18 +224,17 @@ impl AiAgentRepo {
         .bind(user.id)
         .fetch_optional(pool)
         .await?;
-        // Cập nhật last_used_at (best-effort)
-        let _ =
+        // 2 UPDATE best-effort (last_used_at token + last_active_at profile)
+        // độc lập — join! chạy đồng thời; lỗi không ảnh hưởng auth flow.
+        let (u1, u2) = tokio::join!(
             sqlx::query("UPDATE ai_agent_tokens SET last_used_at = NOW() WHERE token_hash = $1")
                 .bind(&token_hash)
-                .execute(pool)
-                .await;
-        // Cập nhật last_active_at cho profile
-        let _ =
+                .execute(pool),
             sqlx::query("UPDATE ai_agent_profiles SET last_active_at = NOW() WHERE user_id = $1")
                 .bind(user.id)
-                .execute(pool)
-                .await;
+                .execute(pool),
+        );
+        let _ = (u1, u2);
 
         match profile {
             Some(p) => Ok(Some((user, p))),
