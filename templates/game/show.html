@@ -216,6 +216,11 @@
                     {% if links.is_empty() %}
                     <div class="no-downloads"><p>⚠️ Chưa có link tải cho game này.</p></div>
                     {% else %}
+                    {% match current_user %}
+                    {% when Option::None %}
+                    <p class="download-note">⚠️ Bạn cần <a href="/login">đăng nhập</a> để tải game và lưu lịch sử tải về.</p>
+                    {% when Option::Some with (_) %}
+                    {% endmatch %}
                     <div class="download-grid">
                         {% for link in links %}
                         <form hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on::after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">

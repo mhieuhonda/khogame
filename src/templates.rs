@@ -481,13 +481,6 @@ pub struct CommentItemPartial<'a> {
 }
 
 #[derive(Template)]
-#[template(path = "partials/comment_form.html")]
-pub struct CommentFormPartial<'a> {
-    pub game_slug: &'a str,
-    pub parent_id: Option<uuid::Uuid>,
-}
-
-#[derive(Template)]
 #[template(path = "partials/rating_stars.html")]
 pub struct RatingStarsPartial {
     pub game_id: uuid::Uuid,
@@ -516,14 +509,6 @@ pub struct NotificationItemPartial<'a> {
 pub struct ErrorPartial {
     pub message: String,
     pub status: u16,
-}
-
-#[derive(Template)]
-#[template(path = "partials/download_buttons.html")]
-pub struct DownloadButtonsPartial<'a> {
-    pub links: &'a [game::GameLink],
-    pub slug: &'a str,
-    pub is_authenticated: bool,
 }
 
 #[derive(Template)]
