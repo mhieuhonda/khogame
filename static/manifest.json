@@ -1,18 +1,18 @@
 {
   "id": "/",
-  "name": "Kho Game",
-  "short_name": "Kho Game",
-  "description": "Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam",
+  "name": "Louis Space",
+  "short_name": "Louis Space",
+  "description": "Louis Space — nền tảng chia sẻ game độc lập & tin tức cộng đồng Việt Nam",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#0f0f23",
-  "theme_color": "#7c3aed",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
   "lang": "vi",
   "dir": "ltr",
   "orientation": "portrait-primary",
-  "categories": ["games", "entertainment"],
+  "categories": ["games", "news", "entertainment"],
   "prefer_related_applications": false,
   "icons": [
     {
@@ -42,7 +42,13 @@
       "description": "Game đang được xem và tải nhiều nhất"
     },
     {
-      "name": "Tìm kiếm game",
+      "name": "Tin tức",
+      "short_name": "Tin tức",
+      "url": "/news",
+      "description": "Tin tức game & công nghệ mới nhất"
+    },
+    {
+      "name": "Tìm kiếm",
       "short_name": "Tìm",
       "url": "/search",
       "description": "Tìm game theo tên, thể loại, tag"
@@ -51,7 +57,7 @@
       "name": "Đăng game",
       "short_name": "Đăng game",
       "url": "/games/new",
-      "description": "Chia sẻ game của bạn lên Kho Game"
+      "description": "Chia sẻ game của bạn lên Louis Space"
     }
   ]
 }
