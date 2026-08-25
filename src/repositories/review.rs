@@ -15,13 +15,13 @@ impl ReviewRepo {
         rating: i16,
     ) -> AppResult<Uuid> {
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO reviews (game_id, user_id, title, content, rating)
+            r"INSERT INTO reviews (game_id, user_id, title, content, rating)
               VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT (game_id, user_id) DO UPDATE SET
                 title = EXCLUDED.title,
                 content = EXCLUDED.content,
                 rating = EXCLUDED.rating
-              RETURNING id"#,
+              RETURNING id",
         )
         .bind(game_id)
         .bind(user_id)
@@ -43,13 +43,13 @@ impl ReviewRepo {
                     .fetch_one(pool)
                     .await?;
                 let _ = sqlx::query(
-                    r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                      VALUES ($1, $2, 'review'::notification_type, $3, $4)"#,
+                    r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                      VALUES ($1, $2, 'review'::notification_type, $3, $4)",
                 )
                 .bind(oid)
                 .bind(user_id)
                 .bind("Có người vừa đánh giá game của bạn")
-                .bind(format!("/games/{}", game_slug))
+                .bind(format!("/games/{game_slug}"))
                 .execute(pool)
                 .await;
             }
@@ -66,7 +66,7 @@ impl ReviewRepo {
         offset: i64,
     ) -> AppResult<Vec<ReviewWithUser>> {
         let reviews = sqlx::query_as::<_, ReviewWithUser>(
-            r#"SELECT r.id, r.game_id, r.user_id, r.title, r.content, r.rating,
+            r"SELECT r.id, r.game_id, r.user_id, r.title, r.content, r.rating,
                 r.helpful_count, r.created_at, r.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
                 EXISTS(
@@ -76,7 +76,7 @@ impl ReviewRepo {
               JOIN users u ON u.id = r.user_id
               WHERE r.game_id = $1
               ORDER BY r.helpful_count DESC, r.created_at DESC
-              LIMIT $3 OFFSET $4"#,
+              LIMIT $3 OFFSET $4",
         )
         .bind(game_id)
         .bind(viewer_id.unwrap_or_else(Uuid::nil))
