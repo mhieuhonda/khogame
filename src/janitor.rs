@@ -6,7 +6,7 @@ use std::time::Duration;
 /// không bao giờ bị xoá để không mất thông báo người dùng chưa kịp xem.
 const NOTIFICATION_RETENTION_DAYS: i64 = 90;
 
-/// Số ngày giữ daily_stats (chart dashboard chỉ dùng 7 ngày gần nhất).
+/// Số ngày giữ `daily_stats` (chart dashboard chỉ dùng 7 ngày gần nhất).
 const DAILY_STATS_RETENTION_DAYS: i64 = 90;
 
 /// Chu kỳ chạy dọn dẹp mặc định (6 giờ). Có thể override qua env
@@ -18,7 +18,7 @@ const DEFAULT_INTERVAL_SECS: u64 = 6 * 3600;
 /// Trước đây session hết hạn chỉ được dọn opportunistic khi có người
 /// đăng nhập (auth.rs), nên nếu traffic thấp thì bảng sessions phình to
 /// vô hạn trên prod. Janitor này đảm bảo dọn định kỳ bất kể traffic:
-/// - `sessions` hết hạn (expires_at < NOW())
+/// - `sessions` hết hạn (`expires_at` < `NOW()`)
 /// - `notifications` đã đọc cũ hơn 90 ngày
 /// - `daily_stats` cũ hơn 90 ngày (chart chỉ dùng 7 ngày)
 pub async fn run_janitor(state: AppState) {
@@ -51,7 +51,7 @@ pub async fn run_janitor(state: AppState) {
     }
 }
 
-/// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, daily_stats) đã xoá.
+/// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`) đã xoá.
 async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
         .await
