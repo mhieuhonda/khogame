@@ -147,4 +147,17 @@ impl StatsRepo {
         .await?;
         Ok(())
     }
+
+    /// Xoá daily_stats cũ hơn `days` ngày. Chart dashboard chỉ dùng 7 ngày
+    /// gần nhất — giữ 90 ngày làm biên độ phân tích, phần còn lại là rác
+    /// làm bảng phình to vô hạn (mỗi game × mỗi ngày 1 dòng).
+    pub async fn cleanup_old_daily_stats(pool: &PgPool, days: i64) -> AppResult<u64> {
+        let res = sqlx::query(
+            "DELETE FROM daily_stats WHERE day < CURRENT_DATE - ($1 || ' days')::INTERVAL",
+        )
+        .bind(days.to_string())
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
 }
