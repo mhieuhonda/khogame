@@ -1,12 +1,14 @@
+#[must_use]
 pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max).collect();
-        format!("{}…", truncated)
+        format!("{truncated}…")
     }
 }
 
+#[must_use]
 pub fn time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
     let now = chrono::Utc::now();
     let dur = now.signed_duration_since(dt);
@@ -26,10 +28,12 @@ pub fn time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
     }
 }
 
+#[must_use]
 pub fn format_number(n: i32) -> String {
-    format_number_i64(n as i64)
+    format_number_i64(i64::from(n))
 }
 
+#[must_use]
 pub fn format_number_i64(n: i64) -> String {
     let n_abs = n.unsigned_abs();
     if n_abs < 1000 {
@@ -43,6 +47,7 @@ pub fn format_number_i64(n: i64) -> String {
     }
 }
 
+#[must_use]
 pub fn safe_markdown_to_html(input: &str) -> String {
     // Markdown an toàn: escape HTML trước, sau đó áp dụng định dạng tối thiểu
     // (**bold**, *italic*, `code`, [text](https://link)) trên từng đoạn văn.
@@ -65,8 +70,7 @@ fn render_markdown_line(input: &str) -> String {
         if chars[i] == '[' {
             if let Some((text, url, next)) = parse_md_link(&chars, i) {
                 out.push_str(&format!(
-                    r#"<a href="{}" target="_blank" rel="noopener noopener">{}</a>"#,
-                    url, text
+                    r#"<a href="{url}" target="_blank" rel="noopener noopener">{text}</a>"#
                 ));
                 i = next;
                 continue;
@@ -175,8 +179,9 @@ fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)
 }
 
 /// Escape ký tự đặc biệt XML 1.0 cho nội dung text + giá trị attribute.
-/// & phải escape trước để tránh tạo thực thể giả (giống html_escape).
-/// Dùng cho sitemap.xml / RSS / OpenSearch XML dựng bằng format!.
+/// & phải escape trước để tránh tạo thực thể giả (giống `html_escape`).
+/// Dùng cho sitemap.xml / RSS / `OpenSearch` XML dựng bằng format!.
+#[must_use]
 pub fn xml_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -185,6 +190,7 @@ pub fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[must_use]
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -193,6 +199,7 @@ pub fn html_escape(s: &str) -> String {
         .replace('\'', "&#x27;")
 }
 
+#[must_use]
 pub fn extract_youtube_id(url: &str) -> Option<String> {
     if url.is_empty() {
         return None;
@@ -219,6 +226,7 @@ pub fn extract_youtube_id(url: &str) -> Option<String> {
     None
 }
 
+#[must_use]
 pub fn initials(name: &str) -> String {
     let parts: Vec<&str> = name.split_whitespace().collect();
     if parts.is_empty() {
@@ -229,14 +237,16 @@ pub fn initials(name: &str) -> String {
     }
     let first = parts[0].chars().next().unwrap_or('?');
     let last = parts[parts.len() - 1].chars().next().unwrap_or('?');
-    format!("{}{}", first, last).to_uppercase()
+    format!("{first}{last}").to_uppercase()
 }
 
+#[must_use]
 pub fn parse_date(s: &str) -> Option<chrono::NaiveDate> {
     chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok()
 }
 
 /// Strip a query string and trailing slashes for safe redirects
+#[must_use]
 pub fn sanitize_redirect(s: &str) -> String {
     if s.starts_with('/') && !s.starts_with("//") {
         s.to_string()
@@ -249,6 +259,7 @@ pub fn sanitize_redirect(s: &str) -> String {
 /// ký tự. ILIKE không escape tự động: tìm "100%" tạo pattern "%100%%"
 /// match sai mọi tiêu đề có "100". Sau khi escape cần thêm ESCAPE '\\'
 /// vào câu ILIKE (mặc định PostgreSQL hiểu ESCAPE '\\').
+#[must_use]
 pub fn escape_like(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -260,9 +271,10 @@ pub fn escape_like(s: &str) -> String {
     out
 }
 
-/// Validate một URL là http(s) — chống javascript:/data:/file: scheme
+/// Validate một URL là http(s) — chống <javascript:/data:/file>: scheme
 /// nguy hiểm khi dùng URL làm href hoặc src trong HTML. Trả về true nếu
 /// URL rỗng (không bắt buộc) hoặc là http(s)://.
+#[must_use]
 pub fn is_safe_url(url: &str) -> bool {
     if url.is_empty() {
         return true;

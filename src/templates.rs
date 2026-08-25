@@ -1,4 +1,4 @@
-use crate::models::*;
+use crate::models::{user, GameCard, category, tag, news, ai_agent, game, comment, notification, report, settings, repo, NewsStatus};
 use askama::Template;
 
 /// Implement `axum::response::IntoResponse` for a template type by rendering it.
@@ -78,10 +78,10 @@ pub struct IndexTemplate {
     pub categories: Vec<category::CategoryWithCount>,
     pub popular_tags: Vec<tag::Tag>,
     pub total_games: i64,
-    /// Số nền tảng tải game (Platform::all().len()) — hero hiển thị số
+    /// Số nền tảng tải game (`Platform::all().len()`) — hero hiển thị số
     /// thật thay vì hardcode "5" (thêm nền tảng mới là hero tự cập nhật).
     pub platforms_count: usize,
-    /// JSON-LD WebSite schema (search action) — cho Google hiển thị
+    /// JSON-LD `WebSite` schema (search action) — cho Google hiển thị
     /// sitelinks searchbox trên kết quả tìm kiếm.
     pub json_ld: String,
     /// 3 tin tức nổi bật mới nhất để hiển thị section "Tin tức" ở homepage
@@ -107,7 +107,7 @@ pub struct AiLoginTemplate {
     pub next: Option<String>,
 }
 
-/// AI Agent profile edit (model_name, vendor, capabilities, ...)
+/// AI Agent profile edit (`model_name`, vendor, capabilities, ...)
 #[derive(Template)]
 #[template(path = "profile/ai_edit.html")]
 pub struct AiProfileEditTemplate {
@@ -163,7 +163,7 @@ pub struct GameShowTemplate {
     pub base_url: String,
     /// JSON-LD \<script type="application/ld+json"\> đã được serialize sẵn
     /// trong handler. Tránh phải lặp logic ở template (askama không có
-    /// filter json_encode builtin ở 0.16).
+    /// filter `json_encode` builtin ở 0.16).
     pub json_ld: String,
 }
 
@@ -218,7 +218,7 @@ pub struct ProfileTemplate {
     pub is_following: bool,
     pub is_self: bool,
     pub preferences: user::UserPreference,
-    /// Nếu user là AI Agent, đây là hồ sơ AI (model_name, vendor, ...).
+    /// Nếu user là AI Agent, đây là hồ sơ AI (`model_name`, vendor, ...).
     /// None nếu user thường.
     pub ai_profile: Option<ai_agent::AiAgentProfile>,
 }
@@ -561,13 +561,13 @@ pub struct ReportModalPartial<'a> {
     pub slug: &'a str,
 }
 
-/// Base URL tuyệt đối của site — set MỘT lần lúc startup (run()) để
+/// Base URL tuyệt đối của site — set MỘT lần lúc startup (`run()`) để
 /// filter `abs_url` trong template dựng URL đầy đủ cho thẻ meta OG/Twitter
 /// (crawler Facebook/Twitter/Telegram không tự resolve URL tương đối).
 static SITE_BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-/// Khởi tạo base URL cho các filter template. Gọi một lần trong run().
-/// Nếu không gọi (unit test), abs_url trả về path gốc không đổi.
+/// Khởi tạo base URL cho các filter template. Gọi một lần trong `run()`.
+/// Nếu không gọi (unit test), `abs_url` trả về path gốc không đổi.
 pub fn init_base_url(base: &str) {
     let _ = SITE_BASE_URL.set(base.trim_end_matches('/').to_string());
 }
@@ -584,7 +584,7 @@ pub mod filters {
     /// og:image / twitter:image (crawler không chấp nhận path tương đối).
     #[askama::filter_fn]
     pub fn abs_url(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
-        let base = super::SITE_BASE_URL.get().map(|b| b.as_str()).unwrap_or("");
+        let base = super::SITE_BASE_URL.get().map_or("", std::string::String::as_str);
         Ok(format!("{}{}", base, s.as_ref()))
     }
 
@@ -609,7 +609,7 @@ pub mod filters {
     pub fn fmt_f64(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
         let raw = n.to_string();
         let v: f64 = raw.trim().parse().unwrap_or(0.0);
-        Ok(format!("{:.1}", v))
+        Ok(format!("{v:.1}"))
     }
 
     /// Markdown an toàn -> HTML (không escape lần 2)
@@ -673,7 +673,7 @@ pub mod filters {
         }
         // youtube-nocookie.com: chế độ privacy-enhanced của YouTube —
         // không set cookie tracking cho người xem chưa bấm play.
-        Ok(format!("https://www.youtube-nocookie.com/embed/{}", id))
+        Ok(format!("https://www.youtube-nocookie.com/embed/{id}"))
     }
 
     #[askama::filter_fn]
