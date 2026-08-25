@@ -503,10 +503,18 @@ fn short_hash(s: &str) -> String {
 pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
     let txt = format!(
-        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /api/\n\nSitemap: {}/sitemap.xml\n",
+        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /bookmarks\nDisallow: /my-games\nDisallow: /auth\nDisallow: /api/\nDisallow: /ai\n\nSitemap: {}/sitemap.xml\n",
         base
     );
-    ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], txt).into_response()
+    (
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            // robots.txt đổi rất hiếm — cache 1h giảm request vô ích
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        txt,
+    )
+        .into_response()
 }
 
 /// OpenSearch description XML — cho phép trình duyệt thêm Kho Game vào
