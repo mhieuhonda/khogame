@@ -143,6 +143,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/games", get(handlers::api::games_list))
         .route("/games/{slug}", get(handlers::api::game_detail))
         .route("/games/{slug}/related", get(handlers::api::game_related))
+        .route("/games/{slug}/comments", get(handlers::api::game_comments))
         .route("/repos", get(handlers::api::repos_list))
         .route("/tags", get(handlers::api::tags_list))
         .route("/categories", get(handlers::api::categories_list))

@@ -173,6 +173,59 @@ pub async fn game_detail(
     Ok(([(header::CACHE_CONTROL, "public, max-age=60")], Json(body)).into_response())
 }
 
+/// Bình luận của game dạng JSON công khai (top-level, phân trang).
+/// Client bên ngoài có thể dựng widget bình luận mà không cào HTML.
+/// Chỉ comment của game đã xuất bản; replies tải riêng qua /comments/{id}/replies.
+pub async fn game_comments(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+    Query(q): Query<ApiListQuery>,
+) -> AppResult<Response> {
+    let g = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ game published mới công khai bình luận — đồng bộ với trang HTML.
+    if g.status != crate::models::game::GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let comments = crate::repositories::CommentRepo::list_by_game(
+        &state.db, g.id,
+        None, // viewer ẩn danh — is_liked luôn false trong API công khai
+        per_page, offset,
+    )
+    .await?;
+    let data: Vec<serde_json::Value> = comments
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "parent_id": c.parent_id,
+                "content": c.content,
+                "like_count": c.like_count,
+                "is_pinned": c.is_pinned,
+                "author": {
+                    "name": c.user_name,
+                    "avatar_url": c.user_avatar,
+                },
+                "created_at": c.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!({
+            "data": data,
+            "total": g.comment_count,
+            "page": page,
+            "per_page": per_page,
+        })),
+    )
+        .into_response())
+}
+
 pub async fn repos_list(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ApiListQuery>,
@@ -815,6 +868,7 @@ pub async fn root(State(state): State<Arc<AppState>>) -> Response {
             {"method": "GET", "path": "/api/v1/games", "description": "Danh sách game (có phân trang, sort, search)"},
             {"method": "GET", "path": "/api/v1/games/{slug}", "description": "Chi tiết game"},
             {"method": "GET", "path": "/api/v1/games/{slug}/related", "description": "Game liên quan"},
+            {"method": "GET", "path": "/api/v1/games/{slug}/comments", "description": "Bình luận của game (phân trang)"},
             {"method": "GET", "path": "/api/v1/categories", "description": "Danh sách thể loại"},
             {"method": "GET", "path": "/api/v1/categories/{slug}/games", "description": "Game theo thể loại"},
             {"method": "GET", "path": "/api/v1/tags", "description": "Top tag phổ biến"},
