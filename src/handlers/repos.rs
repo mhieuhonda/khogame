@@ -24,8 +24,13 @@ pub async fn list(
     Query(q): Query<RepoListQuery>,
 ) -> AppResult<RepoListTemplate> {
     let sort = q.sort.unwrap_or_else(|| "stars".into());
-    let repos = RepoRepo::list_approved(&state.db, 60, 0, &sort).await?;
-    let total = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
+    // 2 query độc lập — join! song song.
+    let (repos_res, total) = tokio::join!(
+        RepoRepo::list_approved(&state.db, 60, 0, &sort),
+        RepoRepo::count_approved(&state.db),
+    );
+    let repos = repos_res?;
+    let total = total.unwrap_or(0);
     let unread = match current_user.as_ref() {
         Some(u) => unread_count(&state, u.id).await,
         None => 0,
