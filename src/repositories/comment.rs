@@ -28,12 +28,15 @@ impl CommentRepo {
         // games.comment_count được cập nhật bởi DB trigger
         // (trigger_comment_insert) — không tự cộng lại tại đây.
 
-        // Insert notification for game owner
-        let owner_id: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
-            .bind(game_id)
-            .fetch_optional(pool)
-            .await?;
-        if let Some(oid) = owner_id {
+        // Insert notification for game owner — lấy owner + slug trong
+        // MỘT query thay vì hai (trước đây 2 round-trip DB riêng biệt
+        // cho mỗi comment mới).
+        let owner_row: Option<(Uuid, String)> =
+            sqlx::query_as("SELECT user_id, slug FROM games WHERE id = $1")
+                .bind(game_id)
+                .fetch_optional(pool)
+                .await?;
+        if let Some((oid, game_slug)) = owner_row {
             if oid != user_id {
                 let title = if parent_id.is_some() {
                     "Có người vừa trả lời bình luận của bạn"
@@ -45,10 +48,6 @@ impl CommentRepo {
                 } else {
                     "comment"
                 };
-                let game_slug: String = sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
-                    .bind(game_id)
-                    .fetch_one(pool)
-                    .await?;
                 let _ = sqlx::query(
                     r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
                       VALUES ($1, $2, $3::notification_type, $4, $5)"#,
