@@ -416,6 +416,22 @@ mod tests {
         assert_eq!(Platform::from_str(""), None);
     }
 
+    /// Roundtrip: from_str(as_str(p)) == p cho mọi platform — đảm bảo
+    /// chuỗi bind vào $n::platform_type luôn parse ngược được (commit
+    /// fix download analytics dựa trên bất biến này).
+    #[test]
+    fn test_platform_as_str_roundtrip() {
+        for p in Platform::all() {
+            assert_eq!(Platform::from_str(p.as_str()), Some(p.clone()));
+        }
+        // Chuỗi enum DB phải là lowercase snake (khớp rename_all)
+        assert_eq!(Platform::Android.as_str(), "android");
+        assert_eq!(Platform::Ios.as_str(), "ios");
+        assert_eq!(Platform::Windows.as_str(), "windows");
+        assert_eq!(Platform::Linux.as_str(), "linux");
+        assert_eq!(Platform::Macos.as_str(), "macos");
+    }
+
     #[test]
     fn test_platform_all_has_5() {
         assert_eq!(Platform::all().len(), 5);
