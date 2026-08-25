@@ -918,6 +918,14 @@ a:hover { color: var(--accent-light); }
 .char-counter { font-size: 12px; color: var(--text-muted); }
 
 .comments-list { display: flex; flex-direction: column; gap: 16px; }
+.comments-load-more {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0 4px;
+}
+.comments-load-more .btn {
+    min-width: 220px;
+}
 .comment-item {
     display: flex;
     gap: 12px;
