@@ -295,6 +295,74 @@ mod rate_limiter_tests {
     }
 }
 
+#[cfg(test)]
+mod path_normalization_tests {
+    use super::normalize_path_for_rate_limit as norm;
+
+    #[test]
+    fn slug_rotation_cannot_bypass_comment_limit() {
+        // 2 slug khác nhau phải cho CÙNG key bucket — spammer xoay slug
+        // không còn tạo bucket mới để vượt giới hạn 10 comment/phút.
+        assert_eq!(
+            norm("/games/game-a/comments"),
+            norm("/games/game-zzz/comments")
+        );
+    }
+
+    #[test]
+    fn slug_rotation_cannot_bypass_download_limit() {
+        assert_eq!(norm("/games/abc/download"), norm("/games/xyz/download"));
+    }
+
+    #[test]
+    fn uuid_segments_normalized() {
+        let id1 = "550e8400-e29b-41d4-a716-446655440000";
+        let id2 = "123e4567-e89b-12d3-a456-426614174000";
+        assert_eq!(
+            norm(&format!("/comments/{}/like", id1)),
+            norm(&format!("/comments/{}/like", id2))
+        );
+        assert_eq!(
+            norm(&format!("/comments/{}/like", id1)),
+            "/comments/{x}/like"
+        );
+    }
+
+    #[test]
+    fn static_endpoints_keep_own_bucket() {
+        // Endpoint tĩnh khác nhau → bucket khác nhau (không gộp oan)
+        assert_ne!(norm("/games/latest"), norm("/games/trending"));
+        assert_ne!(norm("/api/suggest"), norm("/api/check-duplicate"));
+        assert_ne!(norm("/auth/google"), norm("/auth/logout"));
+    }
+
+    #[test]
+    fn usernames_and_category_slugs_normalized() {
+        // /u/{username} — mọi user chung bucket follow theo IP
+        assert_eq!(norm("/u/alice/follow"), norm("/u/bob/follow"));
+        assert_eq!(norm("/u/alice/follow"), "/u/{x}/follow");
+        // /c/{slug} và /t/{slug}
+        assert_eq!(norm("/c/hanh-dong"), norm("/c/giai-tri"));
+        assert_eq!(norm("/t/2d"), "/t/{x}");
+    }
+
+    #[test]
+    fn root_and_admin_paths() {
+        assert_eq!(norm("/"), "/");
+        // /admin — segment tĩnh giữ nguyên
+        assert_eq!(norm("/admin"), "/admin");
+        // /admin/users/{uuid}/ban → UUID bị chuẩn hoá
+        let r = norm("/admin/users/550e8400-e29b-41d4-a716-446655440000/ban");
+        assert_eq!(r, "/admin/users/{x}/ban");
+    }
+
+    #[test]
+    fn trailing_slash_normalized() {
+        // Slash cuối không tạo bucket khác
+        assert_eq!(norm("/games/foo/comments/"), norm("/games/foo/comments"));
+    }
+}
+
 /// Lấy IP client từ headers proxy phổ biến (Coolify/Traefik) hoặc ConnectInfo
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
@@ -310,12 +378,133 @@ pub fn client_ip_from_parts(
         .unwrap_or_else(|| "unknown".into())
 }
 
+/// Chuẩn hoá đường dẫn thành "endpoint bucket" cho rate limit: thay mọi
+/// segment động (slug game, username, UUID, category slug...) bằng `{x}`.
+///
+/// TRƯỚC ĐÂY (bug): key = `ip + path đầy đủ` → `/games/a/comments` và
+/// `/games/b/comments` là 2 bucket khác nhau. Spammer xoay slug (có sẵn
+/// danh sách 10.000 game) thì mỗi bucket riêng 10 req/phút → giới hạn
+/// 10 bình luận/phút thực tế là VÔ HẠN. Tương tự `/games/{slug}/download`.
+///
+/// Sau fix: mọi slug đổi thành `{x}` → `/games/{x}/comments` chung một
+/// bucket theo IP. Segment tĩnh được giữ nguyên để các endpoint khác
+/// (GET /games/latest, POST /games) vẫn có bucket riêng đúng nghĩa.
+///
+/// An toàn theo hướng fail-closed: segment lạ (không nằm trong whitelist
+/// từ routes.rs) được coi là động và chuẩn hoá — nếu route mới quên thêm
+/// keyword thì bucket gộp chung (hơi gắt) chứ không bao giờ nới lỏng.
+pub fn normalize_path_for_rate_limit(path: &str) -> String {
+    /// Các segment tĩnh của router (routes.rs). Thêm keyword khi thêm route.
+    const STATIC_SEGMENTS: &[&str] = &[
+        // resources & actions chung
+        "games",
+        "comments",
+        "repos",
+        "users",
+        "categories",
+        "tags",
+        "notifications",
+        "bookmarks",
+        "search",
+        "profile",
+        "settings",
+        "sessions",
+        "audit",
+        "export",
+        // game actions
+        "new",
+        "edit",
+        "delete",
+        "publish",
+        "download",
+        "report-form",
+        "report",
+        "like",
+        "bookmark",
+        "rate",
+        "share",
+        "replies",
+        "hide",
+        "feature",
+        "pin",
+        "resolve",
+        "refresh",
+        "role",
+        "ban",
+        "save",
+        "status",
+        "revoke",
+        // danh sách đặc biệt
+        "latest",
+        "trending",
+        "top-rated",
+        "downloads",
+        "featured",
+        "my-games",
+        "mark-all-read",
+        "read",
+        "broadcast",
+        "related",
+        "stats",
+        // auth
+        "auth",
+        "google",
+        "callback",
+        "logout",
+        "logout-all",
+        "login",
+        "register",
+        // tiền tố & trang tĩnh
+        "api",
+        "v1",
+        "ai",
+        "admin",
+        "u",
+        "c",
+        "t",
+        "my-games",
+        "ai-agents",
+        "ai-reports",
+        "progress",
+        "progress.json",
+        "info",
+        "terms",
+        "privacy",
+        "health",
+        "maintenance",
+        "check-duplicate",
+        "suggest",
+        "preferences",
+        "theme",
+        "announcement",
+        "static",
+        "feed",
+        "follow",
+    ];
+    let mut out = String::with_capacity(path.len());
+    for seg in path.split('/') {
+        if seg.is_empty() {
+            continue;
+        }
+        if !STATIC_SEGMENTS.contains(&seg) {
+            out.push_str("/{x}");
+        } else {
+            out.push('/');
+            out.push_str(seg);
+        }
+    }
+    if out.is_empty() {
+        out.push('/');
+    }
+    out
+}
+
 /// Middleware giới hạn tốc độ cho các endpoint nhạy cảm
 pub async fn rate_limit(
     State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, Response> {
     let path = request.uri().path().to_string();
     // Lấy IP thật của client qua ConnectInfo (được axum thêm vào request
     // extensions khi dùng into_make_service_with_connect_info). Nếu chạy sau
@@ -352,12 +541,26 @@ pub async fn rate_limit(
     } else {
         (120, 60)
     };
-    if !state
-        .rate_limiter
-        .check(&format!("{}:{}", ip, path), max, window)
-    {
+    if !state.rate_limiter.check(
+        // Key theo path ĐÃ CHUẨN HOÁ: xoay slug/UUID không tạo bucket mới
+        // (xem normalize_path_for_rate_limit). Giới hạn áp theo endpoint
+        // bucket + IP, không theo URL đầy đủ.
+        &format!("{}{}", ip, normalize_path_for_rate_limit(&path)),
+        max,
+        window,
+    ) {
         tracing::warn!("Rate limit exceeded: {} {} ({}/{})", ip, path, max, window);
-        return Err(StatusCode::TOO_MANY_REQUESTS);
+        // Retry-After (RFC 6585/9110): báo client chờ bao lâu trước khi
+        // thử lại — HTMX app.js / curl đều đọc được, tránh spam 429 liên tục.
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            [
+                (axum::http::header::RETRY_AFTER, window.to_string()),
+                (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
+            ],
+            "Too Many Requests - vui lòng thử lại sau.",
+        )
+            .into_response());
     }
     Ok(next.run(request).await)
 }
