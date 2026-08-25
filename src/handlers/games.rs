@@ -90,6 +90,7 @@ pub async fn home(
         categories,
         popular_tags,
         total_games,
+        platforms_count: Platform::all().len(),
         json_ld,
     })
 }

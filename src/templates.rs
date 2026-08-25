@@ -68,6 +68,9 @@ pub struct IndexTemplate {
     pub categories: Vec<category::CategoryWithCount>,
     pub popular_tags: Vec<tag::Tag>,
     pub total_games: i64,
+    /// Số nền tảng tải game (Platform::all().len()) — hero hiển thị số
+    /// thật thay vì hardcode "5" (thêm nền tảng mới là hero tự cập nhật).
+    pub platforms_count: usize,
     /// JSON-LD WebSite schema (search action) — cho Google hiển thị
     /// sitelinks searchbox trên kết quả tìm kiếm.
     pub json_ld: String,
