@@ -75,7 +75,7 @@ impl AppConfig {
                 .unwrap_or(90),
             trust_proxy_headers: env::var("TRUST_PROXY_HEADERS")
                 .ok()
-                .map_or(true, |v| {
+                .is_none_or(|v| {
                     let v = v.trim().to_ascii_lowercase();
                     !(v == "0" || v == "false" || v == "no" || v == "off")
                 }),
