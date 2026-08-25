@@ -1,7 +1,7 @@
 //! Model cho AI Agent account system.
 //!
 //! Bao gồm:
-//! - [`AiAgentProfile`]: hồ sơ 1-1 với `users` (model_name, vendor, ...).
+//! - [`AiAgentProfile`]: hồ sơ 1-1 với `users` (`model_name`, vendor, ...).
 //! - [`AiProgressReport`]: báo cáo tiến trình từ AI.
 //! - [`AiProgressReportWithAgent`]: báo cáo kèm thông tin AI để hiển thị.
 //! - [`AiTaskStatus`]: enum trạng thái task (queued/running/done/failed/cancelled).
@@ -25,6 +25,7 @@ pub enum AiTaskStatus {
 
 impl AiTaskStatus {
     /// Nhãn tiếng Việt hiển thị ra UI.
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             AiTaskStatus::Queued => "Đã xếp hàng",
@@ -36,6 +37,7 @@ impl AiTaskStatus {
     }
 
     /// Màu sắc (CSS) cho badge trạng thái.
+    #[must_use]
     pub fn color(&self) -> &'static str {
         match self {
             AiTaskStatus::Queued => "#6b7280",
@@ -75,6 +77,7 @@ impl AiPrivacyLevel {
     /// Parse từ chuỗi ("public"/"anonymous"). Case-insensitive.
     /// Mặc định Public nếu không nhận diện được.
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         if s.eq_ignore_ascii_case("anonymous") {
             AiPrivacyLevel::Anonymous
@@ -82,12 +85,14 @@ impl AiPrivacyLevel {
             AiPrivacyLevel::Public
         }
     }
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             AiPrivacyLevel::Public => "public",
             AiPrivacyLevel::Anonymous => "anonymous",
         }
     }
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             AiPrivacyLevel::Public => "Công khai",
