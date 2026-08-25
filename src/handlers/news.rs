@@ -627,7 +627,7 @@ mod tests {
     fn news_categories_have_unique_keys() {
         // Đảm bảo không có key trùng trong whitelist
         let mut keys: Vec<&str> = NEWS_CATEGORIES.iter().map(|(k, _)| *k).collect();
-        keys.sort();
+        keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), NEWS_CATEGORIES.len(), "Duplicate category keys");
     }
@@ -637,7 +637,7 @@ mod tests {
         // Mỗi category phải có label không rỗng
         for (k, v) in NEWS_CATEGORIES {
             assert!(!k.is_empty(), "Category key rỗng");
-            assert!(!v.is_empty(), "Label cho category '{}' rỗng", k);
+            assert!(!v.is_empty(), "Label cho category '{k}' rỗng");
         }
     }
 
@@ -645,8 +645,8 @@ mod tests {
     fn news_categories_count_is_reasonable() {
         // Không quá ít (3-) để không hữu ích, không quá nhiều (20+) để UI lộn xộn
         let count = NEWS_CATEGORIES.len();
-        assert!(count >= 5, "Quá ít category: {}", count);
-        assert!(count <= 15, "Quá nhiều category: {}", count);
+        assert!(count >= 5, "Quá ít category: {count}");
+        assert!(count <= 15, "Quá nhiều category: {count}");
     }
 
     #[test]
