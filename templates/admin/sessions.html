@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+{% block title %}Phiên đăng nhập{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>🔐 Phiên đăng nhập đang hoạt động</h1>
+        <p>200 phiên còn hạn mới nhất. Thu hồi phiên để buộc đăng xuất trên thiết bị đó.</p>
+    </div>
+    {% include "admin/_nav.html" %}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Người dùng</th>
+                    <th>Thiết bị</th>
+                    <th>IP</th>
+                    <th>Đăng nhập</th>
+                    <th>Hết hạn</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for s in sessions %}
+            <tr>
+                <td>
+                    <a href="/u/{{ s.username }}">{{ s.display_name }}</a>
+                    <small style="opacity:0.7">@{{ s.username }}</small>
+                </td>
+                <td>{{ s.ua_summary() }}</td>
+                <td>{{ s.ip_address.as_deref().unwrap_or("-") }}</td>
+                <td title="{{ s.created_at.to_rfc3339() }}">{{ s.created_at.to_rfc3339()|time_ago }}</td>
+                <td title="{{ s.expires_at.to_rfc3339() }}">{{ s.expires_at.to_rfc3339()|time_ago }}</td>
+                <td>
+                    <form method="post" action="/admin/sessions/{{ s.id }}/revoke"
+                          onsubmit="return confirm('Thu hồi phiên của @{{ s.username }}? Thiết bị đó sẽ bị đăng xuất ngay.');">
+                        <button type="submit" class="btn btn-sm btn-danger">Thu hồi</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if sessions.is_empty() %}
+    <div class="empty-state"><p>Không có phiên nào đang hoạt động.</p></div>
+    {% endif %}
+</section>
+{% endblock %}

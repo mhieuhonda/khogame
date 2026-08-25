@@ -4,7 +4,7 @@ use crate::middleware::AuthUser;
 use crate::models::report::ReportStatus;
 use crate::repositories::{
     AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NotificationRepo, RepoRepo,
-    ReportRepo, SettingsRepo, StatsRepo, UserRepo,
+    ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
 };
 use crate::state::AppState;
 use crate::templates::*;
@@ -970,6 +970,59 @@ pub async fn audit_log(
         unread_notifications: unread,
         logs,
     })
+}
+
+// ============================================================
+// SESSIONS — quản lý phiên đăng nhập đang hoạt động
+// ============================================================
+pub async fn sessions(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminSessionsTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let sessions = SessionRepo::list_active(&state.db, 200).await?;
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminSessionsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        sessions,
+    })
+}
+
+/// Thu hồi 1 phiên (buộc đăng xuất thiết bị đó). Không cho thu hồi
+/// phiên của chính mình qua endpoint này — dùng /auth/logout hoặc
+/// /auth/logout-all để tránh tự khoá mình khỏi admin giữa phiên.
+pub async fn revoke_session(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Redirect> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let deleted = SessionRepo::delete_by_id(&state.db, id).await?;
+    audit(
+        &state,
+        user.id,
+        "session.revoke",
+        "session",
+        &id.to_string(),
+        if deleted {
+            "đã thu hồi"
+        } else {
+            "không tồn tại"
+        },
+    )
+    .await;
+    if !deleted {
+        return Err(AppError::NotFound(
+            "Phiên không tồn tại (có thể đã hết hạn)".into(),
+        ));
+    }
+    tracing::info!(admin = %user.username, session = %id, "Admin thu hồi phiên đăng nhập");
+    Ok(Redirect::to("/admin/sessions"))
 }
 
 // ============================================================

@@ -62,4 +62,48 @@ impl SessionRepo {
             .await?;
         Ok(res.rows_affected())
     }
+
+    /// Session còn hạn mới nhất kèm thông tin user — cho trang quản trị
+    /// phiên. Join users để lấy username/display_name, chỉ session CÒN
+    /// HẠN (expires_at > NOW()), sắp xếp theo tạo mới nhất.
+    pub async fn list_active(
+        pool: &PgPool,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::settings::SessionRow>> {
+        let rows = sqlx::query_as::<_, crate::models::settings::SessionRow>(
+            r#"SELECT s.id, s.user_id, u.username, u.display_name,
+                s.user_agent, s.ip_address, s.created_at, s.expires_at
+              FROM sessions s
+              JOIN users u ON u.id = s.user_id
+              WHERE s.expires_at > NOW()
+              ORDER BY s.created_at DESC
+              LIMIT $1"#,
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Xoá 1 session theo id (admin thu hồi phiên cụ thể). Chỉ đếm là
+    /// thành công khi dòng tồn tại — trả false nếu id không có.
+    pub async fn delete_by_id(pool: &PgPool, id: Uuid) -> AppResult<bool> {
+        let res = sqlx::query("DELETE FROM sessions WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// Đếm session còn hạn theo user — badge 'đang hoạt động' trong
+    /// trang admin users.
+    pub async fn count_active_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW()",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
 }

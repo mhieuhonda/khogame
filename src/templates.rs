@@ -43,6 +43,7 @@ impl_template_response!(
     AdminReposTemplate,
     AdminSettingsTemplate,
     AdminAuditTemplate,
+    AdminSessionsTemplate,
     AdminAiAgentsTemplate,
     AdminAiReportsTemplate,
     RepoListTemplate,
@@ -368,6 +369,15 @@ pub struct AdminAuditTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub logs: Vec<settings::AdminLogWithAdmin>,
+}
+
+/// Admin: quản lý phiên đăng nhập đang hoạt động
+#[derive(Template)]
+#[template(path = "admin/sessions.html")]
+pub struct AdminSessionsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub sessions: Vec<settings::SessionRow>,
 }
 
 /// Admin: danh sách AI Agent

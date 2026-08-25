@@ -237,6 +237,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/admin/broadcast", post(handlers::admin::broadcast))
         // Audit & export
         .route("/admin/audit", get(handlers::admin::audit_log))
+        .route("/admin/sessions", get(handlers::admin::sessions))
+        .route(
+            "/admin/sessions/{id}/revoke",
+            post(handlers::admin::revoke_session),
+        )
         .route("/admin/export", get(handlers::admin::export))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
