@@ -19,6 +19,7 @@ pub enum NotificationType {
 }
 
 impl NotificationType {
+    #[must_use]
     pub fn icon(&self) -> &'static str {
         match self {
             NotificationType::Comment => "💬",
@@ -33,6 +34,7 @@ impl NotificationType {
             NotificationType::Mention => "@",
         }
     }
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             NotificationType::Comment => "Bình luận mới",
@@ -63,15 +65,19 @@ pub struct Notification {
 }
 
 impl Notification {
+    #[must_use]
     pub fn icon(&self) -> &'static str {
         self.r#type.icon()
     }
+    #[must_use]
     pub fn type_label(&self) -> &'static str {
         self.r#type.label()
     }
+    #[must_use]
     pub fn link_or(&self) -> String {
         self.link.clone().unwrap_or_default()
     }
+    #[must_use]
     pub fn content_or(&self) -> String {
         self.content.clone().unwrap_or_default()
     }
@@ -93,15 +99,19 @@ pub struct NotificationWithActor {
 }
 
 impl NotificationWithActor {
+    #[must_use]
     pub fn icon(&self) -> &'static str {
         self.r#type.icon()
     }
+    #[must_use]
     pub fn type_label(&self) -> &'static str {
         self.r#type.label()
     }
+    #[must_use]
     pub fn link_or(&self) -> String {
         self.link.clone().unwrap_or_default()
     }
+    #[must_use]
     pub fn content_or(&self) -> String {
         self.content.clone().unwrap_or_default()
     }
