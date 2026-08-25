@@ -690,3 +690,126 @@ pub mod filters {
         Ok(items.join(", "))
     }
 }
+
+#[cfg(test)]
+mod filter_tests {
+    // #[askama::filter_fn] sinh STRUCT có method execute(input, env)
+    // (không phải hàm gọi trực tiếp). Test qua đường này.
+    use super::filters;
+
+    #[test]
+    fn test_fmt_num_formats() {
+        let out = filters::fmt_num::default().execute(999, &()).unwrap();
+        assert_eq!(out, "999");
+        let out = filters::fmt_num::default().execute(1500, &()).unwrap();
+        assert_eq!(out, "1.5K");
+        let out = filters::fmt_num::default().execute(2_500_000, &()).unwrap();
+        assert_eq!(out, "2.5M");
+        // Chuỗi số (Display) cũng được
+        let out = filters::fmt_num::default().execute("1200", &()).unwrap();
+        assert_eq!(out, "1.2K");
+    }
+
+    #[test]
+    fn test_fmt_f64_one_decimal() {
+        let out = filters::fmt_f64::default().execute(4.33333, &()).unwrap();
+        assert_eq!(out, "4.3");
+        let out = filters::fmt_f64::default().execute(0, &()).unwrap();
+        assert_eq!(out, "0.0");
+    }
+
+    #[test]
+    fn test_esc_xss() {
+        let out = filters::esc::default()
+            .execute("<script>alert(1)</script>", &())
+            .unwrap();
+        assert!(!out.to_string().contains("<script>"));
+    }
+
+    #[test]
+    fn test_nl2br() {
+        let out = filters::nl2br::default()
+            .execute("dòng 1\ndòng 2", &())
+            .unwrap();
+        assert!(out.to_string().contains("dòng 1<br>dòng 2"));
+    }
+
+    #[test]
+    fn test_initials_filter() {
+        let out = filters::initials::default()
+            .execute("Nguyễn Văn A", &())
+            .unwrap();
+        assert_eq!(out, "NA");
+        let out = filters::initials::default().execute("", &()).unwrap();
+        assert_eq!(out, "?");
+    }
+
+    #[test]
+    fn test_slugify_filter_vi() {
+        let out = filters::slugify::default().execute("Hà Nội", &()).unwrap();
+        assert_eq!(out, "ha-noi");
+    }
+
+    #[test]
+    fn test_youtube_embed_valid() {
+        let out = filters::youtube_embed::default()
+            .execute("https://www.youtube.com/watch?v=abc123", &())
+            .unwrap();
+        assert_eq!(out, "https://www.youtube.com/embed/abc123");
+    }
+
+    #[test]
+    fn test_youtube_embed_non_youtube_empty() {
+        // URL không phải YouTube → chuỗi rỗng (template fallback link)
+        let out = filters::youtube_embed::default()
+            .execute("https://example.com/video.mp4", &())
+            .unwrap();
+        assert_eq!(out, "");
+    }
+
+    #[test]
+    fn test_lower_filter() {
+        let out = filters::lower::default().execute("ABC def", &()).unwrap();
+        assert_eq!(out, "abc def");
+    }
+
+    #[test]
+    fn test_join_tags_filter() {
+        let tags = ["action".to_string(), "rpg".to_string()];
+        let out = filters::join_tags::default()
+            .execute(&tags[..], &())
+            .unwrap();
+        assert_eq!(out, "action, rpg");
+    }
+
+    #[test]
+    fn test_html_filter_markdown() {
+        let out = filters::html::default().execute("**đậm**", &()).unwrap();
+        assert!(out.to_string().contains("<strong>đậm</strong>"));
+    }
+
+    #[test]
+    fn test_truncate_filter_with_arg() {
+        // truncate có required arg `max` — set qua builder .max(5)
+        let out = filters::truncate::default()
+            .with_max(5)
+            .execute("hello world", &())
+            .unwrap();
+        assert_eq!(out, "hello…");
+    }
+
+    #[test]
+    fn test_format_date_filters() {
+        let d = chrono::NaiveDate::from_ymd_opt(2026, 8, 25).unwrap();
+        let out = filters::format_date::default()
+            .execute(&Some(d), &())
+            .unwrap();
+        assert_eq!(out, "2026-08-25");
+        let out = filters::format_date_vn::default()
+            .execute(&Some(d), &())
+            .unwrap();
+        assert_eq!(out, "25/08/2026");
+        let out = filters::format_date::default().execute(&None, &()).unwrap();
+        assert_eq!(out, "");
+    }
+}
