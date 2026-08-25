@@ -47,29 +47,49 @@ pub async fn dashboard(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let total_games = GameRepo::count_published(&state.db).await.unwrap_or(0);
-    let total_users: i64 = UserRepo::count_all(&state.db).await.unwrap_or(0);
-    let total_downloads: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM downloads")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
-    let pending_reports = ReportRepo::count_pending(&state.db).await.unwrap_or(0);
-    let recent_reports = ReportRepo::list(&state.db, Some("pending"), 10, 0)
-        .await
-        .unwrap_or_default();
-    let recent_games = GameRepo::list_published(&state.db, 10, 0, "latest")
-        .await
-        .unwrap_or_default();
-    let recent_comments = CommentRepo::list_recent(&state.db, 5)
-        .await
-        .unwrap_or_default();
-    let daily_stats = StatsRepo::daily_last_7_days(&state.db)
-        .await
-        .unwrap_or_default();
-    let total_repos = RepoRepo::count_approved(&state.db).await.unwrap_or(0);
-    let pending_repos = RepoRepo::pending_count(&state.db).await.unwrap_or(0);
-    let status_counts = GameRepo::count_by_status(&state.db)
-        .await
+    // 10 truy vấn độc lập — join! chạy song song thay vì cộng dồn
+    // round-trip DB khi admin mở dashboard.
+    let db = &state.db;
+    let (
+        total_games,
+        total_users,
+        total_downloads,
+        pending_reports,
+        recent_reports,
+        recent_games,
+        recent_comments,
+        daily_stats,
+        total_repos,
+        pending_repos,
+        status_counts,
+    ) = tokio::join!(
+        GameRepo::count_published(db),
+        UserRepo::count_all(db),
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads")
+                .fetch_one(db)
+                .await
+                .unwrap_or(0)
+        },
+        ReportRepo::count_pending(db),
+        ReportRepo::list(db, Some("pending"), 10, 0),
+        GameRepo::list_published(db, 10, 0, "latest"),
+        CommentRepo::list_recent(db, 5),
+        StatsRepo::daily_last_7_days(db),
+        RepoRepo::count_approved(db),
+        RepoRepo::pending_count(db),
+        GameRepo::count_by_status(db),
+    );
+    let total_games = total_games.unwrap_or(0);
+    let total_users = total_users.unwrap_or(0);
+    let pending_reports = pending_reports.unwrap_or(0);
+    let recent_reports = recent_reports.unwrap_or_default();
+    let recent_games = recent_games.unwrap_or_default();
+    let recent_comments = recent_comments.unwrap_or_default();
+    let daily_stats = daily_stats.unwrap_or_default();
+    let total_repos = total_repos.unwrap_or(0);
+    let pending_repos = pending_repos.unwrap_or(0);
+    let status_counts = status_counts
         .unwrap_or_default()
         .into_iter()
         .map(|(key, count)| crate::templates::StatusCountChip {
