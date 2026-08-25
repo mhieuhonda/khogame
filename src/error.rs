@@ -33,14 +33,35 @@ impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         match e {
             sqlx::Error::RowNotFound => AppError::NotFound("Bản ghi không tồn tại".into()),
+            // Unique violation (23505): map sang Conflict để handler phân
+            // biệt được race trùng slug/UNIQUE constraint thay vì nhận 500
+            // chung chung. as_database_error() trả &[u8] code chuẩn SQLSTATE.
+            sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+                AppError::Conflict("Dữ liệu đã tồn tại (trùng khóa duy nhất)".into())
+            }
             _ => AppError::Database(e),
         }
     }
 }
 
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        let status = match &self {
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Unique violation phải map sang Conflict (409 logic), không phải 500.
+    #[test]
+    fn test_conflict_maps_to_bad_request_status_not_500() {
+        let e = AppError::Conflict("trùng slug".into());
+        let (status, _msg) = e.status_and_message();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+}
+
+impl AppError {
+    /// HTTP status + thông điệp người dùng cho lỗi này. Tách riêng để
+    /// unit test được (IntoResponse cần render template, khó test hơn).
+    pub fn status_and_message(&self) -> (StatusCode, String) {
+        let status = match self {
             AppError::NotFound(_) => StatusCode::NOT_FOUND,
             AppError::Unauthorized => StatusCode::UNAUTHORIZED,
             AppError::Forbidden(_) => StatusCode::FORBIDDEN,
@@ -51,8 +72,13 @@ impl IntoResponse for AppError {
             }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
+        (status, self.to_string())
+    }
+}
 
-        let msg = self.to_string();
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, msg) = self.status_and_message();
         tracing::warn!("AppError: {} ({})", msg, status);
 
         #[derive(Template)]

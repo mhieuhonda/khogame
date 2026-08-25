@@ -286,25 +286,64 @@ pub async fn create_game(
     }
 
     // Sinh slug duy nhất: thử base, rồi base-2, base-3... tránh 500 do
-    // trùng ràng buộc UNIQUE khi có nhiều game cùng tên
-    let mut slug = slug::slugify(&form.title);
-    if slug.is_empty() {
-        slug = "game".into();
-    }
-    let mut suffix = 1;
+    // trùng ràng buộc UNIQUE khi có nhiều game cùng tên.
+    // Vòng 1: dò bằng SELECT EXISTS (nhanh, không đổi dữ liệu).
+    // Nếu INSERT vẫn dính unique violation (race: 2 request đồng thời
+    // check cùng lúc rồi cùng INSERT — TOCTOU), catch Conflict và dò
+    // tiếp suffix mới thay vì trả 500 cho user.
+    let base_slug = {
+        let s = slug::slugify(&form.title);
+        if s.is_empty() {
+            "game".into()
+        } else {
+            s
+        }
+    };
+    let mut slug = base_slug.clone();
+    let mut suffix = 1u32;
     while GameRepo::slug_exists(&state.db, &slug)
         .await
         .unwrap_or(true)
     {
         suffix += 1;
-        slug = format!("{}-{}", slug::slugify(&form.title), suffix);
+        slug = format!("{}-{}", base_slug, suffix);
         if suffix > 100 {
             slug = format!("{}-{}", slug, uuid::Uuid::new_v4().simple());
             break;
         }
     }
 
-    let id = GameRepo::create(&state.db, user.id, &form, &slug).await?;
+    // INSERT với retry khi unique violation (race TOCTOU giữa EXISTS
+    // và INSERT). Thử tối đa 3 lần, mỗi lần thêm suffix ngẫu nhiên.
+    let mut id = None;
+    for attempt in 0..3 {
+        let candidate = if attempt == 0 {
+            slug.clone()
+        } else {
+            format!("{}-{}", base_slug, uuid::Uuid::new_v4().simple())
+        };
+        match GameRepo::create(&state.db, user.id, &form, &candidate).await {
+            Ok(new_id) => {
+                id = Some(new_id);
+                slug = candidate;
+                break;
+            }
+            Err(AppError::Conflict(_)) if attempt < 2 => {
+                tracing::warn!(
+                    "Slug '{}' trùng do race condition (lần thử {}), thử slug khác",
+                    candidate,
+                    attempt + 1
+                );
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    let id = id.ok_or_else(|| {
+        AppError::Internal(anyhow::anyhow!(
+            "Không tạo được slug duy nhất sau 3 lần thử"
+        ))
+    })?;
     tracing::info!("Game created: {} ({})", id, slug);
 
     Ok(Redirect::to(&format!("/games/{}", slug)))
