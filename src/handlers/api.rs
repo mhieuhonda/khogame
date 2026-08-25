@@ -1,6 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::middleware::AuthUser;
-use crate::repositories::{CategoryRepo, GameRepo, RepoRepo, SettingsRepo, TagRepo, UserRepo};
+use crate::repositories::{CategoryRepo, GameRepo, NewsRepo, RepoRepo, SettingsRepo, TagRepo, UserRepo};
 use crate::state::AppState;
 use axum::extract::{Form, Path, Query, State};
 use axum::http::header;
@@ -918,6 +918,66 @@ pub async fn categories_list(State(state): State<Arc<AppState>>) -> AppResult<Re
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=300")],
         Json(serde_json::json!({"data": cats})),
+    )
+        .into_response())
+}
+
+/// GET /api/v1/news — danh sách tin tức đã published (public).
+/// Hỗ trợ ?page=N và ?category=game|tech|industry|esports|community|review|update|other.
+pub async fn news_list(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<NewsListApiParams>,
+) -> AppResult<Response> {
+    let page = params.page.unwrap_or(1).max(1);
+    let per_page = 12i64;
+    let category = params.category.as_deref().unwrap_or("");
+    let items = if !category.is_empty() {
+        NewsRepo::list_by_category(&state.db, category, page, per_page).await?
+    } else {
+        NewsRepo::list_published(&state.db, page, per_page).await?
+    };
+    let total = if !category.is_empty() {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM news WHERE status = 'published' AND category = $1",
+        )
+        .bind(category)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0)
+    } else {
+        NewsRepo::count_published(&state.db).await.unwrap_or(0)
+    };
+    let total_pages = ((total + per_page - 1) / per_page).max(1);
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=120")],
+        Json(serde_json::json!({
+            "data": items,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+        })),
+    )
+        .into_response())
+}
+
+#[derive(Deserialize)]
+pub struct NewsListApiParams {
+    pub page: Option<i64>,
+    pub category: Option<String>,
+}
+
+/// GET /api/v1/news/{slug} — chi tiết 1 bài tin tức (public).
+pub async fn news_detail(
+    State(state): State<Arc<AppState>>,
+    Path(slug): Path<String>,
+) -> AppResult<Response> {
+    let news = NewsRepo::find_by_slug_public(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!(news)),
     )
         .into_response())
 }

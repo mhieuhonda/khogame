@@ -170,7 +170,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/tags/{slug}/games", get(handlers::api::games_by_tag))
         .route("/users/{username}", get(handlers::api::user_profile))
         .route("/stats", get(handlers::api::stats_overview))
-        .route("/health", get(handlers::api::health_detail));
+        .route("/health", get(handlers::api::health_detail))
+        // News API
+        .route("/news", get(handlers::api::news_list))
+        .route("/news/{slug}", get(handlers::api::news_detail));
 
     // Nội bộ (htmx fetch)
     let internal_routes = Router::new()
