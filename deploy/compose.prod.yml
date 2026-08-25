@@ -15,6 +15,10 @@ services:
   khogame:
     image: __IMAGE_REF__
     restart: unless-stopped
+    # Graceful shutdown: app đã bắt SIGTERM và chờ request hoàn tất;
+    # cho Docker 30s grace period trước khi SIGKILL (mặc định chỉ 10s,
+    # đủ làm đứt các request download/comment đang xử lý lúc deploy).
+    stop_grace_period: 30s
     environment:
       - DATABASE_URL=postgres://khogame:${DB_PASSWORD}@khogame-db:5432/khogame
       - SESSION_KEY=${SESSION_KEY}
