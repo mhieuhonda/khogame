@@ -52,10 +52,26 @@
         if (searchInput) {
             let suggestTimer = null;
             let suggestBox = null;
+            let activeIndex = -1; // index option đang highlight (keyboard nav)
             const wrap = searchInput.closest('.search-bar');
 
             function hideSuggestions() {
                 if (suggestBox) { suggestBox.remove(); suggestBox = null; }
+                activeIndex = -1;
+                searchInput.removeAttribute('aria-activedescendant');
+            }
+
+            function highlightActive() {
+                if (!suggestBox) return;
+                const opts = suggestBox.querySelectorAll('.search-suggest-item');
+                opts.forEach(function(a, i) {
+                    const active = i === activeIndex;
+                    a.classList.toggle('active', active);
+                    if (active) {
+                        a.id = 'suggest-opt-' + i;
+                        searchInput.setAttribute('aria-activedescendant', 'suggest-opt-' + i);
+                    }
+                });
             }
 
             function showSuggestions(items) {
@@ -64,6 +80,7 @@
                 suggestBox = document.createElement('div');
                 suggestBox.className = 'search-suggest';
                 suggestBox.setAttribute('role', 'listbox');
+                suggestBox.setAttribute('aria-label', 'Gợi ý tìm kiếm');
                 items.forEach(function(it) {
                     const a = document.createElement('a');
                     a.className = 'search-suggest-item';
@@ -86,12 +103,33 @@
                         .catch(function() {});
                 }, 250);
             });
+
+            // Keyboard navigation: ↑ ↓ di chuyển, Enter chọn, Esc đóng —
+            // ARIA listbox KHÔNG có arrow-key nav là lỗi WCAG 2.1.1
+            // (bàn phím không thể dùng được widget).
+            searchInput.addEventListener('keydown', function(e) {
+                if (!suggestBox) return;
+                const opts = suggestBox.querySelectorAll('.search-suggest-item');
+                if (!opts.length) return;
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    activeIndex = (activeIndex + 1) % opts.length;
+                    highlightActive();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    activeIndex = (activeIndex - 1 + opts.length) % opts.length;
+                    highlightActive();
+                } else if (e.key === 'Enter' && activeIndex >= 0) {
+                    e.preventDefault();
+                    opts[activeIndex].click();
+                } else if (e.key === 'Escape') {
+                    hideSuggestions();
+                }
+            });
+
             // Đóng khi click ra ngoài / Escape
             document.addEventListener('click', function(e) {
                 if (suggestBox && !wrap.contains(e.target)) hideSuggestions();
-            });
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape') hideSuggestions();
             });
             // Ẩn gợi ý khi submit form để không che kết quả
             searchInput.closest('form').addEventListener('submit', hideSuggestions);

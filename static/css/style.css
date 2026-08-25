@@ -2334,7 +2334,8 @@ a:hover { color: var(--accent-light); }
 }
 
 .search-suggest-item:hover,
-.search-suggest-item:focus-visible {
+.search-suggest-item:focus-visible,
+.search-suggest-item.active {
     background: var(--bg-hover);
     color: var(--accent-light);
     outline: none;
