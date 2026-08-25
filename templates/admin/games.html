@@ -5,9 +5,9 @@
     <div class="page-header"><h1>🎮 Quản lý game</h1><p>Tất cả game trong hệ thống theo trạng thái.</p></div>
     {% include "admin/_nav.html" %}
     <div class="admin-chip-row">
-        <a href="/admin/games" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}">Tất cả</a>
+        <a href="/admin/games" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}" {% if status_filter.is_none() %}aria-current="true"{% endif %}>Tất cả</a>
         {% for s in status_counts %}
-        <a href="/admin/games?status={{ s.key }}" class="admin-chip {% if status_filter.as_deref() == Some(s.key.as_str()) %}chip-active{% endif %}">{{ s.label }} ({{ s.count }})</a>
+        <a href="/admin/games?status={{ s.key }}" class="admin-chip {% if status_filter.as_deref() == Some(s.key.as_str()) %}chip-active{% endif %}" {% if status_filter.as_deref() == Some(s.key.as_str()) %}aria-current="true"{% endif %}>{{ s.label }} ({{ s.count }})</a>
         {% endfor %}
     </div>
     <div class="admin-table-wrap">

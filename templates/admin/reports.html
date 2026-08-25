@@ -7,11 +7,11 @@
     <div class="page-header">
         <h1>🚩 Báo cáo</h1>
         <div class="filter-tabs">
-            <a href="/admin/reports" class="filter-tab {% if status_filter.is_none() %}active{% endif %}">Tất cả</a>
-            <a href="/admin/reports?status=pending" class="filter-tab {% if status_filter.as_deref() == Some("pending") %}active{% endif %}">Chờ xử lý</a>
-            <a href="/admin/reports?status=reviewing" class="filter-tab {% if status_filter.as_deref() == Some("reviewing") %}active{% endif %}">Đang xem xét</a>
-            <a href="/admin/reports?status=resolved" class="filter-tab {% if status_filter.as_deref() == Some("resolved") %}active{% endif %}">Đã xử lý</a>
-            <a href="/admin/reports?status=dismissed" class="filter-tab {% if status_filter.as_deref() == Some("dismissed") %}active{% endif %}">Đã bỏ qua</a>
+            <a href="/admin/reports" class="filter-tab {% if status_filter.is_none() %}active{% endif %}" {% if status_filter.is_none() %}aria-current="true"{% endif %}>Tất cả</a>
+            <a href="/admin/reports?status=pending" class="filter-tab {% if status_filter.as_deref() == Some("pending") %}active{% endif %}" {% if status_filter.as_deref() == Some("pending") %}aria-current="true"{% endif %}>Chờ xử lý</a>
+            <a href="/admin/reports?status=reviewing" class="filter-tab {% if status_filter.as_deref() == Some("reviewing") %}active{% endif %}" {% if status_filter.as_deref() == Some("reviewing") %}aria-current="true"{% endif %}>Đang xem xét</a>
+            <a href="/admin/reports?status=resolved" class="filter-tab {% if status_filter.as_deref() == Some("resolved") %}active{% endif %}" {% if status_filter.as_deref() == Some("resolved") %}aria-current="true"{% endif %}>Đã xử lý</a>
+            <a href="/admin/reports?status=dismissed" class="filter-tab {% if status_filter.as_deref() == Some("dismissed") %}active{% endif %}" {% if status_filter.as_deref() == Some("dismissed") %}aria-current="true"{% endif %}>Đã bỏ qua</a>
         </div>
     </div>
 
