@@ -325,13 +325,17 @@ pub async fn announcement(State(state): State<Arc<AppState>>) -> AppResult<Respo
     // 1 query lấy cả 2 key thay vì 2 query tuần tự (mỗi page view đều gọi)
     let mut map = SettingsRepo::get_map(&state.db, &["announcement", "announcement_type"]).await?;
     let text = map.remove("announcement").unwrap_or_default();
+    // Cache browser 60s: JS fetch endpoint này trên MỌI page view —
+    // không có Cache-Control thì mỗi lần chuyển trang vẫn đánh DB.
+    // Announcement là setting admin đổi hiếm, trễ 1 phút chấp nhận được.
+    let cache = [(header::CACHE_CONTROL, "public, max-age=60")];
     if text.is_empty() {
-        return Ok(Json(serde_json::json!({"text": "", "kind": ""})).into_response());
+        return Ok((cache, Json(serde_json::json!({"text": "", "kind": ""}))).into_response());
     }
     let kind = map
         .remove("announcement_type")
         .unwrap_or_else(|| "info".into());
-    Ok(Json(serde_json::json!({"text": text, "kind": kind})).into_response())
+    Ok((cache, Json(serde_json::json!({"text": text, "kind": kind}))).into_response())
 }
 
 /// Đồng bộ theme sáng/tối lên server
