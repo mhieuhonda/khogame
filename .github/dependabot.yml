@@ -1,0 +1,57 @@
+# Dependabot: tự kiểm tra cập nhật dependency
+# - cargo: Rust crates (axum, sqlx, tokio...) — nhóm lại 1 PR/tuần
+#   để không spam PR riêng lẻ từng crate.
+# - github-actions: pin lại các action chính (checkout v4...)
+# - docker: base image rust:1.98-slim / debian:bookworm-slim
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    groups:
+      # Gom các crate phụ thành 1 PR lớn; crate chính để riêng dễ review
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    # Rust toolchain pin 1.98 — major version bump của axum/sqlx cần
+    # review thủ công (thường kèm breaking change API).
+    ignore:
+      - dependency-name: "axum"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "sqlx"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "tokio"
+        update-types: ["version-update:semver-major"]
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    labels:
+      - "dependencies"
+      - "rust"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    labels:
+      - "dependencies"
+      - "ci"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
