@@ -110,6 +110,7 @@
                     <a href="/games/top-rated" class="menu-link">⭐ Đánh giá cao</a>
                     <a href="/games/downloads" class="menu-link">⬇️ Tải nhiều nhất</a>
                     <a href="/categories" class="menu-link">📁 Thể loại</a>
+                    <a href="/news" class="menu-link">📰 Tin tức</a>
                     <a href="/repos" class="menu-link">📦 Repo GitHub</a>
                     <a href="/search" class="menu-link">🔍 Tìm kiếm</a>
                 </div>
@@ -118,10 +119,15 @@
                     {% match current_user %}
                     {% when Option::Some with (user) %}
                     <a href="/games/new" class="menu-link menu-link-accent">➕ Đăng game</a>
+                    <a href="/news/new" class="menu-link menu-link-accent">📰 Đăng tin</a>
                     <a href="/my-games" class="menu-link">🎮 Game của tôi</a>
+                    <a href="/my-news" class="menu-link">📰 Tin của tôi</a>
                     <a href="/bookmarks" class="menu-link">🔖 Game đã lưu</a>
                     <a href="/notifications" class="menu-link">🔔 Thông báo{% if unread_notifications > 0 %}<span class="menu-badge">{{ unread_notifications }}</span>{% endif %}</a>
                     <a href="/profile" class="menu-link">👤 Hồ sơ (@{{ user.username }})</a>
+                    {% if user.role.is_admin() %}
+                    <a href="/admin/news/pending" class="menu-link">📨 Duyệt tin</a>
+                    {% endif %}
                     {% if user.role.is_staff() %}
                     <a href="/admin" class="menu-link">🛡️ Quản trị</a>
                     {% endif %}
@@ -181,12 +187,14 @@
                     <a href="/games/trending">Thịnh hành</a>
                     <a href="/games/top-rated">Đánh giá cao</a>
                     <a href="/games/downloads">Tải nhiều nhất</a>
+                    <a href="/news">Tin tức</a>
                 </div>
                 <div class="footer-col">
                     <h4>Cộng đồng</h4>
                     <a href="/categories">Tất cả thể loại</a>
                     <a href="/repos">Repo GitHub</a>
                     <a href="/games/new">Đăng game</a>
+                    <a href="/news/new">Đăng tin tức</a>
                     <a href="/search">Tìm kiếm</a>
                 </div>
                 <div class="footer-col">
