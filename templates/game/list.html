@@ -29,11 +29,11 @@
     {% if list_type != "featured" %}
     <div class="list-sort-bar">
         <span>Sắp xếp:</span>
-        <a href="{{ base_url }}?sort=latest" class="sort-link {% if sort == "latest" %}active{% endif %}">Mới nhất</a>
-        <a href="{{ base_url }}?sort=trending" class="sort-link {% if sort == "trending" %}active{% endif %}">Thịnh hành</a>
-        <a href="{{ base_url }}?sort=downloads" class="sort-link {% if sort == "downloads" %}active{% endif %}">Tải nhiều</a>
-        <a href="{{ base_url }}?sort=top_rated" class="sort-link {% if sort == "top_rated" %}active{% endif %}">Đánh giá cao</a>
-        <a href="{{ base_url }}?sort=liked" class="sort-link {% if sort == "liked" %}active{% endif %}">Yêu thích</a>
+        <a href="{{ base_url }}?sort=latest" class="sort-link {% if sort == "latest" %}active{% endif %}" {% if sort == "latest" %}aria-current="true"{% endif %}>Mới nhất</a>
+        <a href="{{ base_url }}?sort=trending" class="sort-link {% if sort == "trending" %}active{% endif %}" {% if sort == "trending" %}aria-current="true"{% endif %}>Thịnh hành</a>
+        <a href="{{ base_url }}?sort=downloads" class="sort-link {% if sort == "downloads" %}active{% endif %}" {% if sort == "downloads" %}aria-current="true"{% endif %}>Tải nhiều</a>
+        <a href="{{ base_url }}?sort=top_rated" class="sort-link {% if sort == "top_rated" %}active{% endif %}" {% if sort == "top_rated" %}aria-current="true"{% endif %}>Đánh giá cao</a>
+        <a href="{{ base_url }}?sort=liked" class="sort-link {% if sort == "liked" %}active{% endif %}" {% if sort == "liked" %}aria-current="true"{% endif %}>Yêu thích</a>
         <span class="result-count">{{ total }} game</span>
     </div>
     {% else %}
