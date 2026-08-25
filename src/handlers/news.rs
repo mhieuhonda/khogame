@@ -5,7 +5,7 @@ use crate::models::news::NewsStatus;
 use crate::repositories::news::NewsForm;
 use crate::repositories::NewsRepo;
 use crate::state::AppState;
-use crate::templates::*;
+use crate::templates::{NewsListTemplate, NewsShowTemplate, NewsNewTemplate, NewsEditTemplate, MyNewsTemplate};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::header;
@@ -39,8 +39,7 @@ fn validate_category(cat: &str) -> Result<String, AppError> {
         Ok(cat.to_string())
     } else {
         Err(AppError::BadRequest(format!(
-            "Category '{}' không hợp lệ",
-            cat
+            "Category '{cat}' không hợp lệ"
         )))
     }
 }
@@ -85,7 +84,7 @@ async fn make_unique_slug(state: &AppState, title: &str) -> String {
             Ok(None) => break,
             Ok(Some(_)) => {
                 suffix += 1;
-                slug = format!("{}-{}", base, suffix);
+                slug = format!("{base}-{suffix}");
                 if suffix > 100 {
                     slug = format!("{}-{}", slug, Uuid::new_v4().simple());
                     break;
@@ -393,12 +392,12 @@ pub async fn create(
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+        .map(std::string::ToString::to_string);
 
     let id = NewsRepo::create(&state.db, user.id, &form, &slug, Some(&ip), ua.as_deref()).await?;
 
     // Redirect về trang my-news với thông báo
-    Ok(Redirect::to(&format!("/my-news?submitted={}", id)).into_response())
+    Ok(Redirect::to(&format!("/my-news?submitted={id}")).into_response())
 }
 
 // ============= Edit (owner or admin) =============
@@ -466,7 +465,7 @@ pub async fn update(
             .cover_image
             .as_deref()
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string()),
+            .map(std::string::ToString::to_string),
         category: validate_category(params.category.as_deref().unwrap_or(""))?,
         source_url: validate_url(params.source_url.as_deref().unwrap_or(""))?,
         source_name: params
