@@ -40,10 +40,8 @@ serde_urlencoded = "0.7"
 # Authentication (Google OAuth 2.0 qua reqwest)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 rand = "0.8"
-base64 = "0.22"
 sha2 = "0.10"
 hex = "0.4"
-url = "2.5"
 
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
