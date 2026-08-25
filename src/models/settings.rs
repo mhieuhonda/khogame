@@ -70,6 +70,7 @@ pub struct SessionRow {
 impl SessionRow {
     /// User-Agent rút gọn để hiển thị (loại bỏ chuỗi version dài lê thê
     /// của Chrome/Firefox, chỉ giữ nền tảng chính).
+    #[must_use]
     pub fn ua_summary(&self) -> String {
         let ua = self.user_agent.as_deref().unwrap_or("");
         if ua.is_empty() {
