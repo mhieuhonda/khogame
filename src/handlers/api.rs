@@ -562,6 +562,7 @@ pub async fn rss(
     <link>{}</link>
     <description>Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam</description>
     <language>vi</language>
+    <generator>Kho Game {} (Rust/Axum)</generator>
     <atom:link href="{}/rss.xml" rel="self" type="application/rss+xml"/>
     <ttl>60</ttl>
     <lastBuildDate>{}</lastBuildDate>
@@ -569,6 +570,7 @@ pub async fn rss(
   </channel>
 </rss>"#,
         base,
+        env!("CARGO_PKG_VERSION"),
         base,
         chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000"),
         items
