@@ -235,35 +235,36 @@ impl CommentRepo {
             .ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại".into()))
     }
 
-    /// Tìm user được @mention trong nội dung
+    /// Tìm user được @mention trong nội dung.
+    /// Gom toàn bộ username rồi truy vấn MỘT lần với `= ANY($1)` —
+    /// trước đây mỗi @mention là một round-trip DB riêng (N+1),
+    /// comment @tag 10 người = 10 truy vấn.
     pub async fn find_mentions(
         pool: &PgPool,
         content: &str,
         exclude_user: Uuid,
     ) -> AppResult<Vec<Uuid>> {
-        let mut ids = Vec::new();
-        let words: Vec<&str> = content.split_whitespace().collect();
-        for w in words {
+        // Tách username: strip @ đầu, cắt ký tự dấu câu cuối (giữ chữ/số/_)
+        let mut usernames: Vec<String> = Vec::new();
+        for w in content.split_whitespace() {
             if let Some(username) = w.strip_prefix('@') {
                 let username =
                     username.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
-                if username.is_empty() {
-                    continue;
-                }
-                let uid: Option<Uuid> = sqlx::query_scalar(
-                    "SELECT id FROM users WHERE username = $1 AND id != $2 AND NOT is_banned",
-                )
-                .bind(username)
-                .bind(exclude_user)
-                .fetch_optional(pool)
-                .await?;
-                if let Some(id) = uid {
-                    if !ids.contains(&id) {
-                        ids.push(id);
-                    }
+                if !username.is_empty() && !usernames.iter().any(|u| u == username) {
+                    usernames.push(username.to_string());
                 }
             }
         }
+        if usernames.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT DISTINCT id FROM users WHERE username = ANY($1) AND id != $2 AND NOT is_banned",
+        )
+        .bind(&usernames)
+        .bind(exclude_user)
+        .fetch_all(pool)
+        .await?;
         Ok(ids)
     }
 
