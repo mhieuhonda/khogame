@@ -6,6 +6,11 @@ rust-version = "1.98"
 authors = ["Kho Game Team"]
 description = "Kho Game - Trang chia sẻ game độc lập"
 license = "MIT"
+repository = "https://github.com/mhieuhonda/khogame"
+homepage = "https://louis.vangioitutien.com"
+readme = "README.md"
+keywords = ["web", "axum", "htmx", "games", "vietnam"]
+categories = ["web-programming::http-server"]
 
 [[bin]]
 name = "khogame"
