@@ -8,6 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
+![Tests](https://img.shields.io/badge/tests-128%2B-brightgreen)
 ![Version](https://img.shields.io/badge/version-0.7.0-7c3aed)
 
 ## 🛠️ Công nghệ
@@ -184,9 +185,45 @@ Loại tài khoản thứ 4 (sau User / Moderator / Admin) dành riêng cho AI A
 - 🔢 **aria-current / rel=prev/next** cho mọi pagination.
 
 ### ✅ Testing
-- **90+ unit test** (từ 23): validate_game_form, RateLimiter, parse_github_url,
-  constant_time_eq, askama filters, UserRole matrix, auth token, ReportReason…
-- **CI nghiêm ngặt**: clippy `-D warnings` + fmt + test chạy trên mọi push main.
+- **128+ unit test** (từ 23): validate_game_form, RateLimiter, parse_github_url,
+  constant_time_eq, askama filters, UserRole matrix, auth token, ReportReason,
+  path normalization, BreadcrumbList, slugify tiếng Việt, html_escape unicode…
+- **CI nghiêm ngặt**: clippy `-D warnings` + rustdoc `-D warnings` + fmt + test
+  chạy trên mọi push main + cargo-audit RustSec mỗi push.
+
+---
+
+## 🔥 Cải thiện trong v0.8 — Bảo mật race-condition + Admin hoàn thiện
+
+### 🛡️ Bảo mật
+- **Rate-limit chống bypass xoay slug/UUID** — chuẩn hoá path thành bucket
+  endpoint; kèm `Retry-After` header chuẩn RFC 9110.
+- **TRUST_PROXY_HEADERS env** — kiểm soát tin header IP proxy.
+- **CSP thêm frame-src** — YouTube trailer hoạt động lại (bị default-src
+  chặn từ trước), embed chuyển youtube-nocookie.com.
+- **Escape XML/HTML đầy đủ** sitemap, RSS, repo mini-card.
+
+### 🐛 Race conditions đã fix (double-click/đồng thời)
+- Tạo game trùng slug (TOCTOU) → catch unique violation + retry slug.
+- Like/comment-like double-increment → DELETE-first transaction.
+- Follow + notification cùng transaction (atomic).
+
+### 🐛 Admin
+- **Phân trang cho 4 trang admin** (reports/comments/audit/repos) — trước đây
+  vượt 50-200 dòng là dữ liệu cũ MẤT DẠG không thể xem.
+- Tạo category trùng slug → 409 thay vì âm thầm đổi tên category cũ.
+- Broadcast không còn gửi notification cho AI Agent (bot không đọc).
+
+### ⚡ Performance
+- View/download/share counters chạy nền (tokio::spawn) — không block TTFB.
+- 6 handler song song hoá thêm (profile, sitemap, stats, API).
+- Migration 007: index like_count cho sort "Yêu thích".
+- ETag cho /api/announcement (304 thay payload).
+
+### ♿ Accessibility (WCAG)
+- Autocomplete keyboard navigation (↑ ↓ Enter Esc) — WCAG 2.1.1.
+- 54 form label for/id; report modal Escape + focus + role=dialog.
+- Rating stars aria-pressed (sửa aria-checked không hợp lệ).
 
 ---
 
