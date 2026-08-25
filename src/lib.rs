@@ -28,7 +28,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     sqlx::migrate!("./migrations")
         .run(&state.db)
         .await
-        .map_err(|e| anyhow::anyhow!("Migration failed: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Migration failed: {e}"))?;
 
     let state = Arc::new(state);
 
@@ -67,7 +67,7 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 /// mặc định của tokio (không swallow).
 ///
 /// Sau khi nhận tín hiệu, spawn bộ đếm grace period
-/// (GRACEFUL_SHUTDOWN_TIMEOUT_SECS, mặc định 30s): nếu hết thời gian mà
+/// (`GRACEFUL_SHUTDOWN_TIMEOUT_SECS`, mặc định 30s): nếu hết thời gian mà
 /// vẫn còn connection treo (client chậm, download dài), force exit để
 /// không treo vĩnh viễn chờ docker SIGKILL — đúng như comment tài liệu
 /// đã hứa nhưng trước đây chưa được triển khai.
@@ -93,8 +93,8 @@ async fn shutdown_signal() {
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => tracing::info!("Nhận SIGINT — bắt đầu graceful shutdown"),
-        _ = terminate => tracing::info!("Nhận SIGTERM — bắt đầu graceful shutdown"),
+        () = ctrl_c => tracing::info!("Nhận SIGINT — bắt đầu graceful shutdown"),
+        () = terminate => tracing::info!("Nhận SIGTERM — bắt đầu graceful shutdown"),
     }
     // Cưỡng chế grace period — bỏ qua giá trị 0/âm để tránh exit tức thì
     let grace_secs: u64 = std::env::var("GRACEFUL_SHUTDOWN_TIMEOUT_SECS")
