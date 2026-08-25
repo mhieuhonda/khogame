@@ -20,7 +20,7 @@ RUN mkdir -p src && echo '// placeholder for dependency caching' > src/lib.rs &&
 # Lưu ý: dummy build cần templates + migrations vì askama/migrate! macro đọc lúc compile
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
-    cargo build --release || true
+    cargo build --release --locked || true
 
 # Copy source thật và build lại
 # ⚠️ cargo clean -p khogame: bắt buộc rebuild crate chính — nếu không cargo sẽ
@@ -29,7 +29,7 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/app/target \
     cargo clean -p khogame --release && \
-    cargo build --release && \
+    cargo build --release --locked && \
     cp target/release/khogame /usr/local/bin/khogame && \
     stat -c "khogame binary: %s bytes" /usr/local/bin/khogame && \
     test $(stat -c%s /usr/local/bin/khogame) -gt 2000000 || (echo "!! Binary quá nhỏ — nghi là dummy build"; exit 1)
