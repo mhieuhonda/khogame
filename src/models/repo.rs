@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "repo_status", rename_all = "lowercase")]
 #[derive(Default)]
 pub enum RepoStatus {
@@ -15,19 +15,19 @@ pub enum RepoStatus {
 
 impl RepoStatus {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            RepoStatus::Pending => "Chờ duyệt",
-            RepoStatus::Approved => "Đã duyệt",
-            RepoStatus::Hidden => "Đã ẩn",
+            Self::Pending => "Chờ duyệt",
+            Self::Approved => "Đã duyệt",
+            Self::Hidden => "Đã ẩn",
         }
     }
     #[must_use]
-    pub fn color(&self) -> &'static str {
+    pub const fn color(&self) -> &'static str {
         match self {
-            RepoStatus::Pending => "#f59e0b",
-            RepoStatus::Approved => "#10b981",
-            RepoStatus::Hidden => "#ef4444",
+            Self::Pending => "#f59e0b",
+            Self::Approved => "#10b981",
+            Self::Hidden => "#ef4444",
         }
     }
 }
