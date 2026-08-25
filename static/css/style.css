@@ -2299,3 +2299,43 @@ a:hover { color: var(--accent-light); }
 .skip-link:focus {
     top: 0;
 }
+
+/* ============================================
+   Search autocomplete dropdown
+   ============================================ */
+.search-bar {
+    position: relative;
+}
+
+.search-suggest {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    z-index: 1500;
+    overflow: hidden;
+    max-height: 320px;
+    overflow-y: auto;
+}
+
+.search-suggest-item {
+    display: block;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-suggest-item:hover,
+.search-suggest-item:focus-visible {
+    background: var(--bg-hover);
+    color: var(--accent-light);
+    outline: none;
+}

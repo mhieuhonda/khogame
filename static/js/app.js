@@ -36,6 +36,56 @@
             toggle.addEventListener('click', toggleTheme);
         }
 
+        // ===== Search autocomplete (gợi ý game khi gõ) =====
+        const searchInput = document.querySelector('.search-bar input[name="q"]');
+        if (searchInput) {
+            let suggestTimer = null;
+            let suggestBox = null;
+            const wrap = searchInput.closest('.search-bar');
+
+            function hideSuggestions() {
+                if (suggestBox) { suggestBox.remove(); suggestBox = null; }
+            }
+
+            function showSuggestions(items) {
+                hideSuggestions();
+                if (!items.length) return;
+                suggestBox = document.createElement('div');
+                suggestBox.className = 'search-suggest';
+                suggestBox.setAttribute('role', 'listbox');
+                items.forEach(function(it) {
+                    const a = document.createElement('a');
+                    a.className = 'search-suggest-item';
+                    a.href = it.url;
+                    a.setAttribute('role', 'option');
+                    a.textContent = it.title;
+                    suggestBox.appendChild(a);
+                });
+                wrap.appendChild(suggestBox);
+            }
+
+            searchInput.addEventListener('input', function() {
+                clearTimeout(suggestTimer);
+                const v = this.value.trim();
+                if (v.length < 2) { hideSuggestions(); return; }
+                suggestTimer = setTimeout(function() {
+                    fetch('/api/suggest?q=' + encodeURIComponent(v))
+                        .then(function(r) { return r.json(); })
+                        .then(function(d) { showSuggestions(d.data || []); })
+                        .catch(function() {});
+                }, 250);
+            });
+            // Đóng khi click ra ngoài / Escape
+            document.addEventListener('click', function(e) {
+                if (suggestBox && !wrap.contains(e.target)) hideSuggestions();
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') hideSuggestions();
+            });
+            // Ẩn gợi ý khi submit form để không che kết quả
+            searchInput.closest('form').addEventListener('submit', hideSuggestions);
+        }
+
         // ===== Hamburger menu =====
         const menuToggle = document.getElementById('menuToggle');
         const siteMenu = document.getElementById('site-menu');
