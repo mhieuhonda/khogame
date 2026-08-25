@@ -31,12 +31,14 @@ pub async fn mark_read(
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
     NotificationRepo::mark_read(&state.db, id, user.id).await?;
-    let items = NotificationRepo::list_for_user(&state.db, user.id, 200, 0, false).await?;
-    if let Some(n) = items.iter().find(|n| n.id == id) {
-        let partial = NotificationItemPartial { notification: n };
-        Ok(Html(partial.render()?))
-    } else {
-        Ok(Html(String::new()))
+    // Fetch đúng 1 item đã cập nhật (trước đây load 200 dòng rồi find —
+    // query nặng không cần thiết mỗi lần click một notification).
+    match NotificationRepo::find_for_user(&state.db, id, user.id).await? {
+        Some(n) => {
+            let partial = NotificationItemPartial { notification: &n };
+            Ok(Html(partial.render()?))
+        }
+        None => Ok(Html(String::new())),
     }
 }
 

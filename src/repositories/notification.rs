@@ -56,6 +56,27 @@ impl NotificationRepo {
         Ok(())
     }
 
+    /// Lấy 1 notification của đúng user (để re-render item HTMX sau khi
+    /// mark_read mà không phải fetch cả danh sách).
+    pub async fn find_for_user(
+        pool: &PgPool,
+        id: Uuid,
+        user_id: Uuid,
+    ) -> AppResult<Option<NotificationWithActor>> {
+        let n = sqlx::query_as::<_, NotificationWithActor>(
+            r#"SELECT n.id, n.user_id, n.actor_id, n.type, n.title, n.content, n.link, n.is_read, n.created_at,
+                u.display_name as actor_name, u.avatar_url as actor_avatar
+              FROM notifications n
+              LEFT JOIN users u ON u.id = n.actor_id
+              WHERE n.id = $1 AND n.user_id = $2"#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(n)
+    }
+
     pub async fn mark_all_read(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
         sqlx::query(
             "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE",
