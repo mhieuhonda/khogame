@@ -535,10 +535,17 @@ pub async fn edit_game_form(
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
     }
-    let categories = CategoryRepo::list_all(&state.db).await?;
-    let links = GameRepo::get_links(&state.db, game.id).await?;
-    let screenshots = GameRepo::get_screenshots(&state.db, game.id).await?;
-    let tags = GameRepo::get_tags(&state.db, game.id).await?;
+    // 4 query độc lập (categories/links/screenshots/tags) chạy song song.
+    let (categories_res, links_res, screenshots_res, tags_res) = tokio::join!(
+        CategoryRepo::list_all(&state.db),
+        GameRepo::get_links(&state.db, game.id),
+        GameRepo::get_screenshots(&state.db, game.id),
+        GameRepo::get_tags(&state.db, game.id),
+    );
+    let categories = categories_res?;
+    let links = links_res?;
+    let screenshots = screenshots_res?;
+    let tags = tags_res?;
     let unread = unread_count(&state, user.id).await;
     Ok(EditGameTemplate {
         current_user: Some(user),
