@@ -15,7 +15,8 @@ pub enum SharePlatform {
 }
 
 impl SharePlatform {
-    /// Chuỗi enum DB (share_platform) — dùng khi bind cast $n::share_platform.
+    /// Chuỗi enum DB (`share_platform`) — dùng khi bind cast $`n::share_platform`.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             SharePlatform::Facebook => "facebook",
@@ -28,6 +29,7 @@ impl SharePlatform {
     }
 
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "facebook" => SharePlatform::Facebook,
@@ -39,6 +41,7 @@ impl SharePlatform {
         }
     }
 
+    #[must_use]
     pub fn all() -> &'static [SharePlatform] {
         &[
             SharePlatform::Facebook,
