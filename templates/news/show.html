@@ -81,7 +81,10 @@
         {% when Option::None %}
         <a href="/login" class="btn btn-outline btn-sm">Đăng nhập để thích</a>
         {% endmatch %}
-        <button class="btn btn-ghost btn-sm" onclick="navigator.share?.({ url: '{{ base_url }}/news/{{ news.slug }}', title: '{{ news.title }}' }) || navigator.clipboard?.writeText('{{ base_url }}/news/{{ news.slug }}')">
+        <button class="btn btn-ghost btn-sm" id="news-share-btn"
+                data-share-url="{{ base_url }}/news/{{ news.slug }}"
+                data-share-title="{{ news.title }}"
+                aria-label="Chia sẻ tin tức này">
             🔗 Chia sẻ
         </button>
     </div>

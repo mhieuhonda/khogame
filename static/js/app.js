@@ -556,6 +556,27 @@
         });
     }
 
+    // ===== News share button (a11y + clipboard fallback) =====
+    var newsShareBtn = document.getElementById('news-share-btn');
+    if (newsShareBtn) {
+        newsShareBtn.addEventListener('click', function() {
+            var url = newsShareBtn.getAttribute('data-share-url');
+            var title = newsShareBtn.getAttribute('data-share-title');
+            if (navigator.share) {
+                navigator.share({ url: url, title: title }).catch(function() {});
+            } else if (navigator.clipboard) {
+                navigator.clipboard.writeText(url).then(function() {
+                    var orig = newsShareBtn.textContent;
+                    newsShareBtn.textContent = '✅ Đã copy!';
+                    setTimeout(function() { newsShareBtn.textContent = orig; }, 1500);
+                }, function() {});
+            } else {
+                // Fallback cuối: prompt cho user copy thủ công
+                window.prompt('Copy URL chia sẻ:', url);
+            }
+        });
+    }
+
     // Không console.log ở prod: noise trong devtools người dùng cuối,
     // một số công ty quét console.log khi audit vendor JS.
 })();
