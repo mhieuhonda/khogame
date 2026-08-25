@@ -395,6 +395,8 @@ pub async fn sitemap(
         "/categories",
         "/repos",
         "/search",
+        "/terms",
+        "/privacy",
     ] {
         urls.push_str(&format!(
             r#"  <url><loc>{}{}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
