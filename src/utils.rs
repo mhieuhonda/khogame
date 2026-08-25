@@ -500,6 +500,16 @@ mod tests {
     }
 
     #[test]
+    fn test_html_escape_vietnamese_preserved() {
+        // Escape không đụng ký tự unicode — title game tiếng Việt render đúng
+        let s = html_escape("Trần Văn Ưng — game «hay» 🎮");
+        assert_eq!(s, "Trần Văn Ưng — game «hay» 🎮");
+        // Ký tự gần giống HTML nhưng không phải tag vẫn giữ nguyên
+        let s = html_escape("a < b và c > d");
+        assert_eq!(s, "a &lt; b và c &gt; d");
+    }
+
+    #[test]
     fn test_xml_escape() {
         // & trước các ký tự khác — tránh tạo thực thể giả
         assert_eq!(xml_escape("a & b"), "a &amp; b");
