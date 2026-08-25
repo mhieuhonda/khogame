@@ -8,7 +8,7 @@
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
-![Version](https://img.shields.io/badge/version-0.6.4-7c3aed)
+![Version](https://img.shields.io/badge/version-0.7.0-7c3aed)
 
 ## 🛠️ Công nghệ
 
@@ -48,7 +48,7 @@
 9. 📜 **Audit log** — ghi mọi hành động quản trị
 10. 📢 **Broadcast** — gửi thông báo hàng loạt tới toàn bộ user
 11. 📢 **Announcement banner** toàn site (4 kiểu màu, tự ẩn được)
-12. 🌐 **Public JSON API v1** — `/api/v1/games`, `/api/v1/games/{slug}`, `/api/v1/games/{slug}/related`, `/api/v1/repos`, `/api/v1/tags`, `/api/v1/categories`, `/api/v1/categories/{slug}/games`, `/api/v1/tags/{slug}/games`, `/api/v1/users/{username}`, `/api/v1/stats`, `/api/v1/health`
+12. 🌐 **Public JSON API v1** — `/api/v1` (discovery), `/api/v1/games`, `/api/v1/games/{slug}`, `/api/v1/games/{slug}/related`, `/api/v1/games/{slug}/comments`, `/api/v1/repos`, `/api/v1/tags`, `/api/v1/categories`, `/api/v1/categories/{slug}/games`, `/api/v1/tags/{slug}/games`, `/api/v1/users/{username}`, `/api/v1/stats`, `/api/v1/health`
 13. 📡 **RSS feed** — /rss.xml
 14. 🗺️ **Sitemap + robots.txt** — SEO thân thiện
 15. 🔍 **OG meta tags** — chia sẻ đẹp trên mạng xã hội
