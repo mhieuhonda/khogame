@@ -312,20 +312,26 @@ pub struct GameForm {
 }
 
 impl GameForm {
-    /// Tách chuỗi tags phân cách dấu phẩy thành Vec
+    /// Tách chuỗi tags phân cách dấu phẩy thành Vec.
+    /// Dedupe case-insensitive và giữ thứ tự xuất hiện đầu — tránh tạo
+    /// các bản ghi game_tags trùng lặp khi user nhập "action, Action".
     pub fn tags_vec(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
         self.tags
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .filter(|s| seen.insert(s.to_lowercase()))
             .collect()
     }
-    /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec
+    /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec (dedupe như tags_vec)
     pub fn languages_vec(&self) -> Vec<String> {
+        let mut seen = std::collections::HashSet::new();
         self.languages
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
+            .filter(|s| seen.insert(s.to_lowercase()))
             .collect()
     }
     /// Mỗi dòng trong textarea là 1 URL screenshot
@@ -335,5 +341,86 @@ impl GameForm {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tags_vec_dedupe_and_trim() {
+        let mut form = GameForm::default();
+        form.tags = " action , Action, 射击, action, RPG ".into();
+        let tags = form.tags_vec();
+        assert_eq!(tags, vec!["action".to_string(), "射击".to_string(), "RPG".to_string()]);
+    }
+
+    #[test]
+    fn test_tags_vec_empty() {
+        let form = GameForm::default();
+        assert!(form.tags_vec().is_empty());
+        let mut form = GameForm::default();
+        form.tags = " , , ".into();
+        assert!(form.tags_vec().is_empty());
+    }
+
+    #[test]
+    fn test_languages_vec_dedupe() {
+        let mut form = GameForm::default();
+        form.languages = "vi, VI, en, vi".into();
+        assert_eq!(
+            form.languages_vec(),
+            vec!["vi".to_string(), "en".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_screenshots_vec_lines() {
+        let mut form = GameForm::default();
+        form.screenshots = "https://a.com/1.png\n  https://a.com/2.png  \n\n".into();
+        assert_eq!(form.screenshots_vec().len(), 2);
+    }
+
+    #[test]
+    fn test_platform_from_str() {
+        assert_eq!(Platform::from_str("android"), Some(Platform::Android));
+        assert_eq!(Platform::from_str("iOS"), Some(Platform::Ios));
+        assert_eq!(Platform::from_str("WINDOWS"), Some(Platform::Windows));
+        assert_eq!(Platform::from_str("mac"), Some(Platform::Macos));
+        assert_eq!(Platform::from_str("macos"), Some(Platform::Macos));
+        assert_eq!(Platform::from_str("ps5"), None);
+        assert_eq!(Platform::from_str(""), None);
+    }
+
+    #[test]
+    fn test_platform_all_has_5() {
+        assert_eq!(Platform::all().len(), 5);
+        // Mỗi label phải khác rỗng (dùng cho UI)
+        for p in Platform::all() {
+            assert!(!p.label().is_empty());
+        }
+    }
+
+    #[test]
+    fn test_game_status_from_str() {
+        assert_eq!(GameStatus::from_str("draft"), GameStatus::Draft);
+        assert_eq!(GameStatus::from_str("hidden"), GameStatus::Hidden);
+        // Giá trị lạ → Published (default an toàn cho link cũ)
+        assert_eq!(GameStatus::from_str("bất kỳ"), GameStatus::Published);
+    }
+
+    #[test]
+    fn test_age_rating_from_str() {
+        assert_eq!(AgeRating::from_str("teen"), AgeRating::Teen);
+        assert_eq!(AgeRating::from_str("adult"), AgeRating::Adult);
+        assert_eq!(AgeRating::from_str("xyz"), AgeRating::Everyone);
+    }
+
+    #[test]
+    fn test_platform_label_vi_ui() {
+        // Label hiển thị trên UI phải đúng chính tả
+        assert_eq!(Platform::Ios.label(), "iOS");
+        assert_eq!(Platform::Macos.label(), "macOS");
     }
 }
