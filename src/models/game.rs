@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "game_status", rename_all = "snake_case")]
 #[derive(Default)]
 pub enum GameStatus {
@@ -17,13 +17,13 @@ pub enum GameStatus {
 
 impl GameStatus {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            GameStatus::Draft => "Bản nháp",
-            GameStatus::Published => "Đã xuất bản",
-            GameStatus::Archived => "Lưu trữ",
-            GameStatus::Hidden => "Đã ẩn",
-            GameStatus::PendingReview => "Chờ duyệt",
+            Self::Draft => "Bản nháp",
+            Self::Published => "Đã xuất bản",
+            Self::Archived => "Lưu trữ",
+            Self::Hidden => "Đã ẩn",
+            Self::PendingReview => "Chờ duyệt",
         }
     }
     /// Parse từ chuỗi (DB/JSON). Đặt tên khác `from_str` sẽ phá vỡ nhiều call site;
@@ -32,17 +32,17 @@ impl GameStatus {
     #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "draft" => GameStatus::Draft,
-            "published" => GameStatus::Published,
-            "archived" => GameStatus::Archived,
-            "hidden" => GameStatus::Hidden,
-            "pending_review" => GameStatus::PendingReview,
-            _ => GameStatus::Published,
+            "draft" => Self::Draft,
+            "published" => Self::Published,
+            "archived" => Self::Archived,
+            "hidden" => Self::Hidden,
+            "pending_review" => Self::PendingReview,
+            _ => Self::Published,
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "platform_type", rename_all = "lowercase")]
 pub enum Platform {
     Android,
@@ -57,43 +57,43 @@ impl Platform {
     /// cast `$n::platform_type` — chuỗi bất kỳ khác case (vd "ANDROID")
     /// sẽ làm Postgres từ chối cast và query fail ngầm.
     #[must_use]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
-            Platform::Android => "android",
-            Platform::Ios => "ios",
-            Platform::Windows => "windows",
-            Platform::Linux => "linux",
-            Platform::Macos => "macos",
+            Self::Android => "android",
+            Self::Ios => "ios",
+            Self::Windows => "windows",
+            Self::Linux => "linux",
+            Self::Macos => "macos",
         }
     }
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            Platform::Android => "Android",
-            Platform::Ios => "iOS",
-            Platform::Windows => "Windows",
-            Platform::Linux => "Linux",
-            Platform::Macos => "macOS",
+            Self::Android => "Android",
+            Self::Ios => "iOS",
+            Self::Windows => "Windows",
+            Self::Linux => "Linux",
+            Self::Macos => "macOS",
         }
     }
     #[must_use]
-    pub fn icon(&self) -> &'static str {
+    pub const fn icon(&self) -> &'static str {
         match self {
-            Platform::Android => "android",
-            Platform::Ios => "apple",
-            Platform::Windows => "windows",
-            Platform::Linux => "linux",
-            Platform::Macos => "apple",
+            Self::Android => "android",
+            Self::Ios => "apple",
+            Self::Windows => "windows",
+            Self::Linux => "linux",
+            Self::Macos => "apple",
         }
     }
     #[must_use]
-    pub fn color(&self) -> &'static str {
+    pub const fn color(&self) -> &'static str {
         match self {
-            Platform::Android => "#3DDC84",
-            Platform::Ios => "#000000",
-            Platform::Windows => "#0078D4",
-            Platform::Linux => "#FCC624",
-            Platform::Macos => "#555555",
+            Self::Android => "#3DDC84",
+            Self::Ios => "#000000",
+            Self::Windows => "#0078D4",
+            Self::Linux => "#FCC624",
+            Self::Macos => "#555555",
         }
     }
     /// Parse từ chuỗi. Đổi tên `from_str` sẽ phá vỡ nhiều call site;
@@ -102,27 +102,27 @@ impl Platform {
     #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "android" => Some(Platform::Android),
-            "ios" => Some(Platform::Ios),
-            "windows" => Some(Platform::Windows),
-            "linux" => Some(Platform::Linux),
-            "macos" | "mac" => Some(Platform::Macos),
+            "android" => Some(Self::Android),
+            "ios" => Some(Self::Ios),
+            "windows" => Some(Self::Windows),
+            "linux" => Some(Self::Linux),
+            "macos" | "mac" => Some(Self::Macos),
             _ => None,
         }
     }
     #[must_use]
-    pub fn all() -> &'static [Platform] {
+    pub const fn all() -> &'static [Self] {
         &[
-            Platform::Android,
-            Platform::Ios,
-            Platform::Windows,
-            Platform::Linux,
-            Platform::Macos,
+            Self::Android,
+            Self::Ios,
+            Self::Windows,
+            Self::Linux,
+            Self::Macos,
         ]
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "age_rating", rename_all = "lowercase")]
 #[derive(Default)]
 pub enum AgeRating {
@@ -135,31 +135,31 @@ pub enum AgeRating {
 
 impl AgeRating {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            AgeRating::Everyone => "E - Mọi lứa tuổi",
-            AgeRating::Teen => "T - Thiếu niên (13+)",
-            AgeRating::Mature => "M - Trưởng thành (17+)",
-            AgeRating::Adult => "A - Người lớn (18+)",
+            Self::Everyone => "E - Mọi lứa tuổi",
+            Self::Teen => "T - Thiếu niên (13+)",
+            Self::Mature => "M - Trưởng thành (17+)",
+            Self::Adult => "A - Người lớn (18+)",
         }
     }
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
-            "teen" => AgeRating::Teen,
-            "mature" => AgeRating::Mature,
-            "adult" => AgeRating::Adult,
-            _ => AgeRating::Everyone,
+            "teen" => Self::Teen,
+            "mature" => Self::Mature,
+            "adult" => Self::Adult,
+            _ => Self::Everyone,
         }
     }
     #[must_use]
-    pub fn all() -> &'static [AgeRating] {
+    pub const fn all() -> &'static [Self] {
         &[
-            AgeRating::Everyone,
-            AgeRating::Teen,
-            AgeRating::Mature,
-            AgeRating::Adult,
+            Self::Everyone,
+            Self::Teen,
+            Self::Mature,
+            Self::Adult,
         ]
     }
 }
