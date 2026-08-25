@@ -13,6 +13,7 @@ pub enum ReportStatus {
 }
 
 impl ReportStatus {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             ReportStatus::Pending => "Chờ xử lý",
@@ -21,6 +22,7 @@ impl ReportStatus {
             ReportStatus::Dismissed => "Đã bỏ qua",
         }
     }
+    #[must_use]
     pub fn color(&self) -> &'static str {
         match self {
             ReportStatus::Pending => "#f59e0b",
@@ -45,6 +47,7 @@ pub enum ReportReason {
 }
 
 impl ReportReason {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             ReportReason::Spam => "Spam / Quảng cáo",
@@ -57,6 +60,7 @@ impl ReportReason {
             ReportReason::Other => "Lý do khác",
         }
     }
+    #[must_use]
     pub fn all() -> Vec<ReportReason> {
         vec![
             ReportReason::Spam,
@@ -70,6 +74,7 @@ impl ReportReason {
         ]
     }
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "spam" => Some(ReportReason::Spam),
