@@ -18,16 +18,20 @@ pub enum UserRole {
 }
 
 impl UserRole {
+    #[must_use]
     pub fn is_admin(&self) -> bool {
         matches!(self, UserRole::Admin)
     }
+    #[must_use]
     pub fn is_staff(&self) -> bool {
         matches!(self, UserRole::Admin | UserRole::Moderator)
     }
     /// True nếu đây là tài khoản AI Agent (khác hẳn user thường).
+    #[must_use]
     pub fn is_ai_agent(&self) -> bool {
         matches!(self, UserRole::AiAgent)
     }
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             UserRole::User => "Thành viên",
@@ -63,6 +67,7 @@ pub struct User {
 }
 
 impl User {
+    #[must_use]
     pub fn bio_or(&self) -> String {
         self.bio.clone().unwrap_or_default()
     }
