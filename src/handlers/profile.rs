@@ -145,18 +145,26 @@ pub async fn update_profile(
 
     UserRepo::update_profile(&state.db, user.id, display_name, bio, avatar_url).await?;
 
-    // Update preferences
-    let theme = form.theme.unwrap_or_else(|| "dark".into());
-    let language = form.language.unwrap_or_else(|| "vi".into());
+    // Update preferences — whitelist giá trị hợp lệ, giá trị lạ quay về
+    // mặc định (trước đây lưu thẳng chuỗi tuỳ ý vào DB, render vào
+    // data-theme attr của <html>).
+    let theme = match form.theme.as_deref() {
+        Some("light") => "light",
+        _ => "dark",
+    };
+    let language = match form.language.as_deref() {
+        Some("en") => "en",
+        _ => "vi",
+    };
     let email_notif = form.email_notifications.is_some();
     let show_online = form.show_online.is_some();
     UserRepo::update_preferences(
         &state.db,
         user.id,
-        &theme,
+        theme,
         email_notif,
         show_online,
-        &language,
+        language,
     )
     .await?;
 
