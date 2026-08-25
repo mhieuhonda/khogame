@@ -4,6 +4,76 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-08-25
+
+### 🛡️ Security — 8 lỗ hổng thật đã fix
+
+- **Path traversal `parse_github_url`**: `../etc/passwd` được chấp nhận
+  làm owner/repo (charset cho phép dấu chấm) → URL GitHub API trở thành
+  `api.github.com/repos/../etc`. Giờ chặn segment `.` và `..`.
+- **Tương tác game chưa xuất bản**: comment, download, like, bookmark,
+  rate, report đều không kiểm tra `game.status` — ai biết slug đều
+  thao tác được game bị admin ẩn (thăm dò sự tồn tại + tải nội dung
+  đang kiểm duyệt).
+- **`update_game` cho phép xoá trắng content**: check "content rỗng"
+  chỉ có ở create — update xoá trắng nội dung game đã publish.
+- **ILIKE wildcard không escape**: tìm "100%" match cả "1001"; query
+  `%%` match toàn bảng games (dò số game). Thêm `escape_like` + ESCAPE.
+- **Search query không clamp**: pattern dài hàng chục KB làm ILIKE quét
+  chậm (DoS). Clamp 200 ký tự ở HTML search, API v1, check-duplicate.
+- **Profile user bị ban vẫn hiện HTML** (API đã chặn — thiếu nhất quán),
+  kèm repo fragment `/u/{username}/repos`.
+- **avatar_url profile không validate scheme** (javascript:/data: được
+  lưu thẳng), theme/language không whitelist.
+- **edit_comment bỏ qua giới hạn 1000 ký tự** của create.
+
+### ⚡ Performance
+
+- `find_mentions`: N+1 query → 1 query `= ANY($1)` (comment tag 10
+  người = 10 round-trip → 1).
+- `resolve_report` / `mark_read`: fetch đúng 1 dòng để re-render HTMX
+  thay vì load 50–200 dòng rồi `find`.
+- `/api/announcement`: 2 query tuần tự → 1 `get_map` (gọi mỗi page view).
+- Trigram index cho `games.excerpt` (migration 006) — đủ bộ 3 index
+  (title/excerpt/content) để PostgreSQL dựng BitmapOr plan cho ILIKE.
+- Janitor dọn `daily_stats` cũ > 90 ngày (bảng tích 1 dòng/game/ngày
+  vô hạn dù chart chỉ đọc 7 ngày).
+- `width`/`height` + `decoding=async` cho mọi `<img>` — chống CLS.
+
+### ✨ Features & UX
+
+- **Graceful shutdown SIGTERM/SIGINT** + `stop_grace_period: 30s` —
+  deploy không còn đứt request đang xử lý.
+- **Background janitor** (mỗi 6h, `JANITOR_INTERVAL_SECS`): dọn session
+  hết hạn, notification đã đọc > 90 ngày, daily_stats cũ.
+- **Health nâng cao**: `pool.size/idle/in_use` + `uptime_secs`.
+- **DB pool tuning qua env**: `DB_MAX_CONNECTIONS`, `DB_MIN_CONNECTIONS`,
+  `DB_ACQUIRE_TIMEOUT_SECS`.
+- **"Tải thêm bình luận"**: trang game > 50 comment giờ xem được phần
+  cũ (GET `/games/{slug}/comments?page=N`).
+- **Phân trang bookmark** (trước hardcode 50, không có trang 2).
+- **Toast 429/503** thân thiện; ô search giữ từ khóa; trailer ngoài
+  YouTube fallback link thay vì iframe trắng.
+- **Tag & ngôn ngữ dedupe** case-insensitive khi tạo game.
+
+### 📈 SEO & A11y
+
+- `og:image` + `twitter:image` + canonical cho trang game & mọi trang
+  list; meta description riêng theo category/tag.
+- RSS `atom:link rel=self` + ttl (W3C Feed Validator); sitemap thêm
+  `/terms`, `/privacy`; robots.txt thêm 4 Disallow + cache 1h.
+- `prefers-reduced-motion`, `:focus-visible`, print stylesheet,
+  `aria-current`/`rel=prev/next` cho pagination.
+- PWA manifest: `id` + tách icon purpose `any`/`maskable`.
+
+### ✅ Testing & CI
+
+- **90+ unit test** (từ 23): validate_game_form (16), RateLimiter (5),
+  parse_github_url (5), constant_time_eq (3), askama filters (13),
+  UserRole matrix, auth token, ReportReason, escape_like, slugify_model…
+- CI/CD: thêm `cargo test`, clippy `-D warnings` nghiêm ngặt (bỏ
+  `|| echo` nuốt lỗi), fmt check, trigger cả trên push main.
+
 ## [0.6.4] — 2026-08-24
 
 ### ⚡ Performance (DB)
