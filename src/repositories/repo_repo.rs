@@ -84,6 +84,26 @@ impl RepoRepo {
         Ok(c > 0)
     }
 
+    /// Tìm repo theo owner/name (dùng kiểm tra trùng khi đăng ký — chống
+    /// user khác chiếm quyền sở hữu entry đã có qua ON CONFLICT UPDATE).
+    pub async fn find_by_owner_name(
+        pool: &PgPool,
+        owner: &str,
+        repo_name: &str,
+    ) -> AppResult<Option<GithubRepo>> {
+        let repo = sqlx::query_as::<_, GithubRepo>(
+            r#"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
+                primary_language, stars, forks, open_issues, pushed_at, status,
+                created_at, updated_at
+              FROM github_repos WHERE owner = $1 AND repo_name = $2"#,
+        )
+        .bind(owner)
+        .bind(repo_name)
+        .fetch_optional(pool)
+        .await?;
+        Ok(repo)
+    }
+
     pub async fn list_approved(
         pool: &PgPool,
         limit: i64,

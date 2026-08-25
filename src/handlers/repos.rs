@@ -110,6 +110,25 @@ pub async fn create(
             "URL repo không hợp lệ. Dùng dạng https://github.com/owner/repo hoặc owner/repo".into(),
         )
     })?;
+    // Chống chiếm quyền sở hữu repo entry: ON CONFLICT (owner, repo_name)
+    // DO UPDATE SET user_id = ... khiến user B đăng lại repo user A đã
+    // đăng sẽ LẤT user_id của A. Chặn trước: repo đã có thuộc user khác
+    // (không phải staff) → 409 Conflict.
+    if let Some(existing) = RepoRepo::find_by_owner_name(&state.db, &owner, &name).await? {
+        if existing.user_id != user.id && !user.role.is_staff() {
+            tracing::warn!(
+                "Repo hijack blocked: {} cố đăng ký {}/{} của user {}",
+                user.username,
+                owner,
+                name,
+                existing.user_id
+            );
+            return Err(AppError::Conflict(
+                "Repo này đã được người dùng khác đăng ký. Nếu đây là repo của bạn, hãy liên hệ quản trị viên."
+                    .into(),
+            ));
+        }
+    }
     // Validate description length nếu user cung cấp
     let description_user = form.description.trim();
     if description_user.chars().count() > 500 {
