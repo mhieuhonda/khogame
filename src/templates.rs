@@ -222,6 +222,9 @@ pub struct BookmarksTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub games: Vec<GameCard>,
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
 }
 
 /// Notifications

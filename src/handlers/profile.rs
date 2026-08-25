@@ -4,7 +4,7 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::*;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Redirect;
 use axum::Form;
 use serde::Deserialize;
@@ -172,15 +172,30 @@ pub async fn update_profile(
 }
 
 // ============= Bookmarks page =============
+#[derive(Deserialize, Default)]
+pub struct BookmarksQuery {
+    pub page: Option<i64>,
+}
+
 pub async fn bookmarks_page(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    Query(q): Query<BookmarksQuery>,
 ) -> AppResult<BookmarksTemplate> {
-    let games = InteractionRepo::bookmarks_for_user(&state.db, user.id, 50, 0).await?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 24;
+    let offset = (page - 1) * per_page;
+    let games = InteractionRepo::bookmarks_for_user(&state.db, user.id, per_page, offset).await?;
+    let total = InteractionRepo::count_bookmarks_for_user(&state.db, user.id)
+        .await
+        .unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(BookmarksTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         games,
+        page,
+        per_page,
+        total,
     })
 }

@@ -114,6 +114,19 @@ impl InteractionRepo {
         Ok(cards)
     }
 
+    /// Đếm số bookmark của user (chỉ game published) để phân trang.
+    pub async fn count_bookmarks_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM bookmarks b
+              JOIN games g ON g.id = b.game_id
+              WHERE b.user_id = $1 AND g.status = 'published'"#,
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
     pub async fn toggle_follow(
         pool: &PgPool,
         follower_id: Uuid,
