@@ -269,13 +269,17 @@ pub async fn user_repos_fragment(
     let items: Vec<String> = repos
         .iter()
         .map(|r| {
+            // Escape HTML mọi giá trị động chèn vào markup thủ công —
+            // defense-in-depth: owner/repo_name do GitHub API cung cấp
+            // (đã bị GitHub validate) nhưng nếu nguồn dữ liệu đổi/bug
+            // parser thì chuỗi lạ vẫn không thành thẻ HTML sống được.
             format!(
                 r#"<a href="{}" class="repo-mini-card" target="_blank" rel="noopener">
                     <span class="repo-name">{}</span>
                     <span class="repo-stars">⭐ {} · 🍴 {}</span>
                 </a>"#,
-                r.html_url(),
-                r.full_name(),
+                crate::utils::html_escape(&r.html_url()),
+                crate::utils::html_escape(&r.full_name()),
                 crate::utils::format_number(r.stars),
                 crate::utils::format_number(r.forks),
             )
