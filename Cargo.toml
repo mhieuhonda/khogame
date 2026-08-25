@@ -58,3 +58,11 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+
+# Dev/test build nhanh hơn ~40%: dependencies (sqlx, tokio, axum...) compile
+# opt-level 1 — chỉ crate chính giữ debug không tối ưu. sqlx query macros
+# sinh nhiều code, opt deps giảm đáng kể thời gian `cargo test` mỗi lần.
+# debug = 0 giữ backtrace có line info cho panic trong test.
+[profile.dev.package."*"]
+opt-level = 1
+debug = 0
