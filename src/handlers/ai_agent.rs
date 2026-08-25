@@ -578,6 +578,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_parse_status_aliases() {
+        // Mỗi alias phải map đúng variant
+        assert_eq!(parse_status("queued"), AiTaskStatus::Queued);
+        assert_eq!(parse_status("queue"), AiTaskStatus::Queued);
+        assert_eq!(parse_status("done"), AiTaskStatus::Done);
+        assert_eq!(parse_status("completed"), AiTaskStatus::Done);
+        assert_eq!(parse_status("success"), AiTaskStatus::Done);
+        assert_eq!(parse_status("failed"), AiTaskStatus::Failed);
+        assert_eq!(parse_status("error"), AiTaskStatus::Failed);
+        assert_eq!(parse_status("cancelled"), AiTaskStatus::Cancelled);
+        assert_eq!(parse_status("canceled"), AiTaskStatus::Cancelled);
+        assert_eq!(parse_status("running"), AiTaskStatus::Running);
+        // Case-insensitive
+        assert_eq!(parse_status("DONE"), AiTaskStatus::Done);
+        // Giá trị lạ → Running (mặc định an toàn cho progress đang gửi)
+        assert_eq!(parse_status("bất kỳ"), AiTaskStatus::Running);
+        assert_eq!(parse_status(""), AiTaskStatus::Running);
+    }
+
+    #[test]
     fn test_constant_time_eq_basic() {
         assert!(constant_time_eq(b"secret123", b"secret123"));
         assert!(!constant_time_eq(b"secret123", b"secret124"));
