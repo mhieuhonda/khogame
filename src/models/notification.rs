@@ -138,8 +138,8 @@ mod tests {
             NotificationType::Mention,
         ];
         for t in &all {
-            assert!(!t.icon().is_empty(), "icon rỗng cho {:?}", t);
-            assert!(!t.label().is_empty(), "label rỗng cho {:?}", t);
+            assert!(!t.icon().is_empty(), "icon rỗng cho {t:?}");
+            assert!(!t.label().is_empty(), "label rỗng cho {t:?}");
         }
     }
 
@@ -153,7 +153,7 @@ mod tests {
         );
     }
 
-    /// Helper link_or/content_or trả chuỗi rỗng (không panic) khi None —
+    /// Helper `link_or/content_or` trả chuỗi rỗng (không panic) khi None —
     /// template askama dùng trực tiếp giá trị này.
     #[test]
     fn test_link_or_content_or_defaults() {
