@@ -18,7 +18,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config = AppConfig::from_env()?;
     tracing::info!(
-        "Starting Kho Game server on {}:{}",
+        "Starting Louis Space server on {}:{}",
         config.host,
         config.port
     );

@@ -62,9 +62,9 @@ pub async fn home(
     let json_ld = serde_json::json!({
         "@context": "https://schema.org",
         "@type": "WebSite",
-        "name": "Kho Game",
+        "name": "Louis Space",
         "url": state.config.base_url,
-        "description": "Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam",
+        "description": "Nền tảng chia sẻ game độc lập & tin tức cộng đồng Việt Nam",
         "inLanguage": "vi-VN",
         "potentialAction": {
             "@type": "SearchAction",
@@ -543,7 +543,7 @@ fn build_game_json_ld(
         },
         "publisher": {
             "@type": "Organization",
-            "name": "Kho Game",
+            "name": "Louis Space",
             "url": base_url,
         },
         "operatingSystem": links.iter().map(|l| l.platform.label()).collect::<Vec<_>>(),

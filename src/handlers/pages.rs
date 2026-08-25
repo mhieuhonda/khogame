@@ -30,7 +30,7 @@ pub async fn privacy(
 }
 
 /// Fallback handler cho mọi route không khớp — trả về trang 404
-/// với giao diện Kho Game thay vì trang 404 mặc định của axum (chỉ
+/// với giao diện Louis Space thay vì trang 404 mặc định của axum (chỉ
 /// có chữ "Not Found"). Giữ trải nghiệm người dùng tốt hơn.
 pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
     let body = ErrorTemplate {
@@ -46,11 +46,11 @@ pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
 pub async fn maintenance(State(_state): State<Arc<AppState>>) -> AppResult<Html<String>> {
     // Trang này cố tình đứng ngoài layout: hiển thị khi site đang bảo trì
     Ok(Html(r#"
-    <!DOCTYPE html><html lang="vi" data-theme="dark"><head><meta charset="UTF-8"><title>Bảo trì - Kho Game</title><link rel="stylesheet" href="/static/css/style.css"></head>
+    <!DOCTYPE html><html lang="vi" data-theme="dark"><head><meta charset="UTF-8"><title>Bảo trì - Louis Space</title><link rel="stylesheet" href="/static/css/style.css"></head>
     <body><main class="site-main"><div class="container" style="text-align:center;padding:80px 16px">
     <div style="font-size:72px">🛠️</div>
     <h1>Hệ thống đang bảo trì</h1>
-    <p>Kho Game tạm thời ngừng phục vụ để nâng cấp. Vui lòng quay lại sau ít phút.</p>
+    <p>Louis Space tạm thời ngừng phục vụ để nâng cấp. Vui lòng quay lại sau ít phút.</p>
     <p><a class="btn btn-primary" href="/">Thử lại</a></p>
     </div></main></body></html>"#.into()))
 }

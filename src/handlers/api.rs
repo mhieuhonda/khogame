@@ -424,7 +424,7 @@ pub async fn opensearch_suggestions(
     let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
     let descs: Vec<String> = suggestions
         .iter()
-        .map(|(t, _)| format!("Kho Game — {}", t))
+        .map(|(t, _)| format!("Louis Space — {}", t))
         .collect();
     let urls: Vec<String> = suggestions
         .iter()
@@ -579,11 +579,11 @@ pub async fn rss(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Kho Game - Game mới nhất</title>
+    <title>Louis Space - Game mới nhất</title>
     <link>{}</link>
     <description>Nền tảng chia sẻ game độc lập cho cộng đồng Việt Nam</description>
     <language>vi</language>
-    <generator>Kho Game {} (Rust/Axum)</generator>
+    <generator>Louis Space {} (Rust/Axum)</generator>
     <atom:link href="{}/rss.xml" rel="self" type="application/rss+xml"/>
     <ttl>60</ttl>
     <lastBuildDate>{}</lastBuildDate>
@@ -775,7 +775,7 @@ pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
         .into_response()
 }
 
-/// OpenSearch description XML — cho phép trình duyệt thêm Kho Game vào
+/// OpenSearch description XML — cho phép trình duyệt thêm Louis Space vào
 /// ô tìm kiếm của thanh địa chỉ.
 pub async fn opensearch(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
@@ -783,8 +783,8 @@ pub async fn opensearch(State(state): State<Arc<AppState>>) -> Response {
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
                        xmlns:moz="http://www.mozilla.org/2006/browser/search/">
-  <ShortName>Kho Game</ShortName>
-  <Description>Tìm kiếm game độc lập trên Kho Game</Description>
+  <ShortName>Louis Space</ShortName>
+  <Description>Tìm kiếm game độc lập trên Louis Space</Description>
   <InputEncoding>UTF-8</InputEncoding>
   <OutputEncoding>UTF-8</OutputEncoding>
   <Image width="32" height="32" type="image/svg+xml">{base}/static/img/favicon.svg</Image>
@@ -1079,7 +1079,7 @@ pub async fn games_by_tag(
 pub async fn root(State(state): State<Arc<AppState>>) -> Response {
     let base = state.config.base_url.clone();
     let endpoints = serde_json::json!({
-        "name": "Kho Game API",
+        "name": "Louis Space API",
         "version": env!("CARGO_PKG_VERSION"),
         "base_url": format!("{}/api/v1", base),
         "documentation": format!("{}/api/v1", base),

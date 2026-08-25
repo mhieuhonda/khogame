@@ -862,7 +862,7 @@ pub async fn save_settings(
     }
     // Validate độ dài các trường text để chống lạm dụng (DB field là TEXT,
     // không có length limit, admin có thể vô tình paste payload lớn).
-    let site_name = form.site_name.as_deref().unwrap_or("Kho Game").trim();
+    let site_name = form.site_name.as_deref().unwrap_or("Louis Space").trim();
     if site_name.chars().count() > 100 {
         return Err(AppError::BadRequest("Tên site tối đa 100 ký tự".into()));
     }
