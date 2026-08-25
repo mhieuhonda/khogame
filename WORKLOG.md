@@ -75,3 +75,28 @@ Stage Summary:
 - Build: cargo check + clippy clean, 141 tests pass
 - Tech stack unchanged: Rust 1.98, Axum 0.8.9, sqlx 0.9
 - Sẽ tiếp tục với Phase I: các cải tiến phụ (admin news dashboard, news search suggest, mobile UX polish)
+
+---
+Task ID: 3
+Agent: super-z (main)
+Task: Phase G tiếp tục — fixes, polish, UX improvements
+
+Work Log:
+- fix(news): source condition bug (source_name.is_empty() || source_name.is_empty() → source_url)
+- docs(news): tạo docs/NEWS.md hướng dẫn sử dụng news module
+- feat(api): /api/news-suggest (autocomplete) + /api/news-check-duplicate
+- feat(js): autocomplete + duplicate check cho news (UX parity với game)
+- feat(api): /api/v1/stats thêm total_news
+- fix(seo): robots.txt thêm Disallow cho /my-news, /news/new, /news/*/edit
+- feat(login): đồng bộ logo + text với brand Louis Space
+- feat(news): form đăng tin thêm 'Hướng dẫn viết tin chất lượng' collapsible
+- style: rustfmt chuẩn hóa toàn bộ code
+- docs(branch-protection): docs/BRANCH_PROTECTION.md
+- perf(css): footer shadow border tách khỏi main content
+
+Stage Summary:
+- Tổng commits: 334 (vượt 300 đáng kể)
+- Build: cargo check + clippy -D warnings + fmt --check clean
+- 143 tests pass
+- Tech stack giữ nguyên: Rust 1.98, Axum 0.8.9, sqlx 0.9
+- Phase G+H hoàn thành. Sẽ tiếp tục với Phase I: polish cuối + tag v0.8.1 (patch)
