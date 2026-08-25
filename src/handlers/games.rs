@@ -1122,17 +1122,12 @@ pub async fn share_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     let user_id = current_user.as_ref().map(|u| u.id);
-    // Chuẩn hoá platform về enum hợp lệ trong DB, giá trị lạ → "copy"
-    // (trước đây chuỗi lạ gây lỗi cast enum và share bị nuốt im lặng)
-    let valid_platforms = [
-        "facebook", "twitter", "telegram", "whatsapp", "copy", "native",
-    ];
-    let platform = if valid_platforms.contains(&form.platform.as_str()) {
-        form.platform.clone()
-    } else {
-        "copy".to_string()
-    };
-    let _ = InteractionRepo::record_share(&state.db, game.id, user_id, &platform).await;
+    // Chuẩn hoá platform về enum DB qua SharePlatform::from_str —
+    // trước đây handler tự giữ whitelist string riêng, trùng logic với
+    // model (2 nguồn truth dễ lệch khi thêm platform mới). Giá trị lạ
+    // → "copy" (from_str default) — share vẫn được ghi nhận analytics.
+    let platform = crate::models::interaction::SharePlatform::from_str(&form.platform).as_str();
+    let _ = InteractionRepo::record_share(&state.db, game.id, user_id, platform).await;
     let _ = GameRepo::increment_share_count(&state.db, game.id).await;
     Ok(Html("<span></span>".into()))
 }
