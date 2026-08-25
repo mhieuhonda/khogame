@@ -133,26 +133,36 @@ impl UserRepo {
     }
 
     pub async fn stats(pool: &PgPool, id: Uuid) -> AppResult<UserStats> {
-        let games_count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM games WHERE user_id = $1 AND status = 'published'",
-        )
-        .bind(id)
-        .fetch_one(pool)
-        .await?;
-        let followers_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM follows WHERE followee_id = $1")
+        // 3 COUNT độc lập — join! song song. stats được gọi ở trang hồ sơ
+        // HTML (/u/{username}) và API (/api/v1/users/{username}) — giảm
+        // 3 round-trip xuống ~1. Mỗi async block mượn pool riêng
+        // (PgPool clone nội bộ là Arc nên rẻ).
+        let (games_res, followers_res, following_res) = tokio::join!(
+            async {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM games WHERE user_id = $1 AND status = 'published'",
+                )
                 .bind(id)
                 .fetch_one(pool)
-                .await?;
-        let following_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM follows WHERE follower_id = $1")
-                .bind(id)
-                .fetch_one(pool)
-                .await?;
+                .await
+            },
+            async {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM follows WHERE followee_id = $1")
+                    .bind(id)
+                    .fetch_one(pool)
+                    .await
+            },
+            async {
+                sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM follows WHERE follower_id = $1")
+                    .bind(id)
+                    .fetch_one(pool)
+                    .await
+            },
+        );
         Ok(UserStats {
-            games_count,
-            followers_count,
-            following_count,
+            games_count: games_res?,
+            followers_count: followers_res?,
+            following_count: following_res?,
         })
     }
 
