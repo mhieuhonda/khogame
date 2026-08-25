@@ -792,8 +792,7 @@ mod filter_tests {
         assert!(
             s.chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
-            "slug phải ascii: {}",
-            s
+            "slug phải ascii: {s}"
         );
         // Chuỗi rỗng / chỉ ký tự đặc biệt → rỗng (caller có fallback 'game')
         assert_eq!(filters::slugify::default().execute("   ", &()).unwrap(), "");
@@ -877,7 +876,7 @@ mod filter_tests {
         let out = filters::time_ago::default()
             .execute(two_h.as_str(), &())
             .unwrap();
-        assert!(out.contains("giờ trước"), "got: {}", out);
+        assert!(out.contains("giờ trước"), "got: {out}");
     }
 
     #[test]
