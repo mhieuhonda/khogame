@@ -133,6 +133,63 @@ Loại tài khoản thứ 4 (sau User / Moderator / Admin) dành riêng cho AI A
 
 ---
 
+## 🔥 Cải thiện trong v0.7 — Prod hardening marathon
+
+### 🛡️ Bảo mật (lỗ hổng thật đã fix)
+- 🔓 **Path traversal trong `parse_github_url`** — `../etc/passwd` được chấp nhận
+  làm owner (Some(("..", "etc"))) → URL GitHub API thành `/repos/../etc`.
+  Giờ chặn segment `.` và `..`.
+- 🔐 **Chặn tương tác game chưa xuất bản** — comment, download, like, bookmark,
+  rate, report trên game draft/hidden khi biết slug (trang xem đã chặn nhưng
+  endpoint POST thì chưa).
+- 🔡 **Escape wildcard ILIKE** — tìm "100%" giờ khớp literal thay vì match
+  cả "1001"; query `%%` không còn match toàn bảng.
+- ✂️ **Clamp search query 200 ký tự** — chống pattern khổng lồ làm ILIKE quét
+  chậm (DoS).
+- 🙈 **Ẩn profile user bị ban** khỏi HTML (API đã chặn từ trước).
+- 🖼️ **Validate avatar_url http(s)** + whitelist theme/language ở profile.
+- 📏 **edit_comment áp dụng giới hạn 1000 ký tự** (trước chỉ check lúc tạo).
+
+### ⚡ Hiệu suất
+- 🔔 **find_mentions: N+1 → 1 query** (`= ANY($1)`).
+- 📋 **resolve_report / mark_read**: fetch đúng 1 dòng thay vì 50-200 dòng
+  để re-render 1 item HTMX.
+- 🖼️ **width/height + decoding=async cho mọi `<img>`** — chống Cumulative
+  Layout Shift (Core Web Vitals).
+
+### ✨ Tính năng & UX
+- 🛑 **Graceful shutdown SIGTERM/SIGINT** + `stop_grace_period: 30s` — deploy
+  không còn đứt request đang xử lý.
+- 🧹 **Background janitor** dọn session hết hạn & notification đã đọc > 90 ngày
+  mỗi 6h (`JANITOR_INTERVAL_SECS`).
+- ❤️ **Health check nâng cao**: `pool.size/idle/in_use` + `uptime_secs`.
+- ⚙️ **DB pool tuning qua env**: `DB_MAX_CONNECTIONS`, `DB_MIN_CONNECTIONS`,
+  `DB_ACQUIRE_TIMEOUT_SECS`.
+- 🔖 **Phân trang trang bookmark** (trước hardcode 50 không có trang 2).
+- 🏷️ **Tag dedupe case-insensitive** khi tạo game.
+- 🎬 **Trailer không phải YouTube** hiển thị link fallback thay vì iframe trắng.
+- 🚦 **Toast 429/503** thân thiện thay vì lỗi chung chung.
+- 🔍 **Ô search giữ từ khóa** sau khi chuyển trang.
+
+### 📈 SEO
+- 🖼️ **og:image + twitter:image + canonical** cho trang game & danh sách.
+- 📡 **RSS atom:link rel=self + ttl** (đạt W3C Feed Validator).
+- 🗺️ **Sitemap thêm /terms, /privacy**.
+- 📝 **Meta description riêng cho từng list** (category/tag) chống duplicate.
+
+### ♿ Accessibility
+- 🎞️ **prefers-reduced-motion** — tắt animation cho người rối loạn tiền đình.
+- ⌨️ **:focus-visible** — outline rõ khi điều hướng bàn phím.
+- 🖨️ **Print stylesheet** — in trang game sạch sẽ.
+- 🔢 **aria-current / rel=prev/next** cho mọi pagination.
+
+### ✅ Testing
+- **90+ unit test** (từ 23): validate_game_form, RateLimiter, parse_github_url,
+  constant_time_eq, askama filters, UserRole matrix, auth token, ReportReason…
+- **CI nghiêm ngặt**: clippy `-D warnings` + fmt + test chạy trên mọi push main.
+
+---
+
 ## 🔧 Cải thiện trong v0.2
 
 ### 🔒 Bảo mật
