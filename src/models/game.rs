@@ -443,10 +443,19 @@ mod tests {
 
     #[test]
     fn test_game_status_from_str() {
+        // Đủ cả 5 variant — test cũ bỏ sót archived + pending_review
+        // (đổi tên variant mà quên cập nhật from_str sẽ không phát hiện)
         assert_eq!(GameStatus::from_str("draft"), GameStatus::Draft);
+        assert_eq!(GameStatus::from_str("published"), GameStatus::Published);
+        assert_eq!(GameStatus::from_str("archived"), GameStatus::Archived);
         assert_eq!(GameStatus::from_str("hidden"), GameStatus::Hidden);
+        assert_eq!(
+            GameStatus::from_str("pending_review"),
+            GameStatus::PendingReview
+        );
         // Giá trị lạ → Published (default an toàn cho link cũ)
         assert_eq!(GameStatus::from_str("bất kỳ"), GameStatus::Published);
+        assert_eq!(GameStatus::from_str(""), GameStatus::Published);
     }
 
     #[test]
