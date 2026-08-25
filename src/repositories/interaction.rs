@@ -6,7 +6,7 @@ pub struct InteractionRepo;
 
 impl InteractionRepo {
     /// Lưu ý: `games.like_count` được cập nhật bởi DB trigger
-    /// (`trigger_like_insert/delete` trong migrations/001_init.sql),
+    /// (`trigger_like_insert/delete` trong `migrations/001_init.sql`),
     /// nên ở đây KHÔNG tự tăng/giảm counter nữa để tránh đếm đôi.
     ///
     /// Dùng transaction: SELECT-then-INSERT cũ có race khi double-click
@@ -88,7 +88,7 @@ impl InteractionRepo {
     ) -> AppResult<Vec<crate::models::GameCard>> {
         use crate::models::GameCard;
         let cards = sqlx::query_as::<_, GameCard>(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -104,7 +104,7 @@ impl InteractionRepo {
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE b.user_id = $1 AND g.status = 'published'
               ORDER BY b.created_at DESC
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(user_id)
         .bind(limit)
@@ -117,9 +117,9 @@ impl InteractionRepo {
     /// Đếm số bookmark của user (chỉ game published) để phân trang.
     pub async fn count_bookmarks_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM bookmarks b
+            r"SELECT COUNT(*) FROM bookmarks b
               JOIN games g ON g.id = b.game_id
-              WHERE b.user_id = $1 AND g.status = 'published'"#,
+              WHERE b.user_id = $1 AND g.status = 'published'",
         )
         .bind(user_id)
         .fetch_one(pool)
@@ -160,13 +160,13 @@ impl InteractionRepo {
                 .await
                 .unwrap_or_default();
             sqlx::query(
-                r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                  VALUES ($1, $2, 'follow'::notification_type, $3, $4)"#,
+                r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                  VALUES ($1, $2, 'follow'::notification_type, $3, $4)",
             )
             .bind(followee_id)
             .bind(follower_id)
             .bind("Có người mới theo dõi bạn")
-            .bind(format!("/u/{}", follower_username))
+            .bind(format!("/u/{follower_username}"))
             .execute(&mut *tx)
             .await?;
             tx.commit().await?;
@@ -195,9 +195,9 @@ impl InteractionRepo {
         score: i16,
     ) -> AppResult<()> {
         sqlx::query(
-            r#"INSERT INTO ratings (game_id, user_id, score)
+            r"INSERT INTO ratings (game_id, user_id, score)
               VALUES ($1, $2, $3)
-              ON CONFLICT (game_id, user_id) DO UPDATE SET score = EXCLUDED.score"#,
+              ON CONFLICT (game_id, user_id) DO UPDATE SET score = EXCLUDED.score",
         )
         .bind(game_id)
         .bind(user_id)
@@ -207,10 +207,10 @@ impl InteractionRepo {
 
         // Recompute game rating_avg / rating_count
         sqlx::query(
-            r#"UPDATE games SET
+            r"UPDATE games SET
                 rating_avg = (SELECT COALESCE(AVG(score), 0) FROM ratings WHERE game_id = $1),
                 rating_count = (SELECT COUNT(*) FROM ratings WHERE game_id = $1)
-              WHERE id = $1"#,
+              WHERE id = $1",
         )
         .bind(game_id)
         .execute(pool)
@@ -268,7 +268,7 @@ impl InteractionRepo {
         Ok(())
     }
 
-    /// Lấy username — nhận executor generic để gọi được cả với &PgPool
+    /// Lấy username — nhận executor generic để gọi được cả với &`PgPool`
     /// lẫn transaction (&mut *tx).
     async fn get_username<'e, E>(executor: E, user_id: Uuid) -> AppResult<String>
     where

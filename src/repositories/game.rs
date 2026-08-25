@@ -39,12 +39,12 @@ impl GameRepo {
         };
 
         let id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO games (
+            r"INSERT INTO games (
                 user_id, title, slug, excerpt, content, status, version,
                 developer, publisher, release_date, file_size, age_rating,
                 languages, trailer_url, cover_image, category_id, published_at
               ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-              RETURNING id"#,
+              RETURNING id",
         )
         .bind(user_id)
         .bind(&form.title)
@@ -75,7 +75,7 @@ impl GameRepo {
         // (DB down, FK lỗi) phải hiện ra để user biết submit lại.
         for (i, url) in form.screenshots_vec().iter().enumerate() {
             sqlx::query(
-                r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
+                r"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)",
             )
             .bind(id)
             .bind(url)
@@ -109,13 +109,13 @@ impl GameRepo {
         };
 
         sqlx::query(
-            r#"UPDATE games SET
+            r"UPDATE games SET
                 title = $1, excerpt = $2, content = $3, status = $4, version = $5,
                 developer = $6, publisher = $7, release_date = $8, file_size = $9,
                 age_rating = $10, languages = $11, trailer_url = $12, cover_image = $13,
                 category_id = $14,
                 published_at = CASE WHEN $4 = 'published' AND published_at IS NULL THEN NOW() ELSE published_at END
-              WHERE id = $15"#,
+              WHERE id = $15",
         )
         .bind(&form.title)
         .bind(&form.excerpt)
@@ -149,7 +149,7 @@ impl GameRepo {
             .await?;
         for (i, url) in form.screenshots_vec().iter().enumerate() {
             sqlx::query(
-                r#"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)"#,
+                r"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)",
             )
             .bind(id)
             .bind(url)
@@ -164,8 +164,8 @@ impl GameRepo {
     }
 
     /// Gắn tags cho game. `tags.usage_count` được tăng/giảm bởi DB trigger
-    /// (trigger_game_tag_insert/delete trên game_tags), nên ở đây chỉ cần
-    /// thay thế các dòng game_tags — KHÔNG tự cộng trừ usage_count.
+    /// (`trigger_game_tag_insert/delete` trên `game_tags`), nên ở đây chỉ cần
+    /// thay thế các dòng `game_tags` — KHÔNG tự cộng trừ `usage_count`.
     async fn sync_tags(pool: &PgPool, game_id: Uuid, tags: Vec<String>) -> AppResult<()> {
         // Xoá liên kết cũ (trigger tự giảm usage_count từng tag bị gỡ)
         sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
@@ -185,9 +185,9 @@ impl GameRepo {
             }
             // Upsert không đụng usage_count; trigger sẽ +1 khi gắn vào game
             let tag_id: Option<Uuid> = sqlx::query_scalar(
-                r#"INSERT INTO tags (name, slug) VALUES ($1, $2)
+                r"INSERT INTO tags (name, slug) VALUES ($1, $2)
                    ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-                   RETURNING id"#,
+                   RETURNING id",
             )
             .bind(tag)
             .bind(&tag_slug)
@@ -221,8 +221,8 @@ impl GameRepo {
                 // game được tạo KHÔNG có link tải nào, trang chi tiết
                 // render nút tải trống.
                 sqlx::query(
-                    r#"INSERT INTO game_links (game_id, platform, url) VALUES ($1, $2, $3)
-                       ON CONFLICT (game_id, platform) DO UPDATE SET url = EXCLUDED.url"#,
+                    r"INSERT INTO game_links (game_id, platform, url) VALUES ($1, $2, $3)
+                       ON CONFLICT (game_id, platform) DO UPDATE SET url = EXCLUDED.url",
                 )
                 .bind(game_id)
                 .bind(platform)
@@ -236,12 +236,12 @@ impl GameRepo {
 
     pub async fn find_by_slug(pool: &PgPool, slug: &str) -> AppResult<Option<Game>> {
         let game = sqlx::query_as::<_, Game>(
-            r#"SELECT id, user_id, title, slug, excerpt, content, status, version,
+            r"SELECT id, user_id, title, slug, excerpt, content, status, version,
                 developer, publisher, release_date, file_size, age_rating, languages,
                 trailer_url, cover_image, category_id, view_count, download_count,
                 like_count, comment_count, share_count, rating_avg, rating_count,
                 is_featured, published_at, created_at, updated_at
-              FROM games WHERE slug = $1"#,
+              FROM games WHERE slug = $1",
         )
         .bind(slug)
         .fetch_optional(pool)
@@ -251,12 +251,12 @@ impl GameRepo {
 
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Game>> {
         let game = sqlx::query_as::<_, Game>(
-            r#"SELECT id, user_id, title, slug, excerpt, content, status, version,
+            r"SELECT id, user_id, title, slug, excerpt, content, status, version,
                 developer, publisher, release_date, file_size, age_rating, languages,
                 trailer_url, cover_image, category_id, view_count, download_count,
                 like_count, comment_count, share_count, rating_avg, rating_count,
                 is_featured, published_at, created_at, updated_at
-              FROM games WHERE id = $1"#,
+              FROM games WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -266,7 +266,7 @@ impl GameRepo {
 
     pub async fn get_links(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<GameLink>> {
         let links = sqlx::query_as::<_, GameLink>(
-            r#"SELECT id, game_id, platform, url, created_at FROM game_links WHERE game_id = $1"#,
+            r"SELECT id, game_id, platform, url, created_at FROM game_links WHERE game_id = $1",
         )
         .bind(game_id)
         .fetch_all(pool)
@@ -290,8 +290,8 @@ impl GameRepo {
 
     pub async fn get_screenshots(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<GameScreenshot>> {
         let shots = sqlx::query_as::<_, GameScreenshot>(
-            r#"SELECT id, game_id, url, caption, position, created_at
-              FROM game_screenshots WHERE game_id = $1 ORDER BY position"#,
+            r"SELECT id, game_id, url, caption, position, created_at
+              FROM game_screenshots WHERE game_id = $1 ORDER BY position",
         )
         .bind(game_id)
         .fetch_all(pool)
@@ -301,9 +301,9 @@ impl GameRepo {
 
     pub async fn get_tags(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<String>> {
         let tags: Vec<String> = sqlx::query_scalar(
-            r#"SELECT t.name FROM tags t
+            r"SELECT t.name FROM tags t
               JOIN game_tags gt ON gt.tag_id = t.id
-              WHERE gt.game_id = $1 ORDER BY t.name"#,
+              WHERE gt.game_id = $1 ORDER BY t.name",
         )
         .bind(game_id)
         .fetch_all(pool)
@@ -352,7 +352,7 @@ impl GameRepo {
         Ok(())
     }
 
-    /// Xuất bản game: đặt status='published' và giữ published_at cũ nếu
+    /// Xuất bản game: đặt status='published' và giữ `published_at` cũ nếu
     /// đã có (COALESCE) — để re-publish không reset mốc xuất bản gốc,
     /// ảnh hưởng đến thứ tự sort "latest" và sitemap lastmod.
     pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<()> {
@@ -390,7 +390,7 @@ impl GameRepo {
             _ => "g.published_at DESC NULLS LAST",
         };
         let sql = format!(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -404,9 +404,8 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published'
-              ORDER BY {}
-              LIMIT $1 OFFSET $2"#,
-            order
+              ORDER BY {order}
+              LIMIT $1 OFFSET $2"
         );
         // order clause là hằng số nội bộ (match ở trên), an toàn injection
         let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -434,7 +433,7 @@ impl GameRepo {
             _ => "g.published_at DESC NULLS LAST",
         };
 
-        let mut sql = r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+        let mut sql = r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -448,7 +447,7 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published'
-                AND (g.title ILIKE $1 ESCAPE '\\' OR g.excerpt ILIKE $1 ESCAPE '\\' OR g.content ILIKE $1 ESCAPE '\\')"#
+                AND (g.title ILIKE $1 ESCAPE '\\' OR g.excerpt ILIKE $1 ESCAPE '\\' OR g.content ILIKE $1 ESCAPE '\\')"
             .to_string();
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");
@@ -507,10 +506,10 @@ impl GameRepo {
     ) -> AppResult<Vec<(String, String)>> {
         let pattern = format!("%{}%", crate::utils::escape_like(query));
         let rows: Vec<(String, String)> = sqlx::query_as(
-            r#"SELECT title, slug FROM games
+            r"SELECT title, slug FROM games
                WHERE status = 'published' AND title ILIKE $1 ESCAPE '\'
                ORDER BY view_count DESC, published_at DESC NULLS LAST
-               LIMIT $2"#,
+               LIMIT $2",
         )
         .bind(pattern)
         .bind(limit)
@@ -526,7 +525,7 @@ impl GameRepo {
         offset: i64,
     ) -> AppResult<Vec<GameCard>> {
         let cards = sqlx::query_as::<_, GameCard>(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -541,7 +540,7 @@ impl GameRepo {
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.user_id = $1 AND g.status = 'published'
               ORDER BY g.published_at DESC NULLS LAST
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(user_id)
         .bind(limit)
@@ -559,7 +558,7 @@ impl GameRepo {
     ) -> AppResult<Vec<GameCard>> {
         let cards = if let Some(cat) = category_id {
             sqlx::query_as::<_, GameCard>(
-                r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                     c.name as category_name, c.slug as category_slug,
                     u.display_name as author_name, u.avatar_url as author_avatar,
                     g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -573,7 +572,7 @@ impl GameRepo {
                   LEFT JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
                   WHERE g.id != $1 AND g.category_id = $2 AND g.status = 'published'
-                  ORDER BY g.view_count DESC LIMIT $3"#,
+                  ORDER BY g.view_count DESC LIMIT $3",
             )
             .bind(game_id)
             .bind(cat)
@@ -582,7 +581,7 @@ impl GameRepo {
             .await?
         } else {
             sqlx::query_as::<_, GameCard>(
-                r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                     c.name as category_name, c.slug as category_slug,
                     u.display_name as author_name, u.avatar_url as author_avatar,
                     g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -596,7 +595,7 @@ impl GameRepo {
                   LEFT JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
                   WHERE g.id != $1 AND g.status = 'published'
-                  ORDER BY g.download_count DESC LIMIT $2"#,
+                  ORDER BY g.download_count DESC LIMIT $2",
             )
             .bind(game_id)
             .bind(limit)
@@ -607,7 +606,7 @@ impl GameRepo {
     }
 
     /// Game theo tag — hỗ trợ sort động (trước đây ORDER BY cứng
-    /// published_at DESC trong khi template vẫn render sort links).
+    /// `published_at` DESC trong khi template vẫn render sort links).
     pub async fn by_tag(
         pool: &PgPool,
         tag_slug: &str,
@@ -623,7 +622,7 @@ impl GameRepo {
             _ => "g.published_at DESC NULLS LAST",
         };
         let sql = format!(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -639,9 +638,8 @@ impl GameRepo {
               JOIN game_tags gt ON gt.game_id = g.id
               JOIN tags t ON t.id = gt.tag_id
               WHERE t.slug = $1 AND g.status = 'published'
-              ORDER BY {}
-              LIMIT $2 OFFSET $3"#,
-            order
+              ORDER BY {order}
+              LIMIT $2 OFFSET $3"
         );
         // order clause là hằng số nội bộ (match ở trên), an toàn injection
         let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -654,7 +652,7 @@ impl GameRepo {
     }
 
     /// Game theo thể loại — hỗ trợ sort động (trước đây ORDER BY cứng
-    /// published_at DESC trong khi template vẫn render sort links).
+    /// `published_at` DESC trong khi template vẫn render sort links).
     pub async fn by_category(
         pool: &PgPool,
         cat_slug: &str,
@@ -670,7 +668,7 @@ impl GameRepo {
             _ => "g.published_at DESC NULLS LAST",
         };
         let sql = format!(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -684,9 +682,8 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE c.slug = $1 AND g.status = 'published'
-              ORDER BY {}
-              LIMIT $2 OFFSET $3"#,
-            order
+              ORDER BY {order}
+              LIMIT $2 OFFSET $3"
         );
         // order clause là hằng số nội bộ (match ở trên), an toàn injection
         let cards = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -724,10 +721,10 @@ impl GameRepo {
         platform: Option<&str>,
     ) -> AppResult<i64> {
         let mut sql = String::from(
-            r#"SELECT COUNT(*) FROM games g
+            r"SELECT COUNT(*) FROM games g
                LEFT JOIN categories c ON c.id = g.category_id
                WHERE g.status = 'published'
-                 AND (g.title ILIKE $1 ESCAPE '\' OR g.excerpt ILIKE $1 ESCAPE '\' OR g.content ILIKE $1 ESCAPE '\')"#,
+                 AND (g.title ILIKE $1 ESCAPE '\' OR g.excerpt ILIKE $1 ESCAPE '\' OR g.content ILIKE $1 ESCAPE '\')",
         );
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");
@@ -755,9 +752,9 @@ impl GameRepo {
     /// Tổng số game trong 1 thể loại (published) để phân trang
     pub async fn count_by_category(pool: &PgPool, cat_slug: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM games g
+            r"SELECT COUNT(*) FROM games g
                JOIN categories c ON c.id = g.category_id
-               WHERE c.slug = $1 AND g.status = 'published'"#,
+               WHERE c.slug = $1 AND g.status = 'published'",
         )
         .bind(cat_slug)
         .fetch_one(pool)
@@ -768,10 +765,10 @@ impl GameRepo {
     /// Tổng số game mang 1 tag (published) để phân trang
     pub async fn count_by_tag(pool: &PgPool, tag_slug: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
-            r#"SELECT COUNT(*) FROM games g
+            r"SELECT COUNT(*) FROM games g
                JOIN game_tags gt ON gt.game_id = g.id
                JOIN tags t ON t.id = gt.tag_id
-               WHERE t.slug = $1 AND g.status = 'published'"#,
+               WHERE t.slug = $1 AND g.status = 'published'",
         )
         .bind(tag_slug)
         .fetch_one(pool)
@@ -791,7 +788,7 @@ impl GameRepo {
 
     pub async fn featured(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<GameCard>> {
         let cards = sqlx::query_as::<_, GameCard>(
-            r#"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,
                 u.display_name as author_name, u.avatar_url as author_avatar,
                 g.view_count, g.download_count, g.like_count, g.comment_count,
@@ -805,7 +802,7 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published' AND g.is_featured = TRUE
-              ORDER BY g.published_at DESC NULLS LAST LIMIT $1 OFFSET $2"#,
+              ORDER BY g.published_at DESC NULLS LAST LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
@@ -833,13 +830,13 @@ impl GameRepo {
         let rows = match status {
             Some(s) if !s.is_empty() => {
                 sqlx::query_as::<_, AdminGameRow>(
-                    r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                    r"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                     g.like_count, g.comment_count, g.is_featured, g.created_at,
                     u.display_name as author_name, c.name as category_name
                   FROM games g JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
                   WHERE g.status = $1::game_status
-                  ORDER BY g.created_at DESC LIMIT $2 OFFSET $3"#,
+                  ORDER BY g.created_at DESC LIMIT $2 OFFSET $3",
                 )
                 .bind(s)
                 .bind(limit)
@@ -849,12 +846,12 @@ impl GameRepo {
             }
             _ => {
                 sqlx::query_as::<_, AdminGameRow>(
-                    r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+                    r"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                     g.like_count, g.comment_count, g.is_featured, g.created_at,
                     u.display_name as author_name, c.name as category_name
                   FROM games g JOIN users u ON u.id = g.user_id
                   LEFT JOIN categories c ON c.id = g.category_id
-                  ORDER BY g.created_at DESC LIMIT $1 OFFSET $2"#,
+                  ORDER BY g.created_at DESC LIMIT $1 OFFSET $2",
                 )
                 .bind(limit)
                 .bind(offset)
@@ -903,14 +900,14 @@ impl GameRepo {
         offset: i64,
     ) -> AppResult<Vec<AdminGameRow>> {
         let rows = sqlx::query_as::<_, AdminGameRow>(
-            r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
+            r"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                 g.like_count, g.comment_count, g.is_featured, g.created_at,
                 u.display_name as author_name, c.name as category_name
               FROM games g JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.user_id = $1
               ORDER BY g.created_at DESC
-              LIMIT $2 OFFSET $3"#,
+              LIMIT $2 OFFSET $3",
         )
         .bind(user_id)
         .bind(limit)
@@ -929,7 +926,7 @@ impl GameRepo {
         Ok(c)
     }
 
-    /// Slug + updated_at cho sitemap
+    /// Slug + `updated_at` cho sitemap
     pub async fn sitemap_entries(
         pool: &PgPool,
     ) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
