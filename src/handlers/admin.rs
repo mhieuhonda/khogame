@@ -3,8 +3,8 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::AuthUser;
 use crate::models::report::ReportStatus;
 use crate::repositories::{
-    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NotificationRepo, RepoRepo,
-    ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
+    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NewsRepo, NotificationRepo,
+    RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
 };
 use crate::state::AppState;
 use crate::templates::*;
@@ -1211,4 +1211,236 @@ pub async fn ai_reports(
         reports,
         total_agents,
     })
+}
+
+// ============================================================
+// News admin — chỉ admin (không phải mod) được duyệt tin
+// Lý do: duyệt tin tức có tác động lớn đến uy tín site, mod không đủ trust.
+// ============================================================
+
+#[derive(Deserialize)]
+pub struct NewsListParams {
+    pub page: Option<i64>,
+}
+
+const ADMIN_NEWS_PER_PAGE: i64 = 20;
+
+/// /admin/news/pending — hàng đợi tin chờ duyệt (chỉ admin).
+pub async fn news_pending(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<NewsListParams>,
+) -> AppResult<AdminNewsPendingTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ admin được duyệt tin tức. Moderator không có quyền này.".into(),
+        ));
+    }
+    let page = params.page.unwrap_or(1).max(1);
+    let items = NewsRepo::list_pending(&state.db, page, ADMIN_NEWS_PER_PAGE).await?;
+    let total = NewsRepo::count_pending(&state.db).await?;
+    let total_pages = ((total + ADMIN_NEWS_PER_PAGE - 1) / ADMIN_NEWS_PER_PAGE).max(1);
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminNewsPendingTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        items,
+        total,
+        page,
+        total_pages,
+    })
+}
+
+/// /admin/news/all — tất cả tin (published/archived/rejected), chỉ admin.
+pub async fn news_all(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<NewsListParams>,
+) -> AppResult<AdminNewsAllTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ admin xem được tất cả tin tức.".into(),
+        ));
+    }
+    let page = params.page.unwrap_or(1).max(1);
+    let offset = (page - 1).max(0) * ADMIN_NEWS_PER_PAGE;
+    let items = sqlx::query_as::<_, crate::models::news::NewsForAdmin>(
+        r#"SELECT n.*, u.display_name AS author_name,
+                 u.username AS author_username, u.email AS author_email,
+                 u.avatar_url AS author_avatar
+          FROM news n
+          JOIN users u ON u.id = n.user_id
+          ORDER BY n.created_at DESC
+          LIMIT $1 OFFSET $2"#,
+    )
+    .bind(ADMIN_NEWS_PER_PAGE)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await?;
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+    let total_pages = ((total + ADMIN_NEWS_PER_PAGE - 1) / ADMIN_NEWS_PER_PAGE).max(1);
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminNewsAllTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        items,
+        total,
+        page,
+        total_pages,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct RejectForm {
+    pub note: Option<String>,
+}
+
+/// POST /admin/news/{id}/approve — duyệt tin (pending → published).
+pub async fn news_approve(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin được duyệt tin".into()));
+    }
+    let news = NewsRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tin không tồn tại".into()))?;
+    NewsRepo::approve(&state.db, id, user.id).await?;
+    // Notify tác giả
+    let _ = NotificationRepo::create_system(
+        &state.db,
+        news.user_id,
+        &format!("Tin '{}' đã được duyệt", news.title),
+        "",
+        &format!("/news/{}", news.slug),
+    )
+    .await;
+    audit(
+        &state,
+        user.id,
+        "news_approve",
+        "news",
+        &id.to_string(),
+        &format!("Approved: {}", news.title),
+    )
+    .await;
+    Ok(Redirect::to("/admin/news/pending").into_response())
+}
+
+/// POST /admin/news/{id}/reject — từ chối tin (pending → rejected).
+pub async fn news_reject(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<RejectForm>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin được từ chối tin".into()));
+    }
+    let news = NewsRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tin không tồn tại".into()))?;
+    let note = form.note.as_deref().unwrap_or("").trim();
+    NewsRepo::reject(&state.db, id, user.id, note).await?;
+    let _ = NotificationRepo::create_system(
+        &state.db,
+        news.user_id,
+        &format!("Tin '{}' bị từ chối", news.title),
+        note,
+        &format!("/news/{}/edit", news.slug),
+    )
+    .await;
+    audit(
+        &state,
+        user.id,
+        "news_reject",
+        "news",
+        &id.to_string(),
+        &format!("Rejected ({}): {}", note, news.title),
+    )
+    .await;
+    Ok(Redirect::to("/admin/news/pending").into_response())
+}
+
+/// POST /admin/news/{id}/archive — lưu trữ tin đã published.
+pub async fn news_archive(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin".into()));
+    }
+    let news = NewsRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tin không tồn tại".into()))?;
+    NewsRepo::archive(&state.db, id).await?;
+    audit(
+        &state,
+        user.id,
+        "news_archive",
+        "news",
+        &id.to_string(),
+        &format!("Archived: {}", news.title),
+    )
+    .await;
+    Ok(Redirect::to("/admin/news/all").into_response())
+}
+
+/// POST /admin/news/{id}/feature — đặt tin làm nổi bật.
+pub async fn news_feature(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin".into()));
+    }
+    NewsRepo::set_featured(&state.db, id, true).await?;
+    audit(&state, user.id, "news_feature", "news", &id.to_string(), "").await;
+    Ok(Redirect::to("/admin/news/all").into_response())
+}
+
+/// POST /admin/news/{id}/unfeature — bỏ nổi bật.
+pub async fn news_unfeature(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin".into()));
+    }
+    NewsRepo::set_featured(&state.db, id, false).await?;
+    audit(&state, user.id, "news_unfeature", "news", &id.to_string(), "").await;
+    Ok(Redirect::to("/admin/news/all").into_response())
+}
+
+/// POST /admin/news/{id}/delete — xóa tin.
+pub async fn news_delete(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ admin được xóa tin".into()));
+    }
+    let news = NewsRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Tin không tồn tại".into()))?;
+    NewsRepo::delete(&state.db, id).await?;
+    audit(
+        &state,
+        user.id,
+        "news_delete",
+        "news",
+        &id.to_string(),
+        &format!("Deleted: {}", news.title),
+    )
+    .await;
+    Ok(Redirect::to("/admin/news/all").into_response())
 }

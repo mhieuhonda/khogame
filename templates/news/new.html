@@ -1,0 +1,68 @@
+{% extends "layout.html" %}
+{% block title %}Đăng tin tức{% endblock %}
+
+{% block content %}
+<section class="news-form-page">
+    <div class="page-header">
+        <h1>📰 Đăng tin tức</h1>
+        <p>Tin của bạn sẽ được <strong>kiểm duyệt bởi admin</strong> trước khi xuất bản công khai. Điều này giúp Louis Space tránh lan truyền tin giả.</p>
+    </div>
+
+    {% if !errors.is_empty() %}
+    <div class="form-errors">
+        <h3>⚠️ Có lỗi cần sửa:</h3>
+        <ul>
+            {% for e in errors %}
+            <li>{{ e }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/news" class="form-section">
+        <label for="title">Tiêu đề <span class="req">*</span></label>
+        <input type="text" id="title" name="title" value="{{ form.title }}" maxlength="200" required
+               placeholder="Ví dụ: GameX công bố phiên bản 2.0 với nhiều tính năng mới">
+        <small class="hint">Tối đa 200 ký tự. Tiêu đề rõ ràng, không giật tít.</small>
+
+        <label for="excerpt">Tóm tắt</label>
+        <textarea id="excerpt" name="excerpt" rows="2" maxlength="500"
+                  placeholder="1-2 câu tóm tắt nội dung tin. Hiển thị ở danh sách tin.">{{ form.excerpt }}</textarea>
+        <small class="hint">Tối đa 500 ký tự.</small>
+
+        <label for="content">Nội dung <span class="req">*</span></label>
+        <textarea id="content" name="content" rows="12" required
+                  placeholder="Nội dung chi tiết. Có thể dùng markdown cơ bản.">{{ form.content }}</textarea>
+        <small class="hint">Tối đa 50.000 ký tự.</small>
+
+        <label for="category">Thể loại</label>
+        <select id="category" name="category">
+            <option value="">— Không phân loại —</option>
+            {% for (k, v) in categories %}
+            <option value="{{ k }}" {% if form.category == *k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="cover_image">Ảnh bìa (URL)</label>
+        <input type="url" id="cover_image" name="cover_image" value="{{ form.cover_image }}"
+               placeholder="https://...">
+        <small class="hint">Bắt đầu bằng http:// hoặc https://. Để trống nếu không có.</small>
+
+        <fieldset class="source-fieldset">
+            <legend>Nguồn tin</legend>
+            <p class="hint">Nếu đây không phải tin gốc do bạn tự viết, hãy ghi rõ nguồn để tôn trọng bản quyền.</p>
+            <label for="source_name">Tên nguồn</label>
+            <input type="text" id="source_name" name="source_name" value="{{ form.source_name }}" maxlength="150"
+                   placeholder="Ví dụ: VnExpress, GameK, IGN Vietnam">
+            <label for="source_url">URL nguồn</label>
+            <input type="url" id="source_url" name="source_url" value="{{ form.source_url }}"
+                   placeholder="https://...">
+        </fieldset>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Gửi tin để admin duyệt</button>
+            <a href="/news" class="btn btn-ghost">Hủy</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

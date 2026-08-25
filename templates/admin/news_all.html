@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}Admin — Tất cả tin{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <h1>🛡️ Tất cả tin tức ({{ total }})</h1>
+    <p>Bao gồm cả tin đã published, archived, rejected. Admin có thể archive (ẩn khỏi list chính) hoặc đặt nổi bật.</p>
+
+    <nav class="admin-tabs">
+        <a href="/admin/news/pending" class="tab">Chờ duyệt</a>
+        <a href="/admin/news/all" class="tab active">Tất cả tin</a>
+    </nav>
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <p>Chưa có tin nào.</p>
+    </div>
+    {% else %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Tiêu đề</th>
+                <th>Tác giả</th>
+                <th>Status</th>
+                <th>Stats</th>
+                <th>IP</th>
+                <th>Đăng lúc</th>
+                <th>Hành động</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for n in items %}
+            <tr>
+                <td><a href="/news/{{ n.slug }}" target="_blank">{{ n.title }}</a></td>
+                <td>
+                    <a href="/u/{{ n.author_username }}">{{ n.author_name }}</a>
+                    <br><small>{{ n.author_email }}</small>
+                </td>
+                <td><span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span></td>
+                <td>
+                    <small>
+                    👁️ {{ n.view_count }} · ❤️ {{ n.like_count }} · 💬 {{ n.comment_count }}
+                    </small>
+                </td>
+                <td><code><small>{% match n.author_ip %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</small></code></td>
+                <td><small>{{ n.created_at|format_datetime_vn }}</small></td>
+                <td class="admin-actions">
+                    {% if n.status == NewsStatus::Pending %}
+                    <form method="post" action="/admin/news/{{ n.id }}/approve" style="display:inline">
+                        <button type="submit" class="btn btn-success btn-sm">Duyệt</button>
+                    </form>
+                    {% endif %}
+                    {% if n.status == NewsStatus::Published %}
+                    <form method="post" action="/admin/news/{{ n.id }}/archive" style="display:inline"
+                          onsubmit="return confirm('Lưu trữ tin này?')">
+                        <button type="submit" class="btn btn-outline btn-sm">Archive</button>
+                    </form>
+                    {% if n.is_featured %}
+                    <form method="post" action="/admin/news/{{ n.id }}/unfeature" style="display:inline">
+                        <button type="submit" class="btn btn-outline btn-sm">Bỏ nổi bật</button>
+                    </form>
+                    {% else %}
+                    <form method="post" action="/admin/news/{{ n.id }}/feature" style="display:inline">
+                        <button type="submit" class="btn btn-outline btn-sm">Nổi bật</button>
+                    </form>
+                    {% endif %}
+                    {% endif %}
+                    <form method="post" action="/admin/news/{{ n.id }}/delete" style="display:inline"
+                          onsubmit="return confirm('Xóa vĩnh viễn tin này?')">
+                        <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    {% if total_pages > 1 %}
+    <nav class="pagination">
+        {% if page > 1 %}<a href="?page={{ page - 1 }}" class="pagination-link" rel="prev">←</a>{% endif %}
+        <span>Trang {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?page={{ page + 1 }}" class="pagination-link" rel="next">→</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

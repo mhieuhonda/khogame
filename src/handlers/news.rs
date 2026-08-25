@@ -1,7 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
-use crate::models::news::{News, NewsStatus};
+use crate::models::news::NewsStatus;
 use crate::repositories::NewsRepo;
 use crate::repositories::news::NewsForm;
 use crate::state::AppState;
@@ -123,12 +123,12 @@ pub async fn list(
             (Vec::new(), 0)
         } else {
             let items = NewsRepo::search(&state.db, q_trimmed, page, NEWS_PER_PAGE).await?;
-            let total = count_search(&state.db, q_trimmed).await;
+            let total = count_search(&state, q_trimmed).await;
             (items, total)
         }
     } else if !category.is_empty() {
         let items = NewsRepo::list_by_category(&state.db, category, page, NEWS_PER_PAGE).await?;
-        let total = count_by_category(&state.db, category).await;
+        let total = count_by_category(&state, category).await;
         (items, total)
     } else {
         let items = NewsRepo::list_published(&state.db, page, NEWS_PER_PAGE).await?;
@@ -447,7 +447,7 @@ pub async fn update(
         ));
     }
 
-    let mut form = NewsForm {
+    let form = NewsForm {
         title: params.title.trim().to_string(),
         excerpt: params.excerpt.trim().to_string(),
         content: params.content.trim().to_string(),
@@ -464,8 +464,6 @@ pub async fn update(
     }
     // Nếu edit lại tin rejected → reset status về pending để admin duyệt lại
     if full.status == NewsStatus::Rejected {
-        // Phải qua admin mới reset được; ở đây user edit form thì tự động pending lại
-        let _ = &form; // borrow
         sqlx::query("UPDATE news SET status = 'pending', review_note = '' WHERE id = $1")
             .bind(full.id)
             .execute(&state.db)

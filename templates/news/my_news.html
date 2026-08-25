@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+{% block title %}Tin của tôi{% endblock %}
+
+{% block content %}
+<section class="my-news-page">
+    <div class="page-header">
+        <h1>📰 Tin của tôi</h1>
+        <p>{{ items.len() }} bài viết. <a href="/news/new" class="btn btn-primary btn-sm">+ Đăng tin mới</a></p>
+    </div>
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <p>Bạn chưa đăng tin nào.</p>
+        <a href="/news/new" class="btn btn-primary">Đăng tin đầu tiên</a>
+    </div>
+    {% else %}
+    <div class="my-news-list">
+        {% for n in items %}
+        <div class="my-news-item">
+            <div class="my-news-info">
+                <h3>
+                    <a href="/news/{{ n.slug }}">{{ n.title }}</a>
+                </h3>
+                <div class="my-news-meta">
+                    <span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span>
+                    <span class="meta-item">👁️ {{ n.view_count|fmt_num }}</span>
+                    <span class="meta-item">❤️ {{ n.like_count|fmt_num }}</span>
+                    <span class="meta-item">💬 {{ n.comment_count|fmt_num }}</span>
+                    <span class="meta-item">📅 {{ n.created_at|format_datetime_vn }}</span>
+                </div>
+                {% if n.status == NewsStatus::Rejected && !n.review_note.is_empty() %}
+                <p class="warning">Lý do từ chối: {{ n.review_note }}</p>
+                {% endif %}
+            </div>
+            <div class="my-news-actions">
+                <a href="/news/{{ n.slug }}/edit" class="btn btn-outline btn-sm">Sửa</a>
+                <form method="post" action="/news/{{ n.slug }}/delete" onsubmit="return confirm('Xóa vĩnh viễn?')">
+                    <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

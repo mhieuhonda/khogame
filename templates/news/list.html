@@ -1,0 +1,142 @@
+{% extends "layout.html" %}
+
+{% block title %}{% if !query.is_empty() %}Tìm: {{ query }}{% else if !category.is_empty() %}{{ category_label }}{% else %}Tin tức{% endif %}{% endblock %}
+
+{% block description %}{% if !query.is_empty() %}Tìm tin tức "{{ query }}" trên Louis Space{% else if !category.is_empty() %}{{ category_label }} — tin tức mới nhất trên Louis Space{% else %}Tin tức game & công nghệ cộng đồng Việt Nam — cập nhật mỗi ngày, nguồn rõ ràng, kiểm duyệt bởi admin.{% endif %}{% endblock %}
+
+{% block content %}
+<section class="news-list-page">
+    <div class="page-header">
+        <h1>📰 Tin tức</h1>
+        {% if !query.is_empty() %}
+        <p>{{ total }} kết quả cho "<strong>{{ query }}</strong>"</p>
+        {% else if !category.is_empty() %}
+        <p>{{ category_label }} — {{ total }} bài viết</p>
+        {% else %}
+        <p>Tin tức game, công nghệ & cộng đồng. Mọi bài viết được kiểm duyệt bởi admin trước khi xuất bản để tránh lan truyền tin giả.</p>
+        {% endif %}
+    </div>
+
+    <form class="news-filters" method="get" action="/news">
+        <input type="text" name="q" value="{{ query }}" placeholder="Tìm tin tức..." aria-label="Tìm tin tức">
+        <select name="category" aria-label="Lọc theo thể loại">
+            <option value="">Tất cả thể loại</option>
+            {% for (k, v) in categories %}
+            <option value="{{ k }}" {% if category == *k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-outline btn-sm">Lọc</button>
+        {% if !query.is_empty() || !category.is_empty() %}
+        <a href="/news" class="btn btn-ghost btn-sm">Xóa lọc</a>
+        {% endif %}
+    </form>
+
+    {% if !featured.is_empty() && page == 1 && query.is_empty() && category.is_empty() %}
+    <section class="news-featured-section">
+        <h2 class="section-title">⭐ Tin nổi bật</h2>
+        <div class="news-featured-grid">
+            {% for n in featured %}
+            <article class="news-card news-card-featured">
+                <a href="/news/{{ n.slug }}" class="news-card-link">
+                    {% match n.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}
+                        <div class="news-card-cover" style="background-image:url('{{ url }}')"></div>
+                        {% else %}
+                        <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
+                        {% endif %}
+                    {% when Option::None %}
+                        <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
+                    {% endmatch %}
+                    <div class="news-card-body">
+                        <span class="news-card-category">{{ n.category }}</span>
+                        <h3>{{ n.title }}</h3>
+                        <p class="news-card-excerpt">{{ n.excerpt }}</p>
+                        <div class="news-card-meta">
+                            <span class="meta-item">👁️ {{ n.view_count|fmt_num }}</span>
+                            <span class="meta-item">❤️ {{ n.like_count|fmt_num }}</span>
+                            <span class="meta-item">💬 {{ n.comment_count|fmt_num }}</span>
+                        </div>
+                        <div class="news-card-author">
+                            {% match n.author_avatar %}
+                            {% when Option::Some with (url) %}
+                            <img src="{{ url }}" alt="" class="avatar avatar-xs" width="24" height="24" loading="lazy" decoding="async">
+                            {% when Option::None %}
+                            <div class="avatar avatar-xs avatar-fallback">{{ n.author_name|initials }}</div>
+                            {% endmatch %}
+                            <span>{{ n.author_name }}</span>
+                        </div>
+                    </div>
+                </a>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <p>Chưa có tin tức nào.{% if !query.is_empty() %} Thử từ khóa khác.{% endif %}</p>
+        {% match current_user %}
+        {% when Option::Some with (user) %}
+        {% if !user.is_banned %}
+        <a href="/news/new" class="btn btn-primary btn-sm">Đăng tin đầu tiên</a>
+        {% endif %}
+        {% when Option::None %}
+        <a href="/login" class="btn btn-outline btn-sm">Đăng nhập để đăng tin</a>
+        {% endmatch %}
+    </div>
+    {% else %}
+    <div class="news-grid">
+        {% for n in items %}
+        <article class="news-card">
+            <a href="/news/{{ n.slug }}" class="news-card-link">
+                {% match n.cover_image %}
+                {% when Option::Some with (url) %}
+                    {% if !url.is_empty() %}
+                    <div class="news-card-cover" style="background-image:url('{{ url }}')"></div>
+                    {% else %}
+                    <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
+                    {% endif %}
+                {% when Option::None %}
+                    <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
+                {% endmatch %}
+                <div class="news-card-body">
+                    <span class="news-card-category">{{ n.category }}</span>
+                    <h3>{{ n.title }}</h3>
+                    <p class="news-card-excerpt">{{ n.excerpt }}</p>
+                    <div class="news-card-meta">
+                        <span class="meta-item">👁️ {{ n.view_count|fmt_num }}</span>
+                        <span class="meta-item">❤️ {{ n.like_count|fmt_num }}</span>
+                        <span class="meta-item">💬 {{ n.comment_count|fmt_num }}</span>
+                    </div>
+                    <div class="news-card-author">
+                        {% match n.author_avatar %}
+                        {% when Option::Some with (url) %}
+                        <img src="{{ url }}" alt="" class="avatar avatar-xs" width="24" height="24" loading="lazy" decoding="async">
+                        {% when Option::None %}
+                        <div class="avatar avatar-xs avatar-fallback">{{ n.author_name|initials }}</div>
+                        {% endmatch %}
+                        <span>{{ n.author_name }}</span>
+                    </div>
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}{% if !category.is_empty() %}&category={{ category }}{% endif %}{% if !query.is_empty() %}&q={{ query }}{% endif %}" class="pagination-link" rel="prev">← Trước</a>
+        {% endif %}
+        <span class="pagination-info">Trang {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}{% if !category.is_empty() %}&category={{ category }}{% endif %}{% if !query.is_empty() %}&q={{ query }}{% endif %}" class="pagination-link" rel="next">Sau →</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

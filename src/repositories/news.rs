@@ -1,6 +1,5 @@
 use crate::error::{AppError, AppResult};
 use crate::models::news::{News, NewsComment, NewsCommentWithAuthor, NewsForAdmin, NewsStatus, NewsWithAuthor};
-use chrono::Utc;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -54,7 +53,7 @@ impl NewsRepo {
         .map_err(|e| {
             // 23505 = unique_violation (slug trùng) — map thành Conflict
             if let sqlx::Error::Database(ref db) = e {
-                if db.code() == Some("23505") {
+                if db.code().as_deref() == Some("23505") {
                     return AppError::Conflict(format!(
                         "Tin tức với đường dẫn '{}' đã tồn tại. Hãy đổi tiêu đề.",
                         slug
@@ -97,8 +96,9 @@ impl NewsRepo {
     ) -> AppResult<Vec<NewsWithAuthor>> {
         let offset = (page - 1).max(0) * per_page;
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.cover_image,
-                     n.category, n.source_name, n.status, n.view_count, n.like_count,
+            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                     n.cover_image, n.category, n.source_url, n.source_name,
+                     n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -128,8 +128,9 @@ impl NewsRepo {
     /// Lấy tin nổi bật (is_featured=true, status=published).
     pub async fn list_featured(pool: &PgPool, limit: i64) -> AppResult<Vec<NewsWithAuthor>> {
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.cover_image,
-                     n.category, n.source_name, n.status, n.view_count, n.like_count,
+            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                     n.cover_image, n.category, n.source_url, n.source_name,
+                     n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -154,8 +155,9 @@ impl NewsRepo {
     ) -> AppResult<Vec<NewsWithAuthor>> {
         let offset = (page - 1).max(0) * per_page;
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.cover_image,
-                     n.category, n.source_name, n.status, n.view_count, n.like_count,
+            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                     n.cover_image, n.category, n.source_url, n.source_name,
+                     n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -183,8 +185,9 @@ impl NewsRepo {
         let offset = (page - 1).max(0) * per_page;
         let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
         let items = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.cover_image,
-                     n.category, n.source_name, n.status, n.view_count, n.like_count,
+            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                     n.cover_image, n.category, n.source_url, n.source_name,
+                     n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -206,8 +209,9 @@ impl NewsRepo {
     /// Lấy chi tiết tin theo slug (chỉ published hoặc archived cho người dùng thường).
     pub async fn find_by_slug_public(pool: &PgPool, slug: &str) -> AppResult<Option<NewsWithAuthor>> {
         let item = sqlx::query_as::<_, NewsWithAuthor>(
-            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.cover_image,
-                     n.category, n.source_name, n.status, n.view_count, n.like_count,
+            r#"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                     n.cover_image, n.category, n.source_url, n.source_name,
+                     n.status, n.view_count, n.like_count,
                      n.comment_count, n.is_featured, n.published_at, n.created_at,
                      u.display_name AS author_name, u.username AS author_username,
                      u.avatar_url AS author_avatar
@@ -411,12 +415,12 @@ impl NewsRepo {
         // DELETE-first pattern: tránh double-increment khi race condition.
         // Trả về true nếu đã like (sau khi INSERT), false nếu đã unlike (sau khi DELETE).
         let mut tx = pool.begin().await?;
-        let deleted: i64 = sqlx::query_scalar("DELETE FROM news_likes WHERE user_id = $1 AND news_id = $2")
+        let deleted: u64 = sqlx::query("DELETE FROM news_likes WHERE user_id = $1 AND news_id = $2")
             .bind(user_id)
             .bind(news_id)
             .execute(&mut *tx)
             .await?
-            .rows_affected() as i64;
+            .rows_affected();
         let liked = if deleted == 0 {
             sqlx::query("INSERT INTO news_likes (user_id, news_id) VALUES ($1, $2) ON CONFLICT DO NOTHING")
                 .bind(user_id)
@@ -545,14 +549,14 @@ impl NewsRepo {
 
     pub async fn toggle_comment_like(pool: &PgPool, user_id: Uuid, comment_id: Uuid) -> AppResult<bool> {
         let mut tx = pool.begin().await?;
-        let deleted: i64 = sqlx::query_scalar(
+        let deleted: u64 = sqlx::query(
             "DELETE FROM news_comment_likes WHERE user_id = $1 AND comment_id = $2",
         )
         .bind(user_id)
         .bind(comment_id)
         .execute(&mut *tx)
         .await?
-        .rows_affected() as i64;
+        .rows_affected();
         let liked = if deleted == 0 {
             sqlx::query(
                 "INSERT INTO news_comment_likes (user_id, comment_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
@@ -608,6 +612,8 @@ impl NewsRepo {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     // Repository test cần DB thật → skip trong CI.
     // Unit test cho NewsStatus nằm ở src/models/news.rs.
     // Đây chỉ là placeholder để CI không fail khi check `cargo test --no-run`.

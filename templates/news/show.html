@@ -1,0 +1,126 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ news.title }}{% endblock %}
+
+{% block description %}{{ news.excerpt }}{% endblock %}
+
+{% block head_extra %}
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ news.title }}">
+<meta property="og:description" content="{{ news.excerpt }}">
+<meta property="og:url" content="{{ base_url }}/news/{{ news.slug }}">
+{% match news.cover_image %}
+{% when Option::Some with (url) %}
+{% if !url.is_empty() %}
+<meta property="og:image" content="{{ url }}">
+{% endif %}
+{% when Option::None %}
+{% endmatch %}
+<meta property="article:author" content="{{ news.author_name }}">
+<meta property="article:published_time" content="{% match news.published_at %}{% when Option::Some with (dt) %}{{ dt|format_datetime_vn }}{% when Option::None %}{% endmatch %}">
+{% endblock %}
+
+{% block content %}
+<article class="news-show">
+    <header class="news-show-header">
+        <a href="/news" class="back-link">← Tin tức</a>
+        <span class="news-card-category">{{ news.category }}</span>
+        <h1>{{ news.title }}</h1>
+        <div class="news-show-meta">
+            <a href="/u/{{ news.author_username }}" class="news-author">
+                {% match news.author_avatar %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ news.author_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-sm avatar-fallback">{{ news.author_name|initials }}</div>
+                {% endmatch %}
+                <span>{{ news.author_name }}</span>
+            </a>
+            <span class="meta-divider">·</span>
+            <span class="meta-item">👁️ {{ news.view_count|fmt_num }}</span>
+            <span class="meta-item">❤️ {{ news.like_count|fmt_num }}</span>
+            <span class="meta-item">💬 {{ news.comment_count|fmt_num }}</span>
+        </div>
+    </header>
+
+    {% match news.cover_image %}
+    {% when Option::Some with (url) %}
+    {% if !url.is_empty() %}
+    <div class="news-show-cover" style="background-image:url('{{ url }}')"></div>
+    {% endif %}
+    {% when Option::None %}
+    {% endmatch %}
+
+    {% if !news.excerpt.is_empty() %}
+    <p class="news-show-excerpt">{{ news.excerpt }}</p>
+    {% endif %}
+
+    <div class="news-show-content prose">
+        {{ news.content }}
+    </div>
+
+    {% if !news.source_name.is_empty() || !news.source_name.is_empty() %}
+    <div class="news-source">
+        <strong>Nguồn:</strong>
+        {% if !news.source_url.is_empty() %}
+        <a href="{{ news.source_url }}" rel="noopener nofollow" target="_blank">{{ news.source_name }}</a>
+        {% else %}
+        <span>{{ news.source_name }}</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="news-actions">
+        {% match current_user %}
+        {% when Option::Some with (user) %}
+        <button class="btn {% if has_liked %}btn-primary{% else %}btn-outline{% endif %} btn-sm"
+                hx-post="/news/{{ news.slug }}/like" hx-swap="outerHTML"
+                aria-pressed="{% if has_liked %}true{% else %}false{% endif %}">
+            ❤️ {{ news.like_count }}
+        </button>
+        {% when Option::None %}
+        <a href="/login" class="btn btn-outline btn-sm">Đăng nhập để thích</a>
+        {% endmatch %}
+        <button class="btn btn-ghost btn-sm" onclick="navigator.share?.({ url: '{{ base_url }}/news/{{ news.slug }}', title: '{{ news.title }}' }) || navigator.clipboard?.writeText('{{ base_url }}/news/{{ news.slug }}')">
+            🔗 Chia sẻ
+        </button>
+    </div>
+
+    <section class="news-comments" id="comments">
+        <h2>💬 Bình luận ({{ news.comment_count }})</h2>
+        {% match current_user %}
+        {% when Option::Some with (_) %}
+        <form method="post" action="/news/{{ news.slug }}/comments" class="comment-form">
+            <textarea name="content" rows="3" maxlength="2000" placeholder="Viết bình luận..." aria-label="Nội dung bình luận" required></textarea>
+            <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
+        </form>
+        {% when Option::None %}
+        <p class="muted"><a href="/login">Đăng nhập</a> để bình luận.</p>
+        {% endmatch %}
+
+        {% if comments.is_empty() %}
+        <p class="muted">Chưa có bình luận nào. Hãy là người đầu tiên!</p>
+        {% else %}
+        <div class="comment-list">
+            {% for c in comments %}
+            <div class="comment-item">
+                <a href="/u/{{ c.author_username }}" class="comment-author">
+                    {% match c.author_avatar %}
+                    {% when Option::Some with (url) %}
+                    <img src="{{ url }}" alt="" class="avatar avatar-xs" width="24" height="24" loading="lazy" decoding="async">
+                    {% when Option::None %}
+                    <div class="avatar avatar-xs avatar-fallback">{{ c.author_name|initials }}</div>
+                    {% endmatch %}
+                    <strong>{{ c.author_name }}</strong>
+                </a>
+                <div class="comment-body">{{ c.content }}</div>
+                <div class="comment-meta">
+                    <span>{{ c.created_at|format_datetime_vn }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+</article>
+{% endblock %}

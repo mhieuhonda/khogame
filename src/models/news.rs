@@ -11,7 +11,7 @@ use uuid::Uuid;
 /// - Admin từ chối → `Rejected` (kèm review_note lý do)
 /// - Admin lưu trữ tin cũ → `Archived` (ẩn khỏi list chính, vẫn truy cập qua direct link)
 /// - Draft: status này dành cho tương lai khi có autosave (chưa dùng trong v0.8.0)
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, PartialEq)]
 #[sqlx(type_name = "news_status", rename_all = "snake_case")]
 pub enum NewsStatus {
     Draft,
@@ -20,12 +20,6 @@ pub enum NewsStatus {
     Published,
     Archived,
     Rejected,
-}
-
-impl Default for NewsStatus {
-    fn default() -> Self {
-        NewsStatus::Pending
-    }
 }
 
 impl NewsStatus {
@@ -113,8 +107,10 @@ pub struct NewsWithAuthor {
     pub title: String,
     pub slug: String,
     pub excerpt: String,
+    pub content: String,
     pub cover_image: Option<String>,
     pub category: String,
+    pub source_url: String,
     pub source_name: String,
     pub status: NewsStatus,
     pub view_count: i32,

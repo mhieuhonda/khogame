@@ -258,6 +258,33 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::admin::revoke_session),
         )
         .route("/admin/export", get(handlers::admin::export))
+        // === News admin (chỉ admin, không phải mod) ===
+        .route("/admin/news/pending", get(handlers::admin::news_pending))
+        .route("/admin/news/all", get(handlers::admin::news_all))
+        .route(
+            "/admin/news/{id}/approve",
+            post(handlers::admin::news_approve),
+        )
+        .route(
+            "/admin/news/{id}/reject",
+            post(handlers::admin::news_reject),
+        )
+        .route(
+            "/admin/news/{id}/archive",
+            post(handlers::admin::news_archive),
+        )
+        .route(
+            "/admin/news/{id}/feature",
+            post(handlers::admin::news_feature),
+        )
+        .route(
+            "/admin/news/{id}/unfeature",
+            post(handlers::admin::news_unfeature),
+        )
+        .route(
+            "/admin/news/{id}/delete",
+            post(handlers::admin::news_delete).delete(handlers::admin::news_delete),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
     Router::new()

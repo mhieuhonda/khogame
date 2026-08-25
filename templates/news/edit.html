@@ -1,0 +1,66 @@
+{% extends "layout.html" %}
+{% block title %}Sửa tin: {{ news.title }}{% endblock %}
+
+{% block content %}
+<section class="news-form-page">
+    <div class="page-header">
+        <h1>✏️ Sửa tin tức</h1>
+        <p>Trạng thái hiện tại: <span class="badge {{ news.status.badge_class() }}">{{ news.status.label() }}</span></p>
+        {% if news.status == NewsStatus::Rejected %}
+        <p class="warning">Tin bị từ chối. Sau khi sửa, tin sẽ được đưa vào hàng đợi duyệt lại.</p>
+        {% if !news.review_note.is_empty() %}
+        <blockquote>Ghi chú admin: {{ news.review_note }}</blockquote>
+        {% endif %}
+        {% endif %}
+    </div>
+
+    {% if !errors.is_empty() %}
+    <div class="form-errors">
+        <h3>⚠️ Có lỗi cần sửa:</h3>
+        <ul>
+            {% for e in errors %}
+            <li>{{ e }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form method="post" action="/news/{{ news.slug }}" class="form-section">
+        <label for="title">Tiêu đề <span class="req">*</span></label>
+        <input type="text" id="title" name="title" value="{{ news.title }}" maxlength="200" required>
+
+        <label for="excerpt">Tóm tắt</label>
+        <textarea id="excerpt" name="excerpt" rows="2" maxlength="500">{{ news.excerpt }}</textarea>
+
+        <label for="content">Nội dung <span class="req">*</span></label>
+        <textarea id="content" name="content" rows="12" required>{{ news.content }}</textarea>
+
+        <label for="category">Thể loại</label>
+        <select id="category" name="category">
+            <option value="">— Không phân loại —</option>
+            {% for (k, v) in categories %}
+            <option value="{{ k }}" {% if news.category == *k %}selected{% endif %}>{{ v }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="cover_image">Ảnh bìa (URL)</label>
+        <input type="url" id="cover_image" name="cover_image" value="{% match news.cover_image %}{% when Option::Some with (url) %}{{ url }}{% when Option::None %}{% endmatch %}">
+
+        <fieldset class="source-fieldset">
+            <legend>Nguồn tin</legend>
+            <label for="source_name">Tên nguồn</label>
+            <input type="text" id="source_name" name="source_name" value="{{ news.source_name }}" maxlength="150">
+            <label for="source_url">URL nguồn</label>
+            <input type="url" id="source_url" name="source_url" value="{{ news.source_url }}">
+        </fieldset>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+            <a href="/news/{{ news.slug }}" class="btn btn-ghost">Xem tin</a>
+            <form method="post" action="/news/{{ news.slug }}/delete" onsubmit="return confirm('Xóa vĩnh viễn tin này?')">
+                <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
+            </form>
+        </div>
+    </form>
+</section>
+{% endblock %}

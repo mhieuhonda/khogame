@@ -488,6 +488,11 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         "static",
         "feed",
         "follow",
+        // news module
+        "news",
+        "my-news",
+        "pending",
+        "all",
     ];
     let mut out = String::with_capacity(path.len());
     for seg in path.split('/') {

@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block title %}Admin — Tin chờ duyệt{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <h1>🛡️ Tin chờ duyệt ({{ total }})</h1>
+    <p>Các tin do người dùng đăng, đang chờ admin phê duyệt trước khi xuất bản công khai. Xem IP và user-agent để truy vết nếu có spam/abuse.</p>
+
+    <nav class="admin-tabs">
+        <a href="/admin/news/pending" class="tab active">Chờ duyệt ({{ total }})</a>
+        <a href="/admin/news/all" class="tab">Tất cả tin</a>
+    </nav>
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <p>✅ Không có tin nào đang chờ duyệt.</p>
+    </div>
+    {% else %}
+    <div class="admin-news-queue">
+        {% for n in items %}
+        <article class="admin-news-item">
+            <header class="admin-news-header">
+                <span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span>
+                <h3>{{ n.title }}</h3>
+                <a href="/news/{{ n.slug }}" class="btn btn-outline btn-sm" target="_blank">Xem trước</a>
+            </header>
+            <div class="admin-news-body">
+                {% if !n.excerpt.is_empty() %}
+                <p class="excerpt">{{ n.excerpt }}</p>
+                {% endif %}
+                <details>
+                    <summary>Nội dung đầy đủ</summary>
+                    <div class="prose">{{ n.content }}</div>
+                </details>
+            </div>
+            <div class="admin-news-author">
+                <strong>Tác giả:</strong>
+                <a href="/u/{{ n.author_username }}">{{ n.author_name }}</a> ({{ n.author_email }})
+                <br>
+                <strong>IP:</strong> <code>{% match n.author_ip %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</code>
+                <br>
+                <strong>UA:</strong> <code class="ua-truncate">{% match n.author_ua %}{% when Option::Some with (ua) %}{{ ua }}{% when Option::None %}—{% endmatch %}</code>
+                <br>
+                <strong>Đăng lúc:</strong> {{ n.created_at|format_datetime_vn }}
+                <br>
+                <strong>Thể loại:</strong> {{ n.category }}
+                {% if !n.source_name.is_empty() %}
+                <br><strong>Nguồn:</strong>
+                {% if !n.source_url.is_empty() %}
+                <a href="{{ n.source_url }}" rel="noopener nofollow" target="_blank">{{ n.source_name }}</a>
+                {% else %}
+                {{ n.source_name }}
+                {% endif %}
+                {% endif %}
+            </div>
+            <form method="post" action="/admin/news/{{ n.id }}/approve" class="admin-news-action">
+                <button type="submit" class="btn btn-success btn-sm">✅ Duyệt</button>
+            </form>
+            <form method="post" action="/admin/news/{{ n.id }}/reject" class="admin-news-action">
+                <input type="text" name="note" placeholder="Lý do từ chối (tùy chọn)" maxlength="500">
+                <button type="submit" class="btn btn-danger btn-sm">❌ Từ chối</button>
+            </form>
+        </article>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <nav class="pagination">
+        {% if page > 1 %}<a href="?page={{ page - 1 }}" class="pagination-link" rel="prev">←</a>{% endif %}
+        <span>Trang {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="?page={{ page + 1 }}" class="pagination-link" rel="next">→</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}
