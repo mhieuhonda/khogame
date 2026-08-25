@@ -62,6 +62,47 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Model Notification (icon/label/None-safe), model Repo (status/
   URL/serde default) — 92 → 99 tests.
 
+### 🐛 Fixed (tiếp)
+
+- **Reply thông báo sai người nhận**: B trả lời bình luận của A trên
+  game của C → C nhận "trả lời bình luận của bạn" (nhầm) còn A không
+  nhận gì. Giờ reply → tác giả bình luận cha; chủ game (người thứ ba)
+  nhận thông báo comment riêng.
+- **Chiếm quyền sở hữu repo entry**: ON CONFLICT DO UPDATE SET
+  user_id cho phép user B đăng lại repo user A đã đăng để cướp entry
+  (đổi game liên kết, xoá repo của A). Giờ chặn 409 + warn log.
+- **Analytics download mất dòng khi platform lạ**: bind chuỗi thô
+  "ANDROID" làm cast enum fail ngầm — giờ bind enum đã parse.
+- **401 chỉ có HX-Redirect**: browser thường (form POST no-JS) thấy
+  body text thay vì redirect. Thêm Location + 303.
+
+### ✨ Added (tiếp)
+
+- **Trang quản trị phiên đăng nhập** `/admin/sessions` — xem 200 phiên
+  còn hạn (UA/IP/thời gian), thu hồi từng phiên + audit log.
+- **last_seen_at cập nhật trong phiên** (throttle 1h, ghi async) —
+  trước đây chỉ ghi lúc login nên "hoạt động lần cuối" stale cả tháng.
+- **Autocomplete ô tìm kiếm** — `/api/suggest` + dropdown (ARIA).
+- **`cargo-audit` job CI** — chặn merge khi RustSec advisory trong
+  Cargo.lock.
+- **Theme lần đầu theo `prefers-color-scheme`** hệ điều hành.
+- **`prefers-reduced-motion`** CSS (WCAG 2.3.3).
+- Cargo.toml metadata crate đầy đủ.
+
+### ⚡ Performance (tiếp)
+
+- Mọi trang danh sách, admin pages, export, API games_list/stats/
+  repos_list: query độc lập song song hoá `tokio::join!`.
+- `set_theme`: 2 query → 1 UPSERT riêng cột theme (hết race ghi đè).
+- `/api/announcement`: thêm Cache-Control 60s (JS fetch mỗi page view).
+- `slug_exists`/`exists`: COUNT(*) → SELECT EXISTS.
+- Report notify staff: loop INSERT → 1 INSERT..SELECT.
+
+### 🧪 Tests (tiếp)
+
+- Platform::as_str roundtrip, markdown edge cases (nested/escape/
+  URL encode) — 103 → 109 tests.
+
 ## [0.7.0] — 2026-08-25
 
 ### 🛡️ Security — 8 lỗ hổng thật đã fix
