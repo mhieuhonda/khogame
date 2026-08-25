@@ -5,7 +5,7 @@ use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, NewsRepo, ReportRepo, TagRepo};
 use crate::state::AppState;
-use crate::templates::*;
+use crate::templates::{IndexTemplate, NewGameTemplate, GameShowTemplate, EditGameTemplate, ReportModalPartial, GameListTemplate, CategoriesPageTemplate, SearchTemplate, MyGamesTemplate};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -104,11 +104,11 @@ pub async fn home(
     })
 }
 
-/// Validate tất cả URL trong GameForm — dùng chung cho create_game và
-/// update_game để tránh lặp code. Bao gồm:
+/// Validate tất cả URL trong `GameForm` — dùng chung cho `create_game` và
+/// `update_game` để tránh lặp code. Bao gồm:
 /// - 5 link tải (Android, iOS, Windows, Linux, macOS) — chỉ http(s),
 ///   ≤ 2048 ký tự, chống XSS qua `javascript:` khi HTMX HX-Redirect.
-/// - cover_image và trailer_url — chỉ http(s), ≤ 2048 ký tự.
+/// - `cover_image` và `trailer_url` — chỉ http(s), ≤ 2048 ký tự.
 /// - screenshot URLs (mỗi dòng 1 URL) — chỉ http(s), ≤ 2048 ký tự.
 /// - title ≤ 200 ký tự (được dùng làm slug + hiển thị).
 /// - tag count ≤ 20, mỗi tag ≤ 50 ký tự (chống lạm dụng).
@@ -144,7 +144,7 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
         ("Dung lượng", &form.file_size),
     ] {
         if v.chars().count() > 100 {
-            return Err(AppError::BadRequest(format!("{} tối đa 100 ký tự", label)));
+            return Err(AppError::BadRequest(format!("{label} tối đa 100 ký tự")));
         }
     }
     // Ngôn ngữ: tối đa 20, mỗi ngôn ngữ ≤ 50 ký tự
@@ -213,14 +213,12 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
             let lower = u.to_ascii_lowercase();
             if !(lower.starts_with("http://") || lower.starts_with("https://")) {
                 return Err(AppError::BadRequest(format!(
-                    "Link tải {} phải là http:// hoặc https:// (đã chặn javascript: và các scheme nguy hiểm)",
-                    label
+                    "Link tải {label} phải là http:// hoặc https:// (đã chặn javascript: và các scheme nguy hiểm)"
                 )));
             }
             if u.len() > 2048 {
                 return Err(AppError::BadRequest(format!(
-                    "Link tải {} quá dài (tối đa 2048 ký tự)",
-                    label
+                    "Link tải {label} quá dài (tối đa 2048 ký tự)"
                 )));
             }
         }
@@ -228,7 +226,7 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
     Ok(())
 }
 
-/// Validate category_id trong form: nếu có thì phải tồn tại thật trong DB.
+/// Validate `category_id` trong form: nếu có thì phải tồn tại thật trong DB.
 /// Form là \<select\> nhưng POST crafted vẫn gửi UUID lạ được → FK
 /// violation → 500. Validate trước cho lỗi 400 sạch với thông điệp rõ.
 async fn validate_category(state: &AppState, form: &GameForm) -> AppResult<()> {
@@ -272,25 +270,17 @@ pub async fn create_game(
     validate_category(&state, &form).await?;
     if form
         .android_link
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .is_none()
-        && form.ios_link.as_deref().filter(|s| !s.is_empty()).is_none()
+        .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
+        && form.ios_link.as_deref().as_ref().is_none_or(|s| !!s.is_empty())
         && form
             .windows_link
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .is_none()
+            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
         && form
             .linux_link
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .is_none()
+            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
         && form
             .macos_link
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .is_none()
+            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
     {
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
@@ -316,7 +306,7 @@ pub async fn create_game(
         .unwrap_or(true)
     {
         suffix += 1;
-        slug = format!("{}-{}", base_slug, suffix);
+        slug = format!("{base_slug}-{suffix}");
         if suffix > 100 {
             slug = format!("{}-{}", slug, uuid::Uuid::new_v4().simple());
             break;
@@ -356,7 +346,7 @@ pub async fn create_game(
     })?;
     tracing::info!("Game created: {} ({})", id, slug);
 
-    Ok(Redirect::to(&format!("/games/{}", slug)))
+    Ok(Redirect::to(&format!("/games/{slug}")))
 }
 
 // ============= Show game =============
@@ -371,13 +361,11 @@ pub async fn show_game(
 
     let is_owner = current_user
         .as_ref()
-        .map(|u| u.id == game.user_id)
-        .unwrap_or(false);
+        .is_some_and(|u| u.id == game.user_id);
     // Staff (admin/moderator) được xem game ẩn/nháp để kiểm duyệt báo cáo
     let is_staff = current_user
         .as_ref()
-        .map(|u| u.role.is_staff())
-        .unwrap_or(false);
+        .is_some_and(|u| u.role.is_staff());
     if !is_owner && !is_staff && !matches!(game.status, GameStatus::Published) {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }
@@ -434,10 +422,10 @@ pub async fn show_game(
                 InteractionRepo::is_liked(&state.db, game.id, u.id),
                 InteractionRepo::is_bookmarked(&state.db, game.id, u.id),
                 async {
-                    if u.id != author.id {
-                        InteractionRepo::is_following(&state.db, u.id, author.id).await
-                    } else {
+                    if u.id == author.id {
                         Ok(false)
+                    } else {
+                        InteractionRepo::is_following(&state.db, u.id, author.id).await
                     }
                 },
                 InteractionRepo::get_user_rating(&state.db, game.id, u.id),
@@ -487,7 +475,7 @@ pub async fn show_game(
         is_owner,
         user_rating,
         base_url: state.config.base_url.clone(),
-        json_ld: format!("{}\n{}", json_ld, breadcrumb_ld),
+        json_ld: format!("{json_ld}\n{breadcrumb_ld}"),
     })
 }
 
@@ -529,7 +517,7 @@ fn build_breadcrumb_json_ld(
 }
 
 /// Dựng JSON-LD schema.org/VideoGame để nhúng vào \<head\> của trang game.
-/// Dùng serde_json::Value để tránh lỗi cú pháp JSON (escape không đúng).
+/// Dùng `serde_json::Value` để tránh lỗi cú pháp JSON (escape không đúng).
 /// Trả về tag <script type="application/ld+json">...</script> hoàn chỉnh.
 fn build_game_json_ld(
     base_url: &str,
@@ -615,8 +603,7 @@ fn build_game_json_ld(
     }
     let pretty = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
     format!(
-        "<script type=\"application/ld+json\">\n{}\n</script>",
-        pretty
+        "<script type=\"application/ld+json\">\n{pretty}\n</script>"
     )
 }
 
@@ -673,7 +660,7 @@ pub async fn update_game(
     validate_category(&state, &form).await?;
 
     GameRepo::update(&state.db, game.id, &form).await?;
-    Ok(Redirect::to(&format!("/games/{}", slug)))
+    Ok(Redirect::to(&format!("/games/{slug}")))
 }
 
 // ============= Delete game =============
@@ -864,7 +851,7 @@ async fn build_list_template(
     let base = if list_type == "all" {
         "/games".to_string()
     } else {
-        format!("/games/{}", list_type)
+        format!("/games/{list_type}")
     };
     Ok(GameListTemplate {
         current_user,
@@ -1004,7 +991,7 @@ pub async fn list_by_category(
         per_page,
         sort,
         list_type: "category".into(),
-        base_url: format!("/c/{}", cat_slug),
+        base_url: format!("/c/{cat_slug}"),
         site_url: state.config.base_url.clone(),
         category: Some(category),
         tag: None,
@@ -1041,7 +1028,7 @@ pub async fn list_by_tag(
         per_page,
         sort,
         list_type: "tag".into(),
-        base_url: format!("/t/{}", tag_slug),
+        base_url: format!("/t/{tag_slug}"),
         site_url: state.config.base_url.clone(),
         category: None,
         tag: Some(tag),
@@ -1095,9 +1082,7 @@ pub async fn search(
     // trước đây search + count + categories cộng dồn 3 round-trip.
     let (games, total, categories) = tokio::join!(
         async {
-            if !has_filter {
-                GameRepo::list_published(&state.db, per_page, offset, &sort).await
-            } else {
+            if has_filter {
                 GameRepo::search(
                     &state.db,
                     q_q.trim(),
@@ -1108,14 +1093,14 @@ pub async fn search(
                     offset,
                 )
                 .await
+            } else {
+                GameRepo::list_published(&state.db, per_page, offset, &sort).await
             }
         },
         async {
             // Đếm đúng số kết quả khớp bộ lọc (trước đây lấy tổng game
             // đã đăng → 'N kết quả' và phân trang sai khi có từ khóa)
-            if !has_filter {
-                GameRepo::count_published(&state.db).await.unwrap_or(0)
-            } else {
+            if has_filter {
                 GameRepo::count_search(
                     &state.db,
                     q_q.trim(),
@@ -1124,6 +1109,8 @@ pub async fn search(
                 )
                 .await
                 .unwrap_or(0)
+            } else {
+                GameRepo::count_published(&state.db).await.unwrap_or(0)
             }
         },
         CategoryRepo::list_all(&state.db),
