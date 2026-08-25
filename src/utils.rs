@@ -459,3 +459,61 @@ mod tests {
         assert!(s.contains("title=&#x27;y&#x27;"));
     }
 }
+
+#[cfg(test)]
+mod tests_markdown_edge {
+    use super::*;
+
+    /// Bold lồng trong italic và ngược lại — không crash, giữ tag cân.
+    #[test]
+    fn test_markdown_nested_formatting() {
+        let html = safe_markdown_to_html("**bold *italic* bold**");
+        assert!(html.contains("<strong>"));
+        assert!(html.contains("<em>italic</em>"));
+        // Tag phải cân bằng (đóng đủ số lần mở)
+        let opens = html.matches("<strong>").count();
+        let closes = html.matches("</strong>").count();
+        assert_eq!(opens, closes);
+    }
+
+    /// Code span chứa dấu sao — ** không tạo bold bên trong `...`
+    #[test]
+    fn test_markdown_code_with_asterisks() {
+        let html = safe_markdown_to_html("`a ** b`");
+        assert!(html.contains("<code>a ** b</code>"));
+    }
+
+    /// Đoạn nhiều dòng (single \n) → <br>, đoạn đôi dòng → 2 thẻ <p>
+    #[test]
+    fn test_markdown_paragraph_split() {
+        let html = safe_markdown_to_html("đoạn một\n\nđoạn hai");
+        assert_eq!(html.matches("<p>").count(), 2);
+        let br = safe_markdown_to_html("dòng 1\ndòng 2");
+        assert!(br.contains("dòng 1<br>dòng 2"));
+    }
+
+    /// URL chứa ký tự cần escape (khoảng trắng, nháy) trong link markdown
+    #[test]
+    fn test_markdown_link_url_escaping() {
+        let html = safe_markdown_to_html("[x](https://ex.com/a b\"c)");
+        // Space được encode %20, quote encode %22 → href an toàn
+        assert!(!html.contains("href=\"https://ex.com/a b"));
+        assert!(html.contains("%20") || html.contains("%22"));
+    }
+
+    /// Chuỗi rỗng / chỉ whitespace → không tạo thẻ p rỗng
+    #[test]
+    fn test_markdown_empty_input() {
+        assert_eq!(safe_markdown_to_html(""), "");
+        assert_eq!(safe_markdown_to_html("   \n\n  \n "), "");
+    }
+
+    /// Markdown không tự đóng các thẻ hở trong input — input đã escape trước
+    #[test]
+    fn test_markdown_escapes_before_format() {
+        // <b> user-gõ không trở thành thẻ thật trong output
+        let html = safe_markdown_to_html("<b>not real</b>");
+        assert!(!html.contains("<b>"));
+        assert!(html.contains("&lt;b&gt;"));
+    }
+}
