@@ -113,3 +113,66 @@ pub struct ReportWithGame {
     pub created_at: DateTime<Utc>,
     pub resolved_at: Option<DateTime<Utc>>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_report_reason_from_str_all_variants() {
+        for r in ReportReason::all() {
+            // Mỗi variant phải parse được từ snake_case của chính nó
+            let key = match r {
+                ReportReason::Spam => "spam",
+                ReportReason::Malware => "malware",
+                ReportReason::Copyright => "copyright",
+                ReportReason::Inappropriate => "inappropriate",
+                ReportReason::BrokenLink => "broken_link",
+                ReportReason::Misleading => "misleading",
+                ReportReason::Illegal => "illegal",
+                ReportReason::Other => "other",
+            };
+            assert_eq!(ReportReason::from_str(key), Some(r.clone()), "key={}", key);
+            // Case-insensitive
+            assert_eq!(
+                ReportReason::from_str(&key.to_uppercase()),
+                Some(r.clone()),
+                "uppercase key={}",
+                key
+            );
+        }
+    }
+
+    #[test]
+    fn test_report_reason_rejects_unknown() {
+        assert_eq!(ReportReason::from_str("hacker"), None);
+        assert_eq!(ReportReason::from_str(""), None);
+        assert_eq!(ReportReason::from_str("brokenlink"), None); // thiếu underscore
+    }
+
+    #[test]
+    fn test_all_reasons_have_labels() {
+        for r in ReportReason::all() {
+            assert!(!r.label().is_empty());
+        }
+        assert_eq!(ReportReason::all().len(), 8);
+    }
+
+    #[test]
+    fn test_status_colors_valid_hex() {
+        for s in [
+            ReportStatus::Pending,
+            ReportStatus::Reviewing,
+            ReportStatus::Resolved,
+            ReportStatus::Dismissed,
+        ] {
+            let c = s.color();
+            assert!(
+                c.starts_with('#') && c.len() == 7,
+                "color={} phải là hex",
+                c
+            );
+            assert!(!s.label().is_empty());
+        }
+    }
+}
