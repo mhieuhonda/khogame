@@ -145,27 +145,32 @@ impl RepoRepo {
         status: Option<&str>,
         limit: i64,
     ) -> AppResult<Vec<GithubRepoCard>> {
+        // Chuẩn hoá status: None / "" / whitespace → None (không filter)
+        let status = status.filter(|s| !s.trim().is_empty());
         let sql = match status {
-            Some(s) if !s.is_empty() => format!(
+            Some(_) => format!(
                 r#"SELECT {} {} WHERE r.status = $1::repo_status ORDER BY r.updated_at DESC LIMIT $2"#,
                 CARD_COLS, CARD_JOINS
             ),
-            _ => format!(
+            None => format!(
                 r#"SELECT {} {} ORDER BY r.updated_at DESC LIMIT $1"#,
                 CARD_COLS, CARD_JOINS
             ),
         };
-        let rows = if matches!(status, Some(s) if !s.is_empty()) {
-            sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(status.unwrap())
-                .bind(limit)
-                .fetch_all(pool)
-                .await?
-        } else {
-            sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(limit)
-                .fetch_all(pool)
-                .await?
+        let rows = match status {
+            Some(s) => {
+                sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(s)
+                    .bind(limit)
+                    .fetch_all(pool)
+                    .await?
+            }
+            None => {
+                sqlx::query_as::<_, GithubRepoCard>(sqlx::AssertSqlSafe(sql.as_str()))
+                    .bind(limit)
+                    .fetch_all(pool)
+                    .await?
+            }
         };
         Ok(rows)
     }
