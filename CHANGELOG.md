@@ -4,6 +4,64 @@ Mọi thay đổi đáng chú ý của dự án **Kho Game** được ghi lại 
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### 🐛 Fixed
+
+- **Graceful shutdown không có timeout**: comment hứa chờ tối đa
+  `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` (30s) nhưng chưa triển khai —
+  connection treo khiến server chờ vô hạn tới SIGKILL. Giờ force
+  exit 0 sạch sau grace period.
+- **Smooth-scroll crash** khi bấm link placeholder `href="#"` —
+  `querySelector('#')` ném DOMException dừng listener.
+- **Char counter JS đếm UTF-16 units** trong khi server Rust đếm
+  Unicode scalars — emoji bị đếm gấp đôi, submit bị chặn oan.
+- **`check_duplicate` đếm byte** thay vì ký tự: "Độ" (2 chars, 5
+  bytes) lọt qua ngưỡng tối thiểu sai.
+- **Đăng repo với game_slug đã bị đổi/xóa**: trước đây lặng lẽ bỏ
+  liên kết game; giờ báo 400 kèm slug để chọn lại.
+- **Dockerfile build thiếu `--locked`**: image prod có thể lệch
+  dependency tree so Cargo.lock đã CI-test.
+
+### ⚡ Performance — query song song hoá (tokio::join!)
+
+- Trang chủ: 7 query độc lập (featured/latest/trending/top-rated/
+  categories/tags/total) tuần tự → song song.
+- Trang game: 5 query (author/links/screenshots/tags/category) và
+  4 check tương tác (like/bookmark/follow/rating) song song.
+- Admin dashboard: 11 query thống kê song song.
+- Trang search: search + count + categories song song.
+- `CommentRepo::create`: gộp 2 query (owner + slug) thành 1.
+- `/repos`: list + count song song.
+
+### ✨ Added
+
+- **Đăng xuất mọi thiết bị** — `POST /auth/logout-all` + nút trong
+  trang sửa hồ sơ (thu hồi toàn bộ session khi nghi bị lộ).
+- **`GET /api/v1/games/{slug}/comments`** — bình luận JSON công khai,
+  phân trang, cho client bên ngoài.
+- **`GET /api/suggest?q=`** + dropdown autocomplete trên thanh tìm
+  kiếm (debounce 250ms, 8 gợi ý, ARIA listbox).
+- **Sitemap thêm URL hồ sơ** `/u/{username}` (tối đa 1000 user hoạt
+  động gần nhất).
+- **Skip-link WCAG 2.4.1** "Bỏ qua tới nội dung" cho keyboard user.
+- **PWA manifest hoàn thiện**: display_override, dir, orientation,
+  shortcut "Đăng game".
+- **MIT LICENSE file**, **SECURITY.md** (chính sách báo lỗ hổng),
+  issue templates + PR template, **Dependabot** (cargo/actions/docker,
+  gom minor/patch).
+
+### ♻️ Changed
+
+- `google_callback` dùng chung `client_ip_from_parts` (xoá 17 dòng
+  trùng, thêm hỗ trợ CF-Connecting-IP).
+- Gom 3 khối JSON mapping trùng lặp thành `game_card_to_json`.
+
+### 🧪 Tests
+
+- Model Notification (icon/label/None-safe), model Repo (status/
+  URL/serde default) — 92 → 99 tests.
+
 ## [0.7.0] — 2026-08-25
 
 ### 🛡️ Security — 8 lỗ hổng thật đã fix
