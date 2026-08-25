@@ -160,7 +160,7 @@ mod tests {
         assert_eq!(RepoStatus::default(), RepoStatus::Approved);
     }
 
-    /// full_name/html_url dựng từ owner/repo_name — đúng format GitHub.
+    /// `full_name/html_url` dựng từ `owner/repo_name` — đúng format GitHub.
     #[test]
     fn test_github_repo_urls() {
         let r = GithubRepo {
@@ -186,7 +186,7 @@ mod tests {
         assert_eq!(r.language_or(), "Rust");
     }
 
-    /// RepoForm với mọi field default (form rỗng) không panic serde.
+    /// `RepoForm` với mọi field default (form rỗng) không panic serde.
     #[test]
     fn test_repo_form_default_deserialize() {
         let f: RepoForm = serde_json::from_str("{}").unwrap();
