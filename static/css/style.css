@@ -1681,6 +1681,8 @@ a:hover { color: var(--accent-light); }
     border-top: 1px solid var(--border);
     padding: 40px 0 24px;
     margin-top: 32px;
+    /* Slight visual lift — footer tách khỏi main content */
+    box-shadow: 0 -1px 0 var(--border);
 }
 .footer-grid {
     display: grid;
