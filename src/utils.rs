@@ -384,6 +384,21 @@ mod tests {
     }
 
     #[test]
+    fn test_initials_unicode() {
+        // Tiếng Việt có dấu: lấy ký tự ĐẦU của chữ — char boundary đúng
+        assert_eq!(initials("Trần Anh Dũng"), "TD");
+        assert_eq!(initials("Đức"), "ĐỨ"); // 1 từ → 2 ký tự đầu uppercase (Đư→ĐỨ)
+                                           // Ký tự 1 byte + whitespace thừa
+        assert_eq!(initials("  a   b  "), "AB");
+        // Emoji như 1 ký tự
+        assert_eq!(initials("🎮 người"), "🎮N");
+        // Chỉ whitespace → fallback "?"
+        assert_eq!(initials("   "), "?");
+        // Ký tự hoa đã giữ nguyên
+        assert_eq!(initials("AB CD"), "AC");
+    }
+
+    #[test]
     fn test_html_escape() {
         let s = html_escape("<script>alert('xss')</script>");
         assert!(s.contains("&lt;script&gt;"));
