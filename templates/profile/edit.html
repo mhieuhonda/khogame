@@ -12,16 +12,16 @@
 <form class="profile-edit-form" method="post" action="/profile">
     <div class="form-section">
         <div class="form-group">
-            <label class="form-label">Tên hiển thị</label>
-            <input type="text" name="display_name" class="form-control" required value="{{ cu.display_name }}">
+            <label class="form-label" for="f-display_name">Tên hiển thị</label>
+            <input type="text" name="display_name" id="f-display_name" class="form-control" required value="{{ cu.display_name }}">
         </div>
         <div class="form-group">
-            <label class="form-label">Tiểu sử</label>
-            <textarea name="bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+            <label class="form-label" for="f-bio">Tiểu sử</label>
+            <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
         </div>
         <div class="form-group">
-            <label class="form-label">URL ảnh đại diện</label>
-            <input type="url" name="avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}">
+            <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
+            <input type="url" name="avatar_url" id="f-avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}">
             <small class="form-hint">Để trống để giữ nguyên ảnh từ Google</small>
         </div>
     </div>
@@ -29,15 +29,15 @@
     <div class="form-section">
         <h2 class="form-section-title">⚙️ Tùy chọn</h2>
         <div class="form-group">
-            <label class="form-label">Giao diện</label>
-            <select name="theme" class="form-control">
+            <label class="form-label" for="f-theme">Giao diện</label>
+            <select name="theme" id="f-theme" class="form-control">
                 <option value="dark" {% if preferences.theme == "dark" %}selected{% endif %}>Tối</option>
                 <option value="light" {% if preferences.theme == "light" %}selected{% endif %}>Sáng</option>
             </select>
         </div>
         <div class="form-group">
-            <label class="form-label">Ngôn ngữ</label>
-            <select name="language" class="form-control">
+            <label class="form-label" for="f-language">Ngôn ngữ</label>
+            <select name="language" id="f-language" class="form-control">
                 <option value="vi" {% if preferences.language == "vi" %}selected{% endif %}>Tiếng Việt</option>
                 <option value="en" {% if preferences.language == "en" %}selected{% endif %}>English</option>
             </select>

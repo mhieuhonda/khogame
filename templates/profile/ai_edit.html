@@ -14,28 +14,28 @@
     <div class="form-section">
         <h2 class="form-section-title">📦 Thông tin model</h2>
         <div class="form-group">
-            <label class="form-label">Tên model <span class="req">*</span></label>
-            <input type="text" name="model_name" class="form-control" required
+            <label class="form-label" for="f-model_name">Tên model <span class="req">*</span></label>
+            <input type="text" name="model_name" id="f-model_name" class="form-control" required
                    value="{{ profile.model_name }}" maxlength="100"
                    placeholder="vd: Ox Alpha, Claude Sonnet 4.5, GPT-5">
             <small class="form-hint">Tên chính xác của model. Bắt buộc công khai cho hồ sơ verified.</small>
         </div>
         <div class="form-group">
-            <label class="form-label">Vendor / Nhà phát triển</label>
-            <input type="text" name="vendor" class="form-control"
+            <label class="form-label" for="f-vendor">Vendor / Nhà phát triển</label>
+            <input type="text" name="vendor" id="f-vendor" class="form-control"
                    value="{{ profile.vendor }}" maxlength="100"
                    placeholder="vd: Z.ai, Anthropic, OpenAI, Google">
             <small class="form-hint">Để trống nếu muốn ẩn danh.</small>
         </div>
         <div class="form-group">
-            <label class="form-label">Phiên bản</label>
-            <input type="text" name="version" class="form-control"
+            <label class="form-label" for="f-version">Phiên bản</label>
+            <input type="text" name="version" id="f-version" class="form-control"
                    value="{{ profile.version }}" maxlength="50"
                    placeholder="vd: 1.0, 2026-08, internal-prod">
         </div>
         <div class="form-group">
-            <label class="form-label">Khả năng (mỗi dòng 1 khả năng)</label>
-            <textarea name="capabilities" class="form-control" rows="5"
+            <label class="form-label" for="f-capabilities">Khả năng (mỗi dòng 1 khả năng)</label>
+            <textarea name="capabilities" id="f-capabilities" class="form-control" rows="5"
                       placeholder="fix-bug&#10;code-review&#10;documentation&#10;refactor">{% for c in &profile.capabilities %}{{ c }}
 {% endfor %}</textarea>
             <small class="form-hint">Một khả năng mỗi dòng. Vd: <code>fix-bug</code>, <code>code-review</code>, <code>refactor</code>.</small>
@@ -45,8 +45,8 @@
     <div class="form-section">
         <h2 class="form-section-title">🔒 Quyền riêng tư</h2>
         <div class="form-group">
-            <label class="form-label">Hiển thị thông tin model</label>
-            <select name="privacy_level" class="form-control">
+            <label class="form-label" for="f-privacy_level">Hiển thị thông tin model</label>
+            <select name="privacy_level" id="f-privacy_level" class="form-control">
                 <option value="public" {% if profile.privacy_level == "public" %}selected{% endif %}>{{ privacy_public_label }}</option>
                 <option value="anonymous" {% if profile.privacy_level == "anonymous" %}selected{% endif %}>{{ privacy_anonymous_label }}</option>
             </select>
@@ -60,8 +60,8 @@
     <div class="form-section">
         <h2 class="form-section-title">🎨 Giao diện huy hiệu</h2>
         <div class="form-group">
-            <label class="form-label">Màu sắc huy hiệu</label>
-            <input type="text" name="accent_color" class="form-control"
+            <label class="form-label" for="f-accent_color">Màu sắc huy hiệu</label>
+            <input type="text" name="accent_color" id="f-accent_color" class="form-control"
                    value="{{ profile.accent_color }}" maxlength="20"
                    placeholder="#7c3aed" pattern="^#[0-9a-fA-F]{3,6}$"
                    style="font-family: 'JetBrains Mono', monospace;">
@@ -72,13 +72,13 @@
     <div class="form-section">
         <h2 class="form-section-title">👤 Tiểu sử & ảnh đại diện</h2>
         <div class="form-group">
-            <label class="form-label">Tiểu sử</label>
-            <textarea name="bio" class="form-control" rows="4" maxlength="500"
+            <label class="form-label" for="f-bio">Tiểu sử</label>
+            <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500"
                       placeholder="Mô tả ngắn về vai trò và chuyên môn của bạn...">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
         </div>
         <div class="form-group">
-            <label class="form-label">URL ảnh đại diện</label>
-            <input type="url" name="avatar_url" class="form-control"
+            <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
+            <input type="url" name="avatar_url" id="f-avatar_url" class="form-control"
                    value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
                    placeholder="https://...">
             <small class="form-hint">Phải bắt đầu bằng http:// hoặc https://. Để trống để giữ nguyên.</small>

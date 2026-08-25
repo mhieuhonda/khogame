@@ -14,28 +14,28 @@
             <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
 
             <div class="form-group">
-                <label class="form-label">Tiêu đề game <span class="required">*</span></label>
-                <input type="text" name="title" class="form-control" required maxlength="200"
+                <label class="form-label" for="f-title">Tiêu đề game <span class="required">*</span></label>
+                <input type="text" name="title" id="f-title" class="form-control" required maxlength="200"
                        placeholder="VD: Siêu anh hùng giải cứu thế giới">
             </div>
 
             <div class="form-group">
-                <label class="form-label">Mô tả ngắn</label>
-                <textarea name="excerpt" class="form-control" rows="2" maxlength="500"
+                <label class="form-label" for="f-excerpt">Mô tả ngắn</label>
+                <textarea name="excerpt" id="f-excerpt" class="form-control" rows="2" maxlength="500"
                           placeholder="Một câu mô tả ngắn gọn về game của bạn..."></textarea>
             </div>
 
             <div class="form-group">
-                <label class="form-label">Nội dung chi tiết <span class="required">*</span></label>
-                <textarea name="content" class="form-control form-control-editor" required rows="10" maxlength="50000"
+                <label class="form-label" for="f-content">Nội dung chi tiết <span class="required">*</span></label>
+                <textarea name="content" id="f-content" class="form-control form-control-editor" required rows="10" maxlength="50000"
                           placeholder="Mô tả chi tiết về gameplay, cốt truyện, đồ họa, âm thanh..."></textarea>
                 <small class="form-hint">Hỗ trợ Markdown cơ bản: **bold**, *italic*, [link](url)</small>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Thể loại</label>
-                    <select name="category_id" class="form-control">
+                    <label class="form-label" for="f-category_id">Thể loại</label>
+                    <select name="category_id" id="f-category_id" class="form-control">
                         <option value="">-- Chọn thể loại --</option>
                         {% for cat in categories %}
                         <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -43,8 +43,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Trạng thái</label>
-                    <select name="status" class="form-control">
+                    <label class="form-label" for="f-status">Trạng thái</label>
+                    <select name="status" id="f-status" class="form-control">
                         <option value="published">Đã xuất bản</option>
                         <option value="draft">Bản nháp</option>
                         <option value="pending_review">Chờ duyệt</option>
@@ -53,8 +53,8 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Tags (phân tách bởi dấu phẩy)</label>
-                <input type="text" name="tags" class="form-control"
+                <label class="form-label" for="f-tags">Tags (phân tách bởi dấu phẩy)</label>
+                <input type="text" name="tags" id="f-tags" class="form-control"
                        placeholder="VD: 2D, pixel-art, co-op, multiplayer">
                 <small class="form-hint">Nhập các tag phân tách bởi dấu phẩy</small>
             </div>
@@ -75,34 +75,34 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">
+                <label class="form-label" for="f-ios_link">
                     <span class="platform-icon">🍎</span> Link tải iOS
                 </label>
-                <input type="url" name="ios_link" class="form-control" maxlength="2048"
+                <input type="url" name="ios_link" id="f-ios_link" class="form-control" maxlength="2048"
                        placeholder="https://apps.apple.com/.../id...">
             </div>
 
             <div class="form-group">
-                <label class="form-label">
+                <label class="form-label" for="f-windows_link">
                     <span class="platform-icon">🪟</span> Link tải Windows
                 </label>
-                <input type="url" name="windows_link" class="form-control" maxlength="2048"
+                <input type="url" name="windows_link" id="f-windows_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
             <div class="form-group">
-                <label class="form-label">
+                <label class="form-label" for="f-linux_link">
                     <span class="platform-icon">🐧</span> Link tải Linux
                 </label>
-                <input type="url" name="linux_link" class="form-control" maxlength="2048"
+                <input type="url" name="linux_link" id="f-linux_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
             <div class="form-group">
-                <label class="form-label">
+                <label class="form-label" for="f-macos_link">
                     <span class="platform-icon">💻</span> Link tải macOS
                 </label>
-                <input type="url" name="macos_link" class="form-control" maxlength="2048"
+                <input type="url" name="macos_link" id="f-macos_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
         </div>
@@ -111,21 +111,21 @@
             <h2 class="form-section-title">🎨 Hình ảnh</h2>
 
             <div class="form-group">
-                <label class="form-label">URL ảnh bìa</label>
-                <input type="url" name="cover_image" class="form-control" maxlength="2048"
+                <label class="form-label" for="f-cover_image">URL ảnh bìa</label>
+                <input type="url" name="cover_image" id="f-cover_image" class="form-control" maxlength="2048"
                        placeholder="https://.../cover.jpg">
                 <small class="form-hint">Khuyến nghị: tỷ lệ 16:9, kích thước tối thiểu 800x450px</small>
             </div>
 
             <div class="form-group">
-                <label class="form-label">URL ảnh screenshot (mỗi dòng 1 URL)</label>
-                <textarea name="screenshots" class="form-control" rows="4"
+                <label class="form-label" for="f-screenshots">URL ảnh screenshot (mỗi dòng 1 URL)</label>
+                <textarea name="screenshots" id="f-screenshots" class="form-control" rows="4"
                           placeholder="https://.../screenshot1.jpg&#10;https://.../screenshot2.jpg"></textarea>
             </div>
 
             <div class="form-group">
-                <label class="form-label">URL trailer (YouTube)</label>
-                <input type="url" name="trailer_url" class="form-control" maxlength="2048"
+                <label class="form-label" for="f-trailer_url">URL trailer (YouTube)</label>
+                <input type="url" name="trailer_url" id="f-trailer_url" class="form-control" maxlength="2048"
                        placeholder="https://www.youtube.com/watch?v=...">
             </div>
         </div>
@@ -135,38 +135,38 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Phiên bản</label>
-                    <input type="text" name="version" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-version">Phiên bản</label>
+                    <input type="text" name="version" id="f-version" class="form-control" maxlength="100"
                            placeholder="VD: 1.0.0">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Ngày phát hành</label>
-                    <input type="date" name="release_date" class="form-control">
+                    <label class="form-label" for="f-release_date">Ngày phát hành</label>
+                    <input type="date" name="release_date" id="f-release_date" class="form-control">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Nhà phát triển</label>
-                    <input type="text" name="developer" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-developer">Nhà phát triển</label>
+                    <input type="text" name="developer" id="f-developer" class="form-control" maxlength="100"
                            placeholder="VD: GameStudio VN">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Nhà phát hành</label>
-                    <input type="text" name="publisher" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-publisher">Nhà phát hành</label>
+                    <input type="text" name="publisher" id="f-publisher" class="form-control" maxlength="100"
                            placeholder="VD: Publisher Name">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Dung lượng</label>
-                    <input type="text" name="file_size" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-file_size">Dung lượng</label>
+                    <input type="text" name="file_size" id="f-file_size" class="form-control" maxlength="100"
                            placeholder="VD: 500 MB, 1.2 GB">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Độ tuổi</label>
-                    <select name="age_rating" class="form-control">
+                    <label class="form-label" for="f-age_rating">Độ tuổi</label>
+                    <select name="age_rating" id="f-age_rating" class="form-control">
                         <option value="everyone">E - Mọi lứa tuổi</option>
                         <option value="teen">T - Thiếu niên (13+)</option>
                         <option value="mature">M - Trưởng thành (17+)</option>
@@ -176,8 +176,8 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Ngôn ngữ hỗ trợ</label>
-                <input type="text" name="languages" class="form-control"
+                <label class="form-label" for="f-languages">Ngôn ngữ hỗ trợ</label>
+                <input type="text" name="languages" id="f-languages" class="form-control"
                        placeholder="VD: Tiếng Việt, English, 中文">
                 <small class="form-hint">Phân tách bởi dấu phẩy</small>
             </div>

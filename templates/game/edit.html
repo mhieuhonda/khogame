@@ -14,25 +14,25 @@
             <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
 
             <div class="form-group">
-                <label class="form-label">Tiêu đề game <span class="required">*</span></label>
-                <input type="text" name="title" class="form-control" required maxlength="200"
+                <label class="form-label" for="f-title">Tiêu đề game <span class="required">*</span></label>
+                <input type="text" name="title" id="f-title" class="form-control" required maxlength="200"
                        value="{{ game.title }}">
             </div>
 
             <div class="form-group">
-                <label class="form-label">Mô tả ngắn</label>
-                <textarea name="excerpt" class="form-control" rows="2" maxlength="500">{{ game.excerpt_or() }}</textarea>
+                <label class="form-label" for="f-excerpt">Mô tả ngắn</label>
+                <textarea name="excerpt" id="f-excerpt" class="form-control" rows="2" maxlength="500">{{ game.excerpt_or() }}</textarea>
             </div>
 
             <div class="form-group">
-                <label class="form-label">Nội dung chi tiết <span class="required">*</span></label>
-                <textarea name="content" class="form-control" required rows="10">{{ game.content_or() }}</textarea>
+                <label class="form-label" for="f-content">Nội dung chi tiết <span class="required">*</span></label>
+                <textarea name="content" id="f-content" class="form-control" required rows="10">{{ game.content_or() }}</textarea>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Thể loại</label>
-                    <select name="category_id" class="form-control">
+                    <label class="form-label" for="f-category_id">Thể loại</label>
+                    <select name="category_id" id="f-category_id" class="form-control">
                         <option value="">-- Chọn thể loại --</option>
                         {% for cat in categories %}
                         <option value="{{ cat.id }}" {% if game.category_id.as_ref() == Some(cat.id) %}selected{% endif %}>{{ cat.name }}</option>
@@ -40,8 +40,8 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Trạng thái</label>
-                    <select name="status" class="form-control">
+                    <label class="form-label" for="f-status">Trạng thái</label>
+                    <select name="status" id="f-status" class="form-control">
                         {% match game.status %}
                         {% when game::GameStatus::Draft %}<option value="draft" selected>Bản nháp</option>
                         {% when game::GameStatus::Published %}<option value="published" selected>Đã xuất bản</option>
@@ -54,8 +54,8 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Tags (phân tách bởi dấu phẩy)</label>
-                <input type="text" name="tags" class="form-control" value="{{ tags|join_tags }}">
+                <label class="form-label" for="f-tags">Tags (phân tách bởi dấu phẩy)</label>
+                <input type="text" name="tags" id="f-tags" class="form-control" value="{{ tags|join_tags }}">
             </div>
         </div>
 
@@ -67,28 +67,28 @@
                input đã điền lẫn input trống cho cùng tên field, serde báo
                "duplicate field" → mọi lần lưu game có link đều thất bại. #}
             <div class="form-group">
-                <label class="form-label"><span class="platform-icon">🤖</span> Link tải Android</label>
-                <input type="url" name="android_link" class="form-control" maxlength="2048" placeholder="https://play.google.com/store/apps/..."
+                <label class="form-label" for="f-android_link"><span class="platform-icon">🤖</span> Link tải Android</label>
+                <input type="url" name="android_link" id="f-android_link" class="form-control" maxlength="2048" placeholder="https://play.google.com/store/apps/..."
                        value="{% for link in links %}{% if link.platform.label() == "Android" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label"><span class="platform-icon">🍎</span> Link tải iOS</label>
-                <input type="url" name="ios_link" class="form-control" maxlength="2048" placeholder="https://apps.apple.com/..."
+                <label class="form-label" for="f-ios_link"><span class="platform-icon">🍎</span> Link tải iOS</label>
+                <input type="url" name="ios_link" id="f-ios_link" class="form-control" maxlength="2048" placeholder="https://apps.apple.com/..."
                        value="{% for link in links %}{% if link.platform.label() == "iOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label"><span class="platform-icon">🪟</span> Link tải Windows</label>
-                <input type="url" name="windows_link" class="form-control" maxlength="2048" placeholder="https://..."
+                <label class="form-label" for="f-windows_link"><span class="platform-icon">🪟</span> Link tải Windows</label>
+                <input type="url" name="windows_link" id="f-windows_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Windows" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label"><span class="platform-icon">🐧</span> Link tải Linux</label>
-                <input type="url" name="linux_link" class="form-control" maxlength="2048" placeholder="https://..."
+                <label class="form-label" for="f-linux_link"><span class="platform-icon">🐧</span> Link tải Linux</label>
+                <input type="url" name="linux_link" id="f-linux_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Linux" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label"><span class="platform-icon">💻</span> Link tải macOS</label>
-                <input type="url" name="macos_link" class="form-control" maxlength="2048" placeholder="https://..."
+                <label class="form-label" for="f-macos_link"><span class="platform-icon">💻</span> Link tải macOS</label>
+                <input type="url" name="macos_link" id="f-macos_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "macOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
         </div>
@@ -97,20 +97,20 @@
             <h2 class="form-section-title">🎨 Hình ảnh</h2>
 
             <div class="form-group">
-                <label class="form-label">URL ảnh bìa</label>
-                <input type="url" name="cover_image" class="form-control" maxlength="2048"
+                <label class="form-label" for="f-cover_image">URL ảnh bìa</label>
+                <input type="url" name="cover_image" id="f-cover_image" class="form-control" maxlength="2048"
                        value="{{ game.cover_image.clone().unwrap_or_default() }}">
             </div>
 
             <div class="form-group">
-                <label class="form-label">URL ảnh screenshot (mỗi dòng 1 URL)</label>
-                <textarea name="screenshots" class="form-control" rows="4">{% for s in screenshots %}{{ s.url }}
+                <label class="form-label" for="f-screenshots">URL ảnh screenshot (mỗi dòng 1 URL)</label>
+                <textarea name="screenshots" id="f-screenshots" class="form-control" rows="4">{% for s in screenshots %}{{ s.url }}
 {% endfor %}</textarea>
             </div>
 
             <div class="form-group">
-                <label class="form-label">URL trailer (YouTube)</label>
-                <input type="url" name="trailer_url" class="form-control" maxlength="2048"
+                <label class="form-label" for="f-trailer_url">URL trailer (YouTube)</label>
+                <input type="url" name="trailer_url" id="f-trailer_url" class="form-control" maxlength="2048"
                        value="{{ game.trailer_url.clone().unwrap_or_default() }}">
             </div>
         </div>
@@ -120,39 +120,39 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Phiên bản</label>
-                    <input type="text" name="version" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-version">Phiên bản</label>
+                    <input type="text" name="version" id="f-version" class="form-control" maxlength="100"
                            value="{{ game.version.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Ngày phát hành</label>
-                    <input type="date" name="release_date" class="form-control"
+                    <label class="form-label" for="f-release_date">Ngày phát hành</label>
+                    <input type="date" name="release_date" id="f-release_date" class="form-control"
                            value="{{ game.release_date|format_date }}">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Nhà phát triển</label>
-                    <input type="text" name="developer" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-developer">Nhà phát triển</label>
+                    <input type="text" name="developer" id="f-developer" class="form-control" maxlength="100"
                            value="{{ game.developer.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Nhà phát hành</label>
-                    <input type="text" name="publisher" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-publisher">Nhà phát hành</label>
+                    <input type="text" name="publisher" id="f-publisher" class="form-control" maxlength="100"
                            value="{{ game.publisher.clone().unwrap_or_default() }}">
                 </div>
             </div>
 
             <div class="form-row">
                 <div class="form-group">
-                    <label class="form-label">Dung lượng</label>
-                    <input type="text" name="file_size" class="form-control" maxlength="100"
+                    <label class="form-label" for="f-file_size">Dung lượng</label>
+                    <input type="text" name="file_size" id="f-file_size" class="form-control" maxlength="100"
                            value="{{ game.file_size.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Độ tuổi</label>
-                    <select name="age_rating" class="form-control">
+                    <label class="form-label" for="f-age_rating">Độ tuổi</label>
+                    <select name="age_rating" id="f-age_rating" class="form-control">
                         {% match game.age_rating %}
                         {% when game::AgeRating::Everyone %}<option value="everyone" selected>E - Mọi lứa tuổi</option>
                         {% when game::AgeRating::Teen %}<option value="teen" selected>T - Thiếu niên (13+)</option>
@@ -164,8 +164,8 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label">Ngôn ngữ hỗ trợ</label>
-                <input type="text" name="languages" class="form-control"
+                <label class="form-label" for="f-languages">Ngôn ngữ hỗ trợ</label>
+                <input type="text" name="languages" id="f-languages" class="form-control"
                        value="{{ game.languages|join_tags }}">
             </div>
         </div>
