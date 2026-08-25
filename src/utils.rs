@@ -179,6 +179,7 @@ fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)
 }
 
 /// Escape ký tự đặc biệt XML 1.0 cho nội dung text + giá trị attribute.
+///
 /// & phải escape trước để tránh tạo thực thể giả (giống `html_escape`).
 /// Dùng cho sitemap.xml / RSS / `OpenSearch` XML dựng bằng format!.
 #[must_use]
