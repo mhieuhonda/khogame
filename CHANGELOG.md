@@ -6,7 +6,78 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### 🛡️ Security
+
+- **Rate-limit bypass bằng xoay slug/UUID**: key bucket theo path
+  đầy đủ khiến `/games/a/comments` và `/games/b/comments` là 2 bucket
+  riêng — spammer xoay qua N slug có giới hạn bình luận VÔ HẠN. Giờ
+  chuẩn hoá path thành bucket endpoint (`{x}` thay slug/UUID).
+- **TRUST_PROXY_HEADERS env** kiểm soát tin header IP proxy
+  (X-Forwarded-For...) — mặc định bật cho prod sau Traefik, tắt khi
+  expose trực tiếp để chống giả IP lách rate-limit.
+- **CSP thiếu frame-src**: YouTube trailer bị `default-src 'self'`
+  chặn trên MỌI trang game — khung trắng. Thêm frame-src +
+  đổi embed sang youtube-nocookie.com (privacy-enhanced).
+- **user_repos_fragment XSS defense-in-depth**: html_escape cho
+  URL/tên repo chèn vào markup format! thủ công.
+
 ### 🐛 Fixed
+
+- **Race TOCTOU tạo game trùng tiêu đề**: 2 request đồng thời cùng
+  check EXISTS → cùng INSERT → một request 500. Giờ catch unique
+  violation (map sqlx 23505 → AppError::Conflict) và retry slug UUID.
+- **comment toggle_like double-increment**: like_count đếm 2 lần dù
+  1 dòng comment_likes (double-click race). DELETE-first trong tx.
+- **Interaction toggle (like/bookmark/follow) race**: cùng pattern,
+  đồng bộ hoá bằng transaction; follow + notification cùng tx.
+- **Tự theo dõi chính mình**: trả 400 rõ ràng thay vì Ok(false) im
+  lặng (nút bấm mãi không phản ứng).
+- **Tạo category trùng slug âm thầm ĐỔI TÊN category cũ** (ON CONFLICT
+  DO UPDATE SET name) — giờ trả 409 Conflict.
+- **Screenshot + game_links INSERT nuốt lỗi** (`let _ =`): game tạo
+  thành công nhưng thiếu ảnh/link tải mà không báo gì. Propagate.
+- **Sort bị bỏ qua trên /c/{slug} và /t/{slug}**: template render
+  sort links nhưng query ORDER BY cứng — thêm sort động (5 giá trị).
+- **Broadcast notification gửi cho AI Agent**: bot không bao giờ
+  đọc, mỗi lần broadcast tạo N dòng chết vĩnh viễn (janitor chỉ dọn
+  dòng đã đọc). Loại trừ role ai_agent.
+- **cmt.sh hardcode sai đường dẫn** `/home/z/my-project/khogame` —
+  tự dò repo root từ vị trí script.
+
+### ⚡ Performance
+
+- `game_detail` API + `show_profile` + `sitemap` + `UserRepo::stats`
+  + `by_category`/`by_tag` API: query độc lập song song hoá.
+- `/api/announcement` thêm ETag → 304 thay payload JSON mỗi page
+  view khi nội dung không đổi.
+
+### ✨ Added
+
+- **JSON-LD BreadcrumbList** cho trang game (rich result Google).
+- **API per_page param** (1-50) cho `/api/v1/games`.
+- **RSS item thêm `<category>` + `<author>`**; escape XML cho sitemap
+  mọi giá trị động (1 ký tự `&` làm Google bỏ cả sitemap).
+- **429 Retry-After** header + JS hiển thị số giây chính xác.
+- **Download analytics ghi IP** (cột ip_address tồn tại nhưng rỗng
+  vĩnh viễn) — phân tích fraud bump counter.
+
+### ♿ Accessibility
+
+- **Autocomplete keyboard navigation** (↑ ↓ Enter Esc) — ARIA listbox
+  không có arrow-key nav là lỗi WCAG 2.1.1.
+- **54 form label associate** for/id (game form, profile, AI edit) —
+  screen reader đọc đúng tên field.
+- **Char counter hiển thị** cho ô bình luận (JS dead code có markup).
+
+### 🔄 Changed
+
+- **rand 0.8 → 0.10.2, sha2 0.10 → 0.11, actions checkout v7 /
+  login-action v4 / build-push-action v7** — đóng 4 PR dependabot.
+- **Xoá crate base64 không dùng** khỏi dependency tree.
+- `share_game` dùng `SharePlatform::from_str` (1 nguồn truth thay
+  whitelist string riêng trong handler).
+
+### 🐛 Fixed (trước đó)
 
 - **Graceful shutdown không có timeout**: comment hứa chờ tối đa
   `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` (30s) nhưng chưa triển khai —
