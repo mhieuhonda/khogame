@@ -8,19 +8,20 @@ impl InteractionRepo {
     /// Lưu ý: `games.like_count` được cập nhật bởi DB trigger
     /// (`trigger_like_insert/delete` trong migrations/001_init.sql),
     /// nên ở đây KHÔNG tự tăng/giảm counter nữa để tránh đếm đôi.
+    ///
+    /// Dùng transaction: SELECT-then-INSERT cũ có race khi double-click
+    /// (2 request cùng thấy 'chưa like' → cùng INSERT → đếm like sai).
+    /// DELETE-first atomic: nếu DELETE xoá được row → đã unlike; ngược
+    /// lại INSERT. Result consistent dù bao nhiêu request đè nhau.
     pub async fn toggle_like(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let liked: Option<i32> =
-            sqlx::query_scalar("SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2")
-                .bind(game_id)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?;
-        if liked.is_some() {
-            sqlx::query("DELETE FROM likes WHERE game_id = $1 AND user_id = $2")
-                .bind(game_id)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
+        let mut tx = pool.begin().await?;
+        let deleted = sqlx::query("DELETE FROM likes WHERE game_id = $1 AND user_id = $2")
+            .bind(game_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        if deleted.rows_affected() > 0 {
+            tx.commit().await?;
             Ok(false)
         } else {
             sqlx::query(
@@ -28,8 +29,9 @@ impl InteractionRepo {
             )
             .bind(game_id)
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
+            tx.commit().await?;
             Ok(true)
         }
     }
@@ -45,18 +47,15 @@ impl InteractionRepo {
     }
 
     pub async fn toggle_bookmark(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        let exists: Option<i32> =
-            sqlx::query_scalar("SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2")
-                .bind(game_id)
-                .bind(user_id)
-                .fetch_optional(pool)
-                .await?;
-        if exists.is_some() {
-            sqlx::query("DELETE FROM bookmarks WHERE game_id = $1 AND user_id = $2")
-                .bind(game_id)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
+        // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race)
+        let mut tx = pool.begin().await?;
+        let deleted = sqlx::query("DELETE FROM bookmarks WHERE game_id = $1 AND user_id = $2")
+            .bind(game_id)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        if deleted.rows_affected() > 0 {
+            tx.commit().await?;
             Ok(false)
         } else {
             sqlx::query(
@@ -64,8 +63,9 @@ impl InteractionRepo {
             )
             .bind(game_id)
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
+            tx.commit().await?;
             Ok(true)
         }
     }
@@ -135,18 +135,16 @@ impl InteractionRepo {
         if follower_id == followee_id {
             return Ok(false);
         }
-        let exists: Option<i32> =
-            sqlx::query_scalar("SELECT 1 FROM follows WHERE follower_id = $1 AND followee_id = $2")
-                .bind(follower_id)
-                .bind(followee_id)
-                .fetch_optional(pool)
-                .await?;
-        if exists.is_some() {
+        // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race)
+        let mut tx = pool.begin().await?;
+        let deleted =
             sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND followee_id = $2")
                 .bind(follower_id)
                 .bind(followee_id)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
+        if deleted.rows_affected() > 0 {
+            tx.commit().await?;
             Ok(false)
         } else {
             sqlx::query(
@@ -154,24 +152,24 @@ impl InteractionRepo {
             )
             .bind(follower_id)
             .bind(followee_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
-            // Notify followee
-            let _ = sqlx::query(
+            // Notify followee — trong cùng tx để đảm bảo không follow
+            // được mà thiếu thông báo (hoặc ngược lại) khi DB chập chờn.
+            let follower_username = Self::get_username(&mut *tx, follower_id)
+                .await
+                .unwrap_or_default();
+            sqlx::query(
                 r#"INSERT INTO notifications (user_id, actor_id, type, title, link)
                   VALUES ($1, $2, 'follow'::notification_type, $3, $4)"#,
             )
             .bind(followee_id)
             .bind(follower_id)
             .bind("Có người mới theo dõi bạn")
-            .bind(format!(
-                "/u/{}",
-                Self::get_username(pool, follower_id)
-                    .await
-                    .unwrap_or_default()
-            ))
-            .execute(pool)
-            .await;
+            .bind(format!("/u/{}", follower_username))
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
             Ok(true)
         }
     }
@@ -270,10 +268,15 @@ impl InteractionRepo {
         Ok(())
     }
 
-    async fn get_username(pool: &PgPool, user_id: Uuid) -> AppResult<String> {
+    /// Lấy username — nhận executor generic để gọi được cả với &PgPool
+    /// lẫn transaction (&mut *tx).
+    async fn get_username<'e, E>(executor: E, user_id: Uuid) -> AppResult<String>
+    where
+        E: sqlx::Executor<'e, Database = sqlx::Postgres>,
+    {
         let n: String = sqlx::query_scalar("SELECT username FROM users WHERE id = $1")
             .bind(user_id)
-            .fetch_one(pool)
+            .fetch_one(executor)
             .await?;
         Ok(n)
     }
