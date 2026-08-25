@@ -1,15 +1,15 @@
 [package]
 name = "khogame"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 rust-version = "1.98"
-authors = ["Kho Game Team"]
-description = "Kho Game - Trang chia sẻ game độc lập"
+authors = ["Louis Space Team"]
+description = "Louis Space — nền tảng chia sẻ game & tin tức độc lập Việt Nam"
 license = "MIT"
 repository = "https://github.com/mhieuhonda/khogame"
 homepage = "https://louis.vangioitutien.com"
 readme = "README.md"
-keywords = ["web", "axum", "htmx", "games", "vietnam"]
+keywords = ["web", "axum", "htmx", "games", "news", "vietnam"]
 categories = ["web-programming::http-server"]
 
 [[bin]]
