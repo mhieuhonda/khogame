@@ -1,25 +1,38 @@
 // ============================================
-// Kho Game - Frontend JavaScript
+// Louis Space - Frontend JavaScript
 // ============================================
 
 (function() {
     'use strict';
 
     // ===== Theme toggle =====
+    // localStorage key 'ls-theme' (đổi từ 'kg-theme' cũ khi rebrand).
+    // Tương thích lùi: nếu có 'kg-theme' thì migrate sang 'ls-theme'.
     function getStoredTheme() {
-        return localStorage.getItem('kg-theme');
+        var legacy = localStorage.getItem('kg-theme');
+        if (legacy === 'dark' || legacy === 'light') {
+            localStorage.setItem('ls-theme', legacy);
+            localStorage.removeItem('kg-theme');
+            return legacy;
+        }
+        return localStorage.getItem('ls-theme');
     }
 
     function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('kg-theme', theme);
+        localStorage.setItem('ls-theme', theme);
     }
 
     // Đồng bộ theme giữa các tab đang mở của cùng site: user đổi theme
     // ở tab A → tab B (đang mở trang game) cũng đổi theo ngay lập tức
     // thay vì đến khi reload mới thấy chớp nhác theme cũ.
     window.addEventListener('storage', function(e) {
+        if (e.key === 'ls-theme' && (e.newValue === 'dark' || e.newValue === 'light')) {
+            document.documentElement.setAttribute('data-theme', e.newValue);
+        }
+        // Tương thích lùi: tab cũ chưa migrate kg-theme → ls-theme
         if (e.key === 'kg-theme' && (e.newValue === 'dark' || e.newValue === 'light')) {
+            localStorage.setItem('ls-theme', e.newValue);
             document.documentElement.setAttribute('data-theme', e.newValue);
         }
     });

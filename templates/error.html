@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lỗi {{ status }} - Kho Game</title>
+    <title>Lỗi {{ status }} - Louis Space</title>
     <meta name="robots" content="noindex">
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
@@ -12,7 +12,7 @@
     // user light mode không bị chói tối đột ngột khi gặp lỗi.
     (function() {
         try {
-            var t = localStorage.getItem('kg-theme');
+            var t = localStorage.getItem('ls-theme');
             if (t !== 'light' && t !== 'dark') {
                 t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
             }
