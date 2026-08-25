@@ -28,16 +28,34 @@ pub async fn home(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
 ) -> AppResult<IndexTemplate> {
+    // 7 truy vấn độc lập chạy SONG SONG bằng join! — trước đây chạy tuần
+    // tự, latency trang chủ = tổng thời gian 7 query. PgPool nội bộ là
+    // Arc nên clone rẻ; mỗi future mượn connection riêng từ pool.
+    let (
+        featured_res,
+        latest_res,
+        trending_res,
+        top_rated_res,
+        categories_res,
+        tags_res,
+        total_res,
+    ) = tokio::join!(
+        GameRepo::featured(&state.db, 6, 0),
+        GameRepo::list_published(&state.db, 12, 0, "latest"),
+        GameRepo::list_published(&state.db, 12, 0, "trending"),
+        GameRepo::list_published(&state.db, 12, 0, "top_rated"),
+        CategoryRepo::list_with_counts(&state.db),
+        TagRepo::popular(&state.db, 20),
+        GameRepo::count_published(&state.db),
+    );
+    let featured_games = featured_res.unwrap_or_default();
+    let latest_games = latest_res?;
+    let trending_games = trending_res?;
+    let top_rated_games = top_rated_res?;
+    let categories = categories_res?;
+    let popular_tags = tags_res.unwrap_or_default();
+    let total_games = total_res.unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
-    let featured_games = GameRepo::featured(&state.db, 6, 0)
-        .await
-        .unwrap_or_default();
-    let latest_games = GameRepo::list_published(&state.db, 12, 0, "latest").await?;
-    let trending_games = GameRepo::list_published(&state.db, 12, 0, "trending").await?;
-    let top_rated_games = GameRepo::list_published(&state.db, 12, 0, "top_rated").await?;
-    let categories = CategoryRepo::list_with_counts(&state.db).await?;
-    let popular_tags = TagRepo::popular(&state.db, 20).await.unwrap_or_default();
-    let total_games = GameRepo::count_published(&state.db).await.unwrap_or(0);
 
     // JSON-LD schema.org/WebSite với SearchAction — giúp Google hiển thị
     // sitelinks searchbox ngay trên kết quả tìm kiếm (rich result).
