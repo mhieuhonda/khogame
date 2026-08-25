@@ -19,6 +19,11 @@ pub async fn show_profile(
     let user = UserRepo::find_by_username(&state.db, &username)
         .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    // Ẩn hồ sơ user bị ban khỏi HTML (API /api/v1/users đã chặn từ trước —
+    // thiếu nhất quán giữa 2 giao diện của cùng dữ liệu).
+    if user.is_banned {
+        return Err(AppError::NotFound("Người dùng không tồn tại".into()));
+    }
     let stats = UserRepo::stats(&state.db, user.id).await?;
     let games = GameRepo::by_user(&state.db, user.id, 24, 0).await?;
     let is_self = current_user
