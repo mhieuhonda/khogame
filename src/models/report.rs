@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "report_status", rename_all = "snake_case")]
 pub enum ReportStatus {
     Pending,
@@ -14,26 +14,26 @@ pub enum ReportStatus {
 
 impl ReportStatus {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            ReportStatus::Pending => "Chờ xử lý",
-            ReportStatus::Reviewing => "Đang xem xét",
-            ReportStatus::Resolved => "Đã xử lý",
-            ReportStatus::Dismissed => "Đã bỏ qua",
+            Self::Pending => "Chờ xử lý",
+            Self::Reviewing => "Đang xem xét",
+            Self::Resolved => "Đã xử lý",
+            Self::Dismissed => "Đã bỏ qua",
         }
     }
     #[must_use]
-    pub fn color(&self) -> &'static str {
+    pub const fn color(&self) -> &'static str {
         match self {
-            ReportStatus::Pending => "#f59e0b",
-            ReportStatus::Reviewing => "#3b82f6",
-            ReportStatus::Resolved => "#10b981",
-            ReportStatus::Dismissed => "#6b7280",
+            Self::Pending => "#f59e0b",
+            Self::Reviewing => "#3b82f6",
+            Self::Resolved => "#10b981",
+            Self::Dismissed => "#6b7280",
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq)]
 #[sqlx(type_name = "report_reason", rename_all = "snake_case")]
 pub enum ReportReason {
     Spam,
@@ -48,43 +48,43 @@ pub enum ReportReason {
 
 impl ReportReason {
     #[must_use]
-    pub fn label(&self) -> &'static str {
+    pub const fn label(&self) -> &'static str {
         match self {
-            ReportReason::Spam => "Spam / Quảng cáo",
-            ReportReason::Malware => "Chứa mã độc / virus",
-            ReportReason::Copyright => "Vi phạm bản quyền",
-            ReportReason::Inappropriate => "Nội dung không phù hợp",
-            ReportReason::BrokenLink => "Link hỏng",
-            ReportReason::Misleading => "Thông tin sai lệch",
-            ReportReason::Illegal => "Nội dung vi phạm pháp luật",
-            ReportReason::Other => "Lý do khác",
+            Self::Spam => "Spam / Quảng cáo",
+            Self::Malware => "Chứa mã độc / virus",
+            Self::Copyright => "Vi phạm bản quyền",
+            Self::Inappropriate => "Nội dung không phù hợp",
+            Self::BrokenLink => "Link hỏng",
+            Self::Misleading => "Thông tin sai lệch",
+            Self::Illegal => "Nội dung vi phạm pháp luật",
+            Self::Other => "Lý do khác",
         }
     }
     #[must_use]
-    pub fn all() -> Vec<ReportReason> {
+    pub fn all() -> Vec<Self> {
         vec![
-            ReportReason::Spam,
-            ReportReason::Malware,
-            ReportReason::Copyright,
-            ReportReason::Inappropriate,
-            ReportReason::BrokenLink,
-            ReportReason::Misleading,
-            ReportReason::Illegal,
-            ReportReason::Other,
+            Self::Spam,
+            Self::Malware,
+            Self::Copyright,
+            Self::Inappropriate,
+            Self::BrokenLink,
+            Self::Misleading,
+            Self::Illegal,
+            Self::Other,
         ]
     }
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "spam" => Some(ReportReason::Spam),
-            "malware" => Some(ReportReason::Malware),
-            "copyright" => Some(ReportReason::Copyright),
-            "inappropriate" => Some(ReportReason::Inappropriate),
-            "broken_link" => Some(ReportReason::BrokenLink),
-            "misleading" => Some(ReportReason::Misleading),
-            "illegal" => Some(ReportReason::Illegal),
-            "other" => Some(ReportReason::Other),
+            "spam" => Some(Self::Spam),
+            "malware" => Some(Self::Malware),
+            "copyright" => Some(Self::Copyright),
+            "inappropriate" => Some(Self::Inappropriate),
+            "broken_link" => Some(Self::BrokenLink),
+            "misleading" => Some(Self::Misleading),
+            "illegal" => Some(Self::Illegal),
+            "other" => Some(Self::Other),
             _ => None,
         }
     }
