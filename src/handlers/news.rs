@@ -632,4 +632,38 @@ mod tests {
         keys.dedup();
         assert_eq!(keys.len(), NEWS_CATEGORIES.len(), "Duplicate category keys");
     }
+
+    #[test]
+    fn news_categories_all_have_labels() {
+        // Mỗi category phải có label không rỗng
+        for (k, v) in NEWS_CATEGORIES {
+            assert!(!k.is_empty(), "Category key rỗng");
+            assert!(!v.is_empty(), "Label cho category '{}' rỗng", k);
+        }
+    }
+
+    #[test]
+    fn news_categories_count_is_reasonable() {
+        // Không quá ít (3-) để không hữu ích, không quá nhiều (20+) để UI lộn xộn
+        let count = NEWS_CATEGORIES.len();
+        assert!(count >= 5, "Quá ít category: {}", count);
+        assert!(count <= 15, "Quá nhiều category: {}", count);
+    }
+
+    #[test]
+    fn validate_url_rejects_ftp_scheme() {
+        // Chỉ http/https được phép — ftp/file/malformed khác bị reject
+        assert!(validate_url("ftp://example.com/file.zip").is_err());
+        assert!(validate_url("file:///etc/passwd").is_err());
+        assert!(validate_url("not-a-url").is_err());
+        assert!(validate_url("javascript:void(0)").is_err());
+    }
+
+    #[test]
+    fn validate_category_all_8_categories_pass() {
+        // Verify toàn bộ 8 category trong whitelist đều pass
+        for (k, _) in NEWS_CATEGORIES {
+            assert_eq!(validate_category(k).unwrap(), *k);
+        }
+    }
 }
