@@ -230,28 +230,33 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Res
         .fetch_one(&state.db)
         .await
         .unwrap_or(0);
-    Ok(Json(serde_json::json!({
-        "total_games": total_games,
-        "total_users": total_users,
-        "total_repos": total_repos,
-        "total_downloads": total_downloads,
-        "total_comments": total_comments,
-    }))
-    .into_response())
+    // Cache 60s: số liệu thống kê không cần real-time, giảm 5 COUNT(*)
+    // xuống còn tối đa 1 lần/phút mỗi client.
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!({
+            "total_games": total_games,
+            "total_users": total_users,
+            "total_repos": total_repos,
+            "total_downloads": total_downloads,
+            "total_comments": total_comments,
+        })),
+    )
+        .into_response())
 }
 
 // ===================== Nội bộ dùng chung =====================
 
 /// Banner thông báo toàn site (layout fetch qua htmx)
 pub async fn announcement(State(state): State<Arc<AppState>>) -> AppResult<Response> {
-    let text = SettingsRepo::get(&state.db, "announcement")
-        .await?
-        .unwrap_or_default();
+    // 1 query lấy cả 2 key thay vì 2 query tuần tự (mỗi page view đều gọi)
+    let mut map = SettingsRepo::get_map(&state.db, &["announcement", "announcement_type"]).await?;
+    let text = map.remove("announcement").unwrap_or_default();
     if text.is_empty() {
         return Ok(Json(serde_json::json!({"text": "", "kind": ""})).into_response());
     }
-    let kind = SettingsRepo::get(&state.db, "announcement_type")
-        .await?
+    let kind = map
+        .remove("announcement_type")
         .unwrap_or_else(|| "info".into());
     Ok(Json(serde_json::json!({"text": text, "kind": kind})).into_response())
 }
