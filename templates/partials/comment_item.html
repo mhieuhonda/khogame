@@ -22,8 +22,10 @@
             <button class="comment-action like-comment {% if comment.is_liked %}active{% endif %}"
                     hx-post="/comments/{{ comment.id }}/like"
                     hx-target="find .like-count"
-                    hx-swap="innerHTML">
-                ❤️ <span class="like-count">{{ comment.like_count }}</span>
+                    hx-swap="innerHTML"
+                    aria-pressed="{% if comment.is_liked %}true{% else %}false{% endif %}"
+                    aria-label="Thích bình luận — {{ comment.like_count }} lượt thích">
+                ❤️ <span class="like-count" aria-hidden="true">{{ comment.like_count }}</span>
             </button>
             {% match current_user %}
             {% when Option::Some with (cu) %}
