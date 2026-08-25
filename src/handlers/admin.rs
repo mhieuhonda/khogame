@@ -965,6 +965,10 @@ pub async fn export(
     let games = GameRepo::admin_list(&state.db, None, 10000, 0).await?;
     let users = UserRepo::list_for_admin(&state.db, None, 10000, 0).await?;
     let repos = RepoRepo::list_admin(&state.db, None, 10000).await?;
+    // Bình luận + report cũng là dữ liệu cần backup — trước đây export
+    // thiếu hoàn toàn, mất dữ liệu kiểm duyệt khi restore.
+    let comments = CommentRepo::list_recent(&state.db, 20000).await?;
+    let reports = ReportRepo::list(&state.db, None, 20000, 0).await?;
     let body = serde_json::json!({
         "exported_at": chrono::Utc::now().to_rfc3339(),
         "version": env!("CARGO_PKG_VERSION"),
@@ -972,7 +976,11 @@ pub async fn export(
             "games": games.len(),
             "users": users.len(),
             "repos": repos.len(),
+            "comments": comments.len(),
+            "reports": reports.len(),
         },
+        "comments": comments,
+        "reports": reports,
         "games": games,
         "users": users.iter().map(|u| serde_json::json!({
             "id": u.id, "email": u.email, "username": u.username,
