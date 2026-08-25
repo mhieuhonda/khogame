@@ -62,7 +62,7 @@ async fn fetch_github_meta(
     owner: &str,
     repo: &str,
 ) -> AppResult<crate::models::repo::GithubApiRepo> {
-    let url = format!("https://api.github.com/repos/{}/{}", owner, repo);
+    let url = format!("https://api.github.com/repos/{owner}/{repo}");
     let mut req = state
         .http_client
         .get(&url)
@@ -74,17 +74,16 @@ async fn fetch_github_meta(
     let resp = req
         .send()
         .await
-        .map_err(|e| AppError::OAuth(format!("Không kết nối được GitHub API: {}", e)))?;
+        .map_err(|e| AppError::OAuth(format!("Không kết nối được GitHub API: {e}")))?;
     match resp.status().as_u16() {
         200 => Ok(resp.json().await?),
         404 => Err(AppError::NotFound(format!(
-            "Repo {}/{} không tồn tại hoặc ở chế độ riêng tư",
-            owner, repo
+            "Repo {owner}/{repo} không tồn tại hoặc ở chế độ riêng tư"
         ))),
         403 => Err(AppError::OAuth(
             "GitHub API giới hạn tốc độ. Thử lại sau ít phút hoặc cấu hình GITHUB_TOKEN.".into(),
         )),
-        code => Err(AppError::OAuth(format!("GitHub API lỗi HTTP {}", code))),
+        code => Err(AppError::OAuth(format!("GitHub API lỗi HTTP {code}"))),
     }
 }
 
@@ -142,8 +141,7 @@ pub async fn create(
     let auto_approve = user.role.is_staff()
         || SettingsRepo::get(&state.db, "repo_auto_approve")
             .await?
-            .map(|v| v == "on")
-            .unwrap_or(true);
+            .map_or(true, |v| v == "on");
 
     // Liên kết game (nếu có) — slug sai báo lỗi rõ ràng thay vì lặng lẽ
     // bỏ liên kết (trước đây user chọn game trong dropdown nhưng slug
@@ -155,8 +153,7 @@ pub async fn create(
                 .await?
                 .ok_or_else(|| {
                     AppError::BadRequest(format!(
-                        "Game '{}' không tồn tại (có thể đã bị đổi tên hoặc xóa). Vui lòng chọn lại.",
-                        slug
+                        "Game '{slug}' không tồn tại (có thể đã bị đổi tên hoặc xóa). Vui lòng chọn lại."
                     ))
                 })?
                 .id,
