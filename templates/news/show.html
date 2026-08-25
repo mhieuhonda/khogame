@@ -59,7 +59,7 @@
         {{ news.content }}
     </div>
 
-    {% if !news.source_name.is_empty() || !news.source_name.is_empty() %}
+    {% if !news.source_name.is_empty() || !news.source_url.is_empty() %}
     <div class="news-source">
         <strong>Nguồn:</strong>
         {% if !news.source_url.is_empty() %}
