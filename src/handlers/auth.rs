@@ -1,6 +1,6 @@
 use crate::auth;
 use crate::error::{AppError, AppResult};
-use crate::middleware::CurrentUser;
+use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::{SessionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::LoginTemplate;
@@ -200,6 +200,24 @@ pub async fn logout(
     let mut new_jar = jar;
     auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
     let _ = current_user;
+    Ok((new_jar, Redirect::to("/")))
+}
+
+/// Đăng xuất khỏi MỌI thiết bị: xoá toàn bộ session của user trong DB
+/// (laptop, điện thoại, máy khác đang lưu phiên), kể cả phiên hiện tại.
+/// Dùng khi nghi ngờ tài khoản bị truy cập trái phép.
+pub async fn logout_all(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    jar: CookieJar,
+) -> AppResult<(CookieJar, Redirect)> {
+    SessionRepo::delete_all_for_user(&state.db, user.id).await?;
+    tracing::info!(
+        user = %user.username,
+        "User đăng xuất khỏi tất cả thiết bị (xoá toàn bộ session)"
+    );
+    let mut new_jar = jar;
+    auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
     Ok((new_jar, Redirect::to("/")))
 }
 

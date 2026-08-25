@@ -23,6 +23,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::auth::google_callback),
         )
         .route("/auth/logout", post(handlers::auth::logout))
+        .route("/auth/logout-all", post(handlers::auth::logout_all))
         // === AI Agent auth (public nhưng yêu cầu secret/token) ===
         .route("/auth/ai/login", get(handlers::ai_agent::login_form))
         .route("/auth/ai/login", post(handlers::ai_agent::login))

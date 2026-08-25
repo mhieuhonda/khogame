@@ -57,6 +57,16 @@
         <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
     </div>
 </form>
+
+<div class="form-section" style="margin-top:24px">
+    <h2 class="form-section-title">🔐 Phiên đăng nhập</h2>
+    <p class="form-hint">Nghi ngờ tài khoản bị đăng nhập ở nơi khác? Đăng xuất khỏi
+    <strong>mọi thiết bị</strong> (kể cả thiết bị hiện tại) — cần đăng nhập lại sau đó.</p>
+    <form method="post" action="/auth/logout-all"
+          onsubmit="return confirm('Đăng xuất khỏi TẤT CẢ thiết bị? Bạn sẽ cần đăng nhập lại trên mọi máy.');">
+        <button type="submit" class="btn btn-danger">Đăng xuất mọi thiết bị</button>
+    </form>
+</div>
 {% when Option::None %}
 <div class="empty-state">
     <p>Bạn cần đăng nhập để chỉnh sửa hồ sơ.</p>
