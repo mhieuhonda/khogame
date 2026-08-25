@@ -45,6 +45,10 @@ Service trên Coolify, compose (`deploy/compose.prod.yml`) tham chiếu `${VAR}`
 | `DB_PASSWORD` | Mật khẩu PostgreSQL (dùng chung bởi app + db) |
 | `SESSION_KEY` | Key ký session (64 hex) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | OAuth Google |
+| `DB_MAX_CONNECTIONS` | (tuỳ chọn, mặc định 15) Số connection tối đa của pool — giảm nếu nhiều service dùng chung cluster PG |
+| `DB_MIN_CONNECTIONS` | (tuỳ chọn, mặc định 1) Connection giữ ấm |
+| `DB_ACQUIRE_TIMEOUT_SECS` | (tuỳ chọn, mặc định 10) Thời gian chờ connection rảnh trước khi 500 |
+| `JANITOR_INTERVAL_SECS` | (tuỳ chọn, mặc định 21600 = 6h) Chu kỳ dọn session hết hạn & notification đã đọc cũ 90 ngày |
 
 GitHub Secrets cho CI/CD: `COOLIFY_URL`, `COOLIFY_API_TOKEN`,
 `COOLIFY_SERVICE_UUID` (= UUID stack).
@@ -64,6 +68,16 @@ curl -H "Authorization: Bearer $TOKEN" \
 curl -X POST -H "Authorization: Bearer $TOKEN" \
   "https://coolify.buppou.com/api/v1/deployments/<deployment-uuid>/cancel"
 ```
+
+## Graceful shutdown & health
+
+- App bắt **SIGTERM/SIGINT** (docker stop) và chờ tối đa 30s cho các request
+  đang xử lý hoàn tất (`stop_grace_period: 30s` đã set trong compose) — tránh
+  5xx lúc deploy khi có người đang tải game.
+- `/api/v1/health` trả kèm `pool` (size/idle/in_use) và `uptime_secs` — dùng
+  để alert khi pool cạn (leak) hoặc restart-loop (uptime luôn thấp).
+- Janitor nền tự dọn `sessions` hết hạn + `notifications` đã đọc > 90 ngày
+  mỗi 6h (đổi qua `JANITOR_INTERVAL_SECS`), log dòng `Janitor: đã xoá ...`.
 
 ## Khắc phục sự cố đã gặp
 
