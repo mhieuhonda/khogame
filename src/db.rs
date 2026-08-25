@@ -4,12 +4,12 @@ use std::time::Duration;
 
 /// Cấu hình pool đọc từ biến môi trường với giá trị mặc định an toàn cho prod.
 ///
-/// - DB_MAX_CONNECTIONS (mặc định 15): số connection tối đa. PostgreSQL 17
+/// - `DB_MAX_CONNECTIONS` (mặc định 15): số connection tối đa. PostgreSQL 17
 ///   mặc định cho phép 100 connection; nếu chạy nhiều service chung một
 ///   cluster thì nên giảm để tránh cạn slot.
-/// - DB_MIN_CONNECTIONS (mặc định 1): số connection giữ ấm, giảm latency
+/// - `DB_MIN_CONNECTIONS` (mặc định 1): số connection giữ ấm, giảm latency
 ///   của request đầu tiên sau khi idle.
-/// - DB_ACQUIRE_TIMEOUT_SECS (mặc định 10): thời gian tối đa chờ một
+/// - `DB_ACQUIRE_TIMEOUT_SECS` (mặc định 10): thời gian tối đa chờ một
 ///   connection rảnh từ pool trước khi trả 500 — tăng nếu có query nặng.
 #[derive(Debug, Clone)]
 struct PoolTuning {
@@ -63,7 +63,7 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
             .min_connections(tuning.min_connections)
             .acquire_timeout(tuning.acquire_timeout)
             .idle_timeout(Some(Duration::from_secs(300)))
-            .max_lifetime(Some(Duration::from_secs(1800)))
+            .max_lifetime(Some(Duration::from_mins(30)))
             .connect(database_url)
             .await
         {
