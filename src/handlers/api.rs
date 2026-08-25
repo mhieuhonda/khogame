@@ -620,6 +620,98 @@ pub async fn rss(
         .into_response())
 }
 
+/// GET /news.rss — RSS feed riêng cho tin tức.
+/// Tách khỏi /rss.xml (game) để reader subscribe độc lập.
+pub async fn news_rss(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+) -> AppResult<Response> {
+    let news = NewsRepo::list_published(&state.db, 1, 20).await.unwrap_or_default();
+    let base = &state.config.base_url;
+    let mut items = String::new();
+    for n in &news {
+        let esc_title = crate::utils::xml_escape(&n.title);
+        let esc_excerpt = crate::utils::xml_escape(&n.excerpt);
+        let pub_date_tag = n
+            .published_at
+            .map(|d| {
+                format!(
+                    "\n      <pubDate>{}</pubDate>",
+                    d.format("%a, %d %b %Y %H:%M:%S +0000")
+                )
+            })
+            .unwrap_or_default();
+        let category_tag = if !n.category.is_empty() {
+            format!("\n      <category>{}</category>", crate::utils::xml_escape(&n.category))
+        } else {
+            String::new()
+        };
+        let author_tag = format!(
+            "\n      <author>{}</author>",
+            crate::utils::xml_escape(&n.author_name)
+        );
+        items.push_str(&format!(
+            r#"    <item>
+      <title>{}</title>
+      <link>{}/news/{}</link>
+      <guid isPermaLink="true">{}/news/{}</guid>{}
+      <description>{}</description>{}{}
+    </item>
+"#,
+            esc_title,
+            base,
+            n.slug,
+            base,
+            n.slug,
+            category_tag,
+            esc_excerpt,
+            author_tag,
+            pub_date_tag
+        ));
+    }
+    let xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Louis Space - Tin tức</title>
+    <link>{}/news</link>
+    <description>Tin tức game, công nghệ & cộng đồng Việt Nam</description>
+    <language>vi</language>
+    <generator>Louis Space {} (Rust/Axum)</generator>
+    <atom:link href="{}/news.rss" rel="self" type="application/rss+xml"/>
+    <ttl>60</ttl>
+    <lastBuildDate>{}</lastBuildDate>
+{}
+  </channel>
+</rss>"#,
+        base,
+        env!("CARGO_PKG_VERSION"),
+        base,
+        chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000"),
+        items
+    );
+    let etag = format!("\"{}\"", short_hash(&xml));
+    if etag_matches(&headers, &etag) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag.as_str()),
+                (header::CACHE_CONTROL, "public, max-age=600"),
+            ],
+        )
+            .into_response());
+    }
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/rss+xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=600"),
+            (header::ETAG, etag.as_str()),
+        ],
+        xml,
+    )
+        .into_response())
+}
+
 pub async fn sitemap(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
