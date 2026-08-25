@@ -860,8 +860,15 @@ impl GameRepo {
         }
     }
 
-    /// Tất cả game của 1 user (kể cả draft/hidden) cho trang "Game của tôi"
-    pub async fn all_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<AdminGameRow>> {
+    /// Game của 1 user (kể cả draft/hidden) cho trang "Game của tôi" —
+    /// phân trang LIMIT/OFFSET (trước đây trả TOÀN BỘ không giới hạn,
+    /// user 500 game = 1 query nặng + bảng HTML khổng lồ).
+    pub async fn all_by_user(
+        pool: &PgPool,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<AdminGameRow>> {
         let rows = sqlx::query_as::<_, AdminGameRow>(
             r#"SELECT g.id, g.slug, g.title, g.status, g.view_count, g.download_count,
                 g.like_count, g.comment_count, g.is_featured, g.created_at,
@@ -869,12 +876,24 @@ impl GameRepo {
               FROM games g JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.user_id = $1
-              ORDER BY g.created_at DESC"#,
+              ORDER BY g.created_at DESC
+              LIMIT $2 OFFSET $3"#,
         )
         .bind(user_id)
+        .bind(limit)
+        .bind(offset)
         .fetch_all(pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Tổng số game của user (phân trang trang "Game của tôi").
+    pub async fn count_all_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
     }
 
     /// Slug + updated_at cho sitemap

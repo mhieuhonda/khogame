@@ -425,6 +425,9 @@ pub struct MyGamesTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub games: Vec<game::AdminGameRow>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
 /// Error page (standalone, not extending layout)

@@ -1059,16 +1059,34 @@ pub async fn share_game(
 }
 
 // ============= Game của tôi =============
+#[derive(Deserialize, Default)]
+pub struct MyGamesQuery {
+    pub page: Option<i64>,
+}
+
 pub async fn my_games(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    Query(q): Query<MyGamesQuery>,
 ) -> AppResult<MyGamesTemplate> {
-    let games = GameRepo::all_by_user(&state.db, user.id).await?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 30;
+    let offset = (page - 1) * per_page;
+    // games + total độc lập — join! song song.
+    let (games_res, total_res) = tokio::join!(
+        GameRepo::all_by_user(&state.db, user.id, per_page, offset),
+        GameRepo::count_all_by_user(&state.db, user.id),
+    );
+    let games = games_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(MyGamesTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         games,
+        total,
+        page,
+        per_page,
     })
 }
 
