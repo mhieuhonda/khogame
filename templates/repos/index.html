@@ -9,8 +9,8 @@
     </div>
 
     <div class="admin-chip-row">
-        <a href="/repos?sort=stars" class="admin-chip {% if sort == "stars" %}chip-active{% endif %}">⭐ Nhiều sao nhất</a>
-        <a href="/repos?sort=recent" class="admin-chip {% if sort == "recent" %}chip-active{% endif %}">🆕 Mới đăng</a>
+        <a href="/repos?sort=stars" class="admin-chip {% if sort == "stars" %}chip-active{% endif %}" {% if sort == "stars" %}aria-current="true"{% endif %}>⭐ Nhiều sao nhất</a>
+        <a href="/repos?sort=recent" class="admin-chip {% if sort == "recent" %}chip-active{% endif %}" {% if sort == "recent" %}aria-current="true"{% endif %}>🆕 Mới đăng</a>
     </div>
 
     {% if !repos.is_empty() %}
