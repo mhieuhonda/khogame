@@ -586,7 +586,7 @@ mod tests {
 
     #[test]
     fn test_constant_time_eq_length_mismatch() {
-        // Khác độ dài → false ngay (không rò timing đáng kể vì长度
+        // Khác độ dài → false ngay (độ dài không phải bí mật cần giấu
         // là public qua nhiều kênh khác)
         assert!(!constant_time_eq(b"short", b"longer-string"));
         assert!(!constant_time_eq(b"", b"x"));
