@@ -558,14 +558,6 @@ pub struct EmptyStatePartial {
     pub message: String,
 }
 
-#[derive(Template)]
-#[template(path = "partials/pagination.html")]
-pub struct PaginationPartial {
-    pub current: i64,
-    pub total_pages: i64,
-    pub base_url: String,
-}
-
 // Helper functions exposed to templates (Askama 0.16 custom filters)
 pub mod filters {
     use crate::models::user::User;
