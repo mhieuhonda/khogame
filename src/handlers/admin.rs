@@ -342,12 +342,15 @@ pub async fn games(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 50;
     let offset = (page - 1) * per_page;
-    let games = GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset).await?;
-    let total = GameRepo::count_admin(&state.db, q.status.as_deref())
-        .await
-        .unwrap_or(0);
-    let status_counts = GameRepo::count_by_status(&state.db)
-        .await
+    // 3 query độc lập — join! song song.
+    let (games_res, total_res, status_counts_res) = tokio::join!(
+        GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset),
+        GameRepo::count_admin(&state.db, q.status.as_deref()),
+        GameRepo::count_by_status(&state.db),
+    );
+    let games = games_res?;
+    let total = total_res.unwrap_or(0);
+    let status_counts = status_counts_res
         .unwrap_or_default()
         .into_iter()
         .map(|(key, count)| crate::templates::StatusCountChip {
@@ -418,11 +421,14 @@ pub async fn users(
     let per_page: i64 = 50;
     let offset = (page - 1) * per_page;
     let search = q.q.as_deref().filter(|s| !s.trim().is_empty());
-    let users = UserRepo::list_for_admin(&state.db, search, per_page, offset).await?;
-    // Tổng theo bộ lọc (không phải tổng toàn site) để phân trang đúng
-    let total = UserRepo::count_for_admin(&state.db, search)
-        .await
-        .unwrap_or(0);
+    // 2 query độc lập — join! song song.
+    let (users_res, total_res) = tokio::join!(
+        UserRepo::list_for_admin(&state.db, search, per_page, offset),
+        // Tổng theo bộ lọc (không phải tổng toàn site) để phân trang đúng
+        UserRepo::count_for_admin(&state.db, search),
+    );
+    let users = users_res?;
+    let total = total_res.unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(AdminUsersTemplate {
         current_user: Some(user),
