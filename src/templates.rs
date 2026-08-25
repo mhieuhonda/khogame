@@ -53,6 +53,14 @@ impl_template_response!(
     CategoriesPageTemplate,
     TermsPageTemplate,
     PrivacyPageTemplate,
+    // News module
+    NewsListTemplate,
+    NewsShowTemplate,
+    NewsNewTemplate,
+    NewsEditTemplate,
+    MyNewsTemplate,
+    AdminNewsPendingTemplate,
+    AdminNewsAllTemplate,
 );
 
 /// Home page
@@ -898,4 +906,92 @@ mod filter_tests {
             .unwrap();
         assert_eq!(out, "25/08/2026");
     }
+}
+
+// ============================================================
+// News templates
+// ============================================================
+
+/// Trang danh sách tin tức (public)
+#[derive(Template)]
+#[template(path = "news/list.html")]
+pub struct NewsListTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<news::NewsWithAuthor>,
+    pub featured: Vec<news::NewsWithAuthor>,
+    pub total: i64,
+    pub page: i64,
+    pub total_pages: i64,
+    pub category: String,
+    pub category_label: String,
+    pub query: String,
+    pub categories: Vec<(&'static str, &'static str)>,
+}
+
+/// Trang chi tiết tin tức (public)
+#[derive(Template)]
+#[template(path = "news/show.html")]
+pub struct NewsShowTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub news: news::NewsWithAuthor,
+    pub comments: Vec<news::NewsCommentWithAuthor>,
+    pub has_liked: bool,
+    pub base_url: String,
+}
+
+/// Form đăng tin mới
+#[derive(Template)]
+#[template(path = "news/new.html")]
+pub struct NewsNewTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub categories: Vec<(&'static str, &'static str)>,
+    pub errors: Vec<String>,
+    pub form: crate::handlers::news::NewsFormPartial,
+}
+
+/// Form sửa tin
+#[derive(Template)]
+#[template(path = "news/edit.html")]
+pub struct NewsEditTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub categories: Vec<(&'static str, &'static str)>,
+    pub news: news::News,
+    pub errors: Vec<String>,
+}
+
+/// Trang "Tin của tôi"
+#[derive(Template)]
+#[template(path = "news/my_news.html")]
+pub struct MyNewsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<news::News>,
+}
+
+/// Admin: hàng đợi duyệt tin
+#[derive(Template)]
+#[template(path = "admin/news_pending.html")]
+pub struct AdminNewsPendingTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<news::NewsForAdmin>,
+    pub total: i64,
+    pub page: i64,
+    pub total_pages: i64,
+}
+
+/// Admin: tất cả tin (cho admin duyệt/xem lại)
+#[derive(Template)]
+#[template(path = "admin/news_all.html")]
+pub struct AdminNewsAllTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<news::NewsForAdmin>,
+    pub total: i64,
+    pub page: i64,
+    pub total_pages: i64,
 }

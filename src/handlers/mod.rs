@@ -5,6 +5,7 @@ pub mod auth;
 pub mod comments;
 pub mod games;
 pub mod interactions;
+pub mod news;
 pub mod notifications;
 pub mod pages;
 pub mod profile;

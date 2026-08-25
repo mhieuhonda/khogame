@@ -136,7 +136,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/terms", get(handlers::pages::terms))
         .route("/privacy", get(handlers::pages::privacy))
         .route("/health", get(handlers::api::health_detail))
-        .route("/maintenance", get(handlers::pages::maintenance));
+        .route("/maintenance", get(handlers::pages::maintenance))
+        // === News module ===
+        .route("/news", get(handlers::news::list))
+        .route("/news/new", get(handlers::news::new_form))
+        .route("/news/{slug}", get(handlers::news::show))
+        .route("/news/{slug}/edit", get(handlers::news::edit_form))
+        .route(
+            "/news/{slug}",
+            post(handlers::news::update).delete(handlers::news::delete),
+        )
+        .route("/news/{slug}/like", post(handlers::news::toggle_like))
+        .route(
+            "/news/{slug}/comments",
+            post(handlers::news::create_comment),
+        )
+        .route("/my-news", get(handlers::news::my_news));
 
     // Public JSON API v1
     let api_routes = Router::new()
