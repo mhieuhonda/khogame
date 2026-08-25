@@ -392,6 +392,30 @@
         }
     });
 
+    // ===== Chống double-submit form thường (không HTMX) =====
+    // 2 click nhanh nút submit (hoặc Enter + click) gửi 2 request:
+    // tạo game trùng, bình luận đôi, follow/unfollow lệch trạng thái.
+    // Disable nút ngay khi submit bắt đầu — form vẫn submit vì nút
+    // đã nằm trong event pipeline (disable trong submit handler không
+    // chặn submit). HTMX form đã có hx-disabled-elt riêng.
+    document.addEventListener('submit', function(e) {
+        const form = e.target;
+        if (form.hasAttribute('hx-post') || form.hasAttribute('hx-get')) return;
+        // Chỉ disable khi form hợp lệ (submit thật sự diễn ra)
+        setTimeout(function() {
+            const btn = form.querySelector('button[type="submit"]:not([disabled])');
+            if (btn && form.checkValidity()) {
+                btn.setAttribute('disabled', '');
+                btn.style.opacity = '0.6';
+                // Khôi phục sau 10s phòng server lỗi (user cần submit lại)
+                setTimeout(function() {
+                    btn.removeAttribute('disabled');
+                    btn.style.opacity = '';
+                }, 10000);
+            }
+        }, 0);
+    }, true);
+
     // ===== Smooth scroll for anchor links =====
     document.addEventListener('click', function(e) {
         const link = e.target.closest('a[href^="#"]');
