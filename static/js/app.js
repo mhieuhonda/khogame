@@ -7,12 +7,23 @@
 
     // ===== Theme toggle =====
     function getStoredTheme() {
-        return localStorage.getItem('kg-theme') || 'dark';
+        return localStorage.getItem('kg-theme');
     }
 
     function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         localStorage.setItem('kg-theme', theme);
+    }
+
+    // Lần đầu (chưa chọn theme): theo hệ điều hành của người dùng.
+    // Sau khi user chủ động bấm toggle thì luôn tôn trọng lựa chọn đó.
+    function initialTheme() {
+        var stored = getStoredTheme();
+        if (stored === 'dark' || stored === 'light') return stored;
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            return 'light';
+        }
+        return 'dark';
     }
 
     function toggleTheme() {
@@ -27,8 +38,8 @@
         }).catch(function() {});
     }
 
-    // Apply stored theme on load
-    applyTheme(getStoredTheme());
+    // Apply stored/system theme on load
+    applyTheme(initialTheme());
 
     document.addEventListener('DOMContentLoaded', function() {
         const toggle = document.getElementById('themeToggle');
