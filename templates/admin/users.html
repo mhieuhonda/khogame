@@ -4,8 +4,8 @@
 <section class="admin-page">
     <div class="page-header"><h1>👥 Quản lý người dùng</h1><p>Tổng cộng {{ total }} người dùng.</p></div>
     {% include "admin/_nav.html" %}
-    <form action="/admin/users" method="get" class="admin-search-form">
-        <input type="text" name="q" value="{{ search }}" placeholder="Tìm theo tên, email, username...">
+    <form action="/admin/users" method="get" class="admin-search-form" role="search">
+        <input type="search" name="q" id="admin-user-search" value="{{ search }}" placeholder="Tìm theo tên, email, username..." aria-label="Tìm người dùng theo tên, email hoặc username">
         <button class="btn btn-primary btn-sm" type="submit">Tìm</button>
     </form>
     <div class="admin-table-wrap">
