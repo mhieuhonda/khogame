@@ -527,6 +527,17 @@ pub struct ReportModalPartial<'a> {
     pub slug: &'a str,
 }
 
+/// Base URL tuyệt đối của site — set MỘT lần lúc startup (run()) để
+/// filter `abs_url` trong template dựng URL đầy đủ cho thẻ meta OG/Twitter
+/// (crawler Facebook/Twitter/Telegram không tự resolve URL tương đối).
+static SITE_BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Khởi tạo base URL cho các filter template. Gọi một lần trong run().
+/// Nếu không gọi (unit test), abs_url trả về path gốc không đổi.
+pub fn init_base_url(base: &str) {
+    let _ = SITE_BASE_URL.set(base.trim_end_matches('/').to_string());
+}
+
 // Helper functions exposed to templates (Askama 0.16 custom filters)
 pub mod filters {
     use crate::models::user::User;
@@ -534,6 +545,14 @@ pub mod filters {
     use askama::filters::Safe;
     use askama::Values;
     use std::fmt::Display;
+
+    /// Ghép base URL site vào path tương đối → URL tuyệt đối. Dùng cho
+    /// og:image / twitter:image (crawler không chấp nhận path tương đối).
+    #[askama::filter_fn]
+    pub fn abs_url(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
+        let base = super::SITE_BASE_URL.get().map(|b| b.as_str()).unwrap_or("");
+        Ok(format!("{}{}", base, s.as_ref()))
+    }
 
     #[askama::filter_fn]
     pub fn time_ago(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {

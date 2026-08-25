@@ -19,6 +19,9 @@ pub use state::AppState;
 use std::sync::Arc;
 
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
+    // Base URL cho filter abs_url trong template (og:image/twitter:image
+    // cần URL tuyệt đối — crawler không resolve path tương đối).
+    crate::templates::init_base_url(&config.base_url);
     let state = AppState::new(config.clone()).await?;
 
     // Run migrations
