@@ -340,17 +340,25 @@ pub async fn show_game(
         game.view_count += 1;
     }
 
-    let author = crate::repositories::UserRepo::find_by_id(&state.db, game.user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
-    let links = GameRepo::get_links(&state.db, game.id).await?;
-    let screenshots = GameRepo::get_screenshots(&state.db, game.id).await?;
-    let tags = GameRepo::get_tags(&state.db, game.id).await?;
-    let category = if let Some(cat_id) = game.category_id {
-        CategoryRepo::find_by_id(&state.db, cat_id).await?
-    } else {
-        None
-    };
+    // 5 truy vấn độc lập (author/links/screenshots/tags/category) chạy
+    // song song — trước đây tuần tự, trang game chịu tổng 5 round-trip.
+    let (author_res, links_res, screenshots_res, tags_res, category_res) = tokio::join!(
+        crate::repositories::UserRepo::find_by_id(&state.db, game.user_id),
+        GameRepo::get_links(&state.db, game.id),
+        GameRepo::get_screenshots(&state.db, game.id),
+        GameRepo::get_tags(&state.db, game.id),
+        async {
+            match game.category_id {
+                Some(cat_id) => CategoryRepo::find_by_id(&state.db, cat_id).await,
+                None => Ok(None),
+            }
+        },
+    );
+    let author = author_res?.ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
+    let links = links_res?;
+    let screenshots = screenshots_res?;
+    let tags = tags_res?;
+    let category = category_res?;
     let comments = crate::repositories::CommentRepo::list_by_game(
         &state.db,
         game.id,
