@@ -854,16 +854,19 @@ pub async fn search(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<SearchQuery>,
 ) -> AppResult<SearchTemplate> {
-    let sort = q.sort.unwrap_or_else(|| "latest".into());
+    let sort = q.sort.clone().unwrap_or_else(|| "latest".into());
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
-    let games = if q.q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
+    // Clamp từ khóa 200 ký tự (bằng giới hạn title game) — chống gửi
+    // pattern khổng lồ làm ILIKE quét chậm toàn bảng games.
+    let q_q: String = q.q.chars().take(200).collect();
+    let games = if q_q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
         GameRepo::list_published(&state.db, per_page, offset, &sort).await?
     } else {
         GameRepo::search(
             &state.db,
-            &q.q,
+            q_q.trim(),
             q.category.as_deref(),
             q.platform.as_deref(),
             &sort,
@@ -874,12 +877,12 @@ pub async fn search(
     };
     // Đếm đúng số kết quả khớp bộ lọc (trước đây lấy tổng game đã đăng
     // → "N kết quả" và phân trang sai khi có từ khóa/bộ lọc)
-    let total = if q.q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
+    let total = if q_q.trim().is_empty() && q.category.is_none() && q.platform.is_none() {
         GameRepo::count_published(&state.db).await.unwrap_or(0)
     } else {
         GameRepo::count_search(
             &state.db,
-            &q.q,
+            q_q.trim(),
             q.category.as_deref(),
             q.platform.as_deref(),
         )
@@ -891,7 +894,7 @@ pub async fn search(
     Ok(SearchTemplate {
         current_user,
         unread_notifications: unread,
-        query: q.q,
+        query: q_q,
         sort,
         platform: q.platform,
         category_slug: q.category,

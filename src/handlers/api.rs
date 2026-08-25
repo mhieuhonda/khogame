@@ -56,16 +56,21 @@ pub async fn games_list(
     let offset = (page - 1) * per_page;
     let sort = q.sort.clone().unwrap_or_else(|| "latest".into());
 
-    let cards = match q.q.as_deref().filter(|s| !s.trim().is_empty()) {
+    // Clamp từ khóa 200 ký tự — chống pattern khổng lồ làm ILIKE chậm.
+    let q_search: Option<String> =
+        q.q.as_deref()
+            .map(|s| s.trim().chars().take(200).collect::<String>())
+            .filter(|s| !s.is_empty());
+    let cards = match q_search.as_deref() {
         Some(query) => {
-            GameRepo::search(&state.db, query.trim(), None, None, &sort, per_page, offset).await?
+            GameRepo::search(&state.db, query, None, None, &sort, per_page, offset).await?
         }
         None => GameRepo::list_published(&state.db, per_page, offset, &sort).await?,
     };
     // Bug fix: khi có search query, total phải là số kết quả khớp query
     // chứ không phải tổng số game — nếu không client tính số trang sai.
-    let total = match q.q.as_deref().filter(|s| !s.trim().is_empty()) {
-        Some(query) => GameRepo::count_search(&state.db, query.trim(), None, None)
+    let total = match q_search.as_deref() {
+        Some(query) => GameRepo::count_search(&state.db, query, None, None)
             .await
             .unwrap_or(0),
         None => GameRepo::count_published(&state.db).await.unwrap_or(0),
@@ -290,10 +295,14 @@ pub async fn check_duplicate(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DuplicateQuery>,
 ) -> AppResult<Response> {
-    if q.title.trim().len() < 3 {
+    let title = q.title.trim();
+    if title.len() < 3 {
         return Ok(Json(serde_json::json!({"similar": 0})).into_response());
     }
-    let similar = GameRepo::count_similar_title(&state.db, q.title.trim())
+    // Clamp 200 ký tự như giới hạn title khi tạo game — chống gửi pattern
+    // dài hàng chục KB làm ILIKE quét chậm (DoS nhẹ nhưng thật).
+    let title: String = title.chars().take(200).collect();
+    let similar = GameRepo::count_similar_title(&state.db, &title)
         .await
         .unwrap_or(0);
     Ok(Json(serde_json::json!({"similar": similar})).into_response())
