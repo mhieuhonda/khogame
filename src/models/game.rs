@@ -16,6 +16,7 @@ pub enum GameStatus {
 }
 
 impl GameStatus {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             GameStatus::Draft => "Bản nháp",
@@ -26,8 +27,9 @@ impl GameStatus {
         }
     }
     /// Parse từ chuỗi (DB/JSON). Đặt tên khác `from_str` sẽ phá vỡ nhiều call site;
-    /// tạm thời allow clippy::should_implement_trait.
+    /// tạm thời allow `clippy::should_implement_trait`.
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
             "draft" => GameStatus::Draft,
@@ -51,9 +53,10 @@ pub enum Platform {
 }
 
 impl Platform {
-    /// Chuỗi enum đúng trong DB (platform_type). Dùng khi bind tham số
+    /// Chuỗi enum đúng trong DB (`platform_type`). Dùng khi bind tham số
     /// cast `$n::platform_type` — chuỗi bất kỳ khác case (vd "ANDROID")
     /// sẽ làm Postgres từ chối cast và query fail ngầm.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Platform::Android => "android",
@@ -63,6 +66,7 @@ impl Platform {
             Platform::Macos => "macos",
         }
     }
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             Platform::Android => "Android",
@@ -72,6 +76,7 @@ impl Platform {
             Platform::Macos => "macOS",
         }
     }
+    #[must_use]
     pub fn icon(&self) -> &'static str {
         match self {
             Platform::Android => "android",
@@ -81,6 +86,7 @@ impl Platform {
             Platform::Macos => "apple",
         }
     }
+    #[must_use]
     pub fn color(&self) -> &'static str {
         match self {
             Platform::Android => "#3DDC84",
@@ -91,8 +97,9 @@ impl Platform {
         }
     }
     /// Parse từ chuỗi. Đổi tên `from_str` sẽ phá vỡ nhiều call site;
-    /// tạm thời allow clippy::should_implement_trait.
+    /// tạm thời allow `clippy::should_implement_trait`.
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "android" => Some(Platform::Android),
@@ -103,6 +110,7 @@ impl Platform {
             _ => None,
         }
     }
+    #[must_use]
     pub fn all() -> &'static [Platform] {
         &[
             Platform::Android,
@@ -126,6 +134,7 @@ pub enum AgeRating {
 }
 
 impl AgeRating {
+    #[must_use]
     pub fn label(&self) -> &'static str {
         match self {
             AgeRating::Everyone => "E - Mọi lứa tuổi",
@@ -135,6 +144,7 @@ impl AgeRating {
         }
     }
     #[allow(clippy::should_implement_trait)]
+    #[must_use]
     pub fn from_str(s: &str) -> Self {
         match s {
             "teen" => AgeRating::Teen,
@@ -143,6 +153,7 @@ impl AgeRating {
             _ => AgeRating::Everyone,
         }
     }
+    #[must_use]
     pub fn all() -> &'static [AgeRating] {
         &[
             AgeRating::Everyone,
@@ -186,18 +197,22 @@ pub struct Game {
 }
 
 impl Game {
+    #[must_use]
     pub fn excerpt_or(&self) -> String {
         self.excerpt.clone().unwrap_or_default()
     }
+    #[must_use]
     pub fn content_or(&self) -> String {
         self.content.clone().unwrap_or_default()
     }
+    #[must_use]
     pub fn cover_or(&self, fallback: &str) -> String {
         self.cover_image
             .clone()
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| fallback.to_string())
     }
+    #[must_use]
     pub fn rating_avg_f64(&self) -> f64 {
         use std::str::FromStr;
         f64::from_str(&self.rating_avg.to_string()).unwrap_or(0.0)
@@ -263,10 +278,12 @@ pub struct AdminGameRow {
 }
 
 impl GameCard {
+    #[must_use]
     pub fn rating_avg_f64(&self) -> f64 {
         use std::str::FromStr;
         f64::from_str(&self.rating_avg.to_string()).unwrap_or(0.0)
     }
+    #[must_use]
     pub fn cover_or(&self, fallback: &str) -> String {
         self.cover_image
             .clone()
@@ -326,7 +343,8 @@ pub struct GameForm {
 impl GameForm {
     /// Tách chuỗi tags phân cách dấu phẩy thành Vec.
     /// Dedupe case-insensitive và giữ thứ tự xuất hiện đầu — tránh tạo
-    /// các bản ghi game_tags trùng lặp khi user nhập "action, Action".
+    /// các bản ghi `game_tags` trùng lặp khi user nhập "action, Action".
+    #[must_use]
     pub fn tags_vec(&self) -> Vec<String> {
         let mut seen = std::collections::HashSet::new();
         self.tags
@@ -336,7 +354,8 @@ impl GameForm {
             .filter(|s| seen.insert(s.to_lowercase()))
             .collect()
     }
-    /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec (dedupe như tags_vec)
+    /// Tách chuỗi ngôn ngữ phân cách dấu phẩy thành Vec (dedupe như `tags_vec`)
+    #[must_use]
     pub fn languages_vec(&self) -> Vec<String> {
         let mut seen = std::collections::HashSet::new();
         self.languages
@@ -347,6 +366,7 @@ impl GameForm {
             .collect()
     }
     /// Mỗi dòng trong textarea là 1 URL screenshot
+    #[must_use]
     pub fn screenshots_vec(&self) -> Vec<String> {
         self.screenshots
             .lines()
