@@ -776,4 +776,55 @@ mod filter_tests {
         let out = filters::format_date::default().execute(&None, &()).unwrap();
         assert_eq!(out, "");
     }
+
+    #[test]
+    fn test_time_ago_filter_parses_rfc3339() {
+        // Template luôn truyền .to_rfc3339() — filter phải parse được
+        let now = chrono::Utc::now().to_rfc3339();
+        let out = filters::time_ago::default()
+            .execute(now.as_str(), &())
+            .unwrap();
+        assert_eq!(out, "vừa xong");
+        // 2 giờ trước
+        let two_h = (chrono::Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+        let out = filters::time_ago::default()
+            .execute(two_h.as_str(), &())
+            .unwrap();
+        assert!(out.contains("giờ trước"), "got: {}", out);
+    }
+
+    #[test]
+    fn test_time_ago_filter_rejects_garbage() {
+        // Chuỗi không phải RFC3339 → Err (template render 500 — nhưng chí
+        // ít không panic; assertion chỉ ghi nhận hành vi)
+        let out = filters::time_ago::default().execute("not-a-date", &());
+        assert!(out.is_err());
+    }
+
+    #[test]
+    fn test_avatar_or_fallback() {
+        use crate::models::user::User;
+        // Không cần DB — dựng struct thủ công qua serde_json cho gọn
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000000",
+            "email": "a@b.c", "username": "u", "display_name": "U",
+            "avatar_url": null, "bio": null, "google_sub": "s",
+            "role": "User", "is_banned": false, "last_seen_at": null,
+            "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z"
+        }"#;
+        let user: User = serde_json::from_str(json).unwrap();
+        let out = filters::avatar_or::default().execute(&user, &()).unwrap();
+        assert_eq!(out, "/static/img/avatar-placeholder.svg");
+    }
+
+    #[test]
+    fn test_format_datetime_vn_filter() {
+        let dt = chrono::DateTime::parse_from_rfc3339("2026-08-25T10:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let out = filters::format_datetime_vn::default()
+            .execute(&dt, &())
+            .unwrap();
+        assert_eq!(out, "25/08/2026");
+    }
 }
