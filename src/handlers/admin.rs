@@ -7,7 +7,7 @@ use crate::repositories::{
     RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
 };
 use crate::state::AppState;
-use crate::templates::*;
+use crate::templates::{AdminTemplate, AdminReportsTemplate, CommentItemPartial, AdminGamesTemplate, AdminUsersTemplate, AdminCommentsTemplate, AdminCategoriesTemplate, AdminReposTemplate, AdminSettingsTemplate, AdminAuditTemplate, AdminSessionsTemplate, AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminUserDetailTemplate, AdminNewsPendingTemplate, AdminNewsAllTemplate};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -216,7 +216,7 @@ pub async fn resolve_report(
         "report.resolve",
         "report",
         &id.to_string(),
-        &format!("-> {:?}", status),
+        &format!("-> {status:?}"),
     )
     .await;
 
@@ -296,15 +296,15 @@ pub async fn feature_game(
         "game.feature",
         "game",
         &id.to_string(),
-        if !game.is_featured { "on" } else { "off" },
+        if game.is_featured { "off" } else { "on" },
     )
     .await;
     Ok(Html(format!(
         "<div class='alert alert-success'>Đã {} nổi bật.</div>",
-        if !game.is_featured {
-            "đặt làm"
-        } else {
+        if game.is_featured {
             "bỏ"
+        } else {
+            "đặt làm"
         }
     )))
 }
@@ -656,37 +656,33 @@ pub async fn save_category(
     if icon.chars().count() > 100 {
         return Err(AppError::BadRequest("Icon tối đa 100 ký tự".into()));
     }
-    match form
+    if let Some(id) = form
         .id
         .as_deref()
         .filter(|s| !s.is_empty())
-        .and_then(|s| Uuid::parse_str(s).ok())
-    {
-        Some(id) => {
-            CategoryRepo::update(&state.db, id, name, description, icon).await?;
-            audit(
-                &state,
-                user.id,
-                "category.update",
-                "category",
-                &id.to_string(),
-                name,
-            )
-            .await;
-        }
-        None => {
-            let slug = slug::slugify(name);
-            let id = CategoryRepo::create(&state.db, name, &slug, description, icon).await?;
-            audit(
-                &state,
-                user.id,
-                "category.create",
-                "category",
-                &id.to_string(),
-                name,
-            )
-            .await;
-        }
+        .and_then(|s| Uuid::parse_str(s).ok()) {
+        CategoryRepo::update(&state.db, id, name, description, icon).await?;
+        audit(
+            &state,
+            user.id,
+            "category.update",
+            "category",
+            &id.to_string(),
+            name,
+        )
+        .await;
+    } else {
+        let slug = slug::slugify(name);
+        let id = CategoryRepo::create(&state.db, name, &slug, description, icon).await?;
+        audit(
+            &state,
+            user.id,
+            "category.create",
+            "category",
+            &id.to_string(),
+            name,
+        )
+        .await;
     }
     Ok(Redirect::to("/admin/categories"))
 }
@@ -706,8 +702,7 @@ pub async fn delete_category(
         .await?;
     if count > 0 {
         return Err(AppError::BadRequest(format!(
-            "Thể loại còn {} game. Hãy chuyển game sang thể loại khác trước.",
-            count
+            "Thể loại còn {count} game. Hãy chuyển game sang thể loại khác trước."
         )));
     }
     CategoryRepo::delete(&state.db, id).await?;
@@ -1012,12 +1007,11 @@ pub async fn broadcast(
         "notification.broadcast",
         "system",
         "",
-        &format!("{} users", sent),
+        &format!("{sent} users"),
     )
     .await;
     Ok(Html(format!(
-        "<div class='alert alert-success'>Đã gửi thông báo tới {} người dùng.</div>",
-        sent
+        "<div class='alert alert-success'>Đã gửi thông báo tới {sent} người dùng.</div>"
     )))
 }
 
@@ -1233,14 +1227,14 @@ const ADMIN_NEWS_PER_PAGE: i64 = 20;
 
 /// GET /admin/users/{id} — trang chi tiết 1 user cho admin.
 ///
-/// **QUYỀN**: Chỉ admin (is_admin), không phải moderator.
+/// **QUYỀN**: Chỉ admin (`is_admin`), không phải moderator.
 /// Moderator không được xem email/IP/UA/sessions của user.
 ///
 /// Hiển thị:
-/// - Email, username, display_name, avatar, bio
+/// - Email, username, `display_name`, avatar, bio
 /// - Vai trò + trạng thái banned
-/// - IP/UA lúc signup, IP/UA lúc last login, last_seen_at
-/// - Danh sách sessions (có IP/UA/expires_at)
+/// - IP/UA lúc signup, IP/UA lúc last login, `last_seen_at`
+/// - Danh sách sessions (có `IP/UA/expires_at`)
 /// - Số game đã đăng, số news đã đăng
 /// - Nút đổi role, ban/unban, revoke all sessions
 pub async fn user_detail(
@@ -1336,13 +1330,13 @@ pub async fn news_all(
     let page = params.page.unwrap_or(1).max(1);
     let offset = (page - 1).max(0) * ADMIN_NEWS_PER_PAGE;
     let items = sqlx::query_as::<_, crate::models::news::NewsForAdmin>(
-        r#"SELECT n.*, u.display_name AS author_name,
+        r"SELECT n.*, u.display_name AS author_name,
                  u.username AS author_username, u.email AS author_email,
                  u.avatar_url AS author_avatar
           FROM news n
           JOIN users u ON u.id = n.user_id
           ORDER BY n.created_at DESC
-          LIMIT $1 OFFSET $2"#,
+          LIMIT $1 OFFSET $2",
     )
     .bind(ADMIN_NEWS_PER_PAGE)
     .bind(offset)
