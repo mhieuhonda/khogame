@@ -4,8 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lỗi {{ status }} - Kho Game</title>
+    <meta name="robots" content="noindex">
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
     <link rel="stylesheet" href="/static/css/style.css">
+    <script>
+    // Đồng bộ theme user đã chọn (localStorage) thay vì cứng dark —
+    // user light mode không bị chói tối đột ngột khi gặp lỗi.
+    (function() {
+        try {
+            var t = localStorage.getItem('kg-theme');
+            if (t !== 'light' && t !== 'dark') {
+                t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+            }
+            document.documentElement.setAttribute('data-theme', t);
+        } catch (e) {}
+    })();
+    </script>
 </head>
 <body>
     <div class="error-page">
@@ -13,6 +27,16 @@
             <div class="error-code">{{ status }}</div>
             <h1>Oops!</h1>
             <p>{{ message }}</p>
+            {% if status == 404 %}
+            <form action="/search" method="get" class="error-search" role="search" style="max-width:420px;margin:0 auto 16px;display:flex;gap:8px">
+                <input type="text" name="q" placeholder="Tìm game khác..." aria-label="Tìm game"
+                       style="flex:1;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-card);color:var(--text-primary)">
+                <button type="submit" class="btn btn-outline">Tìm</button>
+            </form>
+            <p style="color:var(--text-muted)"><a href="/games/latest">Khám phá game mới nhất</a> · <a href="/categories">Xem thể loại</a></p>
+            {% else %}
+            <p style="color:var(--text-muted)">Nếu lỗi tiếp diễn, vui lòng <a href="/">thử lại</a> hoặc quay lại sau ít phút.</p>
+            {% endif %}
             <a href="/" class="btn btn-primary">Về trang chủ</a>
         </div>
     </div>
