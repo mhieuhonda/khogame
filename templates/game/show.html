@@ -181,8 +181,9 @@
                       hx-target="#comments-list"
                       hx-swap="afterbegin"
                       hx-on::after-request="if(event.detail.successful) this.reset()">
-                    <textarea name="content" placeholder="Viết bình luận của bạn..." required rows="3" minlength="1" maxlength="1000"></textarea>
+                    <textarea name="content" placeholder="Viết bình luận của bạn..." required rows="3" minlength="1" maxlength="1000" aria-label="Nội dung bình luận"></textarea>
                     <div class="comment-form-actions">
+                        <span class="char-counter" aria-live="polite"><span>0</span>/1000</span>
                         <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
                     </div>
                 </form>

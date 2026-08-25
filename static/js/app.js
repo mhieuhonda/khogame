@@ -329,6 +329,19 @@
         }
     });
 
+    // Form reset (sau HTMX submit thành công) không fire event 'input' —
+    // counter sẽ giữ số cũ hiển thị sai. Đồng bộ thủ công khi reset.
+    document.addEventListener('reset', function(e) {
+        const ta = e.target.querySelector('textarea[maxlength]');
+        if (ta) {
+            const counter = ta.parentElement.querySelector('.char-counter span');
+            if (counter) {
+                // reset() chạy sau event — đợi microtask kế tiếp
+                setTimeout(function() { counter.textContent = Array.from(ta.value).length; }, 0);
+            }
+        }
+    }, true);
+
     // ===== HTMX events =====
     document.addEventListener('htmx:afterRequest', function(evt) {
         if (evt.detail.failed) {
