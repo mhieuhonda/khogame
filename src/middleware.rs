@@ -507,12 +507,23 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
     out
 }
 
+/// Wrapper response 429 cho middleware rate_limit — Box bên trong để
+/// Result<Response, _> nhỏ (clippy result_large_err), đồng thời impl
+/// IntoResponse để dùng được làm Err-type của axum::middleware::from_fn.
+pub struct RateLimited(Box<Response>);
+
+impl IntoResponse for RateLimited {
+    fn into_response(self) -> Response {
+        *self.0
+    }
+}
+
 /// Middleware giới hạn tốc độ cho các endpoint nhạy cảm
 pub async fn rate_limit(
     State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
-) -> Result<Response, Response> {
+) -> Result<Response, RateLimited> {
     let path = request.uri().path().to_string();
     // Lấy IP thật của client qua ConnectInfo (được axum thêm vào request
     // extensions khi dùng into_make_service_with_connect_info). Nếu chạy sau
@@ -564,15 +575,18 @@ pub async fn rate_limit(
         tracing::warn!("Rate limit exceeded: {} {} ({}/{})", ip, path, max, window);
         // Retry-After (RFC 6585/9110): báo client chờ bao lâu trước khi
         // thử lại — HTMX app.js / curl đều đọc được, tránh spam 429 liên tục.
-        return Err((
-            StatusCode::TOO_MANY_REQUESTS,
-            [
-                (axum::http::header::RETRY_AFTER, window.to_string()),
-                (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
-            ],
-            "Too Many Requests - vui lòng thử lại sau.",
-        )
-            .into_response());
+        return Err(RateLimited(
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                [
+                    (axum::http::header::RETRY_AFTER, window.to_string()),
+                    (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
+                ],
+                "Too Many Requests - vui lòng thử lại sau.",
+            )
+                .into_response()
+                .into(),
+        ));
     }
     Ok(next.run(request).await)
 }

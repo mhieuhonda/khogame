@@ -44,19 +44,6 @@ impl From<sqlx::Error> for AppError {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Unique violation phải map sang Conflict (409 logic), không phải 500.
-    #[test]
-    fn test_conflict_maps_to_bad_request_status_not_500() {
-        let e = AppError::Conflict("trùng slug".into());
-        let (status, _msg) = e.status_and_message();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-    }
-}
-
 impl AppError {
     /// HTTP status + thông điệp người dùng cho lỗi này. Tách riêng để
     /// unit test được (IntoResponse cần render template, khó test hơn).
@@ -112,5 +99,39 @@ impl IntoResponse for AppError {
         .render()
         .map(|html| (status, html).into_response())
         .unwrap_or_else(|_| (status, "Internal Server Error").into_response())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Unique violation phải map sang Conflict (409 logic), không phải 500.
+    #[test]
+    fn test_conflict_maps_to_bad_request_status_not_500() {
+        let e = AppError::Conflict("trùng slug".into());
+        let (status, _msg) = e.status_and_message();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    /// Mọi variant phải map đúng nhóm status — guard hồi quy khi thêm variant mới.
+    #[test]
+    fn test_status_mapping_all_variants() {
+        assert_eq!(
+            AppError::NotFound("x".into()).status_and_message().0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            AppError::Unauthorized.status_and_message().0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            AppError::Forbidden("x".into()).status_and_message().0,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            AppError::BadRequest("x".into()).status_and_message().0,
+            StatusCode::BAD_REQUEST
+        );
     }
 }
