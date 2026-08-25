@@ -357,7 +357,7 @@ pub async fn announcement(
     // ETag thêm 1 tầng: nếu nội dung KHÔNG đổi trong cửa sổ 60s,
     // If-None-Match khớp → 304 rỗng (vài chục byte) thay vì payload
     // JSON đầy đủ — tiết kiệm băng thông cho user quay lại liên tục.
-    let etag = format!("\"{}\"", short_hash(&format!("{}|{}", text, kind)));
+    let etag = format!("\"{}\"", short_hash(&format!("{text}|{kind}")));
     if etag_matches(&headers, &etag) {
         return Ok((
             StatusCode::NOT_MODIFIED,
@@ -411,9 +411,9 @@ pub async fn set_theme(
     Ok(Json(serde_json::json!({"ok": true, "theme": theme})).into_response())
 }
 
-/// OpenSearch Suggestions (application/x-suggestions+json) — format mảng
+/// `OpenSearch` Suggestions (application/x-suggestions+json) — format mảng
 /// theo spec: \[query, \[titles\], \[descriptions\], \[urls\]\] để trình duyệt gợi
-/// ý ngay trong ô tìm kiếm của thanh địa chỉ. Tái dùng query suggest_titles.
+/// ý ngay trong ô tìm kiếm của thanh địa chỉ. Tái dùng query `suggest_titles`.
 pub async fn opensearch_suggestions(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SuggestQuery>,
@@ -429,7 +429,7 @@ pub async fn opensearch_suggestions(
     let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
     let descs: Vec<String> = suggestions
         .iter()
-        .map(|(t, _)| format!("Louis Space — {}", t))
+        .map(|(t, _)| format!("Louis Space — {t}"))
         .collect();
     let urls: Vec<String> = suggestions
         .iter()
@@ -462,7 +462,7 @@ pub async fn news_suggest(
     let titles: Vec<String> = suggestions.iter().map(|(t, _)| t.clone()).collect();
     let descs: Vec<String> = suggestions
         .iter()
-        .map(|(t, _)| format!("Louis Space — {}", t))
+        .map(|(t, _)| format!("Louis Space — {t}"))
         .collect();
     let urls: Vec<String> = suggestions
         .iter()
@@ -485,7 +485,7 @@ pub struct DuplicateQuery {
 }
 
 /// Kiểm tra trùng tiêu đề tin tức khi tạo mới — cảnh báo user nếu
-/// tin cùng tên đã có (giống check_duplicate của game).
+/// tin cùng tên đã có (giống `check_duplicate` của game).
 pub async fn news_check_duplicate(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DuplicateQuery>,
@@ -500,9 +500,9 @@ pub async fn news_check_duplicate(
         crate::utils::escape_like(&title.chars().take(200).collect::<String>())
     );
     let count: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*) FROM news
+        r"SELECT COUNT(*) FROM news
            WHERE status IN ('published', 'pending')
-             AND title ILIKE $1 ESCAPE '\'"#,
+             AND title ILIKE $1 ESCAPE '\'",
     )
     .bind(&pattern)
     .fetch_one(&state.db)
@@ -712,13 +712,13 @@ pub async fn news_rss(
                 )
             })
             .unwrap_or_default();
-        let category_tag = if !n.category.is_empty() {
+        let category_tag = if n.category.is_empty() {
+            String::new()
+        } else {
             format!(
                 "\n      <category>{}</category>",
                 crate::utils::xml_escape(&n.category)
             )
-        } else {
-            String::new()
         };
         let author_tag = format!(
             "\n      <author>{}</author>",
@@ -802,9 +802,8 @@ pub async fn sitemap(
     );
     let mut urls = String::new();
     urls.push_str(&format!(
-        r#"  <url><loc>{}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>
-"#,
-        base
+        r"  <url><loc>{base}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>
+"
     ));
     for page in [
         "/games",
@@ -821,9 +820,8 @@ pub async fn sitemap(
         "/news",
     ] {
         urls.push_str(&format!(
-            r#"  <url><loc>{}{}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
-"#,
-            base, page
+            r"  <url><loc>{base}{page}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+"
         ));
     }
     // Escape XML mọi giá trị chèn vào <loc> — ký tự & < > trong
@@ -832,8 +830,8 @@ pub async fn sitemap(
     if let Ok(cats) = cats_res {
         for c in cats {
             urls.push_str(&format!(
-                r#"  <url><loc>{}/c/{}</loc><changefreq>daily</changefreq><priority>0.6</priority></url>
-"#,
+                r"  <url><loc>{}/c/{}</loc><changefreq>daily</changefreq><priority>0.6</priority></url>
+",
                 base,
                 crate::utils::xml_escape(&c.slug)
             ));
@@ -842,8 +840,8 @@ pub async fn sitemap(
     if let Ok(tags) = tags_res {
         for t in tags {
             urls.push_str(&format!(
-                r#"  <url><loc>{}/t/{}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
-"#,
+                r"  <url><loc>{}/t/{}</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+",
                 base,
                 crate::utils::xml_escape(&t.slug)
             ));
@@ -854,8 +852,8 @@ pub async fn sitemap(
     if let Ok(users) = users_res {
         for username in users {
             urls.push_str(&format!(
-                r#"  <url><loc>{}/u/{}</loc><changefreq>weekly</changefreq><priority>0.4</priority></url>
-"#,
+                r"  <url><loc>{}/u/{}</loc><changefreq>weekly</changefreq><priority>0.4</priority></url>
+",
                 base,
                 crate::utils::xml_escape(&username)
             ));
@@ -864,8 +862,8 @@ pub async fn sitemap(
     if let Ok(games) = games_res {
         for (slug, updated) in games {
             urls.push_str(&format!(
-                r#"  <url><loc>{}/games/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
-"#,
+                r"  <url><loc>{}/games/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
+",
                 base,
                 crate::utils::xml_escape(&slug),
                 updated.format("%Y-%m-%d")
@@ -876,8 +874,8 @@ pub async fn sitemap(
     if let Ok(news) = NewsRepo::list_published(&state.db, 1, 50).await {
         for n in news {
             urls.push_str(&format!(
-                r#"  <url><loc>{}/news/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
-"#,
+                r"  <url><loc>{}/news/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
+",
                 base,
                 crate::utils::xml_escape(&n.slug),
                 n.published_at.map(|d| d.format("%Y-%m-%d").to_string()).unwrap_or_default()
@@ -887,8 +885,7 @@ pub async fn sitemap(
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-{}</urlset>"#,
-        urls
+{urls}</urlset>"#
     );
     let etag = format!("\"{}\"", short_hash(&xml));
     if etag_matches(&headers, &etag) {
@@ -912,8 +909,8 @@ pub async fn sitemap(
         .into_response())
 }
 
-/// So sánh ETag server với If-None-Match header của client.
-/// Hỗ trợ wildcard `*` (luôn khớp) và danh sách ETag cách nhau bởi `,`.
+/// So sánh `ETag` server với If-None-Match header của client.
+/// Hỗ trợ wildcard `*` (luôn khớp) và danh sách `ETag` cách nhau bởi `,`.
 fn etag_matches(headers: &axum::http::HeaderMap, etag: &str) -> bool {
     let Some(inm) = headers
         .get(header::IF_NONE_MATCH)
@@ -927,7 +924,7 @@ fn etag_matches(headers: &axum::http::HeaderMap, etag: &str) -> bool {
     inm.split(',').any(|e| e.trim() == etag)
 }
 
-/// Hash ngắn (16 hex chars) cho ETag. Dùng xxHash sẽ nhanh hơn nhưng
+/// Hash ngắn (16 hex chars) cho `ETag`. Dùng xxHash sẽ nhanh hơn nhưng
 /// thêm dependency; SHA-256 của `sha2` đã có sẵn, cắt 16 ký tự đầu là đủ
 /// chống collision cho mục đích cache validation (không phải mật khẩu).
 fn short_hash(s: &str) -> String {
@@ -940,8 +937,7 @@ fn short_hash(s: &str) -> String {
 pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
     let txt = format!(
-        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /bookmarks\nDisallow: /my-games\nDisallow: /my-news\nDisallow: /news/new\nDisallow: /news/*/edit\nDisallow: /auth\nDisallow: /api/\nDisallow: /ai\n\nSitemap: {}/sitemap.xml\n",
-        base
+        "User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /profile\nDisallow: /notifications\nDisallow: /bookmarks\nDisallow: /my-games\nDisallow: /my-news\nDisallow: /news/new\nDisallow: /news/*/edit\nDisallow: /auth\nDisallow: /api/\nDisallow: /ai\n\nSitemap: {base}/sitemap.xml\n"
     );
     (
         [
@@ -954,7 +950,7 @@ pub async fn robots(State(state): State<Arc<AppState>>) -> Response {
         .into_response()
 }
 
-/// OpenSearch description XML — cho phép trình duyệt thêm Louis Space vào
+/// `OpenSearch` description XML — cho phép trình duyệt thêm Louis Space vào
 /// ô tìm kiếm của thanh địa chỉ.
 pub async fn opensearch(State(state): State<Arc<AppState>>) -> Response {
     let base = &state.config.base_url;
@@ -1110,12 +1106,14 @@ pub async fn news_list(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = 12i64;
     let category = params.category.as_deref().unwrap_or("");
-    let items = if !category.is_empty() {
-        NewsRepo::list_by_category(&state.db, category, page, per_page).await?
-    } else {
+    let items = if category.is_empty() {
         NewsRepo::list_published(&state.db, page, per_page).await?
+    } else {
+        NewsRepo::list_by_category(&state.db, category, page, per_page).await?
     };
-    let total = if !category.is_empty() {
+    let total = if category.is_empty() {
+        NewsRepo::count_published(&state.db).await.unwrap_or(0)
+    } else {
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM news WHERE status = 'published' AND category = $1",
         )
@@ -1123,8 +1121,6 @@ pub async fn news_list(
         .fetch_one(&state.db)
         .await
         .unwrap_or(0)
-    } else {
-        NewsRepo::count_published(&state.db).await.unwrap_or(0)
     };
     let total_pages = ((total + per_page - 1) / per_page).max(1);
     Ok((
@@ -1163,7 +1159,7 @@ pub async fn news_detail(
 
 /// Hồ sơ user công khai — cho phép client bên ngoài hiển thị thông tin
 /// tác giả game mà không cần cào HTML. Chỉ trả field công khai:
-/// username, display_name, avatar_url, bio, role, stats (số game,
+/// username, `display_name`, `avatar_url`, bio, role, stats (số game,
 /// follower, following). Không trả email hay session info nhạy cảm.
 pub async fn user_profile(
     State(state): State<Arc<AppState>>,
@@ -1193,8 +1189,8 @@ pub async fn user_profile(
     Ok(([(header::CACHE_CONTROL, "public, max-age=120")], Json(body)).into_response())
 }
 
-/// Map một GameCard thành JSON object dùng chung cho các endpoint liệt
-/// kê game (by_category, by_tag, related). Trước đây 3 handler lặp lại
+/// Map một `GameCard` thành JSON object dùng chung cho các endpoint liệt
+/// kê game (`by_category`, `by_tag`, related). Trước đây 3 handler lặp lại
 /// cùng khối ~20 dòng này — thêm field mới phải sửa 3 chỗ dễ lệch nhau.
 fn game_card_to_json(g: &crate::models::game::GameCard) -> serde_json::Value {
     serde_json::json!({
