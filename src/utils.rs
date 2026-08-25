@@ -465,23 +465,23 @@ mod tests {
         // 2 phút trước
         let two_mins = now - chrono::Duration::minutes(2);
         let s = time_ago(two_mins);
-        assert!(s.contains("phút trước"), "got: {}", s);
+        assert!(s.contains("phút trước"), "got: {s}");
         // 3 giờ trước
         let three_hours = now - chrono::Duration::hours(3);
         let s = time_ago(three_hours);
-        assert!(s.contains("giờ trước"), "got: {}", s);
+        assert!(s.contains("giờ trước"), "got: {s}");
         // 5 ngày trước
         let five_days = now - chrono::Duration::days(5);
         let s = time_ago(five_days);
-        assert!(s.contains("ngày trước"), "got: {}", s);
+        assert!(s.contains("ngày trước"), "got: {s}");
         // 2 tháng trước (61 ngày — vượt ngưỡng 30 ngày)
         let two_months = now - chrono::Duration::days(61);
         let s = time_ago(two_months);
-        assert!(s.contains("tháng trước"), "got: {}", s);
+        assert!(s.contains("tháng trước"), "got: {s}");
         // 14 tháng trước (426 ngày — vượt ngưỡng 365 ngày → năm)
         let fourteen_months = now - chrono::Duration::days(426);
         let s = time_ago(fourteen_months);
-        assert!(s.contains("năm trước"), "got: {}", s);
+        assert!(s.contains("năm trước"), "got: {s}");
         // Ranh giới chính xác 30 ngày → "1 tháng trước" (không phải 30 ngày)
         let thirty_days = now - chrono::Duration::days(30);
         assert_eq!(time_ago(thirty_days), "1 tháng trước");
