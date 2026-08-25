@@ -83,8 +83,7 @@ pub async fn google_callback(
     if let Some(err) = &q.error {
         tracing::warn!("OAuth error: {}", err);
         return Err(AppError::OAuth(format!(
-            "Google từ chối đăng nhập: {}",
-            err
+            "Google từ chối đăng nhập: {err}"
         )));
     }
 
