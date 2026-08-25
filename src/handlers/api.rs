@@ -543,13 +543,25 @@ pub async fn rss(
             "\n      <author>{}</author>",
             crate::utils::xml_escape(&g.author_name)
         );
+        // pubDate chỉ render khi có published_at — element rỗng
+        // <pubDate></pubDate> là error theo W3C Feed Validator (một số
+        // reader drop cả item). Game list RSS luôn published nên hầu
+        // như luôn có giá trị; nhánh này chỉ phòng data legacy NULL.
+        let pub_date_tag = g
+            .published_at
+            .map(|d| {
+                format!(
+                    "\n      <pubDate>{}</pubDate>",
+                    d.format("%a, %d %b %Y %H:%M:%S +0000")
+                )
+            })
+            .unwrap_or_default();
         items.push_str(&format!(
             r#"    <item>
       <title>{}</title>
       <link>{}/games/{}</link>
       <guid isPermaLink="true">{}/games/{}</guid>{}
-      <description>{}</description>{}
-      <pubDate>{}</pubDate>
+      <description>{}</description>{}{}
     </item>
 "#,
             esc_title,
@@ -560,9 +572,7 @@ pub async fn rss(
             category_tag,
             esc_excerpt,
             author_tag,
-            g.published_at
-                .map(|d| d.format("%a, %d %b %Y %H:%M:%S +0000").to_string())
-                .unwrap_or_default()
+            pub_date_tag
         ));
     }
     let xml = format!(
