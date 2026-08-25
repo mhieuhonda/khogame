@@ -27,7 +27,7 @@
 
             <div class="form-group">
                 <label class="form-label">Nội dung chi tiết <span class="required">*</span></label>
-                <textarea name="content" class="form-control form-control-editor" required rows="10"
+                <textarea name="content" class="form-control form-control-editor" required rows="10" maxlength="50000"
                           placeholder="Mô tả chi tiết về gameplay, cốt truyện, đồ họa, âm thanh..."></textarea>
                 <small class="form-hint">Hỗ trợ Markdown cơ bản: **bold**, *italic*, [link](url)</small>
             </div>
@@ -70,7 +70,7 @@
                 <label class="form-label">
                     <span class="platform-icon">🤖</span> Link tải Android
                 </label>
-                <input type="url" name="android_link" class="form-control"
+                <input type="url" name="android_link" class="form-control" maxlength="2048"
                        placeholder="https://play.google.com/store/apps/details?id=...">
             </div>
 
@@ -78,7 +78,7 @@
                 <label class="form-label">
                     <span class="platform-icon">🍎</span> Link tải iOS
                 </label>
-                <input type="url" name="ios_link" class="form-control"
+                <input type="url" name="ios_link" class="form-control" maxlength="2048"
                        placeholder="https://apps.apple.com/.../id...">
             </div>
 
@@ -86,7 +86,7 @@
                 <label class="form-label">
                     <span class="platform-icon">🪟</span> Link tải Windows
                 </label>
-                <input type="url" name="windows_link" class="form-control"
+                <input type="url" name="windows_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
@@ -94,7 +94,7 @@
                 <label class="form-label">
                     <span class="platform-icon">🐧</span> Link tải Linux
                 </label>
-                <input type="url" name="linux_link" class="form-control"
+                <input type="url" name="linux_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
@@ -102,7 +102,7 @@
                 <label class="form-label">
                     <span class="platform-icon">💻</span> Link tải macOS
                 </label>
-                <input type="url" name="macos_link" class="form-control"
+                <input type="url" name="macos_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
         </div>
@@ -112,7 +112,7 @@
 
             <div class="form-group">
                 <label class="form-label">URL ảnh bìa</label>
-                <input type="url" name="cover_image" class="form-control"
+                <input type="url" name="cover_image" class="form-control" maxlength="2048"
                        placeholder="https://.../cover.jpg">
                 <small class="form-hint">Khuyến nghị: tỷ lệ 16:9, kích thước tối thiểu 800x450px</small>
             </div>
@@ -125,7 +125,7 @@
 
             <div class="form-group">
                 <label class="form-label">URL trailer (YouTube)</label>
-                <input type="url" name="trailer_url" class="form-control"
+                <input type="url" name="trailer_url" class="form-control" maxlength="2048"
                        placeholder="https://www.youtube.com/watch?v=...">
             </div>
         </div>
@@ -136,7 +136,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Phiên bản</label>
-                    <input type="text" name="version" class="form-control"
+                    <input type="text" name="version" class="form-control" maxlength="100"
                            placeholder="VD: 1.0.0">
                 </div>
                 <div class="form-group">
@@ -148,12 +148,12 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Nhà phát triển</label>
-                    <input type="text" name="developer" class="form-control"
+                    <input type="text" name="developer" class="form-control" maxlength="100"
                            placeholder="VD: GameStudio VN">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nhà phát hành</label>
-                    <input type="text" name="publisher" class="form-control"
+                    <input type="text" name="publisher" class="form-control" maxlength="100"
                            placeholder="VD: Publisher Name">
                 </div>
             </div>
@@ -161,7 +161,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Dung lượng</label>
-                    <input type="text" name="file_size" class="form-control"
+                    <input type="text" name="file_size" class="form-control" maxlength="100"
                            placeholder="VD: 500 MB, 1.2 GB">
                 </div>
                 <div class="form-group">

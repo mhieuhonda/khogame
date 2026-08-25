@@ -68,27 +68,27 @@
                "duplicate field" → mọi lần lưu game có link đều thất bại. #}
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🤖</span> Link tải Android</label>
-                <input type="url" name="android_link" class="form-control" placeholder="https://play.google.com/store/apps/..."
+                <input type="url" name="android_link" class="form-control" maxlength="2048" placeholder="https://play.google.com/store/apps/..."
                        value="{% for link in links %}{% if link.platform.label() == "Android" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🍎</span> Link tải iOS</label>
-                <input type="url" name="ios_link" class="form-control" placeholder="https://apps.apple.com/..."
+                <input type="url" name="ios_link" class="form-control" maxlength="2048" placeholder="https://apps.apple.com/..."
                        value="{% for link in links %}{% if link.platform.label() == "iOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🪟</span> Link tải Windows</label>
-                <input type="url" name="windows_link" class="form-control" placeholder="https://..."
+                <input type="url" name="windows_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Windows" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">🐧</span> Link tải Linux</label>
-                <input type="url" name="linux_link" class="form-control" placeholder="https://..."
+                <input type="url" name="linux_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Linux" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
                 <label class="form-label"><span class="platform-icon">💻</span> Link tải macOS</label>
-                <input type="url" name="macos_link" class="form-control" placeholder="https://..."
+                <input type="url" name="macos_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "macOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
         </div>
@@ -98,7 +98,7 @@
 
             <div class="form-group">
                 <label class="form-label">URL ảnh bìa</label>
-                <input type="url" name="cover_image" class="form-control"
+                <input type="url" name="cover_image" class="form-control" maxlength="2048"
                        value="{{ game.cover_image.clone().unwrap_or_default() }}">
             </div>
 
@@ -110,7 +110,7 @@
 
             <div class="form-group">
                 <label class="form-label">URL trailer (YouTube)</label>
-                <input type="url" name="trailer_url" class="form-control"
+                <input type="url" name="trailer_url" class="form-control" maxlength="2048"
                        value="{{ game.trailer_url.clone().unwrap_or_default() }}">
             </div>
         </div>
@@ -121,7 +121,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Phiên bản</label>
-                    <input type="text" name="version" class="form-control"
+                    <input type="text" name="version" class="form-control" maxlength="100"
                            value="{{ game.version.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
@@ -134,12 +134,12 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Nhà phát triển</label>
-                    <input type="text" name="developer" class="form-control"
+                    <input type="text" name="developer" class="form-control" maxlength="100"
                            value="{{ game.developer.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Nhà phát hành</label>
-                    <input type="text" name="publisher" class="form-control"
+                    <input type="text" name="publisher" class="form-control" maxlength="100"
                            value="{{ game.publisher.clone().unwrap_or_default() }}">
                 </div>
             </div>
@@ -147,7 +147,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label class="form-label">Dung lượng</label>
-                    <input type="text" name="file_size" class="form-control"
+                    <input type="text" name="file_size" class="form-control" maxlength="100"
                            value="{{ game.file_size.clone().unwrap_or_default() }}">
                 </div>
                 <div class="form-group">
