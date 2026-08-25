@@ -57,3 +57,21 @@ Stage Summary:
 - Build: cargo check + clippy clean, 141 tests pass
 - Tech stack giữ nguyên: Rust 1.98, Axum 0.8.9, sqlx 0.9, Askama 0.16
 - Sẽ tiếp tục Phase C (UI redesign), Phase G (tests, fixes, docs), Phase H (releases)
+
+---
+Task ID: 2
+Agent: super-z (main)
+Task: Hoàn thành Phase G (UI redesign, fixes, polish) + Phase H (releases)
+
+Work Log:
+- Phase C (UI redesign): đổi default theme sang light (white primary), thêm FOUC prevention script, color-mix cho header, cập nhật error/maintenance pages
+- Phase G (news API + RSS + sitemap + home news section): thêm public JSON API cho news, /news.rss RSS feed, sitemap URL cho news, hiển thị 3 tin mới ở homepage
+- Phase H (release): tag v0.8.0 đã push, tạo GitHub release qua API với full changelog
+
+Stage Summary:
+- Tổng commits: 316
+- GitHub release v0.8.0 created at https://github.com/mhieuhonda/khogame/releases/tag/v0.8.0
+- Branch protection applied on main (verified via GET /repos/.../branches/main/protection)
+- Build: cargo check + clippy clean, 141 tests pass
+- Tech stack unchanged: Rust 1.98, Axum 0.8.9, sqlx 0.9
+- Sẽ tiếp tục với Phase I: các cải tiến phụ (admin news dashboard, news search suggest, mobile UX polish)
