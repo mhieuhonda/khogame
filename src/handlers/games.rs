@@ -569,6 +569,12 @@ pub async fn submit_report(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Không nhận báo cáo cho game chưa xuất bản — owner/staff xem được
+    // game đó nhưng không cần báo cáo (báo cáo là cơ chế kiểm duyệt nội
+    // dung công khai).
+    if game.user_id != user.id && !user.role.is_staff() && game.status != GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
 
     let reason = ReportReason::from_str(&form.reason)
         .ok_or_else(|| AppError::BadRequest("Lý do không hợp lệ".into()))?;

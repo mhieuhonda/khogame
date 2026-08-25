@@ -1,5 +1,6 @@
 use crate::error::{AppError, AppResult};
 use crate::middleware::AuthUser;
+use crate::models::game::GameStatus;
 use crate::repositories::{GameRepo, InteractionRepo};
 use crate::state::AppState;
 use crate::templates::*;
@@ -15,6 +16,19 @@ pub struct RateForm {
     pub score: i16,
 }
 
+/// Chỉ cho tương tác (like/bookmark/rate) trên game đã xuất bản.
+/// Owner/staff được miễn chặn để tự kiểm tra game nháp.
+/// Trước đây các endpoint này không kiểm tra status.
+fn ensure_interactable(
+    game: &crate::models::game::Game,
+    user: &crate::models::user::User,
+) -> AppResult<()> {
+    if game.user_id != user.id && !user.role.is_staff() && game.status != GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
+    Ok(())
+}
+
 pub async fn toggle_like(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -23,6 +37,7 @@ pub async fn toggle_like(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    ensure_interactable(&game, &user)?;
     let is_liked = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
     // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
     let like_count = GameRepo::find_by_id(&state.db, game.id)
@@ -46,6 +61,7 @@ pub async fn toggle_bookmark(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    ensure_interactable(&game, &user)?;
     let is_bookmarked = InteractionRepo::toggle_bookmark(&state.db, game.id, user.id).await?;
     let partial = BookmarkButtonPartial {
         game_id: game.id,
@@ -67,6 +83,7 @@ pub async fn rate(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    ensure_interactable(&game, &user)?;
     InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
 
     // Reload game to get updated rating
