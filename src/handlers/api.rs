@@ -195,6 +195,7 @@ pub async fn game_detail(
 }
 
 /// Bình luận của game dạng JSON công khai (top-level, phân trang).
+///
 /// Client bên ngoài có thể dựng widget bình luận mà không cào HTML.
 /// Chỉ comment của game đã xuất bản; replies tải riêng qua /comments/{id}/replies.
 pub async fn game_comments(
