@@ -21,7 +21,7 @@
 {% endif %}
 {% when Option::None %}
 {% endmatch %}
-<meta property="article:published_time" content="{{ game.created_at }}">
+<meta property="article:published_time" content="{% match game.published_at %}{% when Option::Some with (d) %}{{ d.to_rfc3339() }}{% when Option::None %}{{ game.created_at.to_rfc3339() }}{% endmatch %}">
 {% endblock %}
 
 {% block content %}
