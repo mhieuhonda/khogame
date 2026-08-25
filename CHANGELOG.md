@@ -5,6 +5,33 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] — 2026-08-25 — Polish & fixes
+
+### 🐛 Fixed
+- **News source condition bug**: `source_name.is_empty() || source_name.is_empty()` (copy-paste bug) → sửa thành `source_name.is_empty() || source_url.is_empty()`. Trước đây source box chỉ hiện khi có source_name, giờ hiện khi có một trong hai.
+- **robots.txt** thêm Disallow cho `/my-news`, `/news/new`, `/news/*/edit` — tránh crawler index trang cá nhân và form đăng/sửa tin.
+
+### ✨ Added
+- **`/api/news-suggest`** — autocomplete cho ô search tin tức (UX parity với game suggest).
+- **`/api/news-check-duplicate`** — cảnh báo trùng tiêu đề khi đăng tin (giống check_duplicate game).
+- **`/api/v1/stats`** thêm `total_news` field.
+- **JS autocomplete + duplicate check** cho form đăng tin (`/news/new`) và ô search tin tức (`/news`).
+- **Form đăng tin** thêm collapsible "Hướng dẫn viết tin chất lượng" với 5 tips.
+- **Trang đăng nhập** đồng bộ logo + text với brand Louis Space.
+- **`docs/NEWS.md`** — hướng dẫn sử dụng news module cho user + admin.
+- **`docs/BRANCH_PROTECTION.md`** — hướng dẫn rule + cách setup lại + bypass.
+
+### 🎨 UI
+- **Footer shadow border** — tách visual khỏi main content.
+- **CSS `.dup-warning`** — style cho warning box trùng tiêu đề (light: amber, dark: brown).
+- **CSS `.news-search-suggest`** — dropdown style cho autocomplete.
+
+### 🔧 Maintenance
+- **rustfmt** — chuẩn hóa formatting toàn bộ code.
+- **Footer** — thêm box-shadow top border.
+
+---
+
 ## [0.8.0] — 2026-08-25 — Era Louis Space
 
 ### 🌐 Rebrand toàn diện
