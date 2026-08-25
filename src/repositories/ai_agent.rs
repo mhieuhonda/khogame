@@ -519,3 +519,33 @@ impl AiAgentRepo {
 // Re-export UserRole để caller không phải import riêng
 #[allow(unused_imports)]
 use crate::models::UserRole as _UserRole;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_slugify_model() {
+        // Chữ thường + prefix ai_
+        assert_eq!(AiAgentRepo::slugify_model("GPT-4o"), "ai_gpt-4o");
+        assert_eq!(AiAgentRepo::slugify_model("Claude"), "ai_claude");
+        // Ký tự lạ bị loại
+        assert_eq!(AiAgentRepo::slugify_model("Model X!@#"), "ai_modelx");
+        // Khoảng trắng bị loại
+        assert_eq!(AiAgentRepo::slugify_model("Ox Alpha"), "ai_oxalpha");
+        // Rỗng / chỉ ký tự lạ → fallback
+        assert_eq!(AiAgentRepo::slugify_model(""), "ai_agent");
+        assert_eq!(AiAgentRepo::slugify_model("!!!"), "ai_agent");
+        // Tiếng Việt: chữ có dấu là alphanumeric → giữ nguyên lowercase
+        let s = AiAgentRepo::slugify_model("Trí Tuệ");
+        assert!(s.starts_with("ai_"));
+    }
+
+    #[test]
+    fn test_slugify_model_no_uppercase_leak() {
+        // Không được chứa ký tự hoa (username chuẩn hoá)
+        let s = AiAgentRepo::slugify_model("DeepSeek V3");
+        assert_eq!(s, "ai_deepseekv3");
+        assert!(s.chars().all(|c| !c.is_ascii_uppercase()));
+    }
+}
