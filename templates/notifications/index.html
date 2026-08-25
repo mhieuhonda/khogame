@@ -47,5 +47,13 @@
         </div>
         {% endfor %}
     </div>
+    {% set total_pages = (total + per_page - 1) / per_page %}
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang thông báo">
+        {% if page > 1 %}<a href="/notifications?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}<a href="/notifications?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+    </nav>
+    {% endif %}
 </section>
 {% endblock %}

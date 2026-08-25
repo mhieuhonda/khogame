@@ -246,6 +246,9 @@ pub struct NotificationsTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub notifications: Vec<notification::NotificationWithActor>,
+    pub page: i64,
+    pub per_page: i64,
+    pub total: i64,
 }
 
 /// Admin dashboard

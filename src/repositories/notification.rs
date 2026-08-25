@@ -37,6 +37,15 @@ impl NotificationRepo {
         Ok(items)
     }
 
+    /// Tổng số notification của user (phân trang trang thông báo).
+    pub async fn count_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notifications WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
+    }
+
     pub async fn unread_count(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",

@@ -5,21 +5,38 @@ use crate::repositories::NotificationRepo;
 use crate::state::AppState;
 use crate::templates::{NotificationItemPartial, NotificationsTemplate};
 use askama::Template;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Html;
+use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[derive(Deserialize, Default)]
+pub struct NotificationsQuery {
+    pub page: Option<i64>,
+}
 
 pub async fn list(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    Query(q): Query<NotificationsQuery>,
 ) -> AppResult<NotificationsTemplate> {
-    let notifications = NotificationRepo::list_for_user(&state.db, user.id, 50, 0, false).await?;
+    let page = q.page.unwrap_or(1).max(1);
+    let per_page: i64 = 50;
+    let offset = (page - 1) * per_page;
+    let notifications =
+        NotificationRepo::list_for_user(&state.db, user.id, per_page, offset, false).await?;
+    let total = NotificationRepo::count_for_user(&state.db, user.id)
+        .await
+        .unwrap_or(0);
     let unread = unread_count(&state, user.id).await;
     Ok(NotificationsTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         notifications,
+        page,
+        per_page,
+        total,
     })
 }
 
