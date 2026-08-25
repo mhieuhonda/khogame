@@ -295,9 +295,9 @@ pub async fn repos_list(
 }
 
 pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Response> {
-    // 5 COUNT độc lập — join! song song (cache 60s đã giảm tần suất,
-    // giờ giảm cả latency của mỗi lần cache miss).
-    let (total_games, total_users, total_repos, total_downloads, total_comments) = tokio::join!(
+    // 6 COUNT độc lập — join! song song (cache 60s đã giảm tần suất,
+    // giờ giảm cả latency của mỗi lần cache miss). Thêm news stats.
+    let (total_games, total_users, total_repos, total_downloads, total_comments, total_news) = tokio::join!(
         GameRepo::count_published(&state.db),
         UserRepo::count_all(&state.db),
         RepoRepo::count_approved(&state.db),
@@ -313,11 +313,13 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Res
                 .await
                 .unwrap_or(0)
         },
+        NewsRepo::count_by_status(&state.db, crate::models::news::NewsStatus::Published),
     );
     let total_games = total_games.unwrap_or(0);
     let total_users = total_users.unwrap_or(0);
     let total_repos = total_repos.unwrap_or(0);
-    // Cache 60s: số liệu thống kê không cần real-time, giảm 5 COUNT(*)
+    let total_news = total_news.unwrap_or(0);
+    // Cache 60s: số liệu thống kê không cần real-time, giảm 6 COUNT(*)
     // xuống còn tối đa 1 lần/phút mỗi client.
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=60")],
@@ -327,6 +329,7 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Res
             "total_repos": total_repos,
             "total_downloads": total_downloads,
             "total_comments": total_comments,
+            "total_news": total_news,
         })),
     )
         .into_response())
