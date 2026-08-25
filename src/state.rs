@@ -45,8 +45,7 @@ impl AppState {
             .await
             .ok()
             .flatten()
-            .map(|v| v == "on")
-            .unwrap_or(false);
+            .is_some_and(|v| v == "on");
         let mut cache = self.maintenance_cache.write().await;
         *cache = (on, std::time::Instant::now());
         on
