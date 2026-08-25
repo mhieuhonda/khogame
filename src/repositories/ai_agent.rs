@@ -24,9 +24,9 @@ impl AiAgentRepo {
     /// Tạo tài khoản AI Agent mới. Trả về plain API token (chỉ trả 1 lần).
     ///
     /// Bước:
-    /// 1. Tạo user với role='ai_agent', provider='ai_agent'.
-    /// 2. Tạo hàng trong ai_agent_profiles.
-    /// 3. Sinh token (48 bytes), hash SHA-256, lưu vào ai_agent_tokens.
+    /// 1. Tạo user với role='`ai_agent`', provider='`ai_agent`'.
+    /// 2. Tạo hàng trong `ai_agent_profiles`.
+    /// 3. Sinh token (48 bytes), hash SHA-256, lưu vào `ai_agent_tokens`.
     /// 4. Trả về plain token.
     ///
     /// Caller phải verify secret trước khi gọi hàm này.
@@ -111,7 +111,7 @@ impl AiAgentRepo {
 
         // Email unique: nếu rỗng, tự sinh
         let email_final = if email.trim().is_empty() {
-            format!("ai-{}@ai-agent.local", username_unique)
+            format!("ai-{username_unique}@ai-agent.local")
         } else {
             email.trim().to_string()
         };
@@ -124,10 +124,10 @@ impl AiAgentRepo {
 
         // 1) Tạo user
         let user: User = sqlx::query_as::<_, User>(
-            r#"INSERT INTO users (email, username, display_name, avatar_url, bio, google_sub, role, provider)
+            r"INSERT INTO users (email, username, display_name, avatar_url, bio, google_sub, role, provider)
               VALUES ($1, $2, $3, $4, $5, $6, 'ai_agent', 'ai_agent')
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at"#,
+                role, is_banned, last_seen_at, created_at, updated_at",
         )
         .bind(&email_final)
         .bind(&username_unique)
@@ -140,11 +140,11 @@ impl AiAgentRepo {
 
         // 2) Tạo profile
         let _profile: AiAgentProfile = sqlx::query_as::<_, AiAgentProfile>(
-            r#"INSERT INTO ai_agent_profiles
+            r"INSERT INTO ai_agent_profiles
                 (user_id, model_name, vendor, version, capabilities, privacy_level, accent_color, verified)
               VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
               RETURNING user_id, model_name, vendor, version, capabilities, privacy_level,
-                accent_color, verified, last_active_at, created_at, updated_at"#,
+                accent_color, verified, last_active_at, created_at, updated_at",
         )
         .bind(user.id)
         .bind(model_name)
@@ -169,10 +169,10 @@ impl AiAgentRepo {
         let token_hash = crate::auth::hash_token(&plain_token);
 
         let _token: AiAgentToken = sqlx::query_as::<_, AiAgentToken>(
-            r#"INSERT INTO ai_agent_tokens (user_id, token_hash, label, ip_address, user_agent)
+            r"INSERT INTO ai_agent_tokens (user_id, token_hash, label, ip_address, user_agent)
               VALUES ($1, $2, $3, $4, $5)
               RETURNING id, user_id, token_hash, label, revoked, last_used_at,
-                expires_at, ip_address, user_agent, created_at"#,
+                expires_at, ip_address, user_agent, created_at",
         )
         .bind(user.id)
         .bind(&token_hash)
@@ -188,7 +188,7 @@ impl AiAgentRepo {
 
     /// Tìm AI Agent + user theo API token (plain). Trả về (User, profile) nếu
     /// token còn hiệu lực (chưa revoked, chưa expired).
-    /// Cập nhật last_used_at.
+    /// Cập nhật `last_used_at`.
     pub async fn find_by_api_token(
         pool: &PgPool,
         plain_token: &str,
@@ -198,7 +198,7 @@ impl AiAgentRepo {
         }
         let token_hash = crate::auth::hash_token(plain_token);
         let row = sqlx::query_as::<_, User>(
-            r#"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio,
+            r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio,
                      u.google_sub, u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at
               FROM ai_agent_tokens t
               JOIN users u ON u.id = t.user_id
@@ -206,7 +206,7 @@ impl AiAgentRepo {
                 AND t.revoked = FALSE
                 AND (t.expires_at IS NULL OR t.expires_at > NOW())
                 AND u.role = 'ai_agent'
-                AND u.is_banned = FALSE"#,
+                AND u.is_banned = FALSE",
         )
         .bind(&token_hash)
         .fetch_optional(pool)
@@ -217,9 +217,9 @@ impl AiAgentRepo {
         };
 
         let profile = sqlx::query_as::<_, AiAgentProfile>(
-            r#"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
+            r"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
                      accent_color, verified, last_active_at, created_at, updated_at
-              FROM ai_agent_profiles WHERE user_id = $1"#,
+              FROM ai_agent_profiles WHERE user_id = $1",
         )
         .bind(user.id)
         .fetch_optional(pool)
@@ -242,15 +242,15 @@ impl AiAgentRepo {
         }
     }
 
-    /// Lấy hồ sơ AI Agent theo user_id (công khai, dùng cho trang profile).
+    /// Lấy hồ sơ AI Agent theo `user_id` (công khai, dùng cho trang profile).
     pub async fn find_profile_by_user_id(
         pool: &PgPool,
         user_id: Uuid,
     ) -> AppResult<Option<AiAgentProfile>> {
         let p = sqlx::query_as::<_, AiAgentProfile>(
-            r#"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
+            r"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
                      accent_color, verified, last_active_at, created_at, updated_at
-              FROM ai_agent_profiles WHERE user_id = $1"#,
+              FROM ai_agent_profiles WHERE user_id = $1",
         )
         .bind(user_id)
         .fetch_optional(pool)
@@ -261,14 +261,14 @@ impl AiAgentRepo {
     /// Danh sách AI Agent cho trang admin (kèm profile).
     pub async fn list_for_admin(pool: &PgPool) -> AppResult<Vec<AiAgentWithProfile>> {
         let rows = sqlx::query_as::<_, AiAgentWithProfile>(
-            r#"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
+            r"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
                      u.is_banned, u.created_at, u.last_seen_at,
                      p.model_name, p.vendor, p.version, p.capabilities,
                      p.privacy_level, p.accent_color, p.verified
               FROM users u
               JOIN ai_agent_profiles p ON p.user_id = u.id
               WHERE u.role = 'ai_agent'
-              ORDER BY u.created_at DESC"#,
+              ORDER BY u.created_at DESC",
         )
         .fetch_all(pool)
         .await?;
@@ -338,8 +338,8 @@ impl AiAgentRepo {
             _ => None,
         };
         sqlx::query(
-            r#"UPDATE users SET bio = $1, avatar_url = COALESCE($2, avatar_url)
-              WHERE id = $3"#,
+            r"UPDATE users SET bio = $1, avatar_url = COALESCE($2, avatar_url)
+              WHERE id = $3",
         )
         .bind(bio.trim())
         .bind(avatar_url_safe)
@@ -349,12 +349,12 @@ impl AiAgentRepo {
 
         // Cập nhật bảng ai_agent_profiles
         let profile = sqlx::query_as::<_, AiAgentProfile>(
-            r#"UPDATE ai_agent_profiles
+            r"UPDATE ai_agent_profiles
               SET model_name = $1, vendor = $2, version = $3, capabilities = $4,
                   privacy_level = $5, accent_color = $6
               WHERE user_id = $7
               RETURNING user_id, model_name, vendor, version, capabilities, privacy_level,
-                accent_color, verified, last_active_at, created_at, updated_at"#,
+                accent_color, verified, last_active_at, created_at, updated_at",
         )
         .bind(model_name)
         .bind(vendor.trim())
@@ -389,11 +389,11 @@ impl AiAgentRepo {
         let percentage = percentage.clamp(0, 100);
         let metadata_json = metadata.cloned().unwrap_or(serde_json::Value::Null);
         let report = sqlx::query_as::<_, AiProgressReport>(
-            r#"INSERT INTO ai_progress_reports
+            r"INSERT INTO ai_progress_reports
                 (agent_id, task, action, percentage, status, message, metadata, ip_address)
               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
               RETURNING id, agent_id, task, action, percentage, status, message,
-                metadata, ip_address, created_at, updated_at"#,
+                metadata, ip_address, created_at, updated_at",
         )
         .bind(agent_id)
         .bind(task)
@@ -414,7 +414,7 @@ impl AiAgentRepo {
         limit: i64,
     ) -> AppResult<Vec<AiProgressReportWithAgent>> {
         let rows = sqlx::query_as::<_, AiProgressReportWithAgent>(
-            r#"SELECT r.id, r.agent_id, r.task, r.action, r.percentage, r.status,
+            r"SELECT r.id, r.agent_id, r.task, r.action, r.percentage, r.status,
                      r.message, r.metadata, r.ip_address, r.created_at, r.updated_at,
                      u.username AS agent_username,
                      u.display_name AS agent_display_name,
@@ -425,7 +425,7 @@ impl AiAgentRepo {
               JOIN users u ON u.id = r.agent_id
               LEFT JOIN ai_agent_profiles p ON p.user_id = r.agent_id
               ORDER BY r.created_at DESC
-              LIMIT $1"#,
+              LIMIT $1",
         )
         .bind(limit)
         .fetch_all(pool)
@@ -440,12 +440,12 @@ impl AiAgentRepo {
         limit: i64,
     ) -> AppResult<Vec<AiProgressReport>> {
         let rows = sqlx::query_as::<_, AiProgressReport>(
-            r#"SELECT id, agent_id, task, action, percentage, status, message,
+            r"SELECT id, agent_id, task, action, percentage, status, message,
                      metadata, ip_address, created_at, updated_at
               FROM ai_progress_reports
               WHERE agent_id = $1
               ORDER BY created_at DESC
-              LIMIT $2"#,
+              LIMIT $2",
         )
         .bind(agent_id)
         .bind(limit)
@@ -473,7 +473,7 @@ impl AiAgentRepo {
         Ok(())
     }
 
-    /// Sinh username từ model_name (slug đơn giản).
+    /// Sinh username từ `model_name` (slug đơn giản).
     fn slugify_model(model_name: &str) -> String {
         let s: String = model_name
             .trim()
@@ -484,7 +484,7 @@ impl AiAgentRepo {
         if s.is_empty() {
             "ai_agent".to_string()
         } else {
-            format!("ai_{}", s)
+            format!("ai_{s}")
         }
     }
 
@@ -499,7 +499,7 @@ impl AiAgentRepo {
             let candidate = if i == 0 {
                 base.clone()
             } else {
-                format!("{}_{}", base, i)
+                format!("{base}_{i}")
             };
             let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM users WHERE username = $1")
                 .bind(&candidate)
