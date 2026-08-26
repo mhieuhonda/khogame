@@ -77,10 +77,15 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
                 return Ok(pool);
             }
             Err(e) => {
+                // Cẩn thận: sqlx error Display có thể chứa DATABASE_URL
+                // với user:pass@host — log raw sẽ rò rỉ credential vào
+                // stdout/log aggregator. Strip phần userinfo trước khi log.
+                let safe_msg = e.to_string();
+                let stripped = safe_msg.split('@').next().unwrap_or(&safe_msg);
                 tracing::warn!(
                     "Kết nối DB lần {} thất bại: {} — thử lại sau 2s",
                     attempt,
-                    e
+                    stripped
                 );
                 last_err = Some(e.into());
                 tokio::time::sleep(Duration::from_secs(2)).await;
