@@ -154,6 +154,9 @@ pub async fn delete_comment(
     Ok(Html(String::new()))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn like_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -167,6 +170,9 @@ pub async fn like_comment(
     Ok(Html(format!("{}", comment.like_count)))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_replies(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
