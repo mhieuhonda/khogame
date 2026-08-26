@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub struct UserRepo;
 
 impl UserRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_google_sub(pool: &PgPool, sub: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
@@ -20,6 +23,9 @@ impl UserRepo {
         Ok(user)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
@@ -33,6 +39,9 @@ impl UserRepo {
         Ok(user)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
@@ -157,6 +166,9 @@ impl UserRepo {
         Ok(user)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_last_seen(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE users SET last_seen_at = NOW() WHERE id = $1")
             .bind(id)
@@ -165,6 +177,9 @@ impl UserRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn stats(pool: &PgPool, id: Uuid) -> AppResult<UserStats> {
         // 3 COUNT độc lập — join! song song. stats được gọi ở trang hồ sơ
         // HTML (/u/{username}) và API (/api/v1/users/{username}) — giảm
@@ -199,6 +214,9 @@ impl UserRepo {
         })
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_preferences(pool: &PgPool, user_id: Uuid) -> AppResult<UserPreference> {
         let pref = sqlx::query_as::<_, UserPreference>(
             r"SELECT theme, email_notifications, show_online, language
@@ -241,6 +259,9 @@ impl UserRepo {
     /// dark/light toggle gọi mỗi lần user bấm. UPSERT với giá trị mặc
     /// định cho các cột khác nếu row chưa tồn tại (user chưa lưu pref
     /// lần nào).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_theme_only(pool: &PgPool, user_id: Uuid, theme: &str) -> AppResult<()> {
         sqlx::query(
             r"INSERT INTO user_preferences (user_id, theme)
@@ -254,6 +275,9 @@ impl UserRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_admins(pool: &PgPool) -> AppResult<Vec<User>> {
         let users = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
@@ -303,6 +327,9 @@ impl UserRepo {
         Ok(users)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
             .fetch_one(pool)
@@ -313,6 +340,9 @@ impl UserRepo {
     /// Username các user có hồ sơ công khai (không ban, không phải AI
     /// Agent) — cho sitemap. Ưu tiên user hoạt động gần đây, tối đa 1000
     /// URL để giữ sitemap dưới giới hạn 50k URL của Google.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn sitemap_usernames(pool: &PgPool) -> AppResult<Vec<String>> {
         let names: Vec<String> = sqlx::query_scalar(
             r"SELECT username FROM users
@@ -326,6 +356,9 @@ impl UserRepo {
     }
 
     /// Đếm user theo bộ lọc tìm kiếm (phân trang admin đúng tổng số)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_for_admin(pool: &PgPool, search: Option<&str>) -> AppResult<i64> {
         let pattern = format!(
             "%{}%",
@@ -348,6 +381,9 @@ impl UserRepo {
     }
 
     /// Tìm user theo email (dùng cho seed admin)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_email(pool: &PgPool, email: &str) -> AppResult<Option<User>> {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
@@ -362,6 +398,9 @@ impl UserRepo {
     }
 
     /// Nâng cấp user lên admin nếu chưa phải (idempotent)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn ensure_admin_by_email(pool: &PgPool, email: &str) -> AppResult<bool> {
         let res =
             sqlx::query("UPDATE users SET role = 'admin' WHERE email = $1 AND role != 'admin'")
@@ -371,6 +410,9 @@ impl UserRepo {
         Ok(res.rows_affected() > 0)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_role(pool: &PgPool, user_id: Uuid, role: &str) -> AppResult<()> {
         sqlx::query("UPDATE users SET role = $1::user_role WHERE id = $2")
             .bind(role)
@@ -380,6 +422,9 @@ impl UserRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_banned(pool: &PgPool, user_id: Uuid, banned: bool) -> AppResult<()> {
         sqlx::query("UPDATE users SET is_banned = $1 WHERE id = $2")
             .bind(banned)
