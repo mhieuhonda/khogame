@@ -664,6 +664,9 @@ pub async fn update_game(
 }
 
 // ============= Delete game =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
