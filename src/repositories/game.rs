@@ -90,6 +90,9 @@ impl GameRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update(pool: &PgPool, id: Uuid, form: &GameForm) -> AppResult<()> {
         let status = GameStatus::from_str(&form.status);
         let age_rating = AgeRating::from_str(&form.age_rating);
@@ -234,6 +237,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_slug(pool: &PgPool, slug: &str) -> AppResult<Option<Game>> {
         let game = sqlx::query_as::<_, Game>(
             r"SELECT id, user_id, title, slug, excerpt, content, status, version,
@@ -249,6 +255,9 @@ impl GameRepo {
         Ok(game)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Game>> {
         let game = sqlx::query_as::<_, Game>(
             r"SELECT id, user_id, title, slug, excerpt, content, status, version,
@@ -264,6 +273,9 @@ impl GameRepo {
         Ok(game)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_links(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<GameLink>> {
         let links = sqlx::query_as::<_, GameLink>(
             r"SELECT id, game_id, platform, url, created_at FROM game_links WHERE game_id = $1",
@@ -288,6 +300,9 @@ impl GameRepo {
         Ok(url)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_screenshots(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<GameScreenshot>> {
         let shots = sqlx::query_as::<_, GameScreenshot>(
             r"SELECT id, game_id, url, caption, position, created_at
@@ -299,6 +314,9 @@ impl GameRepo {
         Ok(shots)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_tags(pool: &PgPool, game_id: Uuid) -> AppResult<Vec<String>> {
         let tags: Vec<String> = sqlx::query_scalar(
             r"SELECT t.name FROM tags t
@@ -311,6 +329,9 @@ impl GameRepo {
         Ok(tags)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn increment_view_count(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE games SET view_count = view_count + 1 WHERE id = $1")
             .bind(id)
@@ -319,6 +340,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn increment_download_count(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE games SET download_count = download_count + 1 WHERE id = $1")
             .bind(id)
@@ -327,6 +351,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn increment_share_count(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE games SET share_count = share_count + 1 WHERE id = $1")
             .bind(id)
@@ -335,6 +362,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM games WHERE id = $1")
             .bind(id)
@@ -343,6 +373,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_status(pool: &PgPool, id: Uuid, status: &str) -> AppResult<()> {
         sqlx::query("UPDATE games SET status = $1::game_status WHERE id = $2")
             .bind(status)
@@ -355,6 +388,9 @@ impl GameRepo {
     /// Xuất bản game: đặt status='published' và giữ `published_at` cũ nếu
     /// đã có (COALESCE) — để re-publish không reset mốc xuất bản gốc,
     /// ảnh hưởng đến thứ tự sort "latest" và sitemap lastmod.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query(
             "UPDATE games SET status = 'published', \
@@ -366,6 +402,9 @@ impl GameRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_featured(pool: &PgPool, id: Uuid, featured: bool) -> AppResult<()> {
         sqlx::query("UPDATE games SET is_featured = $1 WHERE id = $2")
             .bind(featured)
@@ -698,6 +737,9 @@ impl GameRepo {
     /// Kiểm tra chính xác 1 slug đã tồn tại hay chưa — dùng EXISTS thay
     /// vì COUNT(*) để Postgres dừng ngay khi tìm thấy dòng đầu (hàm này
     /// chạy trong vòng lặp sinh slug duy nhất lúc tạo game).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn slug_exists(pool: &PgPool, slug: &str) -> AppResult<bool> {
         let c: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM games WHERE slug = $1)")
             .bind(slug)
@@ -706,6 +748,9 @@ impl GameRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_published(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE status = 'published'")
             .fetch_one(pool)
@@ -750,6 +795,9 @@ impl GameRepo {
     }
 
     /// Tổng số game trong 1 thể loại (published) để phân trang
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_by_category(pool: &PgPool, cat_slug: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             r"SELECT COUNT(*) FROM games g
@@ -763,6 +811,9 @@ impl GameRepo {
     }
 
     /// Tổng số game mang 1 tag (published) để phân trang
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_by_tag(pool: &PgPool, tag_slug: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             r"SELECT COUNT(*) FROM games g
@@ -777,6 +828,9 @@ impl GameRepo {
     }
 
     /// Tổng số game nổi bật để phân trang
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_featured(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM games WHERE status = 'published' AND is_featured = TRUE",
@@ -786,6 +840,9 @@ impl GameRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn featured(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<GameCard>> {
         let cards = sqlx::query_as::<_, GameCard>(
             r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
@@ -811,6 +868,9 @@ impl GameRepo {
         Ok(cards)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn pending_reports_count(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reports WHERE status = 'pending'")
             .fetch_one(pool)
@@ -862,6 +922,9 @@ impl GameRepo {
         Ok(rows)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_by_status(pool: &PgPool) -> AppResult<Vec<(String, i64)>> {
         let rows: Vec<(String, i64)> =
             sqlx::query_as("SELECT status::text, COUNT(*)::bigint FROM games GROUP BY status")
@@ -871,6 +934,9 @@ impl GameRepo {
     }
 
     /// Tổng số game theo bộ lọc trạng thái (phân trang admin đúng)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_admin(pool: &PgPool, status: Option<&str>) -> AppResult<i64> {
         match status {
             Some(s) if !s.is_empty() => {
@@ -918,6 +984,9 @@ impl GameRepo {
     }
 
     /// Tổng số game của user (phân trang trang "Game của tôi").
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_all_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM games WHERE user_id = $1")
             .bind(user_id)
@@ -939,11 +1008,17 @@ impl GameRepo {
     }
 
     /// Game mới nhất cho RSS
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn latest_for_rss(pool: &PgPool, limit: i64) -> AppResult<Vec<GameCard>> {
         Self::list_published(pool, limit, 0, "latest").await
     }
 
     /// Đếm game trùng tiêu đề (cảnh báo khi tạo)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_similar_title(pool: &PgPool, title: &str) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM games WHERE status = 'published' AND title ILIKE $1 ESCAPE '\\'",
