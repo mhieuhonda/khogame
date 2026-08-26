@@ -530,6 +530,9 @@ impl NewsRepo {
         Ok(items)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_replies(
         pool: &PgPool,
         parent_id: Uuid,
