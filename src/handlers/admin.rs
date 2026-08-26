@@ -804,6 +804,9 @@ pub async fn set_repo_status(
 // ============================================================
 // ADMIN: SETTINGS + ANNOUNCEMENT + MAINTENANCE
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn settings_page(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -853,6 +856,9 @@ pub struct SettingsForm {
     pub repo_auto_approve: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn save_settings(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,

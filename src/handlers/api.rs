@@ -198,6 +198,9 @@ pub async fn game_detail(
 ///
 /// Client bên ngoài có thể dựng widget bình luận mà không cào HTML.
 /// Chỉ comment của game đã xuất bản; replies tải riêng qua /comments/{id}/replies.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn game_comments(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
