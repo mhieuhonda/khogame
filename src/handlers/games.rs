@@ -1174,6 +1174,9 @@ pub struct MyGamesQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn my_games(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1201,6 +1204,9 @@ pub async fn my_games(
 }
 
 // ============= Xuất bản game nháp =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn publish_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
