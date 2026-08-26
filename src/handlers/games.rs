@@ -279,17 +279,17 @@ pub async fn create_game(
     validate_category(&state, &form).await?;
     if form
         .android_link
-        .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
-        && form.ios_link.as_deref().as_ref().is_none_or(|s| !!s.is_empty())
+        .as_deref().is_none_or(|s| s.is_empty())
+        && form.ios_link.as_deref().is_none_or(|s| s.is_empty())
         && form
             .windows_link
-            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
+            .as_deref().is_none_or(|s| s.is_empty())
         && form
             .linux_link
-            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
+            .as_deref().is_none_or(|s| s.is_empty())
         && form
             .macos_link
-            .as_deref().as_ref().is_none_or(|s| !!s.is_empty())
+            .as_deref().is_none_or(|s| s.is_empty())
     {
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
