@@ -54,13 +54,18 @@ pub fn safe_markdown_to_html(input: &str) -> String {
     input
         .split("\n\n")
         .filter(|p| !p.trim().is_empty())
-        .map(|p| format!("<p>{}</p>", render_markdown_line(p)))
+        .map(|p| format!("<p>{}</p>", render_markdown_line(p, 0)))
         .collect::<Vec<_>>()
         .join("\n")
 }
 
 /// Áp dụng inline markdown lên chuỗi ĐÃ escape. Chỉ nhận link http/https.
-fn render_markdown_line(input: &str) -> String {
+///
+/// `depth` giới hạn đệ quy (bold lồng italic lồng bold...) — chống
+/// stack overflow khi input là `*a*b*c*d*...` lồng 1000 level.
+fn render_markdown_line(input: &str, depth: usize) -> String {
+    // Cutoff 32 level — đủ cho mọi input thực tế, không tràn stack.
+    const MAX_DEPTH: usize = 32;
     let s = html_escape(input);
     let mut out = String::with_capacity(s.len());
     let chars: Vec<char> = s.chars().collect();
@@ -81,7 +86,11 @@ fn render_markdown_line(input: &str) -> String {
             if let Some(close) = find_seq(&chars, i + 2, &['*', '*']) {
                 let inner: String = chars[i + 2..close].iter().collect();
                 out.push_str("<strong>");
-                out.push_str(&render_markdown_line(&inner));
+                if depth < MAX_DEPTH {
+                    out.push_str(&render_markdown_line(&inner, depth + 1));
+                } else {
+                    out.push_str(&html_escape(&inner));
+                }
                 out.push_str("</strong>");
                 i = close + 2;
                 continue;
@@ -92,7 +101,11 @@ fn render_markdown_line(input: &str) -> String {
             if let Some(close) = find_seq(&chars, i + 1, &['*']) {
                 let inner: String = chars[i + 1..close].iter().collect();
                 out.push_str("<em>");
-                out.push_str(&render_markdown_line(&inner));
+                if depth < MAX_DEPTH {
+                    out.push_str(&render_markdown_line(&inner, depth + 1));
+                } else {
+                    out.push_str(&html_escape(&inner));
+                }
                 out.push_str("</em>");
                 i = close + 1;
                 continue;
