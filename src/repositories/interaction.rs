@@ -256,6 +256,9 @@ impl InteractionRepo {
         Ok(r)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_download(
         pool: &PgPool,
         game_id: Uuid,
@@ -275,6 +278,9 @@ impl InteractionRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_share(
         pool: &PgPool,
         game_id: Uuid,
