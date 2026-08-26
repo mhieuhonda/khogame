@@ -62,7 +62,17 @@ pub async fn games_list(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = q.per_page.unwrap_or(24).clamp(1, 50);
     let offset = (page - 1) * per_page;
-    let sort = q.sort.clone().unwrap_or_else(|| "latest".into());
+    let sort_raw = q.sort.clone().unwrap_or_else(|| "latest".into());
+    // Validate sort whitelist — repo có match nhưng fallback cho mọi giá trị
+    // lạ. Validate ở đây để trả 400 rõ ràng thay vì 200 với order mặc định
+    // (khiến client không biết sort của họ bị ignore).
+    const SORT_WHITELIST: &[&str] = &["latest", "trending", "downloads", "top_rated", "liked"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Các giá trị chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
 
     // Clamp từ khóa 200 ký tự — chống pattern khổng lồ làm ILIKE chậm.
     let q_search: Option<String> =
