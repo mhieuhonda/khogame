@@ -81,8 +81,13 @@ pub async fn exchange_code(state: &AppState, code: &str) -> AppResult<GoogleToke
         .send()
         .await?;
     if !resp.status().is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        return Err(AppError::OAuth(format!("Token exchange failed: {txt}")));
+        // Tránh log/echo raw response body — có thể chứa token tạm
+        // hoặc thông tin nhạy cảm Google trả kèm. Chỉ giữ status code.
+        let status = resp.status();
+        tracing::warn!("OAuth token exchange failed: status={status}");
+        return Err(AppError::OAuth(format!(
+            "Token exchange failed (HTTP {status})"
+        )));
     }
     let token: GoogleTokenResponse = resp.json().await?;
     Ok(token)
@@ -99,8 +104,14 @@ pub async fn fetch_userinfo(state: &AppState, access_token: &str) -> AppResult<G
         .send()
         .await?;
     if !resp.status().is_success() {
-        let txt = resp.text().await.unwrap_or_default();
-        return Err(AppError::OAuth(format!("Userinfo fetch failed: {txt}")));
+        // Tránh lộ raw body — Google có thể trả kèm token tạm hoặc
+        // thông tin session nhạy cảm khi có lỗi. Chỉ giữ status code
+        // trong message trả về cho user.
+        let status = resp.status();
+        tracing::warn!("OAuth userinfo fetch failed: status={status}");
+        return Err(AppError::OAuth(format!(
+            "Userinfo fetch failed (HTTP {status})"
+        )));
     }
     let info: GoogleUserInfo = resp.json().await?;
     Ok(info)
