@@ -927,6 +927,9 @@ pub async fn list_top_rated(
     .await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_downloads(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -943,6 +946,9 @@ pub async fn list_downloads(
     .await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_featured(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
