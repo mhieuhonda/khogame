@@ -189,6 +189,9 @@ impl AiAgentRepo {
     /// Tìm AI Agent + user theo API token (plain). Trả về (User, profile) nếu
     /// token còn hiệu lực (chưa revoked, chưa expired).
     /// Cập nhật `last_used_at`.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_api_token(
         pool: &PgPool,
         plain_token: &str,
@@ -243,6 +246,9 @@ impl AiAgentRepo {
     }
 
     /// Lấy hồ sơ AI Agent theo `user_id` (công khai, dùng cho trang profile).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_profile_by_user_id(
         pool: &PgPool,
         user_id: Uuid,
