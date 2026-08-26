@@ -1037,6 +1037,9 @@ pub async fn list_by_category(
     })
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_by_tag(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -1184,6 +1187,9 @@ pub struct ShareForm {
     pub platform: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn share_game(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
