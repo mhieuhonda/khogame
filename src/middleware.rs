@@ -231,6 +231,15 @@ impl RateLimiter {
         let window = std::time::Duration::from_secs(window_secs);
         let entry = map.entry(key.to_string()).or_default();
         entry.retain(|t| now.duration_since(*t) < window);
+        // Cap vec size: nếu 1 IP gửi 10_000 req trong cửa sổ (trước khi
+        // bị block lần đầu), vec có thể phình to. Truncate giữ đủ phần tử
+        // để đo đạt ngưỡng, bỏ phần dư thừa (sẽ bị keep vì == max_requests).
+        if entry.len() > max_requests * 2 {
+            let drop_count = entry.len().saturating_sub(max_requests);
+            // Cắt phần tử CŨ NHẤT để vec chỉ còn chứa các timestamp gần
+            // đây — đúng cho việc đếm số request còn trong window.
+            entry.drain(0..drop_count);
+        }
         let allowed = entry.len() < max_requests;
         if allowed {
             entry.push(now);
@@ -239,7 +248,15 @@ impl RateLimiter {
         // xuống 4_000 để dọn thường hơn, và xoá cả entry rỗng (không
         // chỉ entry có timestamp cuối ngoài cửa sổ).
         if map.len() > 4_000 {
-            map.retain(|_, v| !v.is_empty() && now.duration_since(*v.last().unwrap()) < window);
+            map.retain(|_, v| {
+                if v.is_empty() {
+                    return false;
+                }
+                match v.last() {
+                    Some(last) => now.duration_since(*last) < window,
+                    None => false,
+                }
+            });
         }
         allowed
     }
