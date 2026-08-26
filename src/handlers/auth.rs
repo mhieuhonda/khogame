@@ -87,9 +87,11 @@ pub async fn google_callback(
     connect_info: axum::extract::ConnectInfo<std::net::SocketAddr>,
 ) -> AppResult<(CookieJar, Redirect)> {
     if let Some(err) = &q.error {
-        tracing::warn!("OAuth error: {}", err);
+        // Clamp log message: tránh attacker dùng error= rất dài để bloat log.
+        let err_short: String = err.chars().take(500).collect();
+        tracing::warn!("OAuth error: {}", err_short);
         return Err(AppError::OAuth(format!(
-            "Google từ chối đăng nhập: {err}"
+            "Google từ chối đăng nhập: {err_short}"
         )));
     }
 
