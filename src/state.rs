@@ -15,6 +15,9 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn new(config: AppConfig) -> anyhow::Result<Self> {
         let db = crate::db::connect(&config.database_url).await?;
         let http_client = reqwest::Client::builder()
