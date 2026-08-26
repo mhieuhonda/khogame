@@ -152,12 +152,25 @@ pub fn hash_ai_agent_token(token: &str) -> String {
     hash_token(token)
 }
 
+/// Lấy cookie `Secure` flag — dựa vào BASE_URL (https://→ true) nhưng
+/// cho phép override qua env `COOKIE_SECURE=1` cho prod chạy sau TLS
+/// terminating proxy với BASE_URL=http://localhost (mặc định config).
+fn should_secure_cookie(base_url: &str) -> bool {
+    if std::env::var("COOKIE_SECURE")
+        .ok()
+        .is_some_and(|v| matches!(v.trim(), "1" | "true" | "yes" | "on"))
+    {
+        return true;
+    }
+    base_url.starts_with("https://")
+}
+
 pub fn set_session_cookie(jar: &mut CookieJar, token: &str, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};
     let cookie = Cookie::build((SESSION_COOKIE, token.to_string()))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::days(SESSION_TTL_DAYS))
         .build();
@@ -169,7 +182,7 @@ pub fn clear_session_cookie(jar: &mut CookieJar, base_url: &str) {
     let cookie = Cookie::build((SESSION_COOKIE, ""))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(0))
         .build();
