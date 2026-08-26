@@ -34,19 +34,19 @@ impl RepoRepo {
         open_issues: i32,
         pushed_at: Option<chrono::DateTime<chrono::Utc>>,
     ) -> AppResult<Uuid> {
-        let id: Uuid = sqlx::query_scalar(
+        // Trước đây dùng ON CONFLICT (owner, repo_name) DO UPDATE SET
+        // user_id = EXCLUDED.user_id — race TOCTOU: 2 user cùng INSERT,
+        // user sau sẽ LẤT user_id của user trước (chiếm quyền sở hữu).
+        //
+        // Fix: DO NOTHING, trả Conflict cho caller. Caller (handler) đã
+        // check find_by_owner_name trước, nên DO NOTHING chỉ kích hoạt
+        // khi race — handler catch Conflict và trả 409 cho user.
+        let result = sqlx::query(
             r"INSERT INTO github_repos
                 (user_id, game_id, owner, repo_name, description, homepage,
                  primary_language, stars, forks, open_issues, pushed_at)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-               ON CONFLICT (owner, repo_name) DO UPDATE SET
-                 user_id = EXCLUDED.user_id,
-                 game_id = EXCLUDED.game_id,
-                 stars = EXCLUDED.stars,
-                 forks = EXCLUDED.forks,
-                 open_issues = EXCLUDED.open_issues,
-                 pushed_at = EXCLUDED.pushed_at
-               RETURNING id",
+               ON CONFLICT (owner, repo_name) DO NOTHING",
         )
         .bind(user_id)
         .bind(game_id)
@@ -71,6 +71,22 @@ impl RepoRepo {
         .bind(forks)
         .bind(open_issues)
         .bind(pushed_at)
+        .execute(pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            // Race condition: row đã tồn tại giữa check và INSERT.
+            // Trả Conflict để handler báo cho user.
+            return Err(crate::error::AppError::Conflict(
+                "Repo đã tồn tại (có thể vừa được người khác đăng ký cùng lúc)".into(),
+            ));
+        }
+        // Lấy id của row vừa INSERT — query lại vì RETURNING không dùng
+        // được với ON CONFLICT DO NOTHING khi row đã tồn tại (race case).
+        let id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM github_repos WHERE owner = $1 AND repo_name = $2",
+        )
+        .bind(owner)
+        .bind(repo_name)
         .fetch_one(pool)
         .await?;
         Ok(id)
