@@ -121,7 +121,10 @@ pub async fn google_callback(
         }
     }
 
-    let token = auth::exchange_code(&state, &q.code).await?;
+    // Validate code param — Google code thường 100-200 ký tự; 1MB code
+    // sẽ được gửi sang Google API → waste bandwidth + log bloat.
+    let code: String = q.code.chars().take(2048).collect();
+    let token = auth::exchange_code(&state, &code).await?;
     let userinfo = auth::fetch_userinfo(&state, &token.access_token).await?;
 
     if !userinfo.email_verified.unwrap_or(false) {
