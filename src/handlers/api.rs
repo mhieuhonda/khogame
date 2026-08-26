@@ -589,6 +589,9 @@ pub async fn check_duplicate(
 
 // ===================== SEO: RSS, Sitemap, robots =====================
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn rss(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
@@ -695,6 +698,9 @@ pub async fn rss(
 
 /// GET /news.rss — RSS feed riêng cho tin tức.
 /// Tách khỏi /rss.xml (game) để reader subscribe độc lập.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_rss(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
@@ -790,6 +796,9 @@ pub async fn news_rss(
         .into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn sitemap(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,
