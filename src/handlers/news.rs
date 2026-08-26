@@ -671,6 +671,17 @@ mod tests {
     }
 
     #[test]
+    fn validate_url_rejects_control_chars() {
+        // CR/LF trong URL → header injection / XML bẻ gãy
+        assert!(validate_url("https://evil.com/\r\nSet-Cookie: bad=1").is_err());
+        assert!(validate_url("https://evil.com/\n").is_err());
+        assert!(validate_url("https://evil.com/\tfoo").is_err());
+        assert!(validate_url("https://evil.com/\0").is_err());
+        // URL sạch → OK
+        assert!(validate_url("https://example.com/path").is_ok());
+    }
+
+    #[test]
     fn news_categories_have_unique_keys() {
         // Đảm bảo không có key trùng trong whitelist
         let mut keys: Vec<&str> = NEWS_CATEGORIES.iter().map(|(k, _)| *k).collect();
