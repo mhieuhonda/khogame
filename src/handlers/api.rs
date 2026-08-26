@@ -526,6 +526,9 @@ pub struct SuggestQuery {
     pub q: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn games_suggest(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SuggestQuery>,
@@ -555,6 +558,9 @@ pub async fn games_suggest(
         .into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn check_duplicate(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DuplicateQuery>,
