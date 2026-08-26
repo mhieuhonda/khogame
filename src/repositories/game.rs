@@ -887,6 +887,9 @@ impl GameRepo {
     // ===== Admin & quản lý =====
 
     /// Danh sách game cho admin (mọi trạng thái, kèm filter)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn admin_list(
         pool: &PgPool,
         status: Option<&str>,
@@ -965,6 +968,9 @@ impl GameRepo {
     /// Game của 1 user (kể cả draft/hidden) cho trang "Game của tôi" —
     /// phân trang LIMIT/OFFSET (trước đây trả TOÀN BỘ không giới hạn,
     /// user 500 game = 1 query nặng + bảng HTML khổng lồ).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn all_by_user(
         pool: &PgPool,
         user_id: Uuid,
