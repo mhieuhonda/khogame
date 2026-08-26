@@ -23,6 +23,9 @@ impl NewsRepo {
     /// Tạo tin tức mới. Mặc định status = 'pending' — admin phải duyệt.
     /// `author_ip` và `author_ua` lưu lại để admin truy vết nếu cần.
     /// Trả về id của tin vừa tạo.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
@@ -158,6 +161,9 @@ impl NewsRepo {
     }
 
     /// Lọc theo category (status=published).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_category(
         pool: &PgPool,
         category: &str,
