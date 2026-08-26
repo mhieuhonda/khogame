@@ -228,6 +228,9 @@ impl UserRepo {
         Ok(pref.unwrap_or_default())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_preferences(
         pool: &PgPool,
         user_id: Uuid,
@@ -290,6 +293,9 @@ impl UserRepo {
     }
 
     /// Danh sách user cho admin (kèm số game), tìm kiếm theo tên/email
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_for_admin(
         pool: &PgPool,
         search: Option<&str>,
