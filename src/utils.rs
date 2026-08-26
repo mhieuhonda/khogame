@@ -172,9 +172,29 @@ fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)
     if j + 1 >= chars.len() || chars[j + 1] != '(' {
         return None;
     }
-    // tìm ')' đóng — không cho lồng nhau trong URL
+    // Tìm ')' đóng — balance parens trong URL (Wikipedia URLs có
+    // parens như https://en.wikipedia.org/wiki/Foo_(bar)). Trước đây
+    // dùng find_seq(chars, ..., [')']) lấy ')' đầu → URL bị cắt ngắn.
     let open_url = j + 1;
-    let close_url = find_seq(chars, open_url + 1, &[')'])?;
+    let mut depth_paren = 1i32;
+    let mut k = open_url + 1;
+    while k < chars.len() {
+        match chars[k] {
+            '(' => depth_paren += 1,
+            ')' => {
+                depth_paren -= 1;
+                if depth_paren == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    if k >= chars.len() || depth_paren != 0 {
+        return None;
+    }
+    let close_url = k;
     let raw_url: String = chars[open_url + 1..close_url].iter().collect();
     let trimmed = raw_url.trim();
     let lower = trimmed.to_ascii_lowercase();
