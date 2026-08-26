@@ -29,6 +29,9 @@ fn ensure_interactable(
     Ok(())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn toggle_like(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
