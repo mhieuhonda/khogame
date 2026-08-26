@@ -136,6 +136,9 @@ impl NotificationRepo {
     /// (endpoint /notifications là giao diện người) — mỗi lần broadcast
     /// tạo N dòng chết trong bảng, phình bảng và làm số liệu 'đã gửi'
     /// theo SAO số user thật.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn broadcast(
         pool: &PgPool,
         title: &str,
@@ -156,6 +159,9 @@ impl NotificationRepo {
     }
 
     /// Thông báo mention tới 1 user
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create_mention(
         pool: &PgPool,
         user_id: Uuid,
