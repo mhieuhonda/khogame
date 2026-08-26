@@ -109,6 +109,9 @@ async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) 
 
 // ============= List (public) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
