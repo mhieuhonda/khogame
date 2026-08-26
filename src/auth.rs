@@ -63,6 +63,9 @@ pub fn build_auth_url(state: &AppState, csrf_token: &str) -> String {
     format!("https://accounts.google.com/o/oauth2/v2/auth?{query}")
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn exchange_code(state: &AppState, code: &str) -> AppResult<GoogleTokenResponse> {
     let body = GoogleTokenRequest {
         code,
@@ -85,6 +88,9 @@ pub async fn exchange_code(state: &AppState, code: &str) -> AppResult<GoogleToke
     Ok(token)
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn fetch_userinfo(state: &AppState, access_token: &str) -> AppResult<GoogleUserInfo> {
     let resp = state
         .http_client
