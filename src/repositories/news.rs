@@ -517,6 +517,9 @@ impl NewsRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_comments(
         pool: &PgPool,
         news_id: Uuid,
@@ -565,6 +568,9 @@ impl NewsRepo {
         Ok(items)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete_comment(
         pool: &PgPool,
         id: Uuid,
