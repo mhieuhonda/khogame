@@ -963,6 +963,9 @@ pub struct BroadcastForm {
     pub link: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn broadcast(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1023,6 +1026,9 @@ pub struct AuditQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn audit_log(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
