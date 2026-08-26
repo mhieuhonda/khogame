@@ -64,7 +64,7 @@ fn validate_url(url: &str) -> Result<String, AppError> {
 }
 
 /// Sinh slug duy nhất cho news.
-async fn make_unique_slug(state: &AppState, title: &str) -> String {
+async fn make_unique_slug(state: &AppState, title: &str) -> AppResult<String> {
     let base = {
         let s = slug::slugify(title);
         if s.is_empty() {
@@ -80,24 +80,21 @@ async fn make_unique_slug(state: &AppState, title: &str) -> String {
     let mut slug = base.clone();
     let mut suffix = 1u32;
     loop {
-        match NewsRepo::find_by_slug_public(&state.db, &slug).await {
-            Ok(None) => break,
-            Ok(Some(_)) => {
+        match NewsRepo::find_by_slug_public(&state.db, &slug).await? {
+            None => break,
+            Some(_) => {
                 suffix += 1;
                 slug = format!("{base}-{suffix}");
                 if suffix > 100 {
-                    slug = format!("{}-{}", slug, Uuid::new_v4().simple());
+                    // Vượt 100 lần thử — fallback UUID (dùng base, không
+                    // ghép thêm suffix để URL không quá xấu).
+                    slug = format!("{}-{}", base, Uuid::new_v4().simple());
                     break;
                 }
             }
-            // DB error → fallback suffix random để không block user
-            Err(_) => {
-                slug = format!("{}-{}", base, Uuid::new_v4().simple());
-                break;
-            }
         }
     }
-    slug
+    Ok(slug)
 }
 
 async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) -> i64 {
@@ -394,7 +391,7 @@ pub async fn create(
         source_name,
     };
 
-    let slug = make_unique_slug(&state, &title).await;
+    let slug = make_unique_slug(&state, &title).await?;
 
     let ip = crate::middleware::client_ip_from_parts(
         &headers,
