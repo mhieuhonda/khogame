@@ -1035,6 +1035,9 @@ pub async fn list_by_tag(
     })
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_categories(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -1065,6 +1068,9 @@ pub struct SearchQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn search(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
