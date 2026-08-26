@@ -538,6 +538,9 @@ impl GameRepo {
 
     /// Gợi ý tiêu đề game cho autocomplete ô tìm kiếm. Chỉ title + slug
     /// (query nhẹ), ưu tiên game nhiều view. Trả về tối đa `limit` gợi ý.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn suggest_titles(
         pool: &PgPool,
         query: &str,
