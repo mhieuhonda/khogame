@@ -1046,7 +1046,15 @@ pub async fn list_by_category(
     let category = CategoryRepo::find_by_slug(&state.db, &cat_slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Thể loại không tồn tại".into()))?;
-    let sort = q.sort.unwrap_or_else(|| "latest".into());
+    let sort_raw = q.sort.unwrap_or_else(|| "latest".into());
+    const SORT_WHITELIST: &[&str] =
+        &["latest", "trending", "downloads", "top_rated", "liked"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
@@ -1087,7 +1095,15 @@ pub async fn list_by_tag(
     let tag = TagRepo::find_by_slug(&state.db, &tag_slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Tag không tồn tại".into()))?;
-    let sort = q.sort.unwrap_or_else(|| "latest".into());
+    let sort_raw = q.sort.unwrap_or_else(|| "latest".into());
+    const SORT_WHITELIST: &[&str] =
+        &["latest", "trending", "downloads", "top_rated", "liked"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
