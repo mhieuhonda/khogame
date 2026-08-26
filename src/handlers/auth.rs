@@ -209,6 +209,9 @@ pub async fn google_callback(
     Ok((new_jar, Redirect::to(redirect_target)))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -227,6 +230,9 @@ pub async fn logout(
 /// Đăng xuất khỏi MỌI thiết bị: xoá toàn bộ session của user trong DB
 /// (laptop, điện thoại, máy khác đang lưu phiên), kể cả phiên hiện tại.
 /// Dùng khi nghi ngờ tài khoản bị truy cập trái phép.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn logout_all(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
