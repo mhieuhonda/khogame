@@ -391,6 +391,11 @@ mod path_normalization_tests {
 /// được (Traefik/Coolify/CDN). Khi expose trực tiếp, header X-Forwarded-For
 /// do CLIENT tự gắn là dữ liệu attacker điều khiển — dùng sẽ bị giả IP
 /// để lách rate-limit. Tắt qua env `TRUST_PROXY_HEADERS=false`.
+///
+/// Lưu ý về multi-hop X-Forwarded-For: header có dạng `client, proxy1, proxy2`.
+/// Trusted proxy (Traefik/Coolify) APPENDS real client IP vào cuối — vậy
+/// phần tử CUỐI là real IP do proxy set, phần tử đầu có thể là attacker-
+/// controlled. Lấy cuối thay vì đầu để không bị spoof.
 #[must_use]
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
@@ -398,13 +403,36 @@ pub fn client_ip_from_parts(
     trust_proxy: bool,
 ) -> String {
     if trust_proxy {
-        for h in ["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] {
+        // X-Real-IP / CF-Connecting-IP: 1 giá trị, lấy nguyên.
+        for h in ["x-real-ip", "cf-connecting-ip"] {
             if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
-                return v.split(',').next().unwrap_or("unknown").trim().to_string();
+                let ip = v.trim();
+                if is_valid_ip_string(ip) {
+                    return ip.to_string();
+                }
+            }
+        }
+        // X-Forwarded-For: có thể nhiều hop, lấy CUỐI cùng (trusted proxy append).
+        if let Some(v) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+            // Walk từ phải sang trái, lấy phần tử đầu tiên hợp lệ
+            // (phần tử cuối cùng do trusted proxy thêm). Chấp nhận fallback
+            // là phần tử đầu nếu tất cả đều rác — vẫn tốt hơn "unknown".
+            for part in v.split(',').rev() {
+                let ip = part.trim();
+                if is_valid_ip_string(ip) {
+                    return ip.to_string();
+                }
             }
         }
     }
     connect_info.map_or_else(|| "unknown".into(), |a| a.ip().to_string())
+}
+
+/// Kiểm tra chuỗi là IPv4/IPv6 hợp lệ, đồng thời ngầm giới hạn độ dài
+/// (IPv4 tối đa 15 ký tự, IPv6 tối đa 45 ký tự). Tránh lưu 1MB header text
+/// vào TEXT column news.author_ip / sessions.ip.
+fn is_valid_ip_string(s: &str) -> bool {
+    s.parse::<std::net::IpAddr>().is_ok()
 }
 
 /// Chuẩn hoá đường dẫn thành "endpoint bucket" cho rate limit: thay mọi
