@@ -874,7 +874,16 @@ async fn build_list_template(
     default_sort: &str,
     q: ListQuery,
 ) -> AppResult<GameListTemplate> {
-    let sort = q.sort.unwrap_or_else(|| default_sort.to_string());
+    let sort_raw = q.sort.unwrap_or_else(|| default_sort.to_string());
+    // Validate sort whitelist — đồng nhất với API games_list và search.
+    const SORT_WHITELIST: &[&str] =
+        &["latest", "trending", "downloads", "top_rated", "liked"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
