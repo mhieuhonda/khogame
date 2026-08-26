@@ -18,6 +18,9 @@ impl SettingsRepo {
         Ok(v)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set(
         pool: &PgPool,
         key: &str,
@@ -65,6 +68,9 @@ impl SettingsRepo {
 pub struct AdminLogRepo;
 
 impl AdminLogRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn log(
         pool: &PgPool,
         admin_id: Uuid,
