@@ -94,6 +94,9 @@ pub struct EditCommentForm {
     pub content: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn edit_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -207,6 +210,9 @@ pub struct CommentsPageQuery {
 /// GET /games/{slug}/comments?page=N — trả về HTML các comment trang N
 /// để nút "Tải thêm" chèn vào cuối danh sách. Trước đây trang game chỉ
 /// load 50 comment đầu và KHÔNG có cách nào xem phần cũ.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_comments_page(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
