@@ -618,9 +618,17 @@ pub async fn rate_limit(
         // có thể phát ~200 request. Ngưỡng mặc định 120/phút sẽ chặn giữa
         // chừng người dùng đang gõ. 240/phút vẫn chặn spam script tốt.
         (240, 60)
-    } else if path.contains("/download") {
+    } else if path.ends_with("/download") {
+        // Chỉ match URL kết thúc bằng /download (POST /games/{slug}/download).
+        // Trước đây dùng contains("/download") → match cả
+        // /admin/games/{id}/delete?reason=/download — gán bucket
+        // 20/phút cho admin action, không ảnh hưởng security nhưng
+        // tạo bucket sai (admin bị giới hạn download thay vì admin).
         (20, 60) // 20 download/phút
-    } else if path.contains("/comments") {
+    } else if path.ends_with("/comments") || path.contains("/comments/") {
+        // Match /games/{slug}/comments (POST create) và
+        // /comments/{id}/replies (GET list replies) — đều là tương tác
+        // bình luận, dùng chung bucket 10/phút.
         (10, 60) // 10 bình luận/phút
     } else {
         (120, 60)
