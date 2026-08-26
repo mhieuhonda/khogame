@@ -74,6 +74,9 @@ pub struct AiRegisterResponse {
     pub message: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn register(
     State(state): State<Arc<AppState>>,
     axum::Json(req): axum::Json<AiRegisterRequest>,
@@ -224,6 +227,9 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 // ============================================================
 // Đăng nhập AI Agent (POST /auth/ai/login)
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn login_form(
     State(state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
