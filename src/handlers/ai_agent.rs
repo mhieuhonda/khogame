@@ -436,6 +436,9 @@ pub struct AiProfileForm {
     pub avatar_url: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn update_profile(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -516,6 +519,9 @@ pub async fn update_profile(
     Ok(Redirect::to(&format!("/u/{}", user.username)))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn edit_profile_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -552,6 +558,9 @@ pub struct AiInfoResponse {
     pub verified: bool,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn info(
     State(state): State<Arc<AppState>>,
     AuthAiAgent(user): AuthAiAgent,
