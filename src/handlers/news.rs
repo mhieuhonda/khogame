@@ -45,9 +45,16 @@ fn validate_category(cat: &str) -> Result<String, AppError> {
 }
 
 /// Validate URL http(s) — chống javascript: scheme gây XSS.
+/// Cũng chặn control char (CR/LF) trong URL để chống header injection
+/// khi URL sau này được dùng làm Location header hoặc trong RSS XML.
 fn validate_url(url: &str) -> Result<String, AppError> {
     if url.is_empty() {
         return Ok(String::new());
+    }
+    if url.bytes().any(|b| b.is_ascii_control()) {
+        return Err(AppError::BadRequest(
+            "URL chứa ký tự điều khiển không hợp lệ".into(),
+        ));
     }
     if url.starts_with("http://") || url.starts_with("https://") {
         if url.len() > 2048 {
