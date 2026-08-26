@@ -658,6 +658,9 @@ pub async fn edit_game_form(
 }
 
 // ============= Update game =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn update_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -703,6 +706,9 @@ pub struct DownloadForm {
     pub platform: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn download_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
