@@ -687,6 +687,9 @@ pub async fn save_category(
     Ok(Redirect::to("/admin/categories"))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete_category(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
