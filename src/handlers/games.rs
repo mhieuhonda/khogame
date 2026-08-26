@@ -261,6 +261,9 @@ pub async fn new_game_form(
 }
 
 // ============= Create game =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn create_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -350,6 +353,9 @@ pub async fn create_game(
 }
 
 // ============= Show game =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn show_game(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -608,6 +614,9 @@ fn build_game_json_ld(
 }
 
 // ============= Edit game =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn edit_game_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
