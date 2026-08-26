@@ -604,6 +604,7 @@ pub async fn download_game(
         &headers,
         Some(&connect_info.0),
         state.config.trust_proxy_headers,
+        state.config.trusted_proxy_hops,
     );
     // Analytics download chạy nền — response redirect cho user ngay
     // (trước đây 4 await tuần tự cộng vào thời gian chờ bấm nút Tải).

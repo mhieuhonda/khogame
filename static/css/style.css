@@ -959,7 +959,7 @@ a:hover { color: var(--accent-light); }
     border-color: var(--warning);
     background: rgba(245, 158, 11, 0.05);
 }
-.comment-body { flex: 1; }
+.comment-body { flex: 1; min-width: 0; }
 .comment-header {
     display: flex;
     align-items: center;
@@ -977,7 +977,7 @@ a:hover { color: var(--accent-light); }
     font-size: 11px;
     font-weight: 600;
 }
-.comment-content { margin-bottom: 8px; font-size: 14px; line-height: 1.6; }
+.comment-content { margin-bottom: 8px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
 .comment-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .comment-action {
     background: none;
@@ -3582,4 +3582,66 @@ a:hover { color: var(--accent-light); }
     font-family: 'JetBrains Mono', monospace;
     font-size: 0.85em;
     color: var(--text-primary);
+}
+
+/* ============================================================
+   Fix (v1.3.0): bình luận tin tức dài làm THỜI GIAN tràn khỏi khung.
+   Cấu trúc news comment khác game comment: .comment-item (flex row)
+   có 3 cột — .comment-author | .comment-body | .comment-meta (thời
+   gian). Flex item mặc định min-width:auto: chuỗi dài không dấu cách
+   (URL, spam 'aaaa...') làm min-content của .comment-body phình to
+   → cả flex row tràn ngang → cột .comment-meta (thời gian) bị đẩy
+   ra OUTSIDE viền khung bình luận.
+   Fix: body được phép shrink (min-width:0) + wrap chữ dài; meta
+   không bị nén (flex-shrink:0, nowrap) và dính sát phải. Không đổi
+   bố cục hiển thị với bình luận độ dài bình thường.
+   ============================================================ */
+.news-comments .comment-body {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.news-comments .comment-author {
+    min-width: 0;
+}
+.news-comments .comment-author strong {
+    overflow-wrap: anywhere;
+}
+.news-comments .comment-meta {
+    flex-shrink: 0;
+    white-space: nowrap;
+    margin-left: auto;
+}
+
+/* Fix tương tự cho comment game: chữ dài trong .comment-content
+   (đã có overflow-wrap) + body shrink (đã có min-width:0 ở trên). */
+
+/* ============================================================
+   v1.3.0 PERF: Cross-document View Transitions (Chrome 126+,
+   Safari 18.2+; Firefox bỏ qua an toàn → navigation tức thì như cũ).
+   Khi bấm link sang trang khác, browser giữ screenshot trang cũ và
+   cross-fade sang trang mới trong ~120ms thay vì trắng màn hình đột
+   ngột — cảm giác "mượt" rõ rệt khi kết hợp prefetch (speculation
+   rules). KHÔNG thay đổi giao diện của bất kỳ trang nào — chỉ hiệu
+   ứng chuyển tiếp giữa 2 trang giống hệt nhau.
+   https://developer.mozilla.org/en-US/docs/Web/CSS/@view-transition
+   ============================================================ */
+@view-transition {
+    navigation: auto;
+}
+
+::view-transition-old(root) {
+    animation-duration: 120ms;
+    animation-timing-function: ease-out;
+}
+::view-transition-new(root) {
+    animation-duration: 120ms;
+    animation-timing-function: ease-in;
+}
+
+/* Người dùng nhạy cảm chuyển động (vestibular disorder) — tắt fade */
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+        animation: none;
+    }
 }

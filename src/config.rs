@@ -34,6 +34,19 @@ pub struct AppConfig {
     /// attacker tự set X-Forwarded-For để giả IP, chia bucket rate-limit
     /// riêng mỗi lần và lách giới hạn.
     pub trust_proxy_headers: bool,
+    /// Số hop proxy TIN CẬY giữa client và app (mặc định 1).
+    ///
+    /// X-Forwarded-For có dạng `client, proxy1, proxy2...` — mỗi proxy append
+    /// IP của hop trước đó vào CUỐI chuỗi. Real client IP nằm ở vị trí
+    /// `số_phần_tử - hops` kể từ bên trái. Ví dụ:
+    /// - 1 proxy (Traefik): `XFF = "client"` → lấy phần tử cuối (hops=1).
+    /// - 2 proxy (Cloudflare → Traefik): `XFF = "client, cf_edge"` → lấy
+    ///   phần tử KẾ TRƯỚC CUỐI (hops=2), vì phần tử cuối là IP edge của CF
+    ///   (ai cũng giống nhau → y hệt bug "mọi user cùng 1 IP").
+    ///
+    /// Lấy nhầm phần tử cuối khi có ≥2 hop là nguyên nhân kinh điển của
+    /// lỗi "toàn bộ user hiện cùng một IP" ở admin.
+    pub trusted_proxy_hops: u8,
 }
 
 impl AppConfig {
@@ -163,6 +176,20 @@ impl AppConfig {
                     );
                 }
                 v
+            },
+            trusted_proxy_hops: {
+                let h = env::var("TRUSTED_PROXY_HOPS")
+                    .ok()
+                    .and_then(|v| v.trim().parse::<u8>().ok())
+                    .filter(|v| *v > 0 && *v <= 10)
+                    .unwrap_or(1);
+                if h > 1 {
+                    tracing::info!(
+                        "TRUSTED_PROXY_HOPS={h} — bỏ qua {h} hop proxy cuối khi đọc \
+                         X-Forwarded-For (chuỗi proxy: client → ... → app)."
+                    );
+                }
+                h
             },
         })
     }

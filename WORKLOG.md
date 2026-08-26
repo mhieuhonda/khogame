@@ -234,3 +234,47 @@ Stage Summary:
 - Stack giữ nguyên: Rust 1.98.0, axum 0.8.9, sqlx 0.9, askama 0.16, HTMX 2.0.10, PostgreSQL 17.
 - Tất cả CI gates pass local — sẽ pass trên GitHub Actions.
 - Sẽ commit với username mhieuhonda, push main, tag v1.2.1 (trigger Release workflow + CD workflow deploy lên Coolify prod).
+
+---
+Task ID: 7
+Agent: super-z (main agent)
+Task: Fix IP admin (shared IP), fix comment time overflow, fix news comments thiếu ở quản lý, tối ưu tốc độ toàn diện không đổi UI, release v1.3.0.
+
+Work Log:
+- Chẩn đoán IP bằng thực nghiệm TRỰC TIẾP trên prod (không đoán):
+  - curl 11 request liên tiếp /auth/ai/login → 429 đúng request 11 (rate-limit oracle hoạt động).
+  - Spoof X-Real-IP / CF-Connecting-IP / X-Forwarded-For → đều bị bỏ qua (Traefik v3.7 strip XFF không tin cậy, set X-Real-Ip = peer).
+  - Request qua r.jina.ai (IP nguồn hoàn toàn khác) → dính CHUNG bucket 429 → app thấy CÙNG một IP cho mọi client.
+  - Đọc Coolify API: Traefik v3.7 trên sub VPS 10.187.247.3, không có forwardedHeaders/proxyProtocol config; TLS kết thúc ở Traefik sub VPS (TRAEFIK DEFAULT CERT cho SNI lạ) → main VPS nginx stream forward TCP 443, source IP mất ở hop này.
+  - Kết luận: IP thật không thể khôi phục ở tầng app — bắt buộc PROXY protocol ở nginx main VPS + Traefik trustedIPs.
+- Fix middleware.rs:
+  - client_ip_from_parts thêm tham số hops (TRUSTED_PROXY_HOPS, mặc định 1): parse XFF đúng số hop proxy; hops≥2 bỏ qua X-Real-IP/CF-Connecting-IP (đó là IP proxy trung gian).
+  - is_private_ip(): nhận diện IP private/loopback/unknown = dấu hiệu proxy giấu IP.
+  - rate_limit: khi IP private → bucket key theo session-cookie hash (đã login) hoặc cookie ls_anon (UUID tự set, cả response 200 lẫn 429) → hết tình trạng 1 user spam = 429 cả site.
+  - warn_shared_ip_once(): log WARN 1 lần khi phát hiện shared IP.
+  - +14 unit test (XFF multi-hop, spoof, private IP, cookie).
+- Fix comment time overflow (bug #2):
+  - .comment-body thêm min-width:0 (flex item min-width:auto là thủ phạm), .comment-content thêm overflow-wrap:anywhere.
+  - Khối .news-comments riêng: body wrap chữ dài, .comment-meta flex-shrink:0 + nowrap + margin-left:auto giữ thời gian trong khung.
+- Fix news comments thiếu ở quản lý (bug #3):
+  - CommentRepo::list_recent/count_all → UNION ALL comments + news_comments với cột kind/item_title/item_slug.
+  - Model CommentWithGame → admin view thống nhất + item_url()/kind_label().
+  - admin delete_comment → delete_any (xoá cả 2 bảng); pin_comment → fallback news_comments thay vì 500.
+  - Template admin/comments.html + admin/index.html link đúng /games/ hoặc /news/.
+- Tối ưu hiệu năng (không đổi giao diện):
+  - Self-host fonts: tải Inter v20 + JetBrains Mono v24 variable fonts (subsets latin+vietnamese) về /static/fonts, viết fonts.css, bỏ Google Fonts + 2 preconnect (giảm 2 DNS+TCP+TLS ngoài cho user VN).
+  - tower-http + compression-br + compression-zstd (brotli nhỏ hơn gzip ~20%).
+  - Speculation Rules prefetch (conservative — pointerdown) trong layout.html; CSP hiện tại đã cho phép ('unsafe-inline' script-src).
+  - Cross-document View Transitions 120ms + prefers-reduced-motion off.
+  - DB_MIN_CONNECTIONS=2 trong compose prod.
+  - Bump static cache-buster ?v=1.1.0 → ?v=1.3.0 (layout + index).
+- Tạo docs/real-ip.md: hướng dẫn 2 thao tác hạ tầng (nginx proxy_protocol on + Traefik proxyProtocol.trustedIPs) để admin hiện IP thật — app không cần đổi thêm.
+- Bump version 1.2.1 → 1.3.0, CHANGELOG.md đầy đủ, .env.example thêm TRUSTED_PROXY_HOPS.
+- Verify local Rust 1.98.0: cargo check ✅, clippy -D warnings ✅, cargo test (183 tests pass, +14 mới) ✅, fmt ✅, rustdoc -D warnings ✅. Dockerfile COPY /app/static đã cover static/fonts mới.
+
+Stage Summary:
+- 3 bug user báo cáo đều đã xử lý: IP (app-level + rate-limit safety + docs hạ tầng), comment time overflow (CSS), news comments ở quản lý (UNION query + pin/delete).
+- Tốc độ: fonts self-host + brotli + prefetch + view transitions + DB pool ấm — tất cả progressive enhancement, không đổi UI.
+- Shared rate-limit bucket (một user spam chặn cả site) — nguyên nhân gốc do IP proxy — đã fix bằng cookie identity fallback, tự tắt khi hạ tầng truyền IP thật.
+- IP THẬT hiển thị ở admin yêu cầu 2 thao tác hạ tầng ngoài repo (nginx main VPS + Traefik) — đã viết docs/real-ip.md từng bước; KHÔNG thể fix trong app vì IP không tồn tại trong packet tới sub VPS.
+- Sẽ commit với username mhieuhonda, push main, tag v1.3.0 (CD tự build + deploy Coolify, Release workflow tự tạo GitHub Release).

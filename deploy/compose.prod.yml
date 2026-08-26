@@ -35,6 +35,10 @@ services:
       - ADMIN_EMAIL=khongdich.admin@gmail.com
       - RUST_LOG=khogame=info,tower_http=warn
       - TZ=Asia/Ho_Chi_Minh
+      # v1.3.0 PERF: giữ 2 connection DB luôn ấm — traffic thấp sau giờ
+      # tốn idle_timeout (300s) đóng hết connection, request đầu tiên của
+      # user buổi sáng phải trả thêm ~5-20ms setup TCP+auth Postgres.
+      - DB_MIN_CONNECTIONS=2
     depends_on:
       khogame-db:
         condition: service_healthy

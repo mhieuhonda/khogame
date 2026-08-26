@@ -10,8 +10,21 @@
     <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="Louis Space">
     <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <link rel="stylesheet" href="/static/css/style.css?v=1.1.0">
-    <script src="/static/js/htmx.min.js?v=1.1.0" defer></script>
+    {# === v1.3.0 PERF: self-host fonts ===
+       Trước đây: <link> tới fonts.googleapis.com + preconnect tới 2 origin
+       Google (fonts.googleapis.com + fonts.gstatic.com) — user VN mất thêm
+       2 DNS + 2 TCP + 2 TLS handshake tới server Google (thường bị ISP VN
+       throttle, có khi 300ms-2s) trước khi tải được font.
+       Giờ: variable fonts (Inter 100-900, JetBrains Mono 100-800) nằm tại
+       /static/fonts cùng origin, cache 7 ngày như static assets khác.
+       CÙNG font — CÙNG trọng số — CÙNG font-display: swap → không đổi giao
+       diện, chỉ nhanh hơn. Preload 2 subset chính (latin + vietnamese)
+       để font ready ngay first paint. #}
+    <link rel="preload" href="/static/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/inter-var-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/css/style.css?v=1.3.0">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=1.3.0">
+    <script src="/static/js/htmx.min.js?v=1.3.0" defer></script>
     {# Set theme trước khi paint để tránh FOUC (flash of unstyled content)
        khi user đã set light mode nhưng default HTML không có data-theme. #}
     <script>
@@ -44,10 +57,24 @@
     <meta property="og:description" content="{% block og_description %}Nền tảng chia sẻ game độc lập & tin tức cộng đồng Việt Nam{% endblock %}">
     <meta property="og:url" content="{% block og_url %}/{% endblock %}">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    {# === v1.3.0 PERF: Speculation Rules prefetch (Chrome/Edge 121+,
+       Safari/Firefox bỏ qua an toàn — progressive enhancement) ===
+       "conservative": browser prefetch trang khi user NHẤN CHUỘT xuống
+       (pointerdown) — trước cả khi nhả chuột. Nhấp → điều hướng gần như
+       tức thì vì TTFB đã chạy song song lúc click. Chỉ GET same-origin
+       (không ảnh hưởng POST form); không tăng view_count ảo đáng kể
+       (pointerdown ≈ chắc chắn navigate). Không phải prerender nên
+       không chạy JS/WS của trang đích. #}
+    <script type="speculationrules">
+    {
+        "prefetch": [{
+            "source": "document",
+            "where": {"href_matches": "/*"},
+            "eagerness": "conservative"
+        }]
+    }
+    </script>
     {% block head_extra %}{% endblock %}
     {# og:image mặc định đặt SAU head_extra: trang game đã render cover
        riêng trong head_extra (đứng TRƯỚC = ảnh chính theo spec OG cho
@@ -237,7 +264,7 @@
         </div>
     </footer>
 
-    <script src="/static/js/app.js?v=1.1.0" defer></script>
+    <script src="/static/js/app.js?v=1.3.0" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

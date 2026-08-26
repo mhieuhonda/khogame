@@ -324,31 +324,67 @@ pub async fn pin_comment(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let pinned = CommentRepo::toggle_pin(&state.db, id).await?;
-    let comment = CommentRepo::find_by_id(&state.db, id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
-    // Lấy slug game để form trả lời trong item vẫn trỏ đúng URL
-    let game_slug = GameRepo::find_by_id(&state.db, comment.game_id)
-        .await?
-        .map(|g| g.slug)
-        .unwrap_or_default();
-    let partial = CommentItemPartial {
-        comment: &comment,
-        game_slug: &game_slug,
-        current_user: Some(&user),
-        load_replies: true,
+    // Thử ghim bình luận GAME trước (bảng comments). toggle_pin dùng
+    // fetch_one → RowNotFound → AppError::NotFound khi id không có trong
+    // bảng → chuyển sang thử bảng news_comments (bình luận TIN TỨC —
+    // trước đây pin news comment ở đây luôn 500 vì bảng khác).
+    let game_pinned = match CommentRepo::toggle_pin(&state.db, id).await {
+        Ok(p) => Some(p),
+        Err(AppError::NotFound(_)) => None,
+        Err(other) => return Err(other),
     };
-    audit(
-        &state,
-        user.id,
-        "comment.pin",
-        "comment",
-        &id.to_string(),
-        if pinned { "on" } else { "off" },
-    )
-    .await;
-    Ok(Html(partial.render()?))
+    match game_pinned {
+        Some(pinned) => {
+            let comment = CommentRepo::find_by_id(&state.db, id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+            // Lấy slug game để form trả lời trong item vẫn trỏ đúng URL
+            let game_slug = GameRepo::find_by_id(&state.db, comment.game_id)
+                .await?
+                .map(|g| g.slug)
+                .unwrap_or_default();
+            let partial = CommentItemPartial {
+                comment: &comment,
+                game_slug: &game_slug,
+                current_user: Some(&user),
+                load_replies: true,
+            };
+            audit(
+                &state,
+                user.id,
+                "comment.pin",
+                "comment",
+                &id.to_string(),
+                if pinned { "on" } else { "off" },
+            )
+            .await;
+            Ok(Html(partial.render()?))
+        }
+        None => {
+            // Bình luận TIN TỨC: toggle pin ở bảng news_comments và trả
+            // snippet trạng thái (không có partial game comment item).
+            let pinned = CommentRepo::toggle_pin_news(&state.db, id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+            audit(
+                &state,
+                user.id,
+                "comment.pin",
+                "news_comment",
+                &id.to_string(),
+                if pinned { "on" } else { "off" },
+            )
+            .await;
+            let label = if pinned {
+                "📌 Đã ghim"
+            } else {
+                "Đã bỏ ghim"
+            };
+            Ok(Html(format!(
+                "<span class=\"pin-zone\" id=\"pin-result-{id}\">{label}</span>"
+            )))
+        }
+    }
 }
 
 // ============================================================
@@ -615,14 +651,19 @@ pub async fn delete_comment(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    CommentRepo::delete(&state.db, id).await?;
+    // Xoá ở CẢ 2 bảng (game trước, news sau) — trước đây chỉ xoá bảng
+    // `comments` nên bình luận TIN TỨC không thể xoá từ admin được.
+    let kind = CommentRepo::delete_any(&state.db, id).await?;
+    if kind.is_none() {
+        return Err(AppError::NotFound("Bình luận không tồn tại".into()));
+    }
     audit(
         &state,
         user.id,
         "comment.delete",
         "comment",
         &id.to_string(),
-        "",
+        kind.unwrap_or(""),
     )
     .await;
     Ok(Html(

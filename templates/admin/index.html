@@ -140,7 +140,8 @@
             <div class="admin-games-list">
                 {% for c in recent_comments %}
                 <div class="admin-game-row">
-                    <a href="/games/{{ c.game_slug }}"><b>{{ c.user_name }}</b>: {{ c.content|truncate(60) }}</a>
+                    {# item_url() link đúng /games/ hoặc /news/ theo loại comment #}
+                    <a href="{{ c.item_url() }}"><b>{{ c.user_name }}</b>: {{ c.content|truncate(60) }}</a>
                     <span class="game-meta">{{ c.created_at.to_rfc3339()|time_ago }}</span>
                 </div>
                 {% endfor %}

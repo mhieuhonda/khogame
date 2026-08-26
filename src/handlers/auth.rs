@@ -145,6 +145,7 @@ pub async fn google_callback(
                 &headers,
                 Some(&connect_info.0),
                 state.config.trust_proxy_headers,
+                state.config.trusted_proxy_hops,
             );
             let ua_new = headers
                 .get(axum::http::header::USER_AGENT)
@@ -192,6 +193,7 @@ pub async fn google_callback(
         &headers,
         Some(&connect_info.0),
         state.config.trust_proxy_headers,
+        state.config.trusted_proxy_hops,
     );
     SessionRepo::create(
         &state.db,

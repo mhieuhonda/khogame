@@ -441,6 +441,7 @@ pub async fn create(
         &headers,
         Some(&connect_info.0),
         state.config.trust_proxy_headers,
+        state.config.trusted_proxy_hops,
     );
     // Clamp UA 512 ký tự — tránh lưu 1MB User-Agent header vào
     // TEXT column news.author_ua (DB bloat + backup phình to).

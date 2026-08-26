@@ -9,6 +9,108 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.0] — 2026-08-27 — Real IP infrastructure + quản lý bình luận tin tức + tăng tốc toàn diện
+
+🚀 **Release bảo mật + hiệu năng** — fix 3 lỗi vận hành (IP admin, tràn
+khung bình luận, bình luận tin tức "tàng hình" ở trang quản lý) và bộ
+tối ưu tốc độ không đổi giao diện.
+
+### 🐛 Bug fixes
+
+#### 1. Admin thấy cùng một IP cho toàn bộ người dùng
+
+- **Root cause (chẩn đoán thực nghiệm trên prod)**: traffic đi
+  `client → VPS chính (nginx stream forward TCP 443, không PROXY
+  protocol) → tunnel → VPS phụ (Traefik) → app`. IP client bị mất ở
+  hop TCP — Traefik thấy IP tunnel của VPS chính cho MỌI kết nối, app
+  ghi IP đó vào session/audit → cả trăm user "cùng chung một IP".
+  Thực nghiệm: 2 nguồn IP khác nhau request đồng thời → dính chung
+  bucket rate-limit (đã verify qua oracle rate-limit 429).
+- **Hệ quả nghiêm trọng hơn IP sai**: toàn site chia CHUNG bucket
+  rate-limit theo IP — 1 user spam = 429 cả site; 1 trang game 50
+  comment lazy-load đốt 50/240 slot global.
+- **Fix trong app (v1.3.0)**:
+  - Rate-limit tự nhận diện IP private/unknown (= proxy giấu IP) →
+    bucket key chuyển sang định danh per-browser: user đã login → hash
+    session cookie; khách → cookie `ls_anon` (UUID, HttpOnly, không
+    PII) tự set cả trên response 200 lẫn 429.
+  - `TRUSTED_PROXY_HOPS` (env, mặc định 1): parse X-Forwarded-For đúng
+    số hop proxy — set 2 khi có CDN (Cloudflare) trước Traefik; lấy
+    nhầm phần tử cuối khi ≥2 hop chính là bug "mọi user cùng IP".
+    X-Real-IP chỉ tin khi hops=1 (≥2 hop thì header đó là IP proxy
+    trung gian).
+  - Log WARN 1 lần/lifetime khi phát hiện IP private dùng chung, trỏ
+    tới `docs/real-ip.md`.
+  - **Muốn hiện IP THẬT ở admin**: cần bật PROXY protocol ở nginx VPS
+    chính + Traefik trustedIPs — hướng dẫn từng bước:
+    **`docs/real-ip.md`** (2 thao tác, app không cần đổi gì thêm).
+  - 14 unit test mới: parse XFF mọi số hop, chống spoof prefix, fallback
+    XFF ngắn, nhận diện private IP (IPv4/IPv6), đọc cookie.
+
+#### 2. Bình luận tin tức dài làm tràn thời gian khỏi khung
+
+- News comment layout là flex 3 cột `author | body | time`. Flex item
+  mặc định `min-width:auto` → chuỗi dài không dấu cách (URL, spam
+  "aaaa…") làm min-content phình to → cả hàng tràn ngang → cột thời
+  gian bị xô ra NGOÀI viền khung bình luận.
+- Fix CSS (không đổi bố cục với comment bình thường):
+  `.comment-body` thêm `min-width: 0` (global — fix luôn cho game
+  comment), `.comment-content` thêm `overflow-wrap: anywhere`;
+  riêng news: `.news-comments .comment-body` wrap chữ dài,
+  `.comment-meta` (`flex-shrink: 0; nowrap; margin-left: auto`) giữ
+  thời gian luôn trong khung.
+
+#### 3. Bình luận tin tức không hiện trong trang quản lý bình luận
+
+- Bình luận game lưu bảng `comments`, bình luận tin tức lưu bảng
+  `news_comments` RIÊNG (migration 008) — nhưng query
+  `CommentRepo::list_recent` chỉ `FROM comments JOIN games` →
+  admin không bao giờ thấy bình luận tin tức, không xoá/ghim được,
+  pin/news comment còn trả 500 (toggle_pin tra bảng sai).
+- Fix: `list_recent` + `count_all` chuyển sang UNION ALL 2 bảng với
+  cột `kind` ('game'/'news') + slug/title; model `CommentWithGame`
+  trở thành view thống nhất (thêm `item_url()`, `kind_label()`);
+  admin `delete_comment` xoá được cả 2 bảng (`delete_any`);
+  `pin_comment` fallback sang `news_comments` khi id không có ở bảng
+  game (trả snippet trạng thái thay vì 500).
+- Dashboard admin + backup export (`/admin/export`) tự động bao gồm
+  bình luận tin tức (dùng chung list_recent).
+
+### ⚡ Performance (KHÔNG thay đổi giao diện)
+
+- **Self-host fonts**: bỏ `<link>` Google Fonts (fonts.googleapis.com
+  + fonts.gstatic.com = 2 DNS + 2 TCP + 2 TLS handshake ngoài, ISP VN
+  thường throttle). Inter + JetBrains Mono variable fonts
+  (latin + vietnamese subsets, ~93KB) phục vụ từ `/static/fonts`
+  cùng origin, preload 2 subset chính. Cùng font, cùng trọng số,
+  cùng `font-display: swap` → render không đổi.
+- **Brotli + zstd**: tower-http thêm `compression-br`,
+  `compression-zstd` — browser hỗ trợ br nhận nén nhỏ hơn gzip ~20%
+  (CSS 92KB → ~14KB br).
+- **Speculation Rules prefetch** (`eagerness: conservative`): Chrome/
+  Edge 121+ prefetch trang khi pointerdown (trước cả khi nhả chuột)
+  → điều hướng gần tức thì. Chỉ GET same-origin, không prerender
+  (không chạy JS/WS trang đích, không tăng view_count ảo). Firefox/
+  Safari bỏ qua an toàn.
+- **Cross-document View Transitions** (Chrome 126+/Safari 18.2+):
+  cross-fade 120ms giữa các trang thay vì nhảy trắng đột ngột —
+  tự tắt với `prefers-reduced-motion`. Không đổi thiết kế trang nào.
+- **DB pool giữ ấm**: `DB_MIN_CONNECTIONS=2` trong compose prod —
+  request đầu buổi sáng không trả thêm 5-20ms setup connection
+  Postgres sau khi idle_timeout đóng hết.
+- Bump cache-buster static assets `?v=1.1.0` → `?v=1.3.0`.
+
+### ✅ Verification
+
+- `cargo check --all-targets` ✅ (lockfile update: +brotli/zstd codecs)
+- `cargo clippy --all-targets -- -D warnings` ✅
+- `cargo doc --no-deps --document-private-items` (RUSTDOCFLAGS -D warnings) ✅
+- `cargo test --all` (183 tests, +14 mới) ✅
+- `cargo fmt --all -- --check` ✅
+- Rust 1.98.0 (exact pin — `rust-toolchain.toml`) ✅
+
+---
+
 ## [1.2.1] — 2026-08-26 — Fix upload ảnh không lưu được (type=url → type=text)
 
 🐛 **Hotfix release** — fix triệt để lỗi user upload ảnh xong, form không

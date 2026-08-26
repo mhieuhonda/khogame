@@ -334,7 +334,16 @@ impl CommentRepo {
         Ok(ids)
     }
 
-    /// Danh sách bình luận mới nhất cho admin (phân trang)
+    /// Danh sách bình luận mới nhất cho admin (phân trang) — gộp GAME +
+    /// TIN TỨC.
+    ///
+    /// TRƯỚC ĐÂY (bug): query chỉ `FROM comments JOIN games` → bình luận
+    /// tin tức (bảng `news_comments` riêng từ migration 008) không bao giờ
+    /// hiện trong trang quản lý bình luận của admin.
+    ///
+    /// UNION ALL 2 bảng, sort chung theo created_at DESC. Mỗi nhánh tự
+    /// JOIN users để lấy display_name; `kind` ('game'/'news') + slug/title
+    /// của nội dung chứa comment để template link đúng trang.
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -344,14 +353,24 @@ impl CommentRepo {
         offset: i64,
     ) -> AppResult<Vec<CommentWithGame>> {
         let rows = sqlx::query_as::<_, CommentWithGame>(
-            r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
-                c.like_count, c.is_pinned, c.created_at, c.updated_at,
-                u.display_name as user_name, u.avatar_url as user_avatar,
-                g.title as game_title, g.slug as game_slug
-              FROM comments c
-              JOIN users u ON u.id = c.user_id
-              JOIN games g ON g.id = c.game_id
-              ORDER BY c.created_at DESC LIMIT $1 OFFSET $2",
+            r"SELECT * FROM (
+                SELECT c.id, c.user_id, c.content, c.is_pinned, c.created_at,
+                       u.display_name AS user_name,
+                       'game'::text AS kind,
+                       g.title AS item_title, g.slug AS item_slug
+                  FROM comments c
+                  JOIN users u ON u.id = c.user_id
+                  JOIN games g ON g.id = c.game_id
+                UNION ALL
+                SELECT nc.id, nc.user_id, nc.content, nc.is_pinned, nc.created_at,
+                       u.display_name AS user_name,
+                       'news'::text AS kind,
+                       n.title AS item_title, n.slug AS item_slug
+                  FROM news_comments nc
+                  JOIN users u ON u.id = nc.user_id
+                  JOIN news n ON n.id = nc.news_id
+               ) all_comments
+              ORDER BY created_at DESC LIMIT $1 OFFSET $2",
         )
         .bind(limit)
         .bind(offset)
@@ -360,14 +379,59 @@ impl CommentRepo {
         Ok(rows)
     }
 
-    /// Tổng số bình luận toàn site — phân trang admin comments.
+    /// Tổng số bình luận toàn site (game + tin tức) — phân trang admin
+    /// comments. Đếm CẢ 2 bảng để khớp với list_recent (UNION ALL).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
-        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comments")
-            .fetch_one(pool)
-            .await?;
+        let c: i64 = sqlx::query_scalar(
+            "SELECT (SELECT COUNT(*) FROM comments) + (SELECT COUNT(*) FROM news_comments)",
+        )
+        .fetch_one(pool)
+        .await?;
         Ok(c)
+    }
+
+    /// Toggle ghim bình luận TIN TỨC (bảng news_comments) — admin pin
+    /// từ trang quản lý bình luận khi nhận diện kind='news'.
+    /// Trả về None nếu id không tồn tại ở bảng news_comments.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn toggle_pin_news(pool: &PgPool, id: Uuid) -> AppResult<Option<bool>> {
+        let pinned: Option<bool> = sqlx::query_scalar(
+            "UPDATE news_comments SET is_pinned = NOT is_pinned WHERE id = $1 RETURNING is_pinned",
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(pinned)
+    }
+
+    /// Xoá bình luận theo id ở CẢ 2 bảng (thử game trước, news sau) —
+    /// UUID chỉ tồn tại ở đúng một bảng nên không ambiguous. Trả về
+    /// 'game'/'news' cho audit log biết đã xoá loại nào.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn delete_any(pool: &PgPool, id: Uuid) -> AppResult<Option<&'static str>> {
+        let game_deleted = sqlx::query("DELETE FROM comments WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?
+            .rows_affected();
+        if game_deleted > 0 {
+            return Ok(Some("game"));
+        }
+        let news_deleted = sqlx::query("DELETE FROM news_comments WHERE id = $1")
+            .bind(id)
+            .execute(pool)
+            .await?
+            .rows_affected();
+        if news_deleted > 0 {
+            return Ok(Some("news"));
+        }
+        Ok(None)
     }
 }

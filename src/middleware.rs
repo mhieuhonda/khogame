@@ -395,40 +395,84 @@ mod path_normalization_tests {
 /// do CLIENT tự gắn là dữ liệu attacker điều khiển — dùng sẽ bị giả IP
 /// để lách rate-limit. Tắt qua env `TRUST_PROXY_HEADERS=false`.
 ///
-/// Lưu ý về multi-hop X-Forwarded-For: header có dạng `client, proxy1, proxy2`.
-/// Trusted proxy (Traefik/Coolify) APPENDS real client IP vào cuối — vậy
-/// phần tử CUỐI là real IP do proxy set, phần tử đầu có thể là attacker-
-/// controlled. Lấy cuối thay vì đầu để không bị spoof.
+/// `hops`: số proxy TIN CẬY giữa client và app (env `TRUSTED_PROXY_HOPS`,
+/// mặc định 1). X-Forwarded-For có dạng `client, proxy1, proxy2...` — mỗi
+/// proxy append IP của hop TRƯỚC vào cuối chuỗi. Phần tử cuối cùng do
+/// proxy gần app nhất thêm là IP của hop trước nó (không phải client nếu
+/// có ≥2 proxy). Real client IP = phần tử thứ `hops` kể từ PHẢI sang trái:
+/// - 1 proxy (Traefik trực tiếp): lấy phần tử cuối.
+/// - 2 proxy (CDN/Cloudflare → Traefik): lấy phần tử KẾ TRƯỚC cuối — lấy
+///   cuối sẽ ra IP edge của CDN, mọi user cùng một IP (bug observed trên
+///   prod: toàn bộ session hiện cùng IP proxy).
 #[must_use]
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
     connect_info: Option<&SocketAddr>,
     trust_proxy: bool,
+    hops: u8,
 ) -> String {
+    let hops = hops.max(1) as usize;
     if trust_proxy {
-        // X-Real-IP / CF-Connecting-IP: 1 giá trị, lấy nguyên.
-        for h in ["x-real-ip", "cf-connecting-ip"] {
-            if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
-                let ip = v.trim();
-                if is_valid_ip_string(ip) {
-                    return ip.to_string();
+        // hops=1 mới tin X-Real-IP / CF-Connecting-IP: các header này chỉ
+        // mang 1 giá trị do proxy gần nhất ghi (IP của peer của nó). Khi
+        // có ≥2 hop, giá trị đó là IP của proxy trung gian chứ không phải
+        // client → bỏ qua để rơi vào nhánh XFF parse đúng hop bên dưới.
+        if hops == 1 {
+            for h in ["x-real-ip", "cf-connecting-ip"] {
+                if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
+                    let ip = v.trim();
+                    if is_valid_ip_string(ip) {
+                        return ip.to_string();
+                    }
                 }
             }
         }
-        // X-Forwarded-For: có thể nhiều hop, lấy CUỐI cùng (trusted proxy append).
+        // X-Forwarded-For: `client, proxy1, ...` — bỏ `hops` phần tử bên
+        // phải (do các trusted proxy append), phần tử hợp lệ kế tiếp chính
+        // là client. Walk từ phải sang trái, skip `hops-1` entry đầu tiên
+        // gặp được, rồi lấy entry hợp lệ tiếp theo.
         if let Some(v) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-            // Walk từ phải sang trái, lấy phần tử đầu tiên hợp lệ
-            // (phần tử cuối cùng do trusted proxy thêm). Chấp nhận fallback
-            // là phần tử đầu nếu tất cả đều rác — vẫn tốt hơn "unknown".
-            for part in v.split(',').rev() {
-                let ip = part.trim();
-                if is_valid_ip_string(ip) {
-                    return ip.to_string();
-                }
+            let valids: Vec<&str> = v
+                .split(',')
+                .map(|p| p.trim())
+                .filter(|p| is_valid_ip_string(p))
+                .collect();
+            if !valids.is_empty() {
+                // valids[len-1] = hop gần app nhất; client = valids[len-hops].
+                // Nếu chuỗi ngắn hơn expected (proxy chỉ append 1 phần)
+                // thì lấy phần tử ĐẦU — vẫn tốt hơn "unknown" và an toàn
+                // vì phần tử đầu của XFF do proxy ngoài cùng ghi.
+                let idx = valids.len().saturating_sub(hops);
+                return valids[idx].to_string();
             }
         }
     }
     connect_info.map_or_else(|| "unknown".into(), |a| a.ip().to_string())
+}
+
+/// IP có phải private/loopback/link-local (RFC 1918/4193...) không?
+///
+/// Khi app chạy sau proxy KHÔNG truyền IP thật (TCP forwarding không
+/// PROXY protocol — vd nginx stream giữa 2 VPS), mọi request tới app đều
+/// mang IP private của tunnel/proxy: IP này KHÔNG phân biệt được user.
+/// Rate limiter dựa vào IP sẽ gộp toàn bộ user vào 1 bucket chung
+/// (một user spam = chặn cả site) — cần fallback key theo session cookie.
+#[must_use]
+pub fn is_private_ip(ip: &str) -> bool {
+    match ip.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(v4)) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                // Docker network 172.17-31.x có overlap với RFC1918
+                // 172.16/12 — is_private() đã cover. 169.254/16 link-local.
+                || v4.is_unspecified()
+        }
+        Ok(std::net::IpAddr::V6(v6)) => {
+            v6.is_loopback() || v6.is_unspecified() || matches!(v6.segments()[0] & 0xfe00, 0xfc00)
+        }
+        Err(_) => ip == "unknown", // không parse được → coi như không định danh được
+    }
 }
 
 /// Kiểm tra chuỗi là IPv4/IPv6 hợp lệ, đồng thời ngầm giới hạn độ dài
@@ -668,7 +712,40 @@ pub async fn rate_limit(
         request.headers(),
         connect_info.map(|ci| ci.0).as_ref(),
         state.config.trust_proxy_headers,
+        state.config.trusted_proxy_hops,
     );
+
+    // === Fix shared-bucket khi proxy giấu IP thật ===
+    // Prod hiện chạy: client → nginx stream (TCP, KHÔNG PROXY protocol)
+    // → Traefik → app. IP client bị mất ở hop TCP — app thấy IP private
+    // của tunnel cho MỌI user → toàn site chia chung rate-limit bucket
+    // (một user spam = 429 cả site; một trang 50 reply lazy-load có thể
+    // đốt 50/240 slot global). Khi IP là private/unknown, key bucket
+    // theo định danh per-browser thay vì IP:
+    //   1) Có session cookie (đã login) → hash cookie (ổn định/user).
+    //   2) Có anon cookie (đã ghé trước đó) → dùng nguyên giá trị.
+    //   3) Chưa có gì → sinh anon id mới, set vào response.
+    // Khi hạ tầng truyền IP thật (PROXY protocol / CDN), IP là public →
+    // key theo IP như cũ — hành vi cũ được bảo toàn.
+    let mut set_anon_cookie: Option<String> = None;
+    let bucket_identity = if is_private_ip(&ip) {
+        warn_shared_ip_once(&ip);
+        if let Some(token) = session_cookie_value(request.headers()) {
+            format!("s:{}", &hash_token(&token)[..16])
+        } else if let Some(anon) = anon_cookie_value(request.headers()) {
+            format!("a:{anon}")
+        } else {
+            // Chưa có cookie nào → sinh anon id, set vào response;
+            // bucket cho request NÀY đã dùng id mới (không đợi request
+            // sau) để 1 browser spam liên tục vẫn bị giới hạn đúng.
+            let anon = Uuid::new_v4().to_string();
+            set_anon_cookie = Some(anon.clone());
+            format!("a:{anon}")
+        }
+    } else {
+        ip.clone()
+    };
+
     // Tăng giới hạn nghiêm ngặt cho các endpoint AI Agent & auth để
     // chống brute-force token hoặc spam progress.
     // - /auth/ai/register: 5 / 10 phút (rất hiếm, chỉ AI admin mới gọi)
@@ -712,28 +789,104 @@ pub async fn rate_limit(
     if !state.rate_limiter.check(
         // Key theo path ĐÃ CHUẨN HOÁ: xoay slug/UUID không tạo bucket mới
         // (xem normalize_path_for_rate_limit). Giới hạn áp theo endpoint
-        // bucket + IP, không theo URL đầy đủ.
-        &format!("{}{}", ip, normalize_path_for_rate_limit(&path)),
+        // bucket + identity, không theo URL đầy đủ.
+        &format!(
+            "{}{}",
+            bucket_identity,
+            normalize_path_for_rate_limit(&path)
+        ),
         max,
         window,
     ) {
         tracing::warn!("Rate limit exceeded: {} {} ({}/{})", ip, path, max, window);
         // Retry-After (RFC 6585/9110): báo client chờ bao lâu trước khi
         // thử lại — HTMX app.js / curl đều đọc được, tránh spam 429 liên tục.
-        return Err(RateLimited(
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                [
-                    (axum::http::header::RETRY_AFTER, window.to_string()),
-                    (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
-                ],
-                "Too Many Requests - vui lòng thử lại sau.",
-            )
-                .into_response()
-                .into(),
-        ));
+        let mut too_many = (
+            StatusCode::TOO_MANY_REQUESTS,
+            [
+                (axum::http::header::RETRY_AFTER, window.to_string()),
+                (axum::http::header::CACHE_CONTROL, "no-store".to_string()),
+            ],
+            "Too Many Requests - vui lòng thử lại sau.",
+        )
+            .into_response();
+        // Set anon cookie ngay cả trên 429 — nếu không, request spam
+        // đầu tiên không có cookie → response không set → request tiếp
+        // theo lại được bucket mới → vô hiệu hoá hoàn toàn rate limit
+        // với bot không cookie khi app sau proxy shared-IP.
+        if let Some(anon) = &set_anon_cookie {
+            let cookie =
+                format!("{ANON_COOKIE}={anon}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax");
+            if let Ok(v) = HeaderValue::from_str(&cookie) {
+                too_many
+                    .headers_mut()
+                    .append(axum::http::header::SET_COOKIE, v);
+            }
+        }
+        return Err(RateLimited(too_many.into()));
     }
-    Ok(next.run(request).await)
+    let mut response = next.run(request).await;
+    // Set anon id cookie cho browser chưa login (chỉ khi IP là proxy
+    // private — xem comment bucket_identity bên trên). Cookie là UUID
+    // ngẫu nhiên thuần chức năng (rate limit), không PII, HttpOnly +
+    // SameSite=Lax, 1 năm — đủ dài để không reset khi user quay lại.
+    if let Some(anon) = set_anon_cookie {
+        let cookie =
+            format!("{ANON_COOKIE}={anon}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax");
+        if let Ok(v) = HeaderValue::from_str(&cookie) {
+            response
+                .headers_mut()
+                .append(axum::http::header::SET_COOKIE, v);
+        }
+    }
+    Ok(response)
+}
+
+/// Đọc giá trị cookie theo tên từ header Cookie — không qua CookieJar
+/// (rate_limit middleware cần giá trị thô để hash, không cần parse jar
+/// đầy đủ; tránh clone toàn bộ jar mỗi request).
+fn cookie_value(headers: &axum::http::HeaderMap, name: &str) -> Option<String> {
+    let raw = headers
+        .get(axum::http::header::COOKIE)?
+        .to_str()
+        .ok()?
+        .to_string();
+    raw.split(';').find_map(|part| {
+        let part = part.trim();
+        part.strip_prefix(name)
+            .and_then(|rest| rest.strip_prefix('='))
+            .filter(|v| !v.is_empty())
+            .map(std::borrow::ToOwned::to_owned)
+    })
+}
+
+fn session_cookie_value(headers: &axum::http::HeaderMap) -> Option<String> {
+    cookie_value(headers, SESSION_COOKIE)
+}
+
+/// Cookie anon cho visitor chưa login — chỉ được đọc/set khi rate-limit
+/// cần fallback identity (IP private). Không PII, chỉ là UUID ngẫu nhiên.
+const ANON_COOKIE: &str = "ls_anon";
+
+fn anon_cookie_value(headers: &axum::http::HeaderMap) -> Option<String> {
+    cookie_value(headers, ANON_COOKIE)
+}
+
+/// Log 1 lần duy nhất khi phát hiện mọi request dùng chung 1 IP private —
+/// giúp operator đọc log hiểu tại sao admin hiện cùng IP cho mọi user và
+/// rate-limit phải fallback theo cookie (xem docs/real-ip.md để bật
+/// PROXY protocol lấy lại IP thật).
+static SHARED_IP_WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+fn warn_shared_ip_once(ip: &str) {
+    if SHARED_IP_WARNED.set(()).is_ok() {
+        tracing::warn!(
+            "client IP = {ip} (private) cho MỌI request — app đang chạy sau proxy \
+             KHÔNG truyền IP thật (nginx stream/L4 forwarding không PROXY protocol). \
+             Admin sẽ thấy cùng 1 IP cho toàn bộ user; rate-limit đã tự fallback \
+             key theo session/anon cookie. Để lấy lại IP thật: bật PROXY protocol \
+             ở proxy ngoài + TRUSTED_PROXY_HOPS tương ứng (xem docs/real-ip.md)."
+        );
+    }
 }
 
 // ============================================================
@@ -961,5 +1114,176 @@ mod verify_origin_tests {
         // Origin đúng → OK dù Referer sai (Origin là chuẩn RFC 6454)
         let h = hm_origin_referer("https://louis.vangioitutien.com", "https://evil.com/path");
         assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
+    }
+}
+
+#[cfg(test)]
+mod client_ip_tests {
+    use super::{client_ip_from_parts, is_private_ip};
+    use axum::http::HeaderMap;
+    use std::net::SocketAddr;
+
+    fn hm_xff(v: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert("x-forwarded-for", v.parse().unwrap());
+        h
+    }
+
+    fn addr(ip: &str) -> SocketAddr {
+        format!("{ip}:12345").parse().unwrap()
+    }
+
+    #[test]
+    fn single_proxy_takes_rightmost() {
+        // 1 hop: Traefik set XFF = IP client
+        let h = hm_xff("203.0.113.10");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 1),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn single_proxy_client_spoofed_prefix_still_safe() {
+        // Client tự gắn XFF giả → trusted proxy append IP thật vào cuối →
+        // lấy cuối (hops=1) là IP thật, phần tử giả bị bỏ qua.
+        let h = hm_xff("1.2.3.4, 203.0.113.10");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 1),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn two_hops_takes_second_from_right() {
+        // CDN → Traefik → app: XFF = "client, cdn_edge". Phần tử cuối là
+        // IP edge của CDN (ai cũng giống nhau) — hops=2 lấy client.
+        let h = hm_xff("203.0.113.10, 104.16.1.1");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 2),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn two_hops_with_spoofed_prefix() {
+        // Attacker gắn "1.2.3.4" → CDN append client → Traefik append CDN:
+        // "1.2.3.4, client, cdn" — hops=2 vẫn lấy đúng client.
+        let h = hm_xff("1.2.3.4, 203.0.113.10, 104.16.1.1");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 2),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn xff_shorter_than_hops_falls_back_to_leftmost() {
+        // hops=2 nhưng XFF chỉ có 1 phần tử → lấy phần tử đầu (do proxy
+        // ngoài cùng ghi) thay vì "unknown".
+        let h = hm_xff("203.0.113.10");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 2),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn hops_1_trusts_x_real_ip() {
+        let mut h = HeaderMap::new();
+        h.insert("x-real-ip", "203.0.113.77".parse().unwrap());
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 1),
+            "203.0.113.77"
+        );
+    }
+
+    #[test]
+    fn hops_2_ignores_x_real_ip() {
+        // ≥2 hop: X-Real-IP do proxy gần app ghi = IP proxy trước nó,
+        // không phải client → bỏ qua, parse XFF theo hop.
+        let mut h = HeaderMap::new();
+        h.insert("x-real-ip", "104.16.1.1".parse().unwrap());
+        h.insert(
+            "x-forwarded-for",
+            "203.0.113.10, 104.16.1.1".parse().unwrap(),
+        );
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 2),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn no_trust_falls_back_to_connect_info() {
+        let h = hm_xff("203.0.113.10");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("198.51.100.9")), false, 1),
+            "198.51.100.9"
+        );
+    }
+
+    #[test]
+    fn invalid_xff_entries_skipped() {
+        let h = hm_xff("garbage, 203.0.113.10, not-an-ip");
+        assert_eq!(
+            client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 1),
+            "203.0.113.10"
+        );
+    }
+
+    #[test]
+    fn private_ip_detection() {
+        // IP private/loopback = dấu hiệu proxy giấu IP thật
+        assert!(is_private_ip("10.187.247.1"));
+        assert!(is_private_ip("172.17.0.1"));
+        assert!(is_private_ip("192.168.1.1"));
+        assert!(is_private_ip("127.0.0.1"));
+        assert!(is_private_ip("169.254.1.1"));
+        assert!(is_private_ip("::1"));
+        assert!(is_private_ip("unknown"));
+        // IP public thật → KHÔNG private
+        assert!(!is_private_ip("203.0.113.10"));
+        assert!(!is_private_ip("163.44.96.79"));
+        assert!(!is_private_ip("2402:800:61f7::1"));
+    }
+}
+
+#[cfg(test)]
+mod cookie_value_tests {
+    use super::{anon_cookie_value, cookie_value, session_cookie_value, ANON_COOKIE};
+    use axum::http::HeaderMap;
+
+    fn hm_cookie(v: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(axum::http::header::COOKIE, v.parse().unwrap());
+        h
+    }
+
+    #[test]
+    fn reads_session_cookie() {
+        let h = hm_cookie("theme=dark; kg_session=abc123; other=x");
+        assert_eq!(session_cookie_value(&h).as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn reads_anon_cookie() {
+        let h = hm_cookie("ls_anon=uuid-xyz; theme=dark");
+        assert_eq!(anon_cookie_value(&h).as_deref(), Some("uuid-xyz"));
+    }
+
+    #[test]
+    fn no_cookie_returns_none() {
+        let h = hm_cookie("theme=dark");
+        assert!(session_cookie_value(&h).is_none());
+        assert!(anon_cookie_value(&h).is_none());
+    }
+
+    #[test]
+    fn prefix_collision_rejected() {
+        // Cookie "kg_session_old" không bị nhầm là "kg_session"
+        let h = hm_cookie("kg_session_old=abc");
+        assert!(session_cookie_value(&h).is_none());
+        assert_eq!(cookie_value(&h, "kg_session"), None);
+        let _ = ANON_COOKIE; // silence unused warning nếu cần
     }
 }

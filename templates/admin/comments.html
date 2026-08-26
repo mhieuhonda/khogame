@@ -8,9 +8,12 @@
         {% for c in comments %}
         <div class="report-row" id="comment-row-{{ c.id }}">
             <div class="report-info">
-                <a href="/games/{{ c.game_slug }}" class="report-game-title">{{ c.user_name }} @ {{ c.game_title }}</a>
+                {# Link đúng loại nội dung: /games/{slug} cho game,
+                   /news/{slug} cho tin tức — trước đây chỉ hard-code
+                   /games/ nên news comment không hiện/không truy cập được. #}
+                <a href="{{ c.item_url() }}" class="report-game-title">{{ c.user_name }} @ {{ c.item_title }}</a>
                 <div class="report-meta">
-                    <span class="report-reason">{{ c.content|truncate(120) }}</span>
+                    <span class="report-reason">{{ c.kind_label() }} · {{ c.content|truncate(120) }}</span>
                     <span class="report-time">{{ c.created_at.to_rfc3339()|time_ago }}</span>
                     {% if c.is_pinned %}<span class="status-badge" style="color:#f59e0b">📌 Ghim</span>{% endif %}
                 </div>
