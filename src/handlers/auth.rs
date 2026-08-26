@@ -20,6 +20,9 @@ pub struct AuthQuery {
     pub next: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn login_page(
     State(_state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -39,6 +42,9 @@ pub async fn login_page(
     Ok(Html(tpl.render().map_err(AppError::from)?).into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn google_login(
     State(state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
