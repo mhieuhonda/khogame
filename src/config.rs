@@ -6,6 +6,10 @@ pub struct AppConfig {
     pub port: u16,
     pub base_url: String,
     pub database_url: String,
+    // NOTE: SESSION_KEY vẫn được yêu cầu ở startup (bảo vệ khỏi quên
+    // set khi deploy) nhưng chưa được dùng để HMAC-sign cookies. Khi
+    // thêm HMAC signing, dùng field này — KHÔNG xoá trước khi đó.
+    #[allow(dead_code)]
     pub session_key: String,
     pub google_client_id: String,
     pub google_client_secret: String,
