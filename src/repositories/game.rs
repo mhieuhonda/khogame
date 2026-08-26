@@ -698,6 +698,9 @@ impl GameRepo {
 
     /// Game theo thể loại — hỗ trợ sort động (trước đây ORDER BY cứng
     /// `published_at` DESC trong khi template vẫn render sort links).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn by_category(
         pool: &PgPool,
         cat_slug: &str,
@@ -765,6 +768,9 @@ impl GameRepo {
     }
 
     /// Số kết quả khớp bộ lọc search (để phân trang đúng)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_search(
         pool: &PgPool,
         query: &str,
