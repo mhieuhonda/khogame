@@ -727,6 +727,9 @@ pub struct AdminReposQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn repos(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
