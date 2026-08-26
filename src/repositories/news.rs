@@ -215,6 +215,9 @@ impl NewsRepo {
     }
 
     /// Lấy chi tiết tin theo slug (chỉ published hoặc archived cho người dùng thường).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_slug_public(
         pool: &PgPool,
         slug: &str,
@@ -290,6 +293,9 @@ impl NewsRepo {
 
     /// Danh sách tin đang chờ duyệt (status='pending'), mới trước.
     /// Trả về `NewsForAdmin` để admin xem được IP/UA/email tác giả.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_pending(
         pool: &PgPool,
         page: i64,
@@ -404,6 +410,9 @@ impl NewsRepo {
     }
 
     /// Lấy tin của một user (cho trang my-news).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_user(
         pool: &PgPool,
         user_id: Uuid,

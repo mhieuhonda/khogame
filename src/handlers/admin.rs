@@ -1109,6 +1109,9 @@ pub async fn revoke_session(
 // ============================================================
 // ADMIN: EXPORT BACKUP (JSON)
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn export(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1174,6 +1177,9 @@ pub async fn export(
 // ============================================================
 
 /// Trang /admin/ai-agents — danh sách tất cả AI Agent (chỉ admin/staff).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn ai_agents(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
