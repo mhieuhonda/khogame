@@ -310,14 +310,24 @@ pub async fn create_game(
     };
     let mut slug = base_slug.clone();
     let mut suffix = 1u32;
-    while GameRepo::slug_exists(&state.db, &slug)
-        .await
-        .unwrap_or(true)
-    {
+    loop {
+        // Trả DB error thay vì unwrap_or(true) — trước đây transient
+        // DB error (network glitch, connection reset) bị coi là "slug
+        // tồn tại", rồi retry 100 lần với suffix số đếm rồi break với
+        // UUID random → user nhận URL xấu (my-game-101-{uuid}) mà
+        // không biết DB đang lỗi.
+        match GameRepo::slug_exists(&state.db, &slug).await {
+            Ok(false) => break,            // slug free → dùng được
+            Ok(true) => {}                 // trùng → thử suffix kế
+            Err(e) => return Err(AppError::from(e)),
+        }
         suffix += 1;
         slug = format!("{base_slug}-{suffix}");
         if suffix > 100 {
-            slug = format!("{}-{}", slug, uuid::Uuid::new_v4().simple());
+            // Vượt 100 lần thử — khả năng cao là logic slug có vấn đề
+            // hoặc ai đó cố tình register 100 game cùng tên. Fallback
+            // UUID để user vẫn tạo được, không bắt retry mãi.
+            slug = format!("{}-{}", base_slug, uuid::Uuid::new_v4().simple());
             break;
         }
     }
