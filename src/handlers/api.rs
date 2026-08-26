@@ -277,7 +277,15 @@ pub async fn repos_list(
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 30;
     let offset = (page - 1) * per_page;
-    let sort = q.sort.unwrap_or_else(|| "stars".into());
+    let sort_raw = q.sort.unwrap_or_else(|| "stars".into());
+    // Validate sort whitelist — trả 400 rõ ràng thay vì fallback.
+    const SORT_WHITELIST: &[&str] = &["stars", "recent"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
     let (repos_res, total_res) = tokio::join!(
         RepoRepo::list_approved(&state.db, per_page, offset, &sort),
         RepoRepo::count_approved(&state.db),
