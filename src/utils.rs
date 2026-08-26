@@ -281,10 +281,18 @@ pub fn escape_like(s: &str) -> String {
 /// Validate một URL là http(s) — chống <javascript:/data:/file>: scheme
 /// nguy hiểm khi dùng URL làm href hoặc src trong HTML. Trả về true nếu
 /// URL rỗng (không bắt buộc) hoặc là http(s)://.
+///
+/// Cũng từ chối URL có byte điều khiển (CR/LF/TAB/NUL) để chống header
+/// injection khi URL được phát vào Location/X-Redirect header.
 #[must_use]
 pub fn is_safe_url(url: &str) -> bool {
     if url.is_empty() {
         return true;
+    }
+    // Chống header injection: URL có CR/LF có thể bẻ gãy response header
+    // nếu server dùng URL làm giá trị Location/X-Redirect.
+    if url.bytes().any(|b| b.is_ascii_control()) {
+        return false;
     }
     let lower = url.to_ascii_lowercase();
     lower.starts_with("http://") || lower.starts_with("https://")
@@ -460,6 +468,11 @@ mod tests {
         assert!(!is_safe_url("vbscript:msgbox"));
         assert!(!is_safe_url("//evil.com/x")); // protocol-relative
         assert!(!is_safe_url("javascript:")); // rỗng sau scheme
+        // CR/LF trong URL → không an toàn (chống header injection)
+        assert!(!is_safe_url("https://evil.com/\r\nSet-Cookie: bad=1"));
+        assert!(!is_safe_url("https://evil.com/\n"));
+        assert!(!is_safe_url("https://evil.com/\tfoo"));
+        assert!(!is_safe_url("https://evil.com/\0"));
     }
 
     #[test]
