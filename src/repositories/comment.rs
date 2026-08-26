@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub struct CommentRepo;
 
 impl CommentRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         game_id: Uuid,
