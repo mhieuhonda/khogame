@@ -82,6 +82,17 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
                 // stdout/log aggregator. Strip phần userinfo trước khi log.
                 let safe_msg = e.to_string();
                 let stripped = safe_msg.split('@').next().unwrap_or(&safe_msg);
+                // Phân biệt retryable vs fatal: connection refused/timeout
+                // → retry; auth fail/db doesn't exist → fail fast không
+                // có point retry 30 lần chờ 60s.
+                if let sqlx::Error::Configuration(_) | sqlx::Error::Database(_) = &e {
+                    tracing::error!(
+                        "Kết nối DB fail fatal (lần {}): {} — không retry",
+                        attempt,
+                        stripped
+                    );
+                    return Err(e.into());
+                }
                 tracing::warn!(
                     "Kết nối DB lần {} thất bại: {} — thử lại sau 2s",
                     attempt,
