@@ -415,6 +415,9 @@ impl AiAgentRepo {
     }
 
     /// Danh sách báo cáo tiến trình gần đây (kèm thông tin AI) cho trang admin.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_progress_recent(
         pool: &PgPool,
         limit: i64,
@@ -440,6 +443,9 @@ impl AiAgentRepo {
     }
 
     /// Danh sách báo cáo tiến trình của một AI Agent cụ thể.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_progress_for_agent(
         pool: &PgPool,
         agent_id: Uuid,
