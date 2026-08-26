@@ -458,6 +458,9 @@ impl GameRepo {
         Ok(cards)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn search(
         pool: &PgPool,
         query: &str,
@@ -563,6 +566,9 @@ impl GameRepo {
         Ok(rows)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn by_user(
         pool: &PgPool,
         user_id: Uuid,

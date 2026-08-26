@@ -55,6 +55,9 @@ impl UserRepo {
         Ok(user)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create_from_google(
         pool: &PgPool,
         google_sub: &str,
