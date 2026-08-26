@@ -18,6 +18,9 @@ pub use state::AppState;
 
 use std::sync::Arc;
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     // Base URL cho filter abs_url trong template (og:image/twitter:image
     // cần URL tuyệt đối — crawler không resolve path tương đối).
