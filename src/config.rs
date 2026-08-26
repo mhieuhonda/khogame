@@ -33,6 +33,9 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn from_env() -> anyhow::Result<Self> {
         let ai_agent_secret = env::var("AI_AGENT_SECRET")
             .ok()
