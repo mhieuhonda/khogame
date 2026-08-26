@@ -489,6 +489,9 @@ pub struct RoleForm {
     pub role: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn set_role(
     State(state): State<Arc<AppState>>,
     AuthUser(admin): AuthUser,
@@ -532,6 +535,9 @@ pub struct BanForm {
     pub ban: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn set_banned(
     State(state): State<Arc<AppState>>,
     AuthUser(admin): AuthUser,
