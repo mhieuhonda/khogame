@@ -879,6 +879,9 @@ pub async fn list_all(
     build_list_template(&state, current_user, "🎮 Tất cả game", "all", "latest", q).await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_latest(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -895,6 +898,9 @@ pub async fn list_latest(
     .await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_trending(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -911,6 +917,9 @@ pub async fn list_trending(
     .await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_top_rated(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
