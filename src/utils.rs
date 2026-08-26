@@ -249,7 +249,13 @@ pub fn parse_date(s: &str) -> Option<chrono::NaiveDate> {
 /// Strip a query string and trailing slashes for safe redirects
 #[must_use]
 pub fn sanitize_redirect(s: &str) -> String {
-    if s.starts_with('/') && !s.starts_with("//") {
+    // Path nội bộ tuyệt đối, KHÔNG có control char (chống header
+    // injection qua Location: \r\nSet-Cookie:...), và không bắt đầu
+    // bằng `//` (chống protocol-relative redirect mở ra domain khác).
+    if s.starts_with('/')
+        && !s.starts_with("//")
+        && !s.bytes().any(|b| b.is_ascii_control())
+    {
         s.to_string()
     } else {
         "/".to_string()
@@ -385,6 +391,11 @@ mod tests {
         assert_eq!(sanitize_redirect("//evil.com"), "/");
         // Path tương đối → từ chối
         assert_eq!(sanitize_redirect("foo"), "/");
+        // Control char (CR/LF) → từ chối (chống header injection)
+        assert_eq!(sanitize_redirect("/games\r\nSet-Cookie: bad=1"), "/");
+        assert_eq!(sanitize_redirect("/\tfoo"), "/");
+        // Path có null byte → từ chối
+        assert_eq!(sanitize_redirect("/games\0"), "/");
     }
 
     #[test]

@@ -60,12 +60,9 @@ pub async fn google_login(
 
     // Lưu `next` vào cookie tạm để redirect sau khi đăng nhập thành công.
     if let Some(next) = q.next.as_deref().filter(|s| !s.is_empty()) {
-        // Chỉ cho phép redirect nội bộ (path absolute không có scheme/host)
-        let safe_next = if next.starts_with('/') && !next.starts_with("//") {
-            next.to_string()
-        } else {
-            "/".to_string()
-        };
+        // Dùng helper chung: chặn control char, scheme tuyệt đối,
+        // protocol-relative — chống header injection & open redirect.
+        let safe_next = crate::utils::sanitize_redirect(next);
         auth::set_oauth_next_cookie(&mut new_jar, &safe_next, &state.config.base_url);
     }
 
@@ -211,11 +208,14 @@ pub async fn google_callback(
     auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
 
     // Redirect về `next` nếu có, mặc định /
+    // Dùng helper sanitize_redirect thống nhất — chặn control char,
+    // scheme tuyệt đối, protocol-relative (chống header injection
+    // qua Location + chống open redirect).
     let redirect_target = next_path
         .as_deref()
-        .filter(|s| !s.is_empty() && s.starts_with('/') && !s.starts_with("//"))
-        .unwrap_or("/");
-    Ok((new_jar, Redirect::to(redirect_target)))
+        .map(crate::utils::sanitize_redirect)
+        .unwrap_or_else(|| "/".to_string());
+    Ok((new_jar, Redirect::to(&redirect_target)))
 }
 
 /// # Errors
