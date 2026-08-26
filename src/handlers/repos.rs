@@ -199,6 +199,9 @@ pub async fn create(
 }
 
 // ============= Làm mới metadata 1 repo =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn refresh(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -229,6 +232,9 @@ pub async fn refresh(
 }
 
 // ============= Xóa repo của mình =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete_own(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -245,6 +251,9 @@ pub async fn delete_own(
 }
 
 // ============= Partial: danh sách repo của user (cho profile) =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn user_repos_fragment(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
