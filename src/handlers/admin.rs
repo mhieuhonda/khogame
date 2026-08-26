@@ -192,6 +192,9 @@ pub struct ResolveForm {
     pub resolution: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn resolve_report(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -254,6 +257,9 @@ pub struct HideGameForm {
     pub hide: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn hide_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
