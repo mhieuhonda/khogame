@@ -32,6 +32,12 @@ jobs:
   # Trùng logic với .github/workflows/ci.yml nhưng chạy ở đây để
   # deploy.yml có thể chạy độc lập (vd khi trigger bằng workflow_dispatch
   # hoặc push tag mà CI workflow không trigger).
+  #
+  # ⚠️ KHÔNG chạy `cargo fmt --check` ở đây — CI workflow (.github/workflows/ci.yml)
+  # đã có job autofmt tự format + commit ngược về branch với [skip ci]. Nếu để
+  # fmt check trong CD ci-gate, sẽ block deploy khi 1 commit lớn quên fmt
+  # (chính là root cause của v1.1.0 deploy fail). CI tự fix fmt tách biệt
+  # khỏi CD — deploy không bao giờ bị chặn vì lý do formatting.
   # ────────────────────────────────────────────────────────────
   ci-gate:
     name: CI gate (Rust 1.98)
@@ -44,7 +50,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.0"
-          components: rustfmt, clippy
+          components: clippy
 
       - name: Cache cargo registry + target
         uses: Swatinem/rust-cache@v2
@@ -53,11 +59,14 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Auto-format code (best-effort — không block deploy)
+        # Tự chạy cargo fmt trước check để fmt violation không làm fail
+        # downstream steps (clippy có thể báo warning nếu code chưa format
+        # trong 1 số edge case). Diff không được commit — chỉ local fix.
+        run: cargo fmt --all || true
+
       - name: Cargo check (--locked)
         run: cargo check --locked --all-targets
-
-      - name: Cargo fmt --check
-        run: cargo fmt --all -- --check
 
       - name: Clippy (-D warnings)
         run: cargo clippy --all-targets --locked -- -D warnings

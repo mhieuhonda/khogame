@@ -13,6 +13,7 @@
 
 pub mod audit;
 pub mod json_ld;
+pub mod storage;
 
 pub use audit::audit;
 pub use json_ld::{build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld};

@@ -114,12 +114,7 @@ pub async fn ws_handler(
 /// giữa 2 task cần `tokio::sync::Mutex` phức tạp. Dùng `tokio::select!`
 /// trong 1 task đủ: concurrency OK vì select poll cả 3 future cùng lúc,
 /// và cleanup đơn giản (không cần oneshot channel).
-async fn run_ws(
-    state: Arc<AppState>,
-    mut socket: WebSocket,
-    user_id: Uuid,
-    is_staff: bool,
-) {
+async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_staff: bool) {
     // 1) Presence: đánh dấu online ngay khi connect.
     if let Some(new_count) = state.presence_add(user_id) {
         let _ = state
@@ -197,12 +192,7 @@ async fn run_ws(
 ///   - Chat message: chuỗi thuần content, không phải JSON. Đơn giản hoá
 ///     client (chỉ cần gửi text thuần). Backend wrap vào ChatEvent.
 ///   - JSON command: {"action":"delete","id":"..."} cho admin ẩn tin.
-async fn handle_text_frame(
-    state: &AppState,
-    user_id: Uuid,
-    is_staff: bool,
-    raw: &str,
-) {
+async fn handle_text_frame(state: &AppState, user_id: Uuid, is_staff: bool, raw: &str) {
     // Thử parse JSON command trước — nếu fail thì coi như plain text message.
     if let Ok(cmd) = serde_json::from_str::<WsCommand>(raw) {
         match cmd.action.as_str() {

@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub struct RepoRepo;
 
 const CARD_COLS: &str = r"r.id, r.owner, r.repo_name, r.description, r.primary_language,
-    r.stars, r.forks, r.open_issues, r.pushed_at,
+    r.stars, r.forks, r.open_issues, r.pushed_at, r.image_url,
     g.slug as game_slug, g.title as game_title,
     u.display_name as author_name, u.username as author_username, u.avatar_url as author_avatar,
     r.status, r.created_at";
@@ -117,7 +117,7 @@ impl RepoRepo {
     ) -> AppResult<Option<GithubRepo>> {
         let repo = sqlx::query_as::<_, GithubRepo>(
             r"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
-                primary_language, stars, forks, open_issues, pushed_at, status,
+                primary_language, stars, forks, open_issues, pushed_at, status, image_url,
                 created_at, updated_at
               FROM github_repos WHERE owner = $1 AND repo_name = $2",
         )
@@ -235,7 +235,7 @@ impl RepoRepo {
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<GithubRepo>> {
         let repo = sqlx::query_as::<_, GithubRepo>(
             r"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
-                primary_language, stars, forks, open_issues, pushed_at, status,
+                primary_language, stars, forks, open_issues, pushed_at, status, image_url,
                 created_at, updated_at
               FROM github_repos WHERE id = $1",
         )
@@ -312,6 +312,20 @@ impl RepoRepo {
         .bind(pushed_at)
         .execute(pool)
         .await?;
+        Ok(())
+    }
+
+    /// Cập nhật ảnh thumbnail custom cho repo (URL `/uploads/repos/...`).
+    /// Truyền chuỗi rỗng để xoá (fallback về GitHub thumbnail).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn set_image_url(pool: &PgPool, id: Uuid, image_url: &str) -> AppResult<()> {
+        sqlx::query("UPDATE github_repos SET image_url = $2 WHERE id = $1")
+            .bind(id)
+            .bind(image_url)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 

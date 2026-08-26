@@ -142,17 +142,20 @@ impl UserRepo {
         bio: &str,
         avatar_url: Option<&str>,
     ) -> AppResult<User> {
-        // Validate avatar_url: chỉ cho phép http/https, không cho javascript:/data:
-        // để tránh XSS qua avatar URL (thẻ <img src="javascript:..."> sẽ không chạy JS
-        // nhưng src="data:text/html,..." hoặc scheme khác có thể lạm dụng).
+        // Validate avatar_url: chỉ cho phép http/https HOẶC /uploads/
+        // URL nội bộ (do server sinh khi user upload ảnh). Chặn mọi scheme
+        // khác (javascript:, data:, file:) — XSS vector qua <img src>.
         let avatar_url_safe = match avatar_url {
             Some(s) if !s.is_empty() => {
                 let lower = s.to_ascii_lowercase();
-                if lower.starts_with("http://") || lower.starts_with("https://") {
+                if lower.starts_with("http://")
+                    || lower.starts_with("https://")
+                    || crate::services::storage::is_upload_url(s)
+                {
                     Some(s)
                 } else {
                     return Err(crate::error::AppError::BadRequest(
-                        "Avatar URL phải là http:// hoặc https://".into(),
+                        "Avatar URL phải là http(s):// hoặc /uploads/avatars/...".into(),
                     ));
                 }
             }

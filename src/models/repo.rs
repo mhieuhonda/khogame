@@ -47,6 +47,9 @@ pub struct GithubRepo {
     pub open_issues: i32,
     pub pushed_at: Option<DateTime<Utc>>,
     pub status: RepoStatus,
+    /// Ảnh thumbnail custom (URL `/uploads/repos/...`), rỗng nếu user
+    /// chưa upload — frontend fallback về GitHub thumbnail.
+    pub image_url: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -82,6 +85,9 @@ pub struct GithubRepoCard {
     pub forks: i32,
     pub open_issues: i32,
     pub pushed_at: Option<DateTime<Utc>>,
+    /// Ảnh thumbnail custom (URL `/uploads/repos/...`), rỗng nếu
+    /// chưa có — frontend fallback về GitHub thumbnail.
+    pub image_url: String,
     pub game_slug: Option<String>,
     pub game_title: Option<String>,
     pub author_name: String,
@@ -114,6 +120,11 @@ pub struct RepoForm {
     pub description: String,
     #[serde(default)]
     pub game_slug: Option<String>,
+    /// Ảnh thumbnail custom (URL `/uploads/repos/...` từ POST /uploads/repo/image,
+    /// hoặc http(s):// URL remote). Optional — rỗng sẽ dùng thumbnail
+    /// tự sinh từ GitHub (`https://opengraph.githubassets.com/...`).
+    #[serde(default)]
+    pub repo_image_url: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,6 +188,7 @@ mod tests {
             open_issues: 3,
             pushed_at: None,
             status: RepoStatus::Approved,
+            image_url: String::new(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

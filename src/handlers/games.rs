@@ -149,9 +149,9 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
             return Err(AppError::BadRequest("Mỗi ngôn ngữ tối đa 50 ký tự".into()));
         }
     }
-    if !crate::utils::is_safe_url(&form.cover_image) {
+    if !crate::utils::is_safe_image_url(&form.cover_image) {
         return Err(AppError::BadRequest(
-            "Cover image URL phải là http:// hoặc https://".into(),
+            "Cover image URL phải là http(s):// hoặc /uploads/...".into(),
         ));
     }
     if form.cover_image.len() > 2048 {
@@ -170,9 +170,9 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
         if url.is_empty() {
             continue;
         }
-        if !crate::utils::is_safe_url(url) {
+        if !crate::utils::is_safe_image_url(url) {
             return Err(AppError::BadRequest(format!(
-                "Screenshot #{} URL phải là http:// hoặc https://",
+                "Screenshot #{} URL phải là http:// hoặc https:// hoặc /uploads/...",
                 i + 1
             )));
         }

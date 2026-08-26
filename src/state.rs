@@ -17,17 +17,11 @@ use uuid::Uuid;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ChatEvent {
     /// Tin nhắn mới — payload là message kèm author info.
-    Message {
-        message: ChatMessageWithUser,
-    },
+    Message { message: ChatMessageWithUser },
     /// Tin nhắn bị admin ẩn — client thay nội dung bằng placeholder "đã ẩn".
-    Delete {
-        id: Uuid,
-    },
+    Delete { id: Uuid },
     /// Cập nhật số user đang online — client hiển thị ở header chat card.
-    Presence {
-        online: usize,
-    },
+    Presence { online: usize },
 }
 
 #[derive(Clone)]
@@ -91,9 +85,7 @@ impl AppState {
             // Vượt threshold → oldest drop (lagging receiver bị skip, acceptable
             // cho chat vì client có HTTP history fallback để khôi phục).
             chat_tx: broadcast::channel::<ChatEvent>(256).0,
-            chat_online: Arc::new(std::sync::Mutex::new(
-                std::collections::HashSet::new(),
-            )),
+            chat_online: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
         })
     }
 
@@ -154,8 +146,6 @@ impl AppState {
 
     /// Số user đang online (cho HTTP GET /chat/history trả về cùng lúc).
     pub fn presence_count(&self) -> usize {
-        self.chat_online
-            .lock()
-            .map_or(0, |s| s.len())
+        self.chat_online.lock().map_or(0, |s| s.len())
     }
 }

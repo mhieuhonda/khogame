@@ -114,7 +114,21 @@
                 <label class="form-label" for="f-cover_image">URL ảnh bìa</label>
                 <input type="url" name="cover_image" id="f-cover_image" class="form-control" maxlength="2048"
                        placeholder="https://.../cover.jpg">
-                <small class="form-hint">Khuyến nghị: tỷ lệ 16:9, kích thước tối thiểu 800x450px</small>
+                <small class="form-hint">Khuyến nghị: tỷ lệ 16:9, kích thước tối thiểu 800x450px. Hoặc tải ảnh lên bên dưới.</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tải ảnh bìa lên</label>
+                <div class="upload-zone" id="game-cover-upload-zone">
+                    <div class="upload-preview-row">
+                        <img id="game-cover-preview" alt="Cover preview" class="upload-preview-cover" />
+                        <div class="upload-actions">
+                            <label for="game-cover-file-input" class="btn btn-ghost btn-sm">📂 Chọn ảnh</label>
+                            <input type="file" id="game-cover-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+                            <small class="form-hint">JPG, PNG, WebP hoặc GIF. Tối đa 10 MB. Tỷ lệ 16:9.</small>
+                            <div id="game-cover-upload-status" class="upload-status" role="status" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -192,4 +206,58 @@
         </button>
     </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Game cover upload — fetch POST /uploads/game/cover, fill hidden URL
+// field + preview <img>.
+(function() {
+    var input = document.getElementById('game-cover-file-input');
+    var urlField = document.getElementById('f-cover_image');
+    var preview = document.getElementById('game-cover-preview');
+    var status = document.getElementById('game-cover-upload-status');
+    if (!input || !urlField || !preview || !status) return;
+
+    // Nếu URL field đã có giá trị (edit form), preview ngay.
+    if (urlField.value) preview.src = urlField.value;
+
+    input.addEventListener('change', function() {
+        var file = input.files && input.files[0];
+        if (!file) return;
+        if (file.size > 10 * 1024 * 1024) {
+            status.textContent = '❌ Ảnh quá lớn (tối đa 10 MB).';
+            status.className = 'upload-status error';
+            return;
+        }
+        var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+        if (allowed.indexOf(file.type) === -1) {
+            status.textContent = '❌ Định dạng không hỗ trợ. Dùng JPG/PNG/WebP/GIF.';
+            status.className = 'upload-status error';
+            return;
+        }
+        status.textContent = '⏳ Đang tải lên...';
+        status.className = 'upload-status progress';
+        var fd = new FormData();
+        fd.append('file', file);
+        fetch('/uploads/game/cover', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.error) {
+                    status.textContent = '❌ ' + data.error;
+                    status.className = 'upload-status error';
+                    return;
+                }
+                urlField.value = data.url;
+                preview.src = data.url;
+                status.textContent = '✅ Đã tải lên (' + Math.round(data.size / 1024) + ' KB)';
+                status.className = 'upload-status success';
+            })
+            .catch(function(err) {
+                status.textContent = '❌ Lỗi mạng: ' + err.message;
+                status.className = 'upload-status error';
+            });
+    });
+})();
+</script>
 {% endblock %}

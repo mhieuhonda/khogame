@@ -160,3 +160,43 @@ Stage Summary:
 - 4 releases fixed/created: v1.0.1 (publish), v0.9.0, v1.0.0, v1.0.0-rc.1 (new), v1.0.2 (Release workflow)
 - Stack giữ nguyên: Rust 1.98, axum 0.8.9, sqlx 0.9, askama 0.16, HTMX 2.0.10, PostgreSQL 17
 - Commits 05b1626, 8fcfaa0, 102639a tất cả bởi mhieuhonda
+
+---
+Task ID: 6
+Agent: super-z (main)
+Task: Fix GitHub Action triệt để + thêm image upload (avatar, game, news, repo) lưu VPS storage
+
+Work Log:
+- Diagnose root cause v1.1.0 deploy fail: CI Rustfmt job fail vì src/handlers/chat.rs:114 + src/state.rs:17 có code chưa fmt (multi-line fn signature có thể fit 1 line). CD ci-gate cũng có `cargo fmt --all -- --check` → chặn toàn bộ CD pipeline → prod stuck image cũ.
+- Fetch CI logs: `/tmp/khogame-logs.zip` từ API run 32966249059 — confirm "Diff in /home/runner/work/khogame/khogame/src/handlers/chat.rs:114" với fix `async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_staff: bool) {` (1 line thay 5 lines multi-line).
+- Fix rustfmt: edit `src/handlers/chat.rs` (2 chỗ: run_ws, handle_text_frame) + `src/state.rs` (3 chỗ: ChatEvent enum variants, chat_online Mutex::new, presence_count lock). Verify `cargo fmt --all -- --check` clean.
+- Rewrite `.github/workflows/ci.yml`: thêm job `autofmt` chạy đầu tiên, auto `cargo fmt --all` + commit ngược về main với GITHUB_TOKEN + `[skip ci]`. PR từ fork fail với hướng dẫn rõ ràng. Các job check/fmt/clippy/test/doc/audit đều `needs: autofmt`.
+- Update `.github/workflows/deploy.yml`: bỏ `Cargo fmt --check` khỏi ci-gate, thay bằng `cargo fmt --all || true` (best-effort fix trước clippy). Comment giải thích root cause để contributor sau không thêm lại.
+- Tạo `src/services/storage.rs`: storage abstraction với UUID filename, extension whitelist (JPG/PNG/WebP/GIF), magic-byte check, size limit per kind (avatar/repo 5MB, game/news cover 10MB), path traversal guard, 8 unit test.
+- Tạo `src/handlers/uploads.rs`: 4 endpoint POST /uploads/avatar, /uploads/game/cover, /uploads/news/cover, /uploads/repo/image — tất cả AuthUser, trả JSON `{"url","size"}`.
+- Update `src/services/mod.rs`, `src/handlers/mod.rs` để register modules.
+- Update `src/routes.rs`: thêm 4 POST routes + ServeDir `/uploads` từ STORAGE_DIR với cache immutable 1 năm.
+- Tạo `migrations/014_repo_image_url.sql`: ALTER TABLE github_repos ADD COLUMN image_url TEXT NOT NULL DEFAULT ''.
+- Update `src/models/repo.rs`: thêm `image_url: String` vào GithubRepo + GithubRepoCard.
+- Update `src/repositories/repo_repo.rs`: thêm `image_url` vào CARD_COLS + SELECT queries, thêm method `set_image_url()`.
+- Update `src/handlers/repos.rs`: handle `form.repo_image_url` (validate + RepoRepo::set_image_url).
+- Update `src/utils.rs`: thêm `is_safe_image_url()` chấp nhận http(s):// HOẶC /uploads/... URL.
+- Update `src/handlers/profile.rs`: avatar_url validation chấp nhận /uploads/... URL.
+- Update `src/repositories/user.rs`: update_profile avatar_url validation chấp nhận /uploads/... URL.
+- Update `src/handlers/games.rs`: cover_image + screenshots validation dùng `is_safe_image_url`.
+- Update `src/handlers/news.rs`: validate_url chấp nhận /uploads/... URL.
+- Update 4 templates: profile/edit.html, game/new.html, news/new.html, repos/new.html — thêm upload-zone UI với preview + status box + pure JS fetch.
+- Update `static/css/style.css`: thêm .upload-zone, .upload-preview-row, .upload-preview-avatar/cover, .upload-status (3 states), responsive mobile.
+- Bump Cargo.toml version 1.1.0 → 1.2.0.
+- Update CHANGELOG.md với v1.2.0 release notes chi tiết.
+- Verify: cargo check ✅, cargo clippy -D warnings ✅, cargo fmt --check ✅, cargo test --all ✅ (169 → 179 tests, +10 new tests pass).
+- Configure git user.name=mhieuhonda, user.email=mhieuhonda@users.noreply.github.com.
+- Commit + push main + create tag v1.2.0.
+
+Stage Summary:
+- Root cause CI/CD fail đã fix triệt để: autofmt tự commit fmt diff ngược về branch → fmt không bao giờ chặn deploy.
+- 4 loại ảnh upload đã implement end-to-end (backend storage + endpoints + frontend UI).
+- VPS storage qua Docker volume `khogame-storage:/app/storage` (đã có sẵn trong compose.prod.yml từ v1.0.0) — không cần cấu hình Coolify thêm.
+- 179 unit test pass (10 test mới cho storage + uploads).
+- Stack giữ nguyên: Rust 1.98, axum 0.8.9 (+multipart feature mới enable), sqlx 0.9, askama 0.16, HTMX 2.0.10, PostgreSQL 17.
+- Commits bởi mhieuhonda, tag v1.2.0 sẽ trigger Release workflow tự tạo GitHub Release.

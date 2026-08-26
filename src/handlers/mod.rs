@@ -11,3 +11,4 @@ pub mod notifications;
 pub mod pages;
 pub mod profile;
 pub mod repos;
+pub mod uploads;

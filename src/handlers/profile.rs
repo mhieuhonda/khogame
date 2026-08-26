@@ -139,13 +139,16 @@ pub async fn update_profile(
             "Giới thiệu bản thân tối đa 500 ký tự".into(),
         ));
     }
-    // Avatar URL chỉ nhận http(s) — chặn javascript:/data: scheme lọt vào
-    // src của <img> trên mọi trang hiển thị avatar (cùng chuẩn is_safe_url
-    // đã dùng cho cover_image/trailer của game).
+    // Avatar URL: chấp nhận (1) http(s):// URL bên ngoài (Google avatar
+    // từ OAuth, hoặc URL ảnh online khác) HOẶC (2) `/uploads/avatars/...`
+    // URL do server tự sinh khi user upload qua POST /uploads/avatar.
+    // Chặn mọi scheme khác (javascript:, data:, file:) — XSS vector.
     if let Some(url) = form.avatar_url.as_deref().filter(|s| !s.is_empty()) {
-        if !crate::utils::is_safe_url(url) {
+        if crate::services::storage::is_upload_url(url) {
+            // URL upload nội bộ — luôn hợp lệ (filename do server sinh).
+        } else if !crate::utils::is_safe_url(url) {
             return Err(AppError::BadRequest(
-                "Avatar URL phải là http:// hoặc https://".into(),
+                "Avatar URL phải là http(s):// hoặc /uploads/avatars/...".into(),
             ));
         }
         if url.len() > 2048 {

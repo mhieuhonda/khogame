@@ -166,7 +166,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/chat/{id}/delete",
             post(handlers::chat::http_delete).delete(handlers::chat::http_delete),
-        );
+        )
+        // === Image uploads (multipart) ===
+        // Mỗi endpoint nhận field `file` (multipart/form-data), trả JSON
+        // `{"url": "/uploads/<subdir>/<uuid>.<ext>", "size": <bytes>}`.
+        // Client HTMX dùng URL để fill hidden field + preview <img>.
+        // Tất cả yêu cầu AuthUser (đăng nhập) — xem handlers/uploads.rs.
+        .route("/uploads/avatar", post(handlers::uploads::avatar))
+        .route("/uploads/game/cover", post(handlers::uploads::game_cover))
+        .route("/uploads/news/cover", post(handlers::uploads::news_cover))
+        .route("/uploads/repo/image", post(handlers::uploads::repo_image));
 
     // Public JSON API v1
     let api_routes = Router::new()
@@ -330,6 +339,26 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                     ),
                 ))
                 .service(ServeDir::new("static")),
+        )
+        // Uploaded files (avatar/cover/news/repo) — served from STORAGE_DIR.
+        // Cache immutable (1 năm) vì filename là UUID — không bao giờ override
+        // cùng URL. Coolify volume mount `khogame-storage:/app/storage`
+        // (deploy/compose.prod.yml) ensures file tồn tại qua container
+        // restart/redeploy.
+        .nest_service(
+            "/uploads",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),
+                ))
+                .service(ServeDir::new(
+                    std::env::var("STORAGE_DIR")
+                        .ok()
+                        .filter(|s| !s.is_empty())
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| std::path::PathBuf::from("storage")),
+                )),
         )
         .route("/rss.xml", get(handlers::api::rss))
         .route("/news.rss", get(handlers::api::news_rss))

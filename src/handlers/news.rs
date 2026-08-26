@@ -58,7 +58,12 @@ fn validate_url(url: &str) -> Result<String, AppError> {
             "URL chứa ký tự điều khiển không hợp lệ".into(),
         ));
     }
-    if url.starts_with("http://") || url.starts_with("https://") {
+    // Chấp nhận: (1) http(s):// URL remote HOẶC (2) `/uploads/...` URL
+    // nội bộ do server sinh khi user upload ảnh bìa qua POST /uploads/news/cover.
+    if url.starts_with("http://")
+        || url.starts_with("https://")
+        || crate::services::storage::is_upload_url(url)
+    {
         if url.len() > 2048 {
             return Err(AppError::BadRequest(
                 "URL quá dài (tối đa 2048 ký tự)".into(),
@@ -67,7 +72,7 @@ fn validate_url(url: &str) -> Result<String, AppError> {
         Ok(url.to_string())
     } else {
         Err(AppError::BadRequest(
-            "URL phải bắt đầu bằng http:// hoặc https://".into(),
+            "URL phải bắt đầu bằng http://, https:// hoặc /uploads/".into(),
         ))
     }
 }

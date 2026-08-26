@@ -9,6 +9,114 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.0] — 2026-08-26 — Image uploads (VPS storage) + CI autofmt fix
+
+🚀 **Feature + reliability release** — thêm upload ảnh cho 4 loại (avatar
+user, ảnh bìa game, ảnh bìa tin tức, ảnh thumbnail repo GitHub) lưu trực tiếp
+trên VPS storage (Coolify volume `khogame-storage:/app/storage`), và fix
+triệt để lỗi GitHub Action fail khi push commit lớn (root cause: rustfmt
+violation chặn toàn bộ pipeline CD).
+
+### ✨ New features — Image uploads
+
+- **Storage service mới** (`src/services/storage.rs`) — abstraction cho
+  file storage local, mount qua Docker volume `khogame-storage:/app/storage`
+  (đã có sẵn trong `deploy/compose.prod.yml` từ v1.0.0). Tính năng:
+  - **Filename UUID** — server sinh UUID v4, không bao giờ dùng tên file
+    từ client → chống path traversal (`../../etc/passwd`) và đụng độ tên.
+  - **Extension whitelist** — chỉ chấp nhận JPG/JPEG/PNG/WebP/GIF. Block
+    SVG (có thể chứa `<script>`) và mọi định dạng khác.
+  - **Magic-byte check** — 4-12 byte đầu file phải khớp signature của
+    extension khai báo. Chặn file giả mạo (vd `.exe` đổi tên `.jpg`).
+  - **Size limit per kind** — avatar/repo 5MB, game cover/news cover 10MB.
+  - **Path traversal guard** — `resolve_upload_path()` canonicalize +
+    verify path nằm trong storage root (chống symlink escape).
+  - **10 unit test** — bao phủ extension detect, magic byte, path
+    traversal, MIME type, content-type fallback.
+
+- **4 upload endpoints** (`src/handlers/uploads.rs`) — tất cả yêu cầu
+  AuthUser (đăng nhập), trả JSON `{"url": "/uploads/<subdir>/<uuid>.<ext>",
+  "size": <bytes>}` cho client HTMX fill vào hidden field + preview:
+  - `POST /uploads/avatar` — ảnh đại diện user (sub-dir `avatars`, 5MB).
+  - `POST /uploads/game/cover` — ảnh bìa game (sub-dir `games`, 10MB).
+  - `POST /uploads/news/cover` — ảnh bìa tin tức (sub-dir `news`, 10MB).
+  - `POST /uploads/repo/image` — ảnh thumbnail repo GitHub (sub-dir
+    `repos`, 5MB) — optional, nếu không upload sẽ fallback về thumbnail
+    tự sinh từ GitHub OpenGraph.
+
+- **Serve `/uploads` từ disk** — router thêm `ServeDir` pointing to
+  `STORAGE_DIR` (env, default `/app/storage` trong container, `./storage`
+  khi chạy dev). Cache-Control `immutable, max-age=31536000` (1 năm) vì
+  filename là UUID — không bao giờ override cùng URL.
+
+- **Migration 014** — `ALTER TABLE github_repos ADD COLUMN image_url TEXT
+  NOT NULL DEFAULT ''`. NOT NULL với default '' để code Rust map thẳng
+  sang `String` (không cần `Option`), tương thích lùi với repo cũ chưa có
+  ảnh custom.
+
+- **UI upload trên 4 form** — pure JS (no extra lib), fetch POST `/uploads/...`,
+  preview `<img>` real-time, status box với progress/success/error states:
+  - `templates/profile/edit.html` — avatar upload, preview tròn 96px.
+  - `templates/game/new.html` — cover upload, preview 16:9 240x135.
+  - `templates/news/new.html` — cover upload, preview 16:9 240x135.
+  - `templates/repos/new.html` — thumbnail upload (optional), preview
+    240x135.
+
+- **CSS upload-zone** — `.upload-zone` với dashed border, hover highlight,
+  `.upload-preview-row` flex layout, `.upload-status` 3 state colors
+  (progress/success/error), responsive mobile stack.
+
+### 🔧 CI/CD triệt để fix — autofmt + fmt không chặn deploy
+
+**Root cause v1.1.0 deploy fail**: commit "feat(v1.1.0): Live Chat" chưa
+chạy `cargo fmt --all` trước push → CI Rustfmt job fail → CD `ci-gate`
+cũng fail vì có `cargo fmt --all -- --check` → toàn bộ CD pipeline bị
+skip → prod không update tới 12 giờ. Operator tưởng "build xong" nhưng
+web vẫn chạy image cũ.
+
+**Fix**:
+
+- **CI workflow mới `autofmt` job** (chạy trước mọi job khác):
+  - Auto-chạy `cargo fmt --all`.
+  - Nếu có diff → commit ngược về branch `main` với GITHUB_TOKEN +
+    `[skip ci]` (tránh trigger CI loop).
+  - PR từ fork không có quyền push → fail job với hướng dẫn rõ ràng
+    "chạy `cargo fmt --all` locally rồi push lại".
+  - Sau khi autofmt commit, các job check/clippy/test/doc chạy bình
+    thường — fmt không bao giờ chặn CI.
+
+- **CD `ci-gate` không còn fmt check** — deploy.yml xóa step
+  `Cargo fmt --check`, thay bằng `cargo fmt --all || true` (best-effort
+  fix trước clippy để clippy không báo warning). Logic fmt đã được CI
+  workflow handle tách biệt → deploy không bị block.
+
+- **Comment rõ ràng trong YAML** — giải thích root cause và lý do bỏ
+  fmt check khỏi ci-gate, để contributor sau không vô tình thêm lại.
+
+### 🔒 Security hardening
+
+- **`is_safe_image_url()` helper** (`src/utils.rs`) — chấp nhận (1) http(s)://
+  URL remote HOẶC (2) `/uploads/...` URL nội bộ do server sinh. Dùng cho
+  avatar_url, cover_image, screenshots — các field ảnh cho phép user
+  upload hoặc điền URL remote. Chặn mọi scheme khác (javascript:, data:,
+  file:, vbscript:).
+- **`update_profile` repo** — validate avatar_url chấp nhận http(s)://
+  HOẶC `/uploads/avatars/...` URL. Trước đây chỉ chấp nhận http(s) →
+  user upload avatar xong submit form bị reject.
+- **News `validate_url`** — chấp nhận http(s):// HOẶC `/uploads/news/...`.
+- **Repo handler** — validate `repo_image_url` qua `is_safe_image_url`,
+  reject nếu sai scheme hoặc > 2048 ký tự.
+
+### 📊 Stats
+
+- **+169 → 179 unit tests** (thêm 10 tests cho storage + uploads).
+- **+2 source files** (`src/services/storage.rs`, `src/handlers/uploads.rs`).
+- **+1 migration** (`014_repo_image_url.sql`).
+- **0 dependency thêm** (axum `multipart` feature đã có sẵn trong 0.8.9,
+  chỉ cần enable trong Cargo.toml).
+
+---
+
 ## [1.1.0] — 2026-08-26 — Live Chat realtime + UI redesign forms
 
 🚀 **Feature release** — thêm Live Chat realtime trên trang chủ (WebSocket,

@@ -1287,6 +1287,66 @@ a:hover { color: var(--accent-light); }
 }
 .platform-icon { display: inline-block; margin-right: 4px; }
 
+/* ===== Image Upload Zone ===== */
+.upload-zone {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    background: var(--bg-elevated, var(--bg-card));
+    transition: border-color 0.15s, background 0.15s;
+}
+.upload-zone:hover { border-color: var(--accent); }
+.upload-preview-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.upload-preview-avatar {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg-muted, #ccc);
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+}
+.upload-preview-cover {
+    width: 240px;
+    height: 135px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: var(--bg-muted, #ccc);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+}
+.upload-preview-cover[src=""],
+.upload-preview-avatar[src=""] {
+    /* Hide broken-img icon when src empty — show placeholder div bg only */
+    visibility: hidden;
+}
+.upload-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+}
+.upload-status {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    min-height: 18px;
+}
+.upload-status.progress { color: var(--accent); }
+.upload-status.success { color: #10b981; }
+.upload-status.error { color: #ef4444; }
+
+@media (max-width: 640px) {
+    .upload-preview-row { flex-direction: column; align-items: stretch; }
+    .upload-preview-cover { width: 100%; height: 180px; }
+    .upload-preview-avatar { align-self: center; }
+}
+
 /* ===== Profile ===== */
 .profile-header {
     background: var(--bg-card);

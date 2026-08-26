@@ -360,6 +360,30 @@ pub fn is_safe_url(url: &str) -> bool {
     lower.starts_with("http://") || lower.starts_with("https://")
 }
 
+/// Validate một URL là ảnh hợp lệ: chấp nhận (1) http(s):// URL remote
+/// HOẶC (2) `/uploads/...` URL do server tự sinh khi user upload ảnh.
+/// Dùng cho avatar_url, cover_image, screenshots — các field ảnh cho
+/// phép user upload hoặc điền URL remote.
+///
+/// Trả về `true` nếu URL rỗng (không bắt buộc). Trả về `false` cho mọi
+/// scheme khác (javascript:, data:, file:, vbscript:).
+///
+/// Chặn control bytes (CR/LF/TAB/NUL) — chống header injection khi
+/// URL được ghép vào Location header.
+#[must_use]
+pub fn is_safe_image_url(url: &str) -> bool {
+    if url.is_empty() {
+        return true;
+    }
+    if url.bytes().any(|b| b.is_ascii_control()) {
+        return false;
+    }
+    let lower = url.to_ascii_lowercase();
+    lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || crate::services::storage::is_upload_url(url)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

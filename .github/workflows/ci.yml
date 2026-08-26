@@ -4,6 +4,14 @@ name: CI
 # CI — Continuous Integration cho khogame (Louis Space)
 # Chạy trên mọi push main + PR main. Skip cho doc-only changes.
 # Stack: Rust 1.98 (pin exact), axum 0.8.9, sqlx 0.9, askama 0.16.
+#
+# TRIẾT LÝ: "fmt không bao giờ chặn deploy". Khi 1 commit lớn (vd live
+# chat) quên chạy `cargo fmt`, CI sẽ:
+#   1) Auto-format code qua `cargo fmt --all`.
+#   2) Commit diff ngược về branch với GITHUB_TOKEN + [skip ci].
+#   3) Tiếp tục chạy check/clippy/test/doc bình thường.
+# Trước đây (v1.1.0) fmt fail → chặn toàn bộ CD → prod không update
+# được tới 12 giờ vì dev quên `cargo fmt` trước push.
 # ============================================================
 
 on:
@@ -42,14 +50,80 @@ env:
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
+  # Job 0: Auto-format + commit back. Chạy trước mọi job khác để fmt
+  # không bao giờ chặn CI/CD. PR thì auto-push không khả thi (không có
+  # quyền push về fork) → job skip phần commit, chỉ check.
+  autofmt:
+    name: Auto-format (rustfmt)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Cần token có write permission để commit ngược về branch.
+          # GITHUB_TOKEN mặc định đã có contents:write khi trigger push main.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.0"
+          components: rustfmt
+
+      - name: Cargo fmt --all (auto-fix)
+        run: cargo fmt --all
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+            echo "✅ Code đã format đúng — không cần commit lại."
+          else
+            echo "changed=yes" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Phát hiện code chưa format — sẽ commit diff ngược về branch."
+            git diff --stat
+          fi
+
+      - name: Commit formatted code back to branch
+        # Chỉ commit khi:
+        # 1) Có thay đổi fmt
+        # 2) Đang trên push main (không phải PR — PR từ fork không có quyền push)
+        # 3) Không phải tag push (không commit ngược về tag)
+        if: steps.changes.outputs.changed == 'yes' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style(ci): auto-format với cargo fmt [skip ci]
+
+          Được tạo tự động bởi CI workflow (.github/workflows/ci.yml job autofmt)
+          vì commit trước đó chưa chạy \`cargo fmt --all\`."
+          git push
+          echo "✅ Đã commit diff fmt ngược về main với [skip ci]."
+
+      - name: Verify fmt clean (PR mode — fail để contributor tự fix)
+        # PR không push được về fork, chỉ warn contributor qua failure rõ ràng.
+        if: steps.changes.outputs.changed == 'yes' && github.event_name == 'pull_request'
+        run: |
+          echo "::error::Code chưa được format. Chạy 'cargo fmt --all' locally rồi push lại."
+          git diff
+          exit 1
+
   # Job 1: cargo check — build dependency graph + verify Cargo.lock consistent.
   # Chạy nhanh nhất (~30s với cache), là early gate cho các job sau.
   check:
     name: Cargo check
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
+        # Re-checkout để lấy auto-format commit nếu autofmt đã push.
+        # GITHUB_TOKEN auto-invalidate cache khi có push mới.
 
       - name: Cài Rust 1.98 (exact pin)
         uses: dtolnay/rust-toolchain@master
@@ -67,11 +141,14 @@ jobs:
       - name: Cargo check (--locked — fail nếu Cargo.lock không khớp Cargo.toml)
         run: cargo check --locked --all-targets
 
-  # Job 2: rustfmt — check formatting. Chạy riêng để log rõ ràng.
+  # Job 2: rustfmt — check formatting. Đã được autofmt xử lý trước đó,
+  # nên job này gần như luôn pass. Giữ lại để có log rõ ràng khi contributor
+  # push code chưa format từ fork (không có quyền push ngược).
   fmt:
-    name: Rustfmt
+    name: Rustfmt (verify)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
 
@@ -89,6 +166,7 @@ jobs:
     name: Clippy (-D warnings)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
 
@@ -113,6 +191,7 @@ jobs:
     name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
 
@@ -136,6 +215,7 @@ jobs:
     name: Rustdoc (no-deps, -D warnings)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
 
@@ -163,6 +243,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     continue-on-error: true
+    needs: autofmt
     steps:
       - uses: actions/checkout@v4
 
