@@ -92,6 +92,9 @@ impl InteractionRepo {
         Ok(r.is_some())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn bookmarks_for_user(
         pool: &PgPool,
         user_id: Uuid,
@@ -209,6 +212,9 @@ impl InteractionRepo {
         Ok(r.is_some())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_rating(
         pool: &PgPool,
         game_id: Uuid,
