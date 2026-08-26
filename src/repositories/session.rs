@@ -28,6 +28,9 @@ impl SessionRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_user_by_token(pool: &PgPool, token_hash: &str) -> AppResult<Option<Uuid>> {
         let user_id: Option<Uuid> = sqlx::query_scalar(
             r"SELECT user_id FROM sessions
@@ -39,6 +42,9 @@ impl SessionRepo {
         Ok(user_id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, token_hash: &str) -> AppResult<()> {
         sqlx::query("DELETE FROM sessions WHERE token_hash = $1")
             .bind(token_hash)
@@ -47,6 +53,9 @@ impl SessionRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete_all_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM sessions WHERE user_id = $1")
             .bind(user_id)
@@ -56,6 +65,9 @@ impl SessionRepo {
     }
 
     /// Xoá các session hết hạn. Trả về số dòng đã xoá (để janitor log).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn cleanup_expired(pool: &PgPool) -> AppResult<u64> {
         let res = sqlx::query("DELETE FROM sessions WHERE expires_at < NOW()")
             .execute(pool)
@@ -87,6 +99,9 @@ impl SessionRepo {
 
     /// Xoá 1 session theo id (admin thu hồi phiên cụ thể). Chỉ đếm là
     /// thành công khi dòng tồn tại — trả false nếu id không có.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete_by_id(pool: &PgPool, id: Uuid) -> AppResult<bool> {
         let res = sqlx::query("DELETE FROM sessions WHERE id = $1")
             .bind(id)
@@ -97,6 +112,9 @@ impl SessionRepo {
 
     /// Đếm session còn hạn theo user — badge 'đang hoạt động' trong
     /// trang admin users.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_active_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM sessions WHERE user_id = $1 AND expires_at > NOW()",
