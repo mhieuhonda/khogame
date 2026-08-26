@@ -996,6 +996,9 @@ impl GameRepo {
     }
 
     /// Slug + `updated_at` cho sitemap
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn sitemap_entries(
         pool: &PgPool,
     ) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
