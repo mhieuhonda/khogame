@@ -195,7 +195,7 @@ pub fn set_oauth_state_cookie(jar: &mut CookieJar, state: &str, base_url: &str) 
     let cookie = Cookie::build((OAUTH_STATE_COOKIE, state.to_string()))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(OAUTH_TEMP_TTL_SECS))
         .build();
@@ -208,7 +208,7 @@ pub fn clear_oauth_state_cookie(jar: &mut CookieJar, base_url: &str) {
     let cookie = Cookie::build((OAUTH_STATE_COOKIE, ""))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(0))
         .build();
@@ -221,7 +221,7 @@ pub fn set_oauth_next_cookie(jar: &mut CookieJar, next: &str, base_url: &str) {
     let cookie = Cookie::build((OAUTH_NEXT_COOKIE, next.to_string()))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(OAUTH_TEMP_TTL_SECS))
         .build();
@@ -234,7 +234,7 @@ pub fn clear_oauth_next_cookie(jar: &mut CookieJar, base_url: &str) {
     let cookie = Cookie::build((OAUTH_NEXT_COOKIE, ""))
         .path("/")
         .http_only(true)
-        .secure(base_url.starts_with("https://"))
+        .secure(should_secure_cookie(base_url))
         .same_site(SameSite::Lax)
         .max_age(time::Duration::seconds(0))
         .build();
