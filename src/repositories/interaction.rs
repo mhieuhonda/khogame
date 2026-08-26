@@ -142,6 +142,9 @@ impl InteractionRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_follow(
         pool: &PgPool,
         follower_id: Uuid,
@@ -189,6 +192,9 @@ impl InteractionRepo {
         }
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn is_following(
         pool: &PgPool,
         follower_id: Uuid,
