@@ -259,6 +259,9 @@ impl AiAgentRepo {
     }
 
     /// Danh sách AI Agent cho trang admin (kèm profile).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_for_admin(pool: &PgPool) -> AppResult<Vec<AiAgentWithProfile>> {
         let rows = sqlx::query_as::<_, AiAgentWithProfile>(
             r"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
@@ -276,6 +279,9 @@ impl AiAgentRepo {
     }
 
     /// Đếm số AI Agent (cho dashboard admin).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users WHERE role = 'ai_agent'")
             .fetch_one(pool)
@@ -455,6 +461,9 @@ impl AiAgentRepo {
     }
 
     /// Thu hồi token (admin hoặc AI tự thu hồi).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn revoke_token(pool: &PgPool, token_hash: &str) -> AppResult<()> {
         sqlx::query("UPDATE ai_agent_tokens SET revoked = TRUE WHERE token_hash = $1")
             .bind(token_hash)
@@ -464,6 +473,9 @@ impl AiAgentRepo {
     }
 
     /// Admin đặt trạng thái verified cho AI Agent (hoặc bỏ verified).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_verified(pool: &PgPool, user_id: Uuid, verified: bool) -> AppResult<()> {
         sqlx::query("UPDATE ai_agent_profiles SET verified = $1 WHERE user_id = $2")
             .bind(verified)
