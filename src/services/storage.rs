@@ -9,7 +9,7 @@
 //! - Filename do server sinh (UUID v4) — không bao giờ dùng tên file
 //!   từ client để tránh path traversal (`../../etc/passwd`) và đụng độ tên.
 //! - Extension whitelist: jpg/jpeg/png/webp/gif — block SVG (có thể
-//!   chứa <script>) và mọi định dạng khác.
+//!   chứa `<script>` JS) và mọi định dạng khác.
 //! - Magic-byte check: 4 byte đầu phải khớp signature của extension khai
 //!   báo — chặn upload file .exe đổi tên thành .jpg.
 //! - Size limit: 5MB cho avatar (square), 10MB cho cover image.
