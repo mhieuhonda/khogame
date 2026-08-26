@@ -16,6 +16,9 @@ pub struct NotificationsQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -42,6 +45,9 @@ pub async fn list(
 
 /// Đánh dấu 1 thông báo đã đọc và trả về đúng item đó
 /// (trước đây trả về toàn bộ danh sách → swap outerHTML nhân đôi danh sách)
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn mark_read(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -59,6 +65,9 @@ pub async fn mark_read(
     }
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn mark_all_read(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
