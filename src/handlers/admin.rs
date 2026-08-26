@@ -1237,6 +1237,9 @@ const ADMIN_NEWS_PER_PAGE: i64 = 20;
 /// - Danh sách sessions (có `IP/UA/expires_at`)
 /// - Số game đã đăng, số news đã đăng
 /// - Nút đổi role, ban/unban, revoke all sessions
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn user_detail(
     State(state): State<Arc<AppState>>,
     AuthUser(admin): AuthUser,
@@ -1291,6 +1294,9 @@ pub async fn user_detail(
 }
 
 /// /admin/news/pending — hàng đợi tin chờ duyệt (chỉ admin).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_pending(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1317,6 +1323,9 @@ pub async fn news_pending(
 }
 
 /// /admin/news/all — tất cả tin (published/archived/rejected), chỉ admin.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_all(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
