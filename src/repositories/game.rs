@@ -286,6 +286,9 @@ impl GameRepo {
         Ok(links)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_link_for_platform(
         pool: &PgPool,
         game_id: Uuid,
