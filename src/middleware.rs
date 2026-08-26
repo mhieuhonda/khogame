@@ -156,7 +156,7 @@ pub async fn maintenance_guard(
     next: Next,
 ) -> Response {
     let path = request.uri().path().to_string();
-    let bypass_prefixes = [
+    let bypass_prefixes: [&str; 10] = [
         "/admin",
         "/login",
         "/auth",
@@ -166,9 +166,12 @@ pub async fn maintenance_guard(
         "/maintenance",
         "/api/announcement",
         "/api/preferences",
-        "/ai", // AI Agent vẫn có thể báo cáo tiến trình trong lúc maintenance
+        "/ai/",
     ];
-    if bypass_prefixes.iter().any(|p| path.starts_with(p)) {
+    if bypass_prefixes
+        .iter()
+        .any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
+    {
         return next.run(request).await;
     }
     let on = state.maintenance_enabled().await;
