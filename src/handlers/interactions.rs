@@ -52,6 +52,9 @@ pub async fn toggle_like(
     Ok(Html(partial.render()?))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn toggle_bookmark(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -99,6 +102,9 @@ pub async fn rate(
     Ok(Html(partial.render()?))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn toggle_follow(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
