@@ -40,6 +40,9 @@ impl ReportRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn has_reported(pool: &PgPool, game_id: Uuid, reporter_id: Uuid) -> AppResult<bool> {
         let r: Option<i32> = sqlx::query_scalar(
             "SELECT 1 FROM reports WHERE game_id = $1 AND reporter_id = $2 AND status IN ('pending', 'reviewing')",
@@ -93,6 +96,9 @@ impl ReportRepo {
 
     /// Lấy 1 report kèm thông tin game + reporter (để re-render row HTMX
     /// sau khi resolve mà không phải fetch cả danh sách).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_with_game(pool: &PgPool, id: Uuid) -> AppResult<Option<ReportWithGame>> {
         let r = sqlx::query_as::<_, ReportWithGame>(
             r"SELECT r.id, r.game_id, g.title as game_title, g.slug as game_slug,
@@ -150,6 +156,9 @@ impl ReportRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<Report>> {
         let r = sqlx::query_as::<_, Report>(
             r"SELECT id, game_id, reporter_id, reason, description, status,
@@ -162,6 +171,9 @@ impl ReportRepo {
         Ok(r)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_pending(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reports WHERE status = 'pending'")
             .fetch_one(pool)
@@ -171,6 +183,9 @@ impl ReportRepo {
 
     /// Đếm reports theo bộ lọc (phân trang admin đúng tổng số) — None
     /// đếm tất cả.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count(pool: &PgPool, status_filter: Option<&str>) -> AppResult<i64> {
         let c: i64 = if let Some(status) = status_filter {
             sqlx::query_scalar("SELECT COUNT(*) FROM reports WHERE status::text = $1")
