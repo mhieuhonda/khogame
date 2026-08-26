@@ -2,6 +2,7 @@ pub mod admin;
 pub mod ai_agent;
 pub mod api;
 pub mod auth;
+pub mod chat;
 pub mod comments;
 pub mod games;
 pub mod interactions;

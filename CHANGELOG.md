@@ -9,6 +9,135 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.1.0] — 2026-08-26 — Live Chat realtime + UI redesign forms
+
+🚀 **Feature release** — thêm Live Chat realtime trên trang chủ (WebSocket,
+chạy trực tiếp trên VPS của bạn) và làm lại 2 form đăng tin tức + repo GitHub
+gọn hơn, chuyên nghiệp hơn. Stack không đổi (Rust 1.98 / axum 0.8.9 /
+sqlx 0.9 / askama 0.16). **Khuyến nghị upgrade từ v1.0.2** để có Live Chat.
+
+### ✨ New features
+
+- **Live Chat realtime trên trang chủ** — section "Live Chat cộng đồng"
+  ở cuối homepage, tất cả mọi người đã đăng nhập có thể chat với nhau
+  theo thời gian thực:
+  - **WebSocket** (axum 0.8 `ws` feature) — auth qua session cookie
+    (`kg_session`) trước khi upgrade; nếu chưa đăng nhập, `ws_handler`
+    trả 401 ngay, không open WS rỗng.
+  - **Broadcast channel** (tokio `broadcast::Sender`) — mỗi WS client
+    subscribe, server broadcast Message/Delete/Presence event tới mọi
+    subscriber. Buffer 256: burst-tolerant, lagging client bị drop oldest
+    + có HTTP history fallback.
+  - **Presence detection** — `chat_online` Mutex<HashSet<Uuid>> đếm số
+    user đang online; connect/disconnect broadcast Presence event cho
+    mọi client cập nhật counter realtime. Số online hiển thị ở header
+    chat card với chấm xanh pulsing.
+  - **HTTP history fallback** — `GET /chat/history` trả 50 tin gần nhất
+    + online count + today count, dùng cho: (1) user mới vào trang chủ
+    load context; (2) client WS fail / pending reconnect; (3) SEO crawl
+    được nội dung chat (Google không render JS).
+  - **Admin moderation** — staff có thể ẩn tin nhắn qua WS JSON command
+    `{"action":"delete","id":"..."}` hoặc HTTP `POST /chat/{id}/delete`.
+    Server soft-delete trong DB + broadcast Delete event → client thay
+    nội dung bằng placeholder "đã bị ẩn bởi quản trị viên".
+  - **Rate-limit per-user** — 30 tin / 60s (key `chat:<user_id>` riêng
+    bucket, không đụng với rate-limit HTTP middleware). Spammer bị drop
+    silent (client hiển thị local, không nhận echo từ server).
+  - **Max 500 ký tự / tin** — truncate thay vì reject để UX mượt; client
+    có char counter hiển thị.
+  - **Heartbeat 30s** — server gửi Ping giữ connection sống, phát hiện
+    client đã đóng (NAT timeout).
+  - **Auto-reconnect** — client JS có exponential backoff (1s → 30s cap)
+    khi WS disconnect; tab visibility change > 5min trigger reconnect.
+  - **XSS-safe** — message body render qua `textContent` (không
+    `innerHTML`); avatar URL escape đầy đủ; admin role badge hiển thị
+    "Admin"/"Mod" để user phân biệt.
+  - **Migration 013** — bảng `chat_messages` (id, user_id, content,
+    author_ip, author_ua, is_deleted, created_at) + index `created_at
+    DESC` cho query "50 tin gần nhất" nhanh.
+
+- **CSP mở rộng `connect-src ws: wss:`** — cho phép WebSocket kết nối
+  tới cùng origin (chat realtime). Trước đây CSP chỉ `'self'` cho HTTP
+  fetch → WebSocket bị CSP block.
+
+### 🎨 UI/UX redesign
+
+- **Form đăng tin tức** (`/news/new`) — làm lại hoàn toàn:
+  - Card header với icon gradient, tiêu đề + mô tả ngắn gọn
+  - 4 "help card" ngang ở trên form (tiêu đề rõ / 5W1H / ghi nguồn /
+    ảnh bìa 16:9) — thay cho `<details>` dài dòng
+  - Char counter real-time cho 3 trường (title 200, excerpt 500,
+    content 50.000) — chuyển màu vàng khi > 80%, đỏ khi đạt max
+  - Source block dạng grid 2 cột (tên nguồn + URL nguồn) thay vì dọc
+  - Form actions 2 bên: bên trái "tip" trạng thái, bên phải Hủy + Gửi
+  - Hint cho từng trường rõ hơn (markdown support, auto-slug, v.v.)
+
+- **Form đăng repo GitHub** (`/repos/new`) — làm lại hoàn toàn:
+  - Card header với icon GitHub-style
+  - 3 "help card" (repo phải public / URL hoặc owner-repo / auto-refresh)
+  - HTML5 `pattern` validation cho URL field — client-side check trước
+    khi submit
+  - Trường "Mô tả tuỳ chọn" ghi rõ "tối đa 500 ký tự" thay vì mập mờ
+  - Form actions 2 bên giống news form
+
+- **Char counter script** — pure JS, không phụ thuộc thư viện, tự
+  khởi tạo khi DOM ready hoặc ngay nếu đã ready.
+
+### 🔧 Bug fixes & improvements
+
+- **axum `ws` feature** thêm vào Cargo.toml — trước đây không bật
+  feature này nên `axum::extract::ws` không có sẵn, không thể code
+  WebSocket handler.
+- **Chat handler tách task thiết kế lại** — không spawn 2 task riêng
+  (recv + send) vì axum 0.8 `WebSocket` không có `split()` builtin.
+  Dùng `tokio::select!` trong 1 task — concurrency OK (select poll
+  cả 3 future), cleanup đơn giản (không cần oneshot channel + abort).
+- **Broadcast RecvError handling** — `Lagged(n)` log debug + tiếp tục
+  (client tự lấy history nếu cần), `Closed` break loop. Không panic.
+- **AppState thêm `chat_tx` + `chat_online`** — clone rẻ, share qua
+  Arc; `presence_add/remove` khôi phục từ poison thay vì propagate
+  panic.
+
+### 📦 Internal
+
+- **Migration 013** (`013_live_chat.sql`) — tạo `chat_messages` table
+  với soft-delete column + author_ip/author_ua cho admin audit.
+- **`models/chat.rs`** — `ChatMessage` + `ChatMessageWithUser` (JOIN
+  với `users` sẵn cho payload broadcast).
+- **`repositories/chat.rs`** — `ChatRepo::create` (INSERT...RETURNING
+  với WITH + JOIN 1 round-trip), `recent`, `count_today`, `soft_delete`.
+- **`handlers/chat.rs`** — `ws_handler` (auth + upgrade), `run_ws`
+  (loop select!), `handle_text_frame` (parse JSON command hoặc plain
+  text), `send_message` (rate-limit + INSERT + broadcast), `history`,
+  `online`, `auth_check`, `http_delete`.
+- **`state.rs`** — `ChatEvent` enum (Message/Delete/Presence) +
+  `presence_add/remove/count` helpers.
+- **`templates/index.html`** — thêm section "Live Chat cộng đồng" ở
+  cuối trang + block `scripts` cho `chat.js`.
+- **`static/js/chat.js`** — module JS standalone, ~270 dòng, không
+  phụ thuộc jQuery hay framework nào. XSS-safe, auto-reconnect,
+  presence tracking, scroll tracking (chỉ auto-scroll nếu user đang
+  ở gần bottom), visibility change reconnect.
+- **`static/css/style.css`** — thêm ~430 dòng CSS cho Live Chat +
+  compact form pattern + form-errors.
+
+### ✅ Tests
+
+- 159 unit tests vẫn pass (không regression).
+- Manual smoke test:
+  - `GET /chat/history` trả 200 với JSON đúng shape (messages + online
+    + today_count)
+  - `GET /chat/auth` trả 401 khi chưa login, 200 khi có cookie `kg_session`
+  - `GET /chat/ws` upgrade thành công (101 Switching Protocols) khi có
+    cookie, 303 redirect /login khi không
+  - `GET /news/new` redirect /login khi chưa auth (303 + HX-Redirect)
+  - `GET /repos/new` redirect /login khi chưa auth
+  - `GET /` trả 200, có live-chat-section + chat.js script tag
+- `cargo clippy --all-targets` 0 warning.
+- `cargo build` thành công với Rust 1.98.
+
+---
+
 ## [1.0.2] — 2026-08-26 — CD pipeline fix (deploy thực sự chạy)
 
 🔧 **Critical CD/ops fix** — giải quyết tình trạng "GitHub Action báo

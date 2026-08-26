@@ -154,7 +154,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/news/{slug}/comments",
             post(handlers::news::create_comment),
         )
-        .route("/my-news", get(handlers::news::my_news));
+        .route("/my-news", get(handlers::news::my_news))
+        // === Live Chat ===
+        // WebSocket realtime chat — auth qua cookie HTTP trước khi upgrade.
+        // Nếu chưa login, ws_handler trả 401 ngay (không open WS rỗng).
+        .route("/chat/ws", get(handlers::chat::ws_handler))
+        // HTTP fallback: load 50 tin gần nhất + count online + count today
+        .route("/chat/history", get(handlers::chat::history))
+        .route("/chat/online", get(handlers::chat::online))
+        .route("/chat/auth", get(handlers::chat::auth_check))
+        .route(
+            "/chat/{id}/delete",
+            post(handlers::chat::http_delete).delete(handlers::chat::http_delete),
+        );
 
     // Public JSON API v1
     let api_routes = Router::new()

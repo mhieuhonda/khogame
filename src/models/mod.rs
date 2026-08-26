@@ -1,5 +1,6 @@
 pub mod ai_agent;
 pub mod category;
+pub mod chat;
 pub mod comment;
 pub mod game;
 pub mod interaction;
@@ -14,6 +15,7 @@ pub mod user;
 
 pub use ai_agent::*;
 pub use category::*;
+pub use chat::*;
 pub use comment::*;
 pub use game::*;
 pub use interaction::*;

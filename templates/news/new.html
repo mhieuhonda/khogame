@@ -2,14 +2,21 @@
 {% block title %}Đăng tin tức{% endblock %}
 
 {% block content %}
-<section class="news-form-page">
+<section class="compact-form-page news-form-page">
     <div class="page-header">
-        <h1>📰 Đăng tin tức</h1>
-        <p>Tin của bạn sẽ được <strong>kiểm duyệt bởi admin</strong> trước khi xuất bản công khai. Điều này giúp Louis Space tránh lan truyền tin giả.</p>
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+            </svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Đăng tin tức</h1>
+            <p>Tin của bạn sẽ được <strong>kiểm duyệt bởi admin</strong> trước khi xuất bản công khai. Điều này giúp Louis Space tránh lan truyền tin giả.</p>
+        </div>
     </div>
 
     {% if !errors.is_empty() %}
-    <div class="form-errors">
+    <div class="form-errors" role="alert">
         <h3>⚠️ Có lỗi cần sửa:</h3>
         <ul>
             {% for e in errors %}
@@ -19,63 +26,148 @@
     </div>
     {% endif %}
 
-    <div class="form-tips">
-        <details>
-            <summary>📋 Hướng dẫn viết tin chất lượng</summary>
-            <ul>
-                <li><strong>Tiêu đề rõ ràng</strong> — không giật tít, không viết hoa toàn bộ</li>
-                <li><strong>Tóm tắt 1-2 câu</strong> — người đọc quyết định click hay không dựa trên tóm tắt</li>
-                <li><strong>Nội dung chi tiết</strong> — trả lời 5W1H (Who, What, When, Where, Why, How)</li>
-                <li><strong>Ghi nguồn</strong> — nếu không phải tin gốc do bạn tự viết</li>
-                <li><strong>Ảnh bìa</strong> — tỉ lệ 16:9, không có watermark logo khác</li>
-            </ul>
-        </details>
+    <div class="compact-help-row">
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </span>
+            <div class="help-text"><strong>Tiêu đề rõ ràng</strong>Không giật tít, không viết hoa toàn bộ. Tối đa 200 ký tự.</div>
+        </div>
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </span>
+            <div class="help-text"><strong>Nội dung 5W1H</strong>Trả lời Who, What, When, Where, Why, How đầy đủ.</div>
+        </div>
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </span>
+            <div class="help-text"><strong>Ghi nguồn</strong>Nếu không phải tin gốc do bạn tự viết, hãy ghi rõ nguồn gốc.</div>
+        </div>
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </span>
+            <div class="help-text"><strong>Ảnh bìa 16:9</strong>Tỉ lệ 16:9, không có watermark logo khác.</div>
+        </div>
     </div>
 
-    <form method="post" action="/news" class="form-section" id="news-form">
-        <label for="title">Tiêu đề <span class="req">*</span></label>
-        <input type="text" id="title" name="title" value="{{ form.title }}" maxlength="200" required
-               placeholder="Ví dụ: GameX công bố phiên bản 2.0 với nhiều tính năng mới">
-        <small class="hint">Tối đa 200 ký tự. Tiêu đề rõ ràng, không giật tít.</small>
+    <form method="post" action="/news" class="compact-form-card" id="news-form">
+        <div class="field-group">
+            <label for="title">
+                <span>Tiêu đề <span class="req">*</span></span>
+                <span class="char-counter" id="title-counter">0 / 200</span>
+            </label>
+            <input type="text" id="title" name="title" value="{{ form.title }}" maxlength="200" required
+                   placeholder="Ví dụ: GameX công bố phiên bản 2.0 với nhiều tính năng mới">
+            <small class="hint">Tiêu đề rõ ràng, không giật tít. Trùng tiêu đề với tin đã có sẽ tự thêm hậu tố.</small>
+        </div>
 
-        <label for="excerpt">Tóm tắt</label>
-        <textarea id="excerpt" name="excerpt" rows="2" maxlength="500"
-                  placeholder="1-2 câu tóm tắt nội dung tin. Hiển thị ở danh sách tin.">{{ form.excerpt }}</textarea>
-        <small class="hint">Tối đa 500 ký tự.</small>
+        <div class="field-group">
+            <label for="excerpt">
+                <span>Tóm tắt</span>
+                <span class="char-counter" id="excerpt-counter">0 / 500</span>
+            </label>
+            <textarea id="excerpt" name="excerpt" rows="2" maxlength="500"
+                      placeholder="1–2 câu tóm tắt nội dung tin. Hiển thị ở danh sách tin.">{{ form.excerpt }}</textarea>
+            <small class="hint">Tóm tắt xuất hiện ở card danh sách tin — viết hay để khuyến khích người đọc click vào.</small>
+        </div>
 
-        <label for="content">Nội dung <span class="req">*</span></label>
-        <textarea id="content" name="content" rows="12" required
-                  placeholder="Nội dung chi tiết. Có thể dùng markdown cơ bản.">{{ form.content }}</textarea>
-        <small class="hint">Tối đa 50.000 ký tự.</small>
+        <div class="field-group">
+            <label for="content">
+                <span>Nội dung <span class="req">*</span></span>
+                <span class="char-counter" id="content-counter">0 / 50.000</span>
+            </label>
+            <textarea id="content" name="content" rows="12" required class="editor"
+                      placeholder="Nội dung chi tiết. Có thể dùng markdown cơ bản: **đậm**, *nghiêng*, [link](url), - bullet">{{ form.content }}</textarea>
+            <small class="hint">Tối đa 50.000 ký tự. Hỗ trợ Markdown cơ bản (đậm, nghiêng, link, bullet, code).</small>
+        </div>
 
-        <label for="category">Thể loại</label>
-        <select id="category" name="category">
-            <option value="">— Không phân loại —</option>
-            {% for (k, v) in categories %}
-            <option value="{{ k }}" {% if form.category == *k %}selected{% endif %}>{{ v }}</option>
-            {% endfor %}
-        </select>
+        <div class="field-group">
+            <label for="category"><span>Thể loại</span><span class="field-optional">tuỳ chọn</span></label>
+            <select id="category" name="category">
+                <option value="">— Không phân loại —</option>
+                {% for (k, v) in categories %}
+                <option value="{{ k }}" {% if form.category == *k %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </div>
 
-        <label for="cover_image">Ảnh bìa (URL)</label>
-        <input type="url" id="cover_image" name="cover_image" value="{{ form.cover_image }}"
-               placeholder="https://...">
-        <small class="hint">Bắt đầu bằng http:// hoặc https://. Để trống nếu không có.</small>
+        <div class="field-group">
+            <label for="cover_image">
+                <span>Ảnh bìa (URL)</span>
+                <span class="field-optional">tuỳ chọn</span>
+            </label>
+            <input type="url" id="cover_image" name="cover_image" value="{{ form.cover_image }}"
+                   placeholder="https://example.com/cover.jpg">
+            <small class="hint">Bắt đầu bằng <code>http://</code> hoặc <code>https://</code>. Để trống nếu không có.</small>
+        </div>
 
-        <fieldset class="source-fieldset">
+        <fieldset class="source-block">
             <legend>Nguồn tin</legend>
             <p class="hint">Nếu đây không phải tin gốc do bạn tự viết, hãy ghi rõ nguồn để tôn trọng bản quyền.</p>
-            <label for="source_name">Tên nguồn</label>
-            <input type="text" id="source_name" name="source_name" value="{{ form.source_name }}" maxlength="150"
-                   placeholder="Ví dụ: VnExpress, GameK, IGN Vietnam">
-            <label for="source_url">URL nguồn</label>
-            <input type="url" id="source_url" name="source_url" value="{{ form.source_url }}"
-                   placeholder="https://...">
+            <div class="form-row-2" style="margin-top:8px">
+                <div>
+                    <label for="source_name"><span>Tên nguồn</span></label>
+                    <input type="text" id="source_name" name="source_name" value="{{ form.source_name }}" maxlength="150"
+                           placeholder="Ví dụ: VnExpress, GameK, IGN Vietnam">
+                </div>
+                <div>
+                    <label for="source_url"><span>URL nguồn</span></label>
+                    <input type="url" id="source_url" name="source_url" value="{{ form.source_url }}"
+                           placeholder="https://...">
+                </div>
+            </div>
         </fieldset>
 
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Gửi tin để admin duyệt</button>
-            <a href="/news" class="btn btn-ghost">Hủy</a>
+        <div class="compact-form-actions">
+            <div class="form-actions-left">
+                <span class="compact-form-tip">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Tin sẽ vào hàng đợi duyệt
+                </span>
+            </div>
+            <div class="form-actions-right">
+                <a href="/news" class="btn btn-ghost">Hủy</a>
+                <button type="submit" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    Gửi tin để admin duyệt
+                </button>
+            </div>
         </div>
     </form>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Char counters for news form
+(function() {
+    function setup(inputId, counterId, max) {
+        var input = document.getElementById(inputId);
+        var counter = document.getElementById(counterId);
+        if (!input || !counter) return;
+        function update() {
+            var len = (input.value || '').length;
+            counter.textContent = len + ' / ' + max;
+            counter.classList.toggle('warn', len > max * 0.8 && len <= max);
+            counter.classList.toggle('danger', len >= max);
+        }
+        input.addEventListener('input', update);
+        update();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setup('title', 'title-counter', 200);
+            setup('excerpt', 'excerpt-counter', 500);
+            setup('content', 'content-counter', 50000);
+        });
+    } else {
+        setup('title', 'title-counter', 200);
+        setup('excerpt', 'excerpt-counter', 500);
+        setup('content', 'content-counter', 50000);
+    }
+})();
+</script>
 {% endblock %}

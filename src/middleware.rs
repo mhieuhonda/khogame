@@ -790,7 +790,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     //   style-src 'self' 'unsafe-inline' (style nội tuyến)
     //   img-src 'self' https: data: (avatar từ Google + placeholder)
     //   font-src 'self' https://fonts.gstatic.com (Google Fonts)
-    //   connect-src 'self' (htmx không gọi cross-origin)
+    //   connect-src 'self' ws: wss: (htmx + WebSocket cho Live Chat)
     //   frame-src https://www.youtube-nocookie.com https://www.youtube.com
     //     (trailer iframe — KHÔNG có frame-src thì fallback default-src 'self'
     //     chặn luôn YouTube embed, trailer không bao giờ load được)
@@ -800,7 +800,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     headers.insert(
         "content-security-policy",
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
         ),
     );
     response

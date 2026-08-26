@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "1.0.2"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Web framework
-axum = { version = "0.8.9", features = ["macros", "form"] }
+axum = { version = "0.8.9", features = ["macros", "form", "ws"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"

@@ -1,8 +1,34 @@
 use crate::config::AppConfig;
 use crate::middleware::RateLimiter;
+use crate::models::chat::ChatMessageWithUser;
+use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::broadcast;
+use uuid::Uuid;
+
+/// Sự kiện realtime cho Live Chat — đẩy qua WebSocket đến mọi client đang kết nối.
+///
+/// `Message` = tin nhắn mới (broadcast khi user gửi chat).
+/// `Delete` = admin ẩn tin (broadcast để client xoá khỏi UI).
+/// `Presence` = số user online cập nhật (broadcast khi client connect/disconnect).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ChatEvent {
+    /// Tin nhắn mới — payload là message kèm author info.
+    Message {
+        message: ChatMessageWithUser,
+    },
+    /// Tin nhắn bị admin ẩn — client thay nội dung bằng placeholder "đã ẩn".
+    Delete {
+        id: Uuid,
+    },
+    /// Cập nhật số user đang online — client hiển thị ở header chat card.
+    Presence {
+        online: usize,
+    },
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,6 +38,13 @@ pub struct AppState {
     pub rate_limiter: Arc<RateLimiter>,
     /// Cache maintenance mode (làm mới mỗi 30s)
     maintenance_cache: Arc<tokio::sync::RwLock<(bool, std::time::Instant)>>,
+    /// Broadcast channel cho Live Chat realtime. Sender clone rẻ — mỗi
+    /// WebSocket handler subscribe qua `subscribe()`. Buffer 256: đủ cho
+    /// burst khi có nhiều user online cùng nhận message; vượt sẽ drop oldest
+    /// (acceptable cho chat — client có fallback HTTP history).
+    pub chat_tx: broadcast::Sender<ChatEvent>,
+    /// Set user_id đang online (đếm presence). RwLock vì read nhiều hơn write.
+    pub chat_online: Arc<std::sync::Mutex<std::collections::HashSet<Uuid>>>,
 }
 
 impl AppState {
@@ -54,6 +87,13 @@ impl AppState {
                 false,
                 std::time::Instant::now(),
             ))),
+            // Buffer 256: đủ cho burst khi nhiều user online cùng nhận message.
+            // Vượt threshold → oldest drop (lagging receiver bị skip, acceptable
+            // cho chat vì client có HTTP history fallback để khôi phục).
+            chat_tx: broadcast::channel::<ChatEvent>(256).0,
+            chat_online: Arc::new(std::sync::Mutex::new(
+                std::collections::HashSet::new(),
+            )),
         })
     }
 
@@ -78,5 +118,44 @@ impl AppState {
         let mut cache = self.maintenance_cache.write().await;
         *cache = (on, std::time::Instant::now());
         on
+    }
+
+    /// Đánh dấu 1 user online (thêm vào presence set). Trả về số online MỚI
+    /// sau khi thêm — caller broadcast số này qua `chat_tx`.
+    ///
+    /// Trả về `None` nếu user đã online ở một connection khác (không thay đổi
+    /// count) — caller có thể bỏ qua presence broadcast trong trường hợp đó
+    /// để tránh spam event trùng.
+    pub fn presence_add(&self, user_id: Uuid) -> Option<usize> {
+        let mut set = self
+            .chat_online
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if set.insert(user_id) {
+            Some(set.len())
+        } else {
+            None
+        }
+    }
+
+    /// Đánh dấu 1 user offline (xoá khỏi presence set). Trả về số online MỚI
+    /// sau khi xoá, hoặc `None` nếu user không có trong set (không thay đổi).
+    pub fn presence_remove(&self, user_id: Uuid) -> Option<usize> {
+        let mut set = self
+            .chat_online
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if set.remove(&user_id) {
+            Some(set.len())
+        } else {
+            None
+        }
+    }
+
+    /// Số user đang online (cho HTTP GET /chat/history trả về cùng lúc).
+    pub fn presence_count(&self) -> usize {
+        self.chat_online
+            .lock()
+            .map_or(0, |s| s.len())
     }
 }

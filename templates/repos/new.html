@@ -1,30 +1,88 @@
 {% extends "layout.html" %}
 {% block title %}Đăng repo GitHub{% endblock %}
+{% block description %}Đăng ký repo GitHub mã nguồn mở game của bạn lên Louis Space{% endblock %}
+
 {% block content %}
-<section class="form-page">
+<section class="compact-form-page repos-form-page">
     <div class="page-header">
-        <h1>📦 Đăng repo GitHub</h1>
-        <p>Chia sẻ mã nguồn game của bạn với cộng đồng. Thông tin (sao, ngôn ngữ, mô tả) sẽ được tự động lấy từ GitHub.</p>
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/>
+            </svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Đăng repo GitHub</h1>
+            <p>Chia sẻ mã nguồn game của bạn với cộng đồng. Thông tin (sao, ngôn ngữ, mô tả) sẽ được tự động lấy từ GitHub.</p>
+        </div>
     </div>
 
-    <form action="/repos" method="post" class="game-form">
-        <div class="form-group">
-            <label for="url">URL repository *</label>
-            <input type="url" id="url" name="url" required placeholder="https://github.com/owner/repo hoặc owner/repo">
-            <small>Repo phải ở chế độ công khai (public).</small>
+    <div class="compact-help-row">
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+            </span>
+            <div class="help-text"><strong>Repo phải public</strong>Repo riêng tư sẽ bị GitHub API từ chối và trả lỗi 404.</div>
         </div>
-        <div class="form-group">
-            <label for="description">Mô tả (tuỳ chọn)</label>
-            <input type="text" id="description" name="description" placeholder="Để trống sẽ dùng mô tả từ GitHub">
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+            </span>
+            <div class="help-text"><strong>URL hoặc owner/repo</strong>Hỗ trợ cả <code>https://github.com/o/r</code> và <code>o/r</code>.</div>
         </div>
-        <div class="form-group">
-            <label for="game_slug">Liên kết với game (tuỳ chọn)</label>
-            <input type="text" id="game_slug" name="game_slug" placeholder="Slug của game đã đăng, vd: mineclone-viet-hoa">
-            <small>Người xem sẽ thấy nút chuyển sang game tương ứng.</small>
+        <div class="compact-help-card">
+            <span class="help-icon">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15A9 9 0 1 1 5.64 5.64L23 10"/></svg>
+            </span>
+            <div class="help-text"><strong>Tự động làm mới</strong>Metadata (sao, ngôn ngữ) được đồng bộ từ GitHub mỗi lần bạn refresh.</div>
         </div>
-        <div class="form-actions">
-            <a href="/repos" class="btn btn-outline">Huỷ</a>
-            <button type="submit" class="btn btn-primary">Đăng repo</button>
+    </div>
+
+    <form action="/repos" method="post" class="compact-form-card">
+        <div class="field-group">
+            <label for="url">
+                <span>URL repository <span class="req">*</span></span>
+                <span class="field-optional">bắt buộc</span>
+            </label>
+            <input type="url" id="url" name="url" required
+                   placeholder="https://github.com/owner/repo hoặc owner/repo"
+                   pattern="^(https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/?|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)$">
+            <small class="hint">Repo phải ở chế độ công khai (public). URL không hợp lệ sẽ bị từ chối.</small>
+        </div>
+
+        <div class="field-group">
+            <label for="description">
+                <span>Mô tả</span>
+                <span class="field-optional">tuỳ chọn, tối đa 500 ký tự</span>
+            </label>
+            <input type="text" id="description" name="description" maxlength="500"
+                   placeholder="Để trống sẽ dùng mô tả từ GitHub">
+            <small class="hint">Nếu điền, mô tả của bạn sẽ ghi đè mô tả gốc từ GitHub.</small>
+        </div>
+
+        <div class="field-group">
+            <label for="game_slug">
+                <span>Liên kết với game</span>
+                <span class="field-optional">tuỳ chọn</span>
+            </label>
+            <input type="text" id="game_slug" name="game_slug"
+                   placeholder="Slug của game đã đăng, vd: mineclone-viet-hoa">
+            <small class="hint">Người xem sẽ thấy nút chuyển sang game tương ứng khi xem repo.</small>
+        </div>
+
+        <div class="compact-form-actions">
+            <div class="form-actions-left">
+                <span class="compact-form-tip">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Metadata tự động lấy từ GitHub
+                </span>
+            </div>
+            <div class="form-actions-right">
+                <a href="/repos" class="btn btn-ghost">Huỷ</a>
+                <button type="submit" class="btn btn-primary">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    Đăng repo
+                </button>
+            </div>
         </div>
     </form>
 </section>

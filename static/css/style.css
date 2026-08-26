@@ -2870,3 +2870,656 @@ a:hover { color: var(--accent-light); }
 .form-tips li strong {
     color: var(--text-primary);
 }
+
+/* ============================================
+   Live Chat (homepage) — realtime WebSocket
+   ============================================ */
+.live-chat-section {
+    padding: 0 !important;
+    margin-bottom: 3rem;
+}
+
+.live-chat-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+}
+
+.live-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: var(--gradient-primary);
+    color: #fff;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.live-chat-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.live-chat-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    color: #fff;
+}
+
+.live-chat-title .section-title {
+    color: #fff;
+    font-size: 18px;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.live-chat-presence {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    backdrop-filter: blur(4px);
+}
+
+.presence-dot {
+    width: 8px;
+    height: 8px;
+    background: #34d399;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.6);
+    animation: presence-pulse 2s infinite ease-in-out;
+}
+
+@keyframes presence-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(0.85); }
+}
+
+.live-chat-meta {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.live-chat-today {
+    background: rgba(255, 255, 255, 0.12);
+    padding: 4px 10px;
+    border-radius: 12px;
+    white-space: nowrap;
+}
+
+.live-chat-body {
+    height: 360px;
+    overflow-y: auto;
+    padding: 16px 20px;
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    scroll-behavior: smooth;
+}
+
+.live-chat-body::-webkit-scrollbar { width: 8px; }
+.live-chat-body::-webkit-scrollbar-track { background: transparent; }
+.live-chat-body::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 4px;
+}
+.live-chat-body::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+.chat-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 32px 0;
+    color: var(--text-muted);
+}
+
+.chat-loading-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-light);
+    border-radius: 50%;
+    animation: chat-loading-bounce 1.4s infinite ease-in-out both;
+}
+
+.chat-loading-dot:nth-child(1) { animation-delay: -0.32s; }
+.chat-loading-dot:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes chat-loading-bounce {
+    0%, 80%, 100% { transform: scale(0); }
+    40% { transform: scale(1); }
+}
+
+.chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 16px;
+    color: var(--text-muted);
+    text-align: center;
+    gap: 8px;
+}
+
+.chat-empty-icon { font-size: 36px; }
+.chat-empty p { margin: 0; font-size: 14px; }
+
+.chat-empty-error { color: var(--danger); }
+
+.chat-msg {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    animation: chat-msg-in 0.25s ease-out;
+}
+
+@keyframes chat-msg-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.chat-msg-self {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.chat-msg-deleted {
+    background: transparent;
+    border-style: dashed;
+    border-color: var(--border-strong);
+    opacity: 0.7;
+}
+
+.chat-msg-deleted-text {
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.chat-msg-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.chat-avatar {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 11px;
+    flex-shrink: 0;
+}
+
+.chat-msg-author {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chat-msg-author-staff {
+    color: var(--accent);
+}
+
+.chat-msg-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: #fff;
+    padding: 1px 6px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.chat-msg-time {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.chat-msg-body {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.live-chat-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border);
+}
+
+.live-chat-input-bar input[type="text"] {
+    flex: 1;
+    padding: 10px 14px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.live-chat-input-bar input[type="text"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.live-chat-input-bar input[type="text"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.live-chat-input-bar .btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.live-chat-hint {
+    padding: 6px 20px 12px;
+    margin: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    background: var(--bg-card);
+}
+
+.live-chat-hint.chat-error {
+    color: var(--danger);
+}
+
+/* Mobile responsive for chat */
+@media (max-width: 640px) {
+    .live-chat-header {
+        padding: 12px 16px;
+    }
+    .live-chat-title .section-title {
+        font-size: 16px;
+    }
+    .live-chat-body {
+        height: 280px;
+        padding: 12px;
+    }
+    .live-chat-input-bar {
+        padding: 10px 12px;
+    }
+    .live-chat-hint {
+        padding: 6px 12px 10px;
+    }
+}
+
+/* ============================================
+   Compact form improvements (news/new, repos/new)
+   ============================================ */
+.compact-form-page {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 1.5rem 0 4rem;
+}
+
+.compact-form-page .page-header {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+}
+
+.compact-form-page .page-header-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    background: var(--gradient-accent);
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+}
+
+.compact-form-page .page-header-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.compact-form-page .page-header-text h1 {
+    font-size: 24px;
+    font-weight: 800;
+    margin: 0 0 6px;
+    color: var(--text-primary);
+    line-height: 1.3;
+}
+
+.compact-form-page .page-header-text p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.compact-form-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px;
+}
+
+.compact-form-card .form-section-title-inline {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 6px;
+}
+
+.compact-form-card .form-row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.compact-form-card .field-group {
+    margin-bottom: 20px;
+}
+
+.compact-form-card .field-group:last-child {
+    margin-bottom: 0;
+}
+
+.compact-form-card label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.compact-form-card label .req {
+    color: var(--danger);
+    margin-left: 2px;
+}
+
+.compact-form-card label .field-optional {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.compact-form-card input[type="text"],
+.compact-form-card input[type="url"],
+.compact-form-card input[type="email"],
+.compact-form-card textarea,
+.compact-form-card select {
+    width: 100%;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+}
+
+.compact-form-card input:focus,
+.compact-form-card textarea:focus,
+.compact-form-card select:focus {
+    border-color: var(--accent);
+    background: var(--bg-card);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.compact-form-card textarea {
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+    font-family: inherit;
+}
+
+.compact-form-card textarea.editor {
+    min-height: 200px;
+    font-family: 'JetBrains Mono', 'Cascadia Code', monospace;
+    font-size: 13px;
+}
+
+.compact-form-card .hint {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 5px;
+    line-height: 1.4;
+}
+
+.compact-form-card .char-counter {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-muted);
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.compact-form-card .char-counter.warn {
+    color: var(--warning);
+}
+
+.compact-form-card .char-counter.danger {
+    color: var(--danger);
+    font-weight: 700;
+}
+
+.compact-form-card .source-block {
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 16px;
+    margin-top: 4px;
+}
+
+.compact-form-card .source-block legend {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 0 8px;
+}
+
+.compact-form-card .source-block .hint {
+    margin-top: 0;
+    margin-bottom: 12px;
+}
+
+.compact-form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.compact-form-actions .form-actions-left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.compact-form-actions .form-actions-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.compact-form-tip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+    background: var(--bg-muted);
+    padding: 4px 10px;
+    border-radius: 8px;
+}
+
+.compact-form-tip svg {
+    flex-shrink: 0;
+    color: var(--accent);
+}
+
+/* Help/preview row (compact forms) */
+.compact-help-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.compact-help-card {
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.compact-help-card .help-icon {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.compact-help-card .help-text {
+    flex: 1;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.compact-help-card .help-text strong {
+    color: var(--text-primary);
+    display: block;
+    margin-bottom: 2px;
+}
+
+@media (max-width: 640px) {
+    .compact-form-page .page-header {
+        padding: 16px 20px;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .compact-form-card {
+        padding: 20px;
+    }
+    .compact-form-card .form-row-2 {
+        grid-template-columns: 1fr;
+    }
+    .compact-form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .compact-form-actions .form-actions-right {
+        margin-left: 0;
+    }
+}
+
+/* ============================================
+   Form errors (used by news/new, news/edit, repos/new)
+   ============================================ */
+.form-errors {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-left: 4px solid var(--danger);
+    border-radius: var(--radius-sm);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    color: #991b1b;
+}
+[data-theme="dark"] .form-errors {
+    background: #450a0a;
+    border-color: #7f1d1d;
+    color: #fca5a5;
+}
+.form-errors h3 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 700;
+}
+.form-errors ul {
+    margin: 0;
+    padding-left: 20px;
+}
+.form-errors li {
+    margin-bottom: 4px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Inline <code> in form hints */
+.compact-form-card .hint code,
+.compact-help-card .help-text code {
+    background: var(--bg-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    color: var(--text-primary);
+}
