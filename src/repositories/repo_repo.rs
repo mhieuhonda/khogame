@@ -89,6 +89,9 @@ impl RepoRepo {
 
     /// Tìm repo theo owner/name (dùng kiểm tra trùng khi đăng ký — chống
     /// user khác chiếm quyền sở hữu entry đã có qua ON CONFLICT UPDATE).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_owner_name(
         pool: &PgPool,
         owner: &str,
