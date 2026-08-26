@@ -594,6 +594,9 @@ impl NewsRepo {
         Ok(item)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_comment_like(
         pool: &PgPool,
         user_id: Uuid,
@@ -666,6 +669,9 @@ impl NewsRepo {
 
     /// Gợi ý tiêu đề tin tức khi user gõ vào ô search.
     /// Trả về Vec<(title, slug)> cho tối đa `limit` kết quả, chỉ tin published.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn suggest_titles(
         pool: &PgPool,
         query: &str,
