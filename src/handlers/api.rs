@@ -398,6 +398,9 @@ pub struct ThemeForm {
     pub theme: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn set_theme(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -418,6 +421,9 @@ pub async fn set_theme(
 /// `OpenSearch` Suggestions (application/x-suggestions+json) — format mảng
 /// theo spec: \[query, \[titles\], \[descriptions\], \[urls\]\] để trình duyệt gợi
 /// ý ngay trong ô tìm kiếm của thanh địa chỉ. Tái dùng query `suggest_titles`.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn opensearch_suggestions(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SuggestQuery>,
