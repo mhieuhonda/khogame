@@ -582,6 +582,9 @@ pub mod filters {
 
     /// Ghép base URL site vào path tương đối → URL tuyệt đối. Dùng cho
     /// og:image / twitter:image (crawler không chấp nhận path tương đối).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn abs_url(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let base = super::SITE_BASE_URL.get().map_or("", std::string::String::as_str);
@@ -589,6 +592,9 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn time_ago(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let s = s.as_ref();
         let dt = chrono::DateTime::parse_from_rfc3339(s)
@@ -597,6 +603,9 @@ pub mod filters {
     }
 
     /// Định dạng số lớn: 1200 -> 1.2K, 3400000 -> 3.4M
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn fmt_num(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
         let raw = n.to_string();
@@ -605,6 +614,9 @@ pub mod filters {
     }
 
     /// Số thập phân 1 chữ số: 4.33333 -> 4.3
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn fmt_f64(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
         let raw = n.to_string();
@@ -613,36 +625,54 @@ pub mod filters {
     }
 
     /// Markdown an toàn -> HTML (không escape lần 2)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn html(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
         Ok(Safe(u::safe_markdown_to_html(s.as_ref())))
     }
 
     /// Escape HTML thủ công (không escape lần 2)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn esc(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
         Ok(Safe(u::html_escape(s.as_ref())))
     }
 
     /// Escape HTML + đổi \\n thành <br> (cho bình luận)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn nl2br(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
         Ok(Safe(u::html_escape(s.as_ref()).replace('\n', "<br>")))
     }
 
     /// Chữ cái đầu của tên (avatar fallback)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn initials(name: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(u::initials(name.as_ref()))
     }
 
     /// Cắt chuỗi kèm "…"
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn truncate(s: impl AsRef<str>, _: &dyn Values, max: usize) -> ::askama::Result<String> {
         Ok(u::truncate(s.as_ref(), max))
     }
 
     /// Avatar của user hoặc placeholder
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn avatar_or(user: &User, _: &dyn Values) -> ::askama::Result<String> {
         Ok(user
@@ -652,11 +682,17 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn slugify(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(slug::slugify(s.as_ref()))
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn lower(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         Ok(s.as_ref().to_lowercase())
     }
@@ -665,6 +701,9 @@ pub mod filters {
     /// ID (URL không phải YouTube) — template dùng điều kiện này để
     /// fallback sang link thường thay vì render iframe hỏng
     /// (https://www.youtube.com/embed/ trống trắng).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn youtube_embed(url: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let id = u::extract_youtube_id(url.as_ref()).unwrap_or_default();
@@ -705,6 +744,9 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn join_tags(items: &[String], _: &dyn Values) -> ::askama::Result<String> {
         Ok(items.join(", "))
     }
