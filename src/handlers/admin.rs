@@ -629,6 +629,9 @@ pub struct CategoryForm {
     pub id: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn save_category(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
