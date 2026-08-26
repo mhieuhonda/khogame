@@ -6,6 +6,9 @@ use uuid::Uuid;
 pub struct ReviewRepo;
 
 impl ReviewRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create_or_update(
         pool: &PgPool,
         game_id: Uuid,
@@ -58,6 +61,9 @@ impl ReviewRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_game(
         pool: &PgPool,
         game_id: Uuid,
