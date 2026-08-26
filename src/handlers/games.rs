@@ -1147,7 +1147,15 @@ pub async fn search(
     CurrentUser(current_user): CurrentUser,
     Query(q): Query<SearchQuery>,
 ) -> AppResult<SearchTemplate> {
-    let sort = q.sort.clone().unwrap_or_else(|| "latest".into());
+    let sort_raw = q.sort.clone().unwrap_or_else(|| "latest".into());
+    // Validate sort whitelist — đồng nhất với API games_list.
+    const SORT_WHITELIST: &[&str] = &["latest", "trending", "downloads", "top_rated", "liked"];
+    if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
+        return Err(AppError::BadRequest(format!(
+            "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
+        )));
+    }
+    let sort = sort_raw;
     let page = q.page.unwrap_or(1).max(1);
     let per_page: i64 = 24;
     let offset = (page - 1) * per_page;
