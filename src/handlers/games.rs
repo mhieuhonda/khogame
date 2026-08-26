@@ -24,6 +24,9 @@ async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) 
 }
 
 // ============= Home =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn home(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -247,6 +250,9 @@ async fn validate_category(state: &AppState, form: &GameForm) -> AppResult<()> {
 }
 
 // ============= New game form =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn new_game_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
