@@ -10,6 +10,9 @@ use uuid::Uuid;
 pub struct GameRepo;
 
 impl GameRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
@@ -418,6 +421,9 @@ impl GameRepo {
     }
 
     // ============ Listing queries ============
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_published(
         pool: &PgPool,
         limit: i64,
