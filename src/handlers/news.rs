@@ -122,7 +122,18 @@ pub async fn list(
     Query(params): Query<ListParams>,
 ) -> AppResult<NewsListTemplate> {
     let page = params.page.unwrap_or(1).max(1);
-    let category = params.category.as_deref().unwrap_or("");
+    // Validate category trước khi query — nếu category lạ, fallback
+    // về danh sách toàn bộ thay vì trả 0 kết quả gây nhầm lẫn.
+    let category_raw = params.category.as_deref().unwrap_or("");
+    let category = if category_raw.is_empty()
+        || NEWS_CATEGORIES
+            .iter()
+            .any(|(k, _)| *k == category_raw)
+    {
+        category_raw.to_string()
+    } else {
+        String::new()
+    };
     let q = params.q.as_deref().unwrap_or("");
 
     let (items, total) = if !q.is_empty() {
@@ -135,8 +146,8 @@ pub async fn list(
             (items, total)
         }
     } else if !category.is_empty() {
-        let items = NewsRepo::list_by_category(&state.db, category, page, NEWS_PER_PAGE).await?;
-        let total = count_by_category(&state, category).await;
+        let items = NewsRepo::list_by_category(&state.db, &category, page, NEWS_PER_PAGE).await?;
+        let total = count_by_category(&state, &category).await;
         (items, total)
     } else {
         let items = NewsRepo::list_published(&state.db, page, NEWS_PER_PAGE).await?;
