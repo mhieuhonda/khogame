@@ -5,6 +5,9 @@ use uuid::Uuid;
 pub struct SessionRepo;
 
 impl SessionRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
