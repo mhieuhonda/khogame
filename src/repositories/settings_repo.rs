@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub struct SettingsRepo;
 
 impl SettingsRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get(pool: &PgPool, key: &str) -> AppResult<Option<String>> {
         let v: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = $1")
             .bind(key)
@@ -34,6 +37,9 @@ impl SettingsRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_all(pool: &PgPool) -> AppResult<Vec<Setting>> {
         let rows = sqlx::query_as::<_, Setting>(
             "SELECT key, value, updated_at, updated_by FROM settings ORDER BY key",
@@ -43,6 +49,9 @@ impl SettingsRepo {
         Ok(rows)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_map(pool: &PgPool, keys: &[&str]) -> AppResult<HashMap<String, String>> {
         let rows: Vec<(String, String)> =
             sqlx::query_as("SELECT key, value FROM settings WHERE key = ANY($1)")
@@ -80,6 +89,9 @@ impl AdminLogRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list(pool: &PgPool, limit: i64, offset: i64) -> AppResult<Vec<AdminLogWithAdmin>> {
         let rows = sqlx::query_as::<_, AdminLogWithAdmin>(
             r"SELECT l.id, u.display_name as admin_name, u.username as admin_username,
@@ -95,6 +107,9 @@ impl AdminLogRepo {
     }
 
     /// Tổng số dòng audit log — phân trang trang /admin/audit.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM admin_logs")
             .fetch_one(pool)
@@ -103,6 +118,9 @@ impl AdminLogRepo {
     }
 
     #[allow(dead_code)]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find(pool: &PgPool, id: Uuid) -> AppResult<Option<AdminLog>> {
         let row = sqlx::query_as::<_, AdminLog>(
             "SELECT id, admin_id, action, target_type, target_id, detail, ip, created_at FROM admin_logs WHERE id = $1",
@@ -118,6 +136,9 @@ pub struct StatsRepo;
 
 impl StatsRepo {
     /// Thống kê tổng hợp 7 ngày gần nhất cho dashboard chart
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn daily_last_7_days(pool: &PgPool) -> AppResult<Vec<DailyStatRow>> {
         let rows = sqlx::query_as::<_, DailyStatRow>(
             r"WITH days AS (
@@ -135,6 +156,9 @@ impl StatsRepo {
         Ok(rows)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_view(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
         sqlx::query(
             r"INSERT INTO daily_stats (day, game_id, views) VALUES (CURRENT_DATE, $1, 1)
@@ -146,6 +170,9 @@ impl StatsRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_download(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
         sqlx::query(
             r"INSERT INTO daily_stats (day, game_id, downloads) VALUES (CURRENT_DATE, $1, 1)
@@ -160,6 +187,9 @@ impl StatsRepo {
     /// Xoá `daily_stats` cũ hơn `days` ngày. Chart dashboard chỉ dùng 7 ngày
     /// gần nhất — giữ 90 ngày làm biên độ phân tích, phần còn lại là rác
     /// làm bảng phình to vô hạn (mỗi game × mỗi ngày 1 dòng).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn cleanup_old_daily_stats(pool: &PgPool, days: i64) -> AppResult<u64> {
         let res = sqlx::query(
             "DELETE FROM daily_stats WHERE day < CURRENT_DATE - ($1 || ' days')::INTERVAL",
