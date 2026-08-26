@@ -79,7 +79,7 @@ impl GameRepo {
             )
             .bind(id)
             .bind(url)
-            .bind(i as i32)
+            .bind(i32::try_from(i).unwrap_or(i32::MAX))
             .execute(pool)
             .await?;
         }
@@ -153,7 +153,7 @@ impl GameRepo {
             )
             .bind(id)
             .bind(url)
-            .bind(i as i32)
+            .bind(i32::try_from(i).unwrap_or(i32::MAX))
             .execute(pool)
             .await?;
         }
