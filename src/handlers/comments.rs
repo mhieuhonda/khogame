@@ -17,6 +17,9 @@ pub struct CommentForm {
     pub parent_id: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn create_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
