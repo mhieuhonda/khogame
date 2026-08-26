@@ -87,6 +87,9 @@ impl ReviewRepo {
         Ok(reviews)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM reviews WHERE id = $1 AND user_id = $2")
             .bind(id)
