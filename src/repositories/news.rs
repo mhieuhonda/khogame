@@ -69,6 +69,9 @@ impl NewsRepo {
     /// Cập nhật tin tức. Chỉ tác giả hoặc admin được gọi (kiểm tra ở handler).
     /// Không cho phép đổi status qua form edit — status chỉ thay đổi qua
     /// approve/reject/archive endpoints riêng.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update(pool: &PgPool, id: Uuid, form: &NewsForm) -> AppResult<()> {
         sqlx::query(
             r"UPDATE news SET
@@ -117,6 +120,9 @@ impl NewsRepo {
     }
 
     /// Đếm tổng số tin đã published (cho phân trang).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_published(pool: &PgPool) -> AppResult<i64> {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = 'published'")
             .fetch_one(pool)
@@ -125,6 +131,9 @@ impl NewsRepo {
     }
 
     /// Lấy tin nổi bật (`is_featured=true`, status=published).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_featured(pool: &PgPool, limit: i64) -> AppResult<Vec<NewsWithAuthor>> {
         let items = sqlx::query_as::<_, NewsWithAuthor>(
             r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
@@ -229,6 +238,9 @@ impl NewsRepo {
     }
 
     /// Lấy tin theo slug — không check status (admin xem).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_slug_admin(pool: &PgPool, slug: &str) -> AppResult<Option<NewsForAdmin>> {
         let item = sqlx::query_as::<_, NewsForAdmin>(
             r"SELECT n.*, u.display_name AS author_name,
@@ -245,6 +257,9 @@ impl NewsRepo {
     }
 
     /// Lấy tin theo id — dùng cho admin actions (approve/reject/archive).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<News>> {
         let item = sqlx::query_as::<_, News>(
             r"SELECT id, user_id, title, slug, excerpt, content, cover_image,
@@ -260,6 +275,9 @@ impl NewsRepo {
     }
 
     /// Bump `view_count` +1. Best-effort, không ảnh hưởng request chính.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn increment_views(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE news SET view_count = view_count + 1 WHERE id = $1")
             .bind(id)
@@ -295,6 +313,9 @@ impl NewsRepo {
         Ok(items)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_pending(pool: &PgPool) -> AppResult<i64> {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM news WHERE status = 'pending'")
             .fetch_one(pool)
@@ -303,6 +324,9 @@ impl NewsRepo {
     }
 
     /// Duyệt tin: pending → published, set `published_at` + `reviewed_by`.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn approve(pool: &PgPool, id: Uuid, admin_id: Uuid) -> AppResult<()> {
         sqlx::query(
             r"UPDATE news SET
@@ -320,6 +344,9 @@ impl NewsRepo {
     }
 
     /// Từ chối tin: pending → rejected, kèm `review_note`.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn reject(pool: &PgPool, id: Uuid, admin_id: Uuid, note: &str) -> AppResult<()> {
         sqlx::query(
             r"UPDATE news SET
@@ -337,6 +364,9 @@ impl NewsRepo {
     }
 
     /// Lưu trữ: published → archived (ẩn khỏi list chính, vẫn xem được qua link).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn archive(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE news SET status = 'archived' WHERE id = $1")
             .bind(id)
@@ -346,6 +376,9 @@ impl NewsRepo {
     }
 
     /// Toggle `is_featured` (chỉ tác động tới published).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_featured(pool: &PgPool, id: Uuid, featured: bool) -> AppResult<()> {
         sqlx::query(
             r"UPDATE news SET is_featured = $2
@@ -359,6 +392,9 @@ impl NewsRepo {
     }
 
     /// Xoá tin (chỉ admin hoặc tác giả).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM news WHERE id = $1")
             .bind(id)
@@ -403,6 +439,9 @@ impl NewsRepo {
 
     // ===== Likes =====
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_like(pool: &PgPool, user_id: Uuid, news_id: Uuid) -> AppResult<bool> {
         // DELETE-first pattern: tránh double-increment khi race condition.
         // Trả về true nếu đã like (sau khi INSERT), false nếu đã unlike (sau khi DELETE).
@@ -430,6 +469,9 @@ impl NewsRepo {
         Ok(liked)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn has_liked(pool: &PgPool, user_id: Uuid, news_id: Uuid) -> AppResult<bool> {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM news_likes WHERE user_id = $1 AND news_id = $2)",
@@ -537,6 +579,9 @@ impl NewsRepo {
     }
 
     /// Lấy 1 `NewsComment` theo id (kiểm tra quyền).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_comment_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<NewsComment>> {
         let item = sqlx::query_as::<_, NewsComment>(
             r"SELECT id, news_id, user_id, parent_id, content, like_count,
@@ -581,6 +626,9 @@ impl NewsRepo {
     // ===== Stats cho admin dashboard =====
 
     /// Đếm tin theo status (cho admin dashboard).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_by_status(pool: &PgPool, status: NewsStatus) -> AppResult<i64> {
         let status_str = match status {
             NewsStatus::Draft => "draft",
@@ -598,6 +646,9 @@ impl NewsRepo {
     }
 
     /// Top tác giả tin tức (cho dashboard).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn top_authors(pool: &PgPool, limit: i64) -> AppResult<Vec<(Uuid, String, i64)>> {
         let rows: Vec<(Uuid, String, i64)> = sqlx::query_as(
             r"SELECT n.user_id, u.display_name, COUNT(*)::BIGINT AS cnt
