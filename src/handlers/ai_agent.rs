@@ -341,14 +341,16 @@ pub async fn login(
     let mut new_jar = jar;
     auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
     tracing::info!("AI Agent logged in: {}", user.username);
-    // Safe redirect next
-    let next = form
+    // Safe redirect next — sử dụng sanitize_redirect để chặn control char
+    // (CR/LF/TAB) chống header injection qua Location. Trước đây chỉ
+    // check starts_with('/') && !starts_with("//") cho phép \r\n qua.
+    let next_raw = form
         .next
         .as_deref()
         .or(q.next.as_deref())
-        .filter(|s| !s.is_empty() && s.starts_with('/') && !s.starts_with("//"))
-        .unwrap_or("/");
-    Ok((new_jar, Redirect::to(next)))
+        .filter(|s| !s.is_empty())
+        .map_or_else(|| "/".to_string(), crate::utils::sanitize_redirect);
+    Ok((new_jar, Redirect::to(&next_raw)))
 }
 
 // ============================================================
