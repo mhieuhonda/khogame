@@ -116,6 +116,9 @@ pub async fn games_list(
     Ok(([(header::CACHE_CONTROL, "public, max-age=60")], Json(body)).into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn game_detail(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
