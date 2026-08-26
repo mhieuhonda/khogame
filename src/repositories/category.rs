@@ -7,6 +7,9 @@ use uuid::Uuid;
 pub struct CategoryRepo;
 
 impl CategoryRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_all(pool: &PgPool) -> AppResult<Vec<Category>> {
         let cats = sqlx::query_as::<_, Category>(
             r"SELECT id, name, slug, description, icon, created_at
@@ -17,6 +20,9 @@ impl CategoryRepo {
         Ok(cats)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_with_counts(pool: &PgPool) -> AppResult<Vec<CategoryWithCount>> {
         let cats = sqlx::query_as::<_, CategoryWithCount>(
             r"SELECT c.id, c.name, c.slug, c.description, c.icon,
@@ -31,6 +37,9 @@ impl CategoryRepo {
         Ok(cats)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_slug(pool: &PgPool, slug: &str) -> AppResult<Option<Category>> {
         let c = sqlx::query_as::<_, Category>(
             r"SELECT id, name, slug, description, icon, created_at FROM categories WHERE slug = $1",
@@ -91,6 +100,9 @@ impl CategoryRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: uuid::Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM categories WHERE id = $1")
             .bind(id)
@@ -99,6 +111,9 @@ impl CategoryRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: uuid::Uuid) -> AppResult<Option<Category>> {
         let c = sqlx::query_as::<_, Category>(
             r"SELECT id, name, slug, description, icon, created_at FROM categories WHERE id = $1",
