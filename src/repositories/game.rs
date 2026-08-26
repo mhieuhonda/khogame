@@ -498,7 +498,7 @@ impl GameRepo {
               LEFT JOIN users u ON u.id = g.user_id
               LEFT JOIN categories c ON c.id = g.category_id
               WHERE g.status = 'published'
-                AND (g.title ILIKE $1 ESCAPE '\\' OR g.excerpt ILIKE $1 ESCAPE '\\' OR g.content ILIKE $1 ESCAPE '\\')"
+                AND (g.title ILIKE $1 ESCAPE '\' OR g.excerpt ILIKE $1 ESCAPE '\' OR g.content ILIKE $1 ESCAPE '\')"
             .to_string();
         if category_slug.is_some() {
             sql.push_str(" AND c.slug = $2");

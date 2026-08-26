@@ -9,6 +9,39 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.1] — 2026-08-27 — Hotfix: search 500 từ v0.7.0 (ESCAPE '\\' trong raw string)
+
+🐛 **Hotfix** — phát hiện khi smoke-test prod sau khi deploy v1.3.0:
+tìm kiếm game (`/search?q=...`) và tìm kiếm tin tức (`/news?q=...`)
+trả **500 cho MỌI từ khoá** — bug tồn tại từ v0.7.0 (commit c71b10f)
+không phải do v1.3.0.
+
+### 🐛 Bug fixes
+
+- **Root cause**: `GameRepo::search` (game.rs) và `NewsRepo::search` +
+  `NewsRepo::suggest_titles` (news.rs) dùng SQL raw string
+  `r"... ILIKE $1 ESCAPE '\\' ..."`. Raw string truyền NGUYÊN VĂN cho
+  PostgreSQL → ESCAPE nhận **2 ký tự backslash** → PG lỗi
+  "invalid escape string" (ESCAPE phải rỗng hoặc đúng 1 ký tự) → mọi
+  truy vấn search 500. Các hàm khác (suggest game, count_search,
+  admin user search) dùng `ESCAPE '\\'` trong **regular string** (Rust
+  unescape thành 1 ký tự) nên hoạt động bình thường — cực khó nhận ra
+  khi đọc code vì nhìn giống hệt nhau.
+- **Bằng chứng thực nghiệm trên prod**: `/api/suggest?q=Phi` (ESCAPE 1
+  ký tự) trả kết quả thật; `/search?q=Phi` (ESCAPE 2 ký tự) trả 500 —
+  cùng database, cùng pattern, khác duy nhất escape clause.
+- **Phạm vi ảnh hưởng trước fix**: `/search` + `/api/v1/games?q=` (500),
+  `/news?q=` (500), autocomplete tin tức `/api/news-suggest` (200 nhưng
+  âm thầm trả rỗng do `unwrap_or_default()` nuốt error).
+- **Fix**: raw string giờ truyền đúng 1 backslash (`ESCAPE '\\'` với
+  1 ký tự `\`) cho cả 3 truy vấn + comment cảnh báo cạm bẫy: raw string
+  KHÔNG unescape như regular string.
+
+### ✅ Verification
+
+- cargo check / clippy -D warnings / test 183 pass / fmt ✅
+- Sau deploy: `/search?q=Phi` → 200 với kết quả thật (verify trên prod).
+
 ## [1.3.0] — 2026-08-27 — Real IP infrastructure + quản lý bình luận tin tức + tăng tốc toàn diện
 
 🚀 **Release bảo mật + hiệu năng** — fix 3 lỗi vận hành (IP admin, tràn

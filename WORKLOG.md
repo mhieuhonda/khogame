@@ -278,3 +278,21 @@ Stage Summary:
 - Shared rate-limit bucket (một user spam chặn cả site) — nguyên nhân gốc do IP proxy — đã fix bằng cookie identity fallback, tự tắt khi hạ tầng truyền IP thật.
 - IP THẬT hiển thị ở admin yêu cầu 2 thao tác hạ tầng ngoài repo (nginx main VPS + Traefik) — đã viết docs/real-ip.md từng bước; KHÔNG thể fix trong app vì IP không tồn tại trong packet tới sub VPS.
 - Sẽ commit với username mhieuhonda, push main, tag v1.3.0 (CD tự build + deploy Coolify, Release workflow tự tạo GitHub Release).
+
+---
+Task ID: 8
+Agent: super-z (main agent)
+Task: Hotfix v1.3.1 — search 500 mọi từ khoá (bug từ v0.7.0, phát hiện khi smoke-test prod sau v1.3.0).
+
+Work Log:
+- Smoke-test prod sau deploy v1.3.0 phát hiện /search?q=... và /news?q=... trả 500 với MỌI từ khoá (q rỗng thì 200).
+- Truy code: GameRepo::search (game.rs:501), NewsRepo::search (news.rs:224), NewsRepo::suggest_titles (news.rs:744) dùng raw string r"... ESCAPE '\\' ..." — raw string truyền nguyên văn 2 backslash cho PostgreSQL → ESCAPE clause 2 ký tự → PG lỗi "invalid escape string" → query fail.
+- Các hàm dùng ESCAPE '\\' trong regular string (Rust unescape thành 1 ký tự) hoạt động bình thường — suggest game (raw string 1 backslash) trả kết quả thật trên prod.
+- Bằng chứng thực nghiệm prod: /api/suggest?q=Phi → kết quả thật; /search?q=Phi → 500 (cùng DB, khác duy nhất escape clause).
+- /api/news-suggest trả 200 nhưng rỗng — handler unwrap_or_default() nuốt error → autocomplete tin tức cũng chết âm thầm từ trước.
+- Bug có từ commit c71b10f (v0.7.0) — KHÔNG phải do v1.3.0.
+- Fix 3 raw string thành 1 backslash + comment cảnh báo; bump 1.3.1; CHANGELOG; full gates pass (check/clippy -D warnings/183 test/fmt).
+
+Stage Summary:
+- Search game + search tin tức + autocomplete tin tức hoạt động trở lại (verify sau deploy).
+- Bài học: raw string r"..." không unescape — ESCAPE '\\' trong raw string = 2 ký tự, khác regular string.

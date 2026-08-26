@@ -221,7 +221,7 @@ impl NewsRepo {
               FROM news n
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published'
-                AND (n.title ILIKE $1 ESCAPE '\\' OR n.content ILIKE $1 ESCAPE '\\')
+                AND (n.title ILIKE $1 ESCAPE '\' OR n.content ILIKE $1 ESCAPE '\')
               ORDER BY n.published_at DESC NULLS LAST, n.created_at DESC, n.id
               LIMIT $2 OFFSET $3",
         )
@@ -735,13 +735,15 @@ impl NewsRepo {
         limit: i64,
     ) -> AppResult<Vec<(String, String)>> {
         // Escape wildcard + clamp 100 ký tự như search công khai.
-        // escape_like escape cả backslash (escape char) — phải kèm ESCAPE '\\'
-        // để PG hiểu chính xác ký tự escape (xem NewsRepo::search cho chi tiết).
+        // escape_like escape cả backslash (escape char) — phải kèm ESCAPE '\'
+        // (raw string truyền nguyên văn 1 ký tự cho PG; '\\' trong raw string
+        // = 2 ký tự → PG lỗi 'invalid escape string' — bug search 500 từ
+        // v0.7.0, xem fix v1.3.1 trong GameRepo::search).
         let q: String = query.chars().take(100).collect();
         let pattern = format!("%{}%", crate::utils::escape_like(&q));
         let rows: Vec<(String, String)> = sqlx::query_as(
             r"SELECT title, slug FROM news
-              WHERE status = 'published' AND title ILIKE $1 ESCAPE '\\'
+              WHERE status = 'published' AND title ILIKE $1 ESCAPE '\'
               ORDER BY published_at DESC NULLS LAST, id
               LIMIT $2",
         )
