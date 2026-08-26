@@ -56,6 +56,9 @@ impl CategoryRepo {
     /// admin tạo category có tên khác nhưng slugify trùng (vd 'GIẢI TRÍ'
     /// và 'Giải Trí' cùng ra slug 'giai-tri'): user tưởng đã tạo category
     /// mới, thật ra vừa ghi đè tên category đang dùng.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         name: &str,
@@ -83,6 +86,9 @@ impl CategoryRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update(
         pool: &PgPool,
         id: uuid::Uuid,
