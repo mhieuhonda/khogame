@@ -329,6 +329,9 @@ pub struct AiProgressResponse {
     pub message: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn report_progress(
     State(state): State<Arc<AppState>>,
     AuthAiAgent(user): AuthAiAgent,
@@ -337,6 +340,9 @@ pub async fn report_progress(
     report_progress_impl(&state, user, req).await
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn report_progress_json(
     State(state): State<Arc<AppState>>,
     AuthAiAgent(user): AuthAiAgent,
