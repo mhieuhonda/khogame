@@ -42,16 +42,48 @@ impl AppConfig {
             .filter(|s| !s.is_empty())
             .unwrap_or_default();
         let ai_agent_enabled = !ai_agent_secret.is_empty();
+        let base_url = env::var("BASE_URL")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "http://localhost:3000".into());
+        // Cảnh báo prod nếu BASE_URL là http://localhost — cookie sẽ
+        // không có Secure, og:image trỏ về localhost, không nên chạy
+        // production như vậy. Chỉ warn chứ không fail để dev/test vẫn OK.
+        if base_url.starts_with("http://localhost")
+            && env::var("RUST_ENV").ok().as_deref() == Some("prod")
+        {
+            tracing::warn!(
+                "BASE_URL={base_url} trong RUST_ENV=prod — cookie sẽ KHÔNG có Secure, \
+                 og:image trỏ localhost. Cài BASE_URL=https://domain.prod."
+            );
+        }
+        let google_redirect_uri = env::var("GOOGLE_REDIRECT_URI")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "http://localhost:3000/auth/google/callback".into());
+        // Bảo mật: GOOGLE_REDIRECT_URI phải nằm dưới BASE_URL. Nếu
+        // attacker kiểm soát env và set redirect_uri = http://evil.com,
+        // Google sẽ gửi OAuth code thẳng cho evil.com. Fail-fast ở startup
+        // dễ hơn so với phát hiện sau khi user bị redirect.
+        let redirect_path = google_redirect_uri
+            .strip_prefix(&base_url)
+            .filter(|p| p.starts_with('/'));
+        if redirect_path.is_none()
+            && base_url != "http://localhost:3000"
+            && !google_redirect_uri.starts_with("http://localhost")
+        {
+            return Err(anyhow::anyhow!(
+                "GOOGLE_REDIRECT_URI ({google_redirect_uri}) phải nằm dưới BASE_URL ({base_url}) \
+                 — nếu không, OAuth code có thể bị gửi sang domain khác."
+            ));
+        }
         Ok(Self {
             host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into()),
             port: env::var("PORT")
                 .ok()
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000),
-            base_url: env::var("BASE_URL")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "http://localhost:3000".into()),
+            base_url,
             database_url: env::var("DATABASE_URL")
                 .map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?,
             session_key: env::var("SESSION_KEY")
@@ -60,10 +92,7 @@ impl AppConfig {
                 .map_err(|_| anyhow::anyhow!("GOOGLE_CLIENT_ID is required"))?,
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET")
                 .map_err(|_| anyhow::anyhow!("GOOGLE_CLIENT_SECRET is required"))?,
-            google_redirect_uri: env::var("GOOGLE_REDIRECT_URI")
-                .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "http://localhost:3000/auth/google/callback".into()),
+            google_redirect_uri,
             admin_email: env::var("ADMIN_EMAIL")
                 .ok()
                 .filter(|s| !s.is_empty())
@@ -73,7 +102,7 @@ impl AppConfig {
             ai_agent_enabled,
             ai_agent_session_ttl_days: env::var("AI_AGENT_SESSION_TTL_DAYS")
                 .ok()
-                .and_then(|d| d.parse().ok())
+                .and_then(|d| d.parse::<i64>().ok())
                 .filter(|d| *d > 0)
                 // Cắt trên 365 ngày — chống overflow INTERVAL Postgres khi
                 // user set giá trị i64::MAX qua env, đồng thời tránh phiên
