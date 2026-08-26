@@ -1109,6 +1109,9 @@ pub async fn categories_list(State(state): State<Arc<AppState>>) -> AppResult<Re
 
 /// GET /api/v1/news — danh sách tin tức đã published (public).
 /// Hỗ trợ ?page=N và ?category=game|tech|industry|esports|community|review|update|other.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_list(
     State(state): State<Arc<AppState>>,
     Query(params): Query<NewsListApiParams>,
@@ -1153,6 +1156,9 @@ pub struct NewsListApiParams {
 }
 
 /// GET /api/v1/news/{slug} — chi tiết 1 bài tin tức (public).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_detail(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -1171,6 +1177,9 @@ pub async fn news_detail(
 /// tác giả game mà không cần cào HTML. Chỉ trả field công khai:
 /// username, `display_name`, `avatar_url`, bio, role, stats (số game,
 /// follower, following). Không trả email hay session info nhạy cảm.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn user_profile(
     State(state): State<Arc<AppState>>,
     Path(username): Path<String>,
