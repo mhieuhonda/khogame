@@ -6,6 +6,9 @@ use uuid::Uuid;
 pub struct NotificationRepo;
 
 impl NotificationRepo {
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_for_user(
         pool: &PgPool,
         user_id: Uuid,
@@ -111,6 +114,9 @@ impl NotificationRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create_system(
         pool: &PgPool,
         user_id: Uuid,
