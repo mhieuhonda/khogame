@@ -120,6 +120,47 @@ pub async fn register(
             return Err(AppError::BadRequest("Bio tối đa 500 ký tự".into()));
         }
     }
+    // Validate display_name length (chống payload 1MB insert vào users.display_name)
+    if let Some(dn) = req.display_name.as_deref() {
+        if dn.trim().chars().count() > 100 {
+            return Err(AppError::BadRequest("Display name tối đa 100 ký tự".into()));
+        }
+    }
+    // Validate token_label length
+    if let Some(tl) = req.token_label.as_deref() {
+        if tl.trim().chars().count() > 100 {
+            return Err(AppError::BadRequest("Token label tối đa 100 ký tự".into()));
+        }
+    }
+    // Validate email — RFC 5321 max 254 ký tự
+    if let Some(email) = req.email.as_deref() {
+        if !email.is_empty() && email.trim().chars().count() > 254 {
+            return Err(AppError::BadRequest("Email quá dài (tối đa 254 ký tự)".into()));
+        }
+    }
+    // Validate username length — repo tự slugify nhưng text raw vẫn
+    // chảy qua DB bind. Cắt 100 ký tự là hợp lý.
+    if let Some(un) = req.username.as_deref() {
+        if !un.is_empty() && un.trim().chars().count() > 100 {
+            return Err(AppError::BadRequest("Username tối đa 100 ký tự".into()));
+        }
+    }
+    // Validate accent_color — phải là hex color (chống payload lạ)
+    if let Some(color) = req.accent_color.as_deref() {
+        if !is_valid_hex_color(color) {
+            return Err(AppError::BadRequest(
+                "Accent color phải là hex color (vd #7c3aed)".into(),
+            ));
+        }
+    }
+    // Validate privacy_level — whitelist
+    if let Some(level) = req.privacy_level.as_deref() {
+        if !matches!(level, "public" | "private" | "internal") {
+            return Err(AppError::BadRequest(
+                "Privacy level phải là public/private/internal".into(),
+            ));
+        }
+    }
     if let Some(avatar) = req.avatar_url.as_deref() {
         if !avatar.is_empty() && !crate::utils::is_safe_url(avatar) {
             return Err(AppError::BadRequest(
@@ -592,6 +633,17 @@ pub async fn info(
         vendor: profile.vendor,
         verified: profile.verified,
     }))
+}
+
+/// Validate hex color string: #RGB hoặc #RRGGBB (case-insensitive).
+/// Tránh lưu payload lạ vào ai_agent_profiles.accent_color.
+fn is_valid_hex_color(s: &str) -> bool {
+    let s = s.trim();
+    if !s.starts_with('#') {
+        return false;
+    }
+    let rest = &s[1..];
+    matches!(rest.len(), 3 | 6) && rest.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
