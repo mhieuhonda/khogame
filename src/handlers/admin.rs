@@ -278,6 +278,9 @@ pub async fn hide_game(
     )))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn feature_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -309,6 +312,9 @@ pub async fn feature_game(
     )))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn pin_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
