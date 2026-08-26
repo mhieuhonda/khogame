@@ -8,6 +8,9 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use std::sync::Arc;
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn terms(
     State(_state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -19,6 +22,9 @@ pub async fn terms(
     })
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn privacy(
     State(_state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
