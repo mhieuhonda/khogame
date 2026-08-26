@@ -297,6 +297,9 @@ pub async fn repos_list(
         .into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     // 6 COUNT độc lập — join! song song (cache 60s đã giảm tần suất,
     // giờ giảm cả latency của mỗi lần cache miss). Thêm news stats.
@@ -1080,6 +1083,9 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
 // Cung cấp danh sách tag và thể loại qua JSON API để client-side search,
 // autocomplete và cross-linking không cần phải tải trang HTML đầy đủ.
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn tags_list(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     let tags = TagRepo::popular(&state.db, 100).await.unwrap_or_default();
     Ok((
@@ -1089,6 +1095,9 @@ pub async fn tags_list(State(state): State<Arc<AppState>>) -> AppResult<Response
         .into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn categories_list(State(state): State<Arc<AppState>>) -> AppResult<Response> {
     let cats = CategoryRepo::list_with_counts(&state.db).await?;
     Ok((
