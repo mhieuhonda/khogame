@@ -82,6 +82,9 @@ pub async fn my_profile(AuthUser(user): AuthUser) -> Redirect {
 }
 
 // ============= Edit profile form =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn edit_profile_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -109,6 +112,9 @@ pub struct ProfileForm {
     pub show_online: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn update_profile(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -183,6 +189,9 @@ pub struct BookmarksQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn bookmarks_page(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
