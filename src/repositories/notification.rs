@@ -38,6 +38,9 @@ impl NotificationRepo {
     }
 
     /// Tổng số notification của user (phân trang trang thông báo).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM notifications WHERE user_id = $1")
             .bind(user_id)
@@ -46,6 +49,9 @@ impl NotificationRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn unread_count(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM notifications WHERE user_id = $1 AND is_read = FALSE",
@@ -56,6 +62,9 @@ impl NotificationRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn mark_read(pool: &PgPool, id: Uuid, user_id: Uuid) -> AppResult<()> {
         sqlx::query("UPDATE notifications SET is_read = TRUE WHERE id = $1 AND user_id = $2")
             .bind(id)
@@ -86,6 +95,9 @@ impl NotificationRepo {
         Ok(n)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn mark_all_read(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
         sqlx::query(
             "UPDATE notifications SET is_read = TRUE WHERE user_id = $1 AND is_read = FALSE",
@@ -162,6 +174,9 @@ impl NotificationRepo {
 
     /// Xoá notification ĐÃ ĐỌC cũ hơn `days` ngày. Notification chưa đọc
     /// được giữ nguyên toàn bộ. Trả về số dòng đã xoá.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn cleanup_read_older_than(pool: &PgPool, days: i64) -> AppResult<u64> {
         let res = sqlx::query(
             r"DELETE FROM notifications
