@@ -298,6 +298,9 @@ impl From<&NewsFormParams> for NewsFormPartial {
     }
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn create(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
