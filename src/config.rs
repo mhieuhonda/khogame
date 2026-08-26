@@ -75,6 +75,10 @@ impl AppConfig {
                 .ok()
                 .and_then(|d| d.parse().ok())
                 .filter(|d| *d > 0)
+                // Cắt trên 365 ngày — chống overflow INTERVAL Postgres khi
+                // user set giá trị i64::MAX qua env, đồng thời tránh phiên
+                // AI Agent sống quá lâu (vô hiệu hoá chính sách xoay vòng).
+                .map(|d| d.min(365))
                 .unwrap_or(90),
             trust_proxy_headers: env::var("TRUST_PROXY_HEADERS")
                 .ok()
