@@ -52,6 +52,9 @@ pub struct ApiListQuery {
     pub per_page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn games_list(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ApiListQuery>,
