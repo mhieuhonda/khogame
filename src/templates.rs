@@ -716,6 +716,9 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn format_date(
         date: &Option<chrono::NaiveDate>,
         _: &dyn Values,
