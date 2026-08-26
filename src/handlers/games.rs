@@ -753,7 +753,6 @@ pub async fn download_game(
         let game_id = game.id;
         let user_id = user.id;
         let platform_str = platform.as_str().to_string();
-        let ip = ip;
         tokio::spawn(async move {
             let _ = InteractionRepo::record_download(
                 &db,
