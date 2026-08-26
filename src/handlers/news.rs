@@ -448,6 +448,9 @@ pub async fn edit_form(
     })
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn update(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -564,6 +567,9 @@ pub struct CommentForm {
     pub parent_id: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn create_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
