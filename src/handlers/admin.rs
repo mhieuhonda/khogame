@@ -40,6 +40,9 @@ async fn audit(
 // ============================================================
 // DASHBOARD (kèm chart 7 ngày)
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn dashboard(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -147,6 +150,9 @@ pub struct ReportsQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn reports(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
