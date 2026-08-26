@@ -19,12 +19,12 @@ pub fn time_ago(dt: chrono::DateTime<chrono::Utc>) -> String {
         format!("{} phút trước", secs / 60)
     } else if secs < 86400 {
         format!("{} giờ trước", secs / 3600)
-    } else if secs < 2592000 {
+    } else if secs < 2_592_000 {
         format!("{} ngày trước", secs / 86400)
-    } else if secs < 31536000 {
-        format!("{} tháng trước", secs / 2592000)
+    } else if secs < 31_536_000 {
+        format!("{} tháng trước", secs / 2_592_000)
     } else {
-        format!("{} năm trước", secs / 31536000)
+        format!("{} năm trước", secs / 31_536_000)
     }
 }
 
