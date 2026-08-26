@@ -39,6 +39,7 @@ pub fn format_number_i64(n: i64) -> String {
     if n_abs < 1000 {
         n.to_string()
     } else if n_abs < 1_000_000 {
+        #[allow(clippy::cast_precision_loss)]
         format!("{:.1}K", n as f64 / 1000.0)
     } else if n_abs < 1_000_000_000 {
         format!("{:.1}M", n as f64 / 1_000_000.0)
