@@ -516,6 +516,9 @@ pub async fn delete(
 
 // ============= Like (HTMX) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn toggle_like(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -579,6 +582,9 @@ pub async fn create_comment(
 
 // ============= My News =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn my_news(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
