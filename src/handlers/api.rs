@@ -451,6 +451,9 @@ pub async fn opensearch_suggestions(
 
 /// Gợi ý tìm kiếm tin tức (autocomplete) — trả tối đa 8 title + slug.
 /// Dùng cho dropdown khi user gõ ở ô search news.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_suggest(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SuggestQuery>,
@@ -490,6 +493,9 @@ pub struct DuplicateQuery {
 
 /// Kiểm tra trùng tiêu đề tin tức khi tạo mới — cảnh báo user nếu
 /// tin cùng tên đã có (giống `check_duplicate` của game).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_check_duplicate(
     State(state): State<Arc<AppState>>,
     Query(q): Query<DuplicateQuery>,
