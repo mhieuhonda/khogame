@@ -54,12 +54,39 @@ impl AppError {
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
             Self::BadRequest(_) | Self::Conflict(_) => StatusCode::BAD_REQUEST,
             Self::Database(e) => {
+                // Log raw error (kèm query, constraint, column name)
+                // cho dev/admin gỡ rối — nhưng KHÔNG lộ cho user.
                 tracing::error!("DB error: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::OAuth(msg) => {
+                tracing::warn!("OAuth error: {}", msg);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::Http(e) => {
+                tracing::warn!("HTTP error: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            Self::Internal(e) => {
+                tracing::error!("Internal error: {:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, self.to_string())
+        // Message cho user: với lỗi hệ thống (DB/OAuth/Http/Internal),
+        // chỉ trả message chung để không lộ internal state (query string,
+        // host name, error raw text có thể chứa info nhạy cảm).
+        let user_msg = match self {
+            Self::NotFound(m) => m.clone(),
+            Self::Unauthorized => self.to_string(),
+            Self::Forbidden(m) => m.clone(),
+            Self::BadRequest(m) | Self::Conflict(m) => m.clone(),
+            Self::Template(_) | Self::Database(_) | Self::OAuth(_)
+            | Self::Http(_) | Self::Internal(_) => {
+                "Lỗi hệ thống, vui lòng thử lại sau ít phút".to_string()
+            }
+        };
+        (status, user_msg)
     }
 }
 
