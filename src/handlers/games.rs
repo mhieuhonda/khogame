@@ -204,7 +204,9 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
             return Err(AppError::BadRequest("Mỗi tag tối đa 50 ký tự".into()));
         }
     }
-    // Validate 5 link tải — chỉ http(s), ≤ 2048 ký tự
+    // Validate 5 link tải — dùng is_safe_url (chặn control char CR/LF
+    // chống header injection khi URL làm X-Redirect header ở download_game)
+    // và chặn javascript:/data: scheme.
     for (label, url) in [
         ("Android", form.android_link.as_deref()),
         ("iOS", form.ios_link.as_deref()),
@@ -213,8 +215,7 @@ fn validate_game_form(form: &GameForm) -> AppResult<()> {
         ("macOS", form.macos_link.as_deref()),
     ] {
         if let Some(u) = url.filter(|s| !s.is_empty()) {
-            let lower = u.to_ascii_lowercase();
-            if !(lower.starts_with("http://") || lower.starts_with("https://")) {
+            if !crate::utils::is_safe_url(u) {
                 return Err(AppError::BadRequest(format!(
                     "Link tải {label} phải là http:// hoặc https:// (đã chặn javascript: và các scheme nguy hiểm)"
                 )));
