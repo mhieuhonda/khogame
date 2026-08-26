@@ -78,6 +78,9 @@ impl SessionRepo {
     /// Session còn hạn mới nhất kèm thông tin user — cho trang quản trị
     /// phiên. Join users để lấy `username/display_name`, chỉ session CÒN
     /// HẠN (`expires_at` > `NOW()`), sắp xếp theo tạo mới nhất.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_active(
         pool: &PgPool,
         limit: i64,
@@ -128,6 +131,9 @@ impl SessionRepo {
     /// Danh sách session cho 1 user (admin xem chi tiết user).
     /// Trả về cả session cũ lẫn mới (sắp xếp mới nhất trước).
     /// Limit 50 để không tràn trang khi user có nhiều login history.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_for_user(
         pool: &PgPool,
         user_id: Uuid,
