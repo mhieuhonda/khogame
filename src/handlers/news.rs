@@ -402,6 +402,9 @@ pub async fn create(
 
 // ============= Edit (owner or admin) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn edit_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -496,6 +499,9 @@ pub async fn update(
 
 // ============= Delete (owner or admin) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
