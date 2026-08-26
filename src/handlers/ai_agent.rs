@@ -430,12 +430,20 @@ async fn report_progress_impl(
                 "Metadata JSON tối đa 8192 ký tự".into(),
             ));
         }
+        // Validate JSON hợp lệ — trước đây chỉ from_str().ok() silently
+        // drop metadata nếu JSON lỗi, AI tưởng đã lưu nhưng thực ra không.
+        if serde_json::from_str::<serde_json::Value>(md).is_err() {
+            return Err(AppError::BadRequest(
+                "Metadata phải là JSON hợp lệ".into(),
+            ));
+        }
     }
     let percentage = req.percentage.unwrap_or(0).clamp(0, 100);
     let status = req
         .status
         .as_deref()
         .map_or(AiTaskStatus::Running, parse_status);
+    // Parse metadata lại (đã validate phía trên) — trả None nếu rỗng.
     let metadata: Option<serde_json::Value> = req
         .metadata
         .as_deref()
