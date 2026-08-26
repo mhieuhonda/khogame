@@ -9,6 +9,62 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.2] — 2026-08-26 — CD pipeline fix (deploy thực sự chạy)
+
+🔧 **Critical CD/ops fix** — giải quyết tình trạng "GitHub Action báo
+build xong nhưng web không thấy thay đổi gì". Stack không đổi (Rust 1.98 /
+axum 0.8.9 / sqlx 0.9 / askama 0.16). **Khuyến nghị upgrade từ v1.0.1**
+để CD pipeline tự deploy thành công thay vì phải manual.
+
+### 🚨 Root cause
+- **Coolify API token hết hạn** trong GitHub secret `COOLIFY_API_TOKEN`
+  → step "PATCH compose lên Coolify" trả HTTP 401 "Unauthenticated" →
+  compose trên Coolify không update image mới → trigger deploy (nếu
+  chạy) chỉ redeploy OLD image → web không đổi. Token đã được generate
+  mới và update vào repo secrets.
+- **`continue-on-error: true` trên deploy-coolify job** che giấu failure
+  → workflow báo **success** dù deploy fail → operator tưởng build xong
+  là deploy xong. Đã remove `continue-on-error` để deploy failure hiển thị
+  đỏ trên workflow status.
+- **Workflow `if` condition bug** — các step trigger/wait dùng
+  `if: steps.verify-secrets.outcome == 'success'` nhưng GitHub Actions
+  ngầm thêm `success()` (tất cả step trước phải pass) → khi PATCH fail,
+  trigger step bị skip dù condition matching. Đã đổi sang `always() &&`
+  để step được evaluate đúng độc lập với PATCH outcome.
+- **PATCH script `sys.exit(0)` sau 3 retries** khiến PATCH "thành công"
+  dù không patch gì → trigger deploy redeploy OLD image (lừa dối).
+  Đã đổi sang `sys.exit(1)` để fail step, ngăn trigger chạy với compose
+  stale.
+
+### 🔒 Security hardening compose — remove (tạm thời)
+- `deploy/compose.prod.yml` trước đây có `cap_drop: ALL` cho cả app và DB.
+  Hardening DB `cap_drop: ALL` khiến **postgres:17-alpine entrypoint không
+  chown được PGDATA** (cần CAP_CHOWN) → container crash-loop → toàn bộ
+  stack `degraded:unhealthy` → web 503 "no available server". Lần đầu
+  token work, PATCH apply hardening compose → DB break ngay. Đã remove
+  hardening BOTH app + DB để compose match phiên bản đang chạy healthy
+  trên prod. Logging rotation (json-file 10m×5) vẫn giữ. TODO: re-add
+  hardening từng bước, test trên staging trước (app: read_only+cap_drop
+  OK vì non-root; DB: chỉ CAP_CHOWN+DAC_OVERRIDE, không ALL).
+
+### ✨ CI/CD improvements
+- **Verify deployed image matches built image** — step mới poll Coolify
+  API sau deploy, so sánh image digest trong compose_raw với digest built
+  ở build-push job. Mismatch → job fail → operator biết web chưa update.
+- **Trigger deploy fail-fast** — nếu Coolify không queue deployment
+  (response không có `deployments`), step fail thay vì continue.
+- **Wait healthy fail-fast** — stack `degraded:unhealthy` hoặc `failed`
+  giờ fail job (trước đây `exit 0` che giấu).
+- **Deploy summary chi tiết** — hiện trạng thái từng step (secrets,
+  PATCH, trigger, job) + troubleshooting guide khi fail.
+
+### 📦 Releases
+- Publish v1.0.1 draft release (tạo trước đó nhưng chưa publish).
+- Tạo releases cho v0.9.0, v1.0.0, v1.0.0-rc.1 (tag tồn tại nhưng thiếu
+  release page).
+
+---
+
 ## [1.0.1] — 2026-08-26 — Production hardening (post-GA bugfix)
 
 🛡️ **Critical bug fixes** sau khi audit sâu codebase bằng 5 subagent song
