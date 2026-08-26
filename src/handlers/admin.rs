@@ -1364,6 +1364,9 @@ pub struct RejectForm {
 }
 
 /// POST /admin/news/{id}/approve — duyệt tin (pending → published).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_approve(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1433,6 +1436,9 @@ pub async fn news_reject(
 }
 
 /// POST /admin/news/{id}/archive — lưu trữ tin đã published.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_archive(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
