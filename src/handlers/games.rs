@@ -589,7 +589,14 @@ fn build_game_json_ld(
             }),
         ],
     });
-    let obj = root.as_object_mut().unwrap();
+    let obj = if let Some(obj) = root.as_object_mut() {
+        obj
+    } else {
+        // Defense-in-depth: root được build bằng json!({...}) phía trên nên
+        // luôn là object. Nếu invariant bị破, trả string rỗng thay vì panic.
+        tracing::error!("build_game_json_ld: root không phải JSON object");
+        return String::new();
+    };
     if !game.excerpt_or().is_empty() {
         obj.insert("description".into(), json!(game.excerpt_or()));
     }
