@@ -43,12 +43,17 @@ impl AppState {
 
     /// Kiểm tra maintenance mode với cache 30 giây
     pub async fn maintenance_enabled(&self) -> bool {
+        // Đọc cache trước — nếu còn fresh thì trả ngay không cần lock write.
         {
             let cache = self.maintenance_cache.read().await;
             if cache.1.elapsed() < Duration::from_secs(30) {
                 return cache.0;
             }
         }
+        // Cache stale — query DB. Nếu nhiều task cùng到这里, mỗi task sẽ
+        // query DB (TOCTOU giữa read và write lock). Đây là perf hit nhỏ,
+        // không phải correctness bug (mỗi query cho cùng kết quả trong
+        // cửa sổ này). Tránh double-check lock để giữ code đơn giản.
         let on = crate::repositories::SettingsRepo::get(&self.db, "maintenance_mode")
             .await
             .ok()
