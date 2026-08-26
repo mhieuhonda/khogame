@@ -791,6 +791,9 @@ pub struct ReportForm {
     pub description: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn submit_report(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -999,6 +1002,9 @@ pub async fn list_featured(
 }
 
 // ============= Category / Tag listing =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_by_category(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
