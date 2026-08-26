@@ -147,6 +147,9 @@ impl RepoRepo {
     }
 
     /// Cho admin: tất cả repos, filter theo status + phân trang
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_admin(
         pool: &PgPool,
         status: Option<&str>,
@@ -257,6 +260,9 @@ impl RepoRepo {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_meta(
         pool: &PgPool,
         id: Uuid,
