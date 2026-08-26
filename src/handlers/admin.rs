@@ -803,6 +803,9 @@ pub struct RepoStatusForm {
     pub status: String,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn set_repo_status(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1476,6 +1479,9 @@ pub async fn news_approve(
 }
 
 /// POST /admin/news/{id}/reject — từ chối tin (pending → rejected).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_reject(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
