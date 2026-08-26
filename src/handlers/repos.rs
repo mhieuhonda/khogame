@@ -18,6 +18,9 @@ pub struct RepoListQuery {
     pub sort: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -45,6 +48,9 @@ pub async fn list(
 }
 
 // ============= Form đăng repo =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn new_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -88,6 +94,9 @@ async fn fetch_github_meta(
 }
 
 // ============= Tạo repo =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn create(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
