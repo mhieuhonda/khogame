@@ -97,6 +97,9 @@ impl CommentRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_game(
         pool: &PgPool,
         game_id: Uuid,
@@ -243,6 +246,9 @@ impl CommentRepo {
 
     /// Sửa bình luận (chỉ trong 5 phút đầu).
     /// Trả về lỗi `NotFound` nếu bình luận không tồn tại, không thuộc user, hoặc đã quá 5 phút.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_content(
         pool: &PgPool,
         id: Uuid,
