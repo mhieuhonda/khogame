@@ -1458,6 +1458,9 @@ pub async fn news_archive(
 }
 
 /// POST /admin/news/{id}/feature — đặt tin làm nổi bật.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_feature(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1472,6 +1475,9 @@ pub async fn news_feature(
 }
 
 /// POST /admin/news/{id}/unfeature — bỏ nổi bật.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_unfeature(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1494,6 +1500,9 @@ pub async fn news_unfeature(
 }
 
 /// POST /admin/news/{id}/delete — xóa tin.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_delete(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
