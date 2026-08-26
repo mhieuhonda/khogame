@@ -257,6 +257,9 @@ pub struct AiLoginForm {
     pub next: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
