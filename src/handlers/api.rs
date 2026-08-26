@@ -1160,11 +1160,26 @@ pub async fn news_list(
 ) -> AppResult<Response> {
     let page = params.page.unwrap_or(1).max(1);
     let per_page = 12i64;
-    let category = params.category.as_deref().unwrap_or("");
+    let category_raw = params.category.as_deref().unwrap_or("");
+    // Validate category against whitelist — tránh query vô nghĩa nếu
+    // client gửi category lạ (sẽ trả 0 kết quả, không phải lỗi security
+    // nhưng gây nhầm lẫn cho người dùng API).
+    let category = if category_raw.is_empty() {
+        String::new()
+    } else if crate::handlers::news::NEWS_CATEGORIES
+        .iter()
+        .any(|(k, _)| *k == category_raw)
+    {
+        category_raw.to_string()
+    } else {
+        return Err(AppError::BadRequest(format!(
+            "Category '{category_raw}' không hợp lệ"
+        )));
+    };
     let items = if category.is_empty() {
         NewsRepo::list_published(&state.db, page, per_page).await?
     } else {
-        NewsRepo::list_by_category(&state.db, category, page, per_page).await?
+        NewsRepo::list_by_category(&state.db, &category, page, per_page).await?
     };
     let total = if category.is_empty() {
         NewsRepo::count_published(&state.db).await.unwrap_or(0)
@@ -1172,7 +1187,7 @@ pub async fn news_list(
         sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM news WHERE status = 'published' AND category = $1",
         )
-        .bind(category)
+        .bind(&category)
         .fetch_one(&state.db)
         .await
         .unwrap_or(0)
