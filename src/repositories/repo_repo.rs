@@ -73,6 +73,9 @@ impl RepoRepo {
         Ok(id)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn exists(pool: &PgPool, owner: &str, repo_name: &str) -> AppResult<bool> {
         let c: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM github_repos WHERE owner = $1 AND repo_name = $2)",
@@ -126,6 +129,9 @@ impl RepoRepo {
         Ok(rows)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<GithubRepoCard>> {
         let sql = format!(
             r"SELECT {CARD_COLS} {CARD_JOINS} WHERE r.user_id = $1 AND r.status != 'hidden' ORDER BY r.created_at DESC"
@@ -175,6 +181,9 @@ impl RepoRepo {
     }
 
     /// Đếm repos theo bộ lọc — phân trang admin repos đúng tổng.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_admin(pool: &PgPool, status: Option<&str>) -> AppResult<i64> {
         let status = status.filter(|s| !s.trim().is_empty());
         let c: i64 = match status {
@@ -193,6 +202,9 @@ impl RepoRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<GithubRepo>> {
         let repo = sqlx::query_as::<_, GithubRepo>(
             r"SELECT id, user_id, game_id, owner, repo_name, description, homepage,
@@ -206,6 +218,9 @@ impl RepoRepo {
         Ok(repo)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn set_status(pool: &PgPool, id: Uuid, status: &str) -> AppResult<()> {
         sqlx::query("UPDATE github_repos SET status = $1::repo_status WHERE id = $2")
             .bind(status)
@@ -215,6 +230,9 @@ impl RepoRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
         sqlx::query("DELETE FROM github_repos WHERE id = $1")
             .bind(id)
@@ -223,6 +241,9 @@ impl RepoRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn refresh_all_stars(pool: &PgPool) -> AppResult<Vec<(Uuid, String, String)>> {
         let rows = sqlx::query_as::<_, (Uuid, String, String)>(
             "SELECT id, owner, repo_name FROM github_repos WHERE status = 'approved' LIMIT 500",
@@ -264,6 +285,9 @@ impl RepoRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_approved(pool: &PgPool) -> AppResult<i64> {
         let c: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM github_repos WHERE status = 'approved'")
@@ -272,6 +296,9 @@ impl RepoRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn pending_count(pool: &PgPool) -> AppResult<i64> {
         let c: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM github_repos WHERE status = 'pending'")
