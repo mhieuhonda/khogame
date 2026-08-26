@@ -43,6 +43,9 @@ pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
     (StatusCode::NOT_FOUND, Html(body)).into_response()
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn maintenance(State(_state): State<Arc<AppState>>) -> AppResult<Html<String>> {
     // Trang này cố tình đứng ngoài layout: hiển thị khi site đang bảo trì
     Ok(Html(r#"
