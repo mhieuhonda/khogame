@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "0.8.1"
+version = "0.9.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -58,11 +58,14 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
+panic = "abort"
 
 # Dev/test build nhanh hơn ~40%: dependencies (sqlx, tokio, axum...) compile
 # opt-level 1 — chỉ crate chính giữ debug không tối ưu. sqlx query macros
 # sinh nhiều code, opt deps giảm đáng kể thời gian `cargo test` mỗi lần.
-# debug = 0 giữ backtrace có line info cho panic trong test.
+# debug = 1: line tables only (rẻ, đủ cho backtrace có line info khi panic
+# trong test). Trước đây `debug = 0` loại bỏ hoàn toàn debug info →
+# backtrace panic chỉ có function name, không có line number.
 [profile.dev.package."*"]
 opt-level = 1
-debug = 0
+debug = 1

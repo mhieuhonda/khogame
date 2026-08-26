@@ -438,6 +438,72 @@ fn is_valid_ip_string(s: &str) -> bool {
     s.parse::<std::net::IpAddr>().is_ok()
 }
 
+/// Verify `Origin` (hoặc fallback `Referer`) khớp với `base_url` host.
+///
+/// Dùng cho POST endpoints không yêu cầu session hiện tại (vd `/auth/ai/login`,
+/// `/auth/ai/register`) — SameSite=Lax cookie không bảo vệ được vì endpoint
+/// không cần cookie hiện tại của nạn nhân. Cross-site form auto-submit sẽ bị
+/// từ chối vì Origin không khớp.
+///
+/// Trả về `Ok(())` nếu Origin/Referer hợp lệ hoặc rỗng (không có header).
+/// Trả về `Err(AppError::Forbidden)` nếu Origin/Referer có nhưng không khớp
+/// base_url — fail-closed.
+pub fn verify_origin(headers: &axum::http::HeaderMap, base_url: &str) -> crate::error::AppResult<()> {
+    let base_host = base_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("");
+    if base_host.is_empty() {
+        // Không xác định được host gốc → bỏ qua check (không fail-closed
+        // để không block dev trên localhost).
+        return Ok(());
+    }
+    // Origin hoặc Referer — Referer là fallback vì browser luôn gửi cho POST.
+    // Origin có dạng `https://host[:port]` (không có path), Referer có path.
+    let origin = headers
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string());
+    let referer = headers
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string());
+    let check = |url: &str| -> bool {
+        // Lấy host từ URL (sau scheme://) — so sánh case-insensitive với base_host.
+        let host_part = url
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap_or("");
+        // Hỗ trợ cả `host:port` (dev localhost:3000) bằng cách bỏ phần port.
+        let host_only = host_part.split(':').next().unwrap_or("");
+        host_only.eq_ignore_ascii_case(base_host.split(':').next().unwrap_or(""))
+    };
+    match (origin.as_deref(), referer.as_deref()) {
+        (Some(o), _) if !o.is_empty() && check(o) => Ok(()),
+        (Some(_), Some(r)) if !r.is_empty() && check(r) => Ok(()),
+        (None, Some(r)) if !r.is_empty() && check(r) => Ok(()),
+        (Some(_), _) | (_, Some(_)) => {
+            // Có Origin/Referer nhưng không khớp → từ chối.
+            Err(AppError::Forbidden(
+                "Yêu cầu không đến từ domain hợp lệ".into(),
+            ))
+        }
+        (None, None) => {
+            // Không có cả Origin lẫn Referer — request kỳ lạ (curl, legacy
+            // browser). Cho phép qua để không phá tương thích curl test,
+            // nhưng log để admin quan sát.
+            tracing::debug!(
+                "POST không có Origin/Referer — cho phép qua (curl/legacy client)"
+            );
+            Ok(())
+        }
+    }
+}
+
 /// Chuẩn hoá đường dẫn thành "endpoint bucket" cho rate limit: thay mọi
 /// segment động (slug game, username, UUID, category slug...) bằng `{x}`.
 ///
@@ -628,10 +694,16 @@ pub async fn rate_limit(
         // 20/phút cho admin action, không ảnh hưởng security nhưng
         // tạo bucket sai (admin bị giới hạn download thay vì admin).
         (20, 60) // 20 download/phút
+    } else if path.ends_with("/replies") {
+        // GET /comments/{id}/replies — lazy-load HTMX revealed. Một trang
+        // game có 50 top-level comment sẽ bắn 50 GET đồng thời. Nếu gộp
+        // vào bucket 10/phút của "comments" thì 40 request bị 429 + 40
+        // toast "thao tác quá nhanh". Tách bucket riêng 240/phút cho read-only.
+        (240, 60)
     } else if path.ends_with("/comments") || path.contains("/comments/") {
         // Match /games/{slug}/comments (POST create) và
-        // /comments/{id}/replies (GET list replies) — đều là tương tác
-        // bình luận, dùng chung bucket 10/phút.
+        // /comments/{id}/like, /comments/{id}/edit, /comments/{id} (DELETE).
+        // Tất cả là write action — giới hạn 10/phút.
         (10, 60) // 10 bình luận/phút
     } else {
         (120, 60)
@@ -811,5 +883,85 @@ where
             .filter(|u| u.role.is_ai_agent())
             .map(|u| Self(u.clone()))
             .ok_or(StatusCode::UNAUTHORIZED)
+    }
+}
+
+#[cfg(test)]
+mod verify_origin_tests {
+    use super::verify_origin;
+    use axum::http::HeaderMap;
+
+    fn hm_origin(o: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if !o.is_empty() {
+            h.insert(axum::http::header::ORIGIN, o.parse().unwrap());
+        }
+        h
+    }
+
+    fn hm_origin_referer(o: &str, r: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if !o.is_empty() {
+            h.insert(axum::http::header::ORIGIN, o.parse().unwrap());
+        }
+        if !r.is_empty() {
+            h.insert(axum::http::header::REFERER, r.parse().unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn test_origin_match_https() {
+        let h = hm_origin("https://louis.vangioitutien.com");
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
+    }
+
+    #[test]
+    fn test_origin_match_localhost_with_port() {
+        let h = hm_origin("http://localhost:3000");
+        assert!(verify_origin(&h, "http://localhost:3000").is_ok());
+    }
+
+    #[test]
+    fn test_origin_mismatch_rejected() {
+        let h = hm_origin("https://evil.com");
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_err());
+    }
+
+    #[test]
+    fn test_origin_subdomain_rejected() {
+        // subdomain khác phải bị từ chối — không phải subdomain hợp lệ.
+        let h = hm_origin("https://evil.louis.vangioitutien.com");
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_err());
+    }
+
+    #[test]
+    fn test_no_origin_no_referer_allowed_for_curl() {
+        // curl/legacy client không có header → cho phép qua (không fail-closed
+        // để không phá tương thích dev/test với curl).
+        let h = HeaderMap::new();
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
+    }
+
+    #[test]
+    fn test_referer_fallback_when_origin_empty() {
+        let h = hm_origin_referer("", "https://louis.vangioitutien.com/auth/ai/login");
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
+    }
+
+    #[test]
+    fn test_referer_mismatch_rejected_when_origin_empty() {
+        let h = hm_origin_referer("", "https://evil.com/path");
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_err());
+    }
+
+    #[test]
+    fn test_origin_match_referer_mismatch_uses_origin() {
+        // Origin đúng → OK dù Referer sai (Origin là chuẩn RFC 6454)
+        let h = hm_origin_referer(
+            "https://louis.vangioitutien.com",
+            "https://evil.com/path",
+        );
+        assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
     }
 }

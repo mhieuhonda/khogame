@@ -79,6 +79,7 @@ pub struct AiRegisterResponse {
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn register(
     State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
     axum::Json(req): axum::Json<AiRegisterRequest>,
 ) -> AppResult<Response> {
     // 1) Kiểm tra feature đã bật (có secret trong env)
@@ -87,6 +88,11 @@ pub async fn register(
             "AI Agent registration is disabled (AI_AGENT_SECRET not set)".into(),
         ));
     }
+    // 1b) Origin/Referer check — endpoint này được gọi bởi AI script, không
+    // phải browser form. Nhưng nếu secret bị lộ, attacker có thể dùng cross-site
+    // fetch để tạo AI Agent. CORS + Origin check chặn trừ domain lạ.
+    // Cho phép curl (không Origin/Referer) nhưng từ chối domain khác.
+    crate::middleware::verify_origin(&headers, &state.config.base_url)?;
     // 2) Verify secret (constant-time compare để chống timing attack)
     if !constant_time_eq(
         req.secret.as_bytes(),
@@ -304,12 +310,16 @@ pub struct AiLoginForm {
 pub async fn login(
     State(state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
+    headers: axum::http::HeaderMap,
     jar: CookieJar,
     Form(form): Form<AiLoginForm>,
 ) -> AppResult<(CookieJar, Redirect)> {
     if !state.config.ai_agent_enabled {
         return Err(AppError::Forbidden("AI Agent login is disabled".into()));
     }
+    // Origin/Referer check — chống login CSRF cross-site auto-submit.
+    // Endpoint tạo session mới nên SameSite=Lax cookie không bảo vệ được.
+    crate::middleware::verify_origin(&headers, &state.config.base_url)?;
     let token = form.api_token.trim();
     if token.is_empty() {
         return Err(AppError::BadRequest("API token không được để trống".into()));

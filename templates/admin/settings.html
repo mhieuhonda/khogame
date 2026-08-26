@@ -7,37 +7,28 @@
     {% if saved %}
     <div class="alert alert-success">✓ Đã lưu cài đặt.</div>
     {% endif %}
+    {# Form chính: site settings — KHÔNG lồng form khác vào trong. #}
     <form action="/admin/settings" method="post" class="admin-settings-form">
         <section class="admin-section">
             <div class="section-header"><h2>🌐 Thông tin site</h2></div>
-            <label>Tên site</label>
-            <input type="text" name="site_name" value="{{ site_name }}" maxlength="100" required>
-            <label>Mô tả site (SEO)</label>
-            <textarea name="site_description" rows="2" maxlength="500">{{ site_description }}</textarea>
-            <label>Chân trang</label>
-            <input type="text" name="footer_text" value="{{ footer_text }}" maxlength="500">
+            <label for="setting-site-name">Tên site</label>
+            <input type="text" id="setting-site-name" name="site_name" value="{{ site_name }}" maxlength="100" required>
+            <label for="setting-site-desc">Mô tả site (SEO)</label>
+            <textarea id="setting-site-desc" name="site_description" rows="2" maxlength="500">{{ site_description }}</textarea>
+            <label for="setting-footer">Chân trang</label>
+            <input type="text" id="setting-footer" name="footer_text" value="{{ footer_text }}" maxlength="500">
         </section>
         <section class="admin-section">
             <div class="section-header"><h2>📢 Thông báo toàn site</h2></div>
-            <label>Nội dung thông báo (để trống nếu không hiển thị)</label>
-            <textarea name="announcement" rows="2" maxlength="500" placeholder="Ví dụ: Chào mừng bạn đến với Louis Space v0.8!">{{ announcement }}</textarea>
-            <label>Loại</label>
-            <select name="announcement_type">
+            <label for="setting-announcement">Nội dung thông báo (để trống nếu không hiển thị)</label>
+            <textarea id="setting-announcement" name="announcement" rows="2" maxlength="500" placeholder="Ví dụ: Chào mừng bạn đến với Louis Space v0.8!">{{ announcement }}</textarea>
+            <label for="setting-announcement-type">Loại</label>
+            <select id="setting-announcement-type" name="announcement_type">
                 <option value="info" {% if announcement_type == "info" %}selected{% endif %}>Thông tin (xanh)</option>
                 <option value="warning" {% if announcement_type == "warning" %}selected{% endif %}>Cảnh báo (vàng)</option>
                 <option value="success" {% if announcement_type == "success" %}selected{% endif %}>Thành công (xanh lá)</option>
                 <option value="danger" {% if announcement_type == "danger" %}selected{% endif %}>Quan trọng (đỏ)</option>
             </select>
-        </section>
-        <section class="admin-section">
-            <div class="section-header"><h2>🔔 Gửi thông báo đến người dùng</h2></div>
-            <form hx-post="/admin/broadcast" hx-target="#broadcast-result" hx-swap="innerHTML" class="admin-form-row">
-                <input type="text" name="title" placeholder="Tiêu đề thông báo" maxlength="200" required>
-                <input type="text" name="link" placeholder="Link (tuỳ chọn, vd: /games/abc)" maxlength="2048">
-                <textarea name="content" rows="2" maxlength="1000" placeholder="Nội dung (tuỳ chọn)"></textarea>
-                <button class="btn btn-primary" type="submit">Gửi tới tất cả</button>
-            </form>
-            <div id="broadcast-result"></div>
         </section>
         <section class="admin-section">
             <div class="section-header"><h2>🎛️ Chế độ hoạt động</h2></div>
@@ -52,6 +43,21 @@
         </section>
         <button class="btn btn-primary" type="submit">💾 Lưu cài đặt</button>
     </form>
+
+    {# Form broadcast tách riêng — không lồng <form> trong <form>. #}
+    <section class="admin-section" style="margin-top:24px">
+        <div class="section-header"><h2>🔔 Gửi thông báo đến người dùng</h2></div>
+        <form hx-post="/admin/broadcast" hx-target="#broadcast-result" hx-swap="innerHTML" class="admin-form-row">
+            <label for="broadcast-title">Tiêu đề thông báo</label>
+            <input type="text" id="broadcast-title" name="title" placeholder="Tiêu đề" maxlength="200" required>
+            <label for="broadcast-link">Link (tuỳ chọn, vd: /games/abc)</label>
+            <input type="text" id="broadcast-link" name="link" placeholder="/games/abc" maxlength="2048">
+            <label for="broadcast-content">Nội dung (tuỳ chọn)</label>
+            <textarea id="broadcast-content" name="content" rows="2" maxlength="1000" placeholder="Nội dung"></textarea>
+            <button class="btn btn-primary" type="submit">Gửi tới tất cả</button>
+        </form>
+        <div id="broadcast-result"></div>
+    </section>
 
     <section class="admin-section" style="margin-top:24px">
         <div class="section-header"><h2>📦 Dữ liệu</h2></div>

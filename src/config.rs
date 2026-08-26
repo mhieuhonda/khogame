@@ -113,12 +113,26 @@ impl AppConfig {
                 // AI Agent sống quá lâu (vô hiệu hoá chính sách xoay vòng).
                 .map(|d| d.min(365))
                 .unwrap_or(90),
-            trust_proxy_headers: env::var("TRUST_PROXY_HEADERS")
-                .ok()
-                .is_none_or(|v| {
-                    let v = v.trim().to_ascii_lowercase();
-                    !(v == "0" || v == "false" || v == "no" || v == "off")
-                }),
+            trust_proxy_headers: {
+                let v = env::var("TRUST_PROXY_HEADERS")
+                    .ok()
+                    .is_none_or(|v| {
+                        let v = v.trim().to_ascii_lowercase();
+                        !(v == "0" || v == "false" || v == "no" || v == "off")
+                    });
+                if v {
+                    // Cảnh báo khi bật: nếu app expose trực tiếp internet
+                    // (không có Traefik/Coolify/CDN), attacker có thể tự
+                    // set X-Forwarded-For để giả IP, lách rate-limit bucket.
+                    // Bật chỉ an toàn khi chạy sau reverse proxy kiểm soát được.
+                    tracing::warn!(
+                        "TRUST_PROXY_HEADERS=BẬT (mặc định). Nếu app expose trực tiếp \
+                         internet (không có Traefik/CDN), set TRUST_PROXY_HEADERS=false \
+                         để không bị giả IP qua X-Forwarded-For."
+                    );
+                }
+                v
+            },
         })
     }
 }

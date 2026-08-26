@@ -107,6 +107,11 @@ impl AiAgentRepo {
         } else {
             username.trim().to_string()
         };
+        // Validate username: chỉ cho phép [A-Za-z0-9_-] độ dài 3-50.
+        // Trước đây không có whitelist → AI Agent đặt username chứa `');//`
+        // có thể break-out khỏi inline JS `onsubmit="confirm('... @{{ s.username }}')"`
+        // trong admin/sessions.html → stored XSS trong admin session.
+        validate_ai_username(&username_final)?;
         let username_unique = Self::ensure_unique_username(pool, &username_final).await;
 
         // Email unique: nếu rỗng, tự sinh
@@ -543,6 +548,37 @@ impl AiAgentRepo {
         }
         format!("ai_agent_{}", Uuid::new_v4().simple())
     }
+}
+
+/// Validate username AI Agent: chỉ cho phép `[A-Za-z0-9_-]`, độ dài 3-50.
+///
+/// Không cho phép ký tự đặc biệt (`'`, `"`, `<`, `>`, `&`, `;`, `/`, `\`,
+/// khoảng trắng) vì username có thể xuất hiện trong:
+/// - Inline JS attribute (`onsubmit="confirm('@{{ s.username }}')"`)
+/// - URL segment (`/u/{username}`)
+/// - JSON string field
+///
+/// Chống stored XSS qua inline JS breakout + URL path injection.
+///
+/// # Errors
+///
+/// Trả về `AppError::BadRequest` nếu username không hợp lệ.
+pub fn validate_ai_username(username: &str) -> AppResult<()> {
+    let len = username.chars().count();
+    if !(3..=50).contains(&len) {
+        return Err(AppError::BadRequest(
+            "Username AI Agent phải từ 3-50 ký tự".into(),
+        ));
+    }
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(AppError::BadRequest(
+            "Username AI Agent chỉ được chứa chữ cái, số, dấu gạch dưới (_), và gạch ngang (-)".into(),
+        ));
+    }
+    Ok(())
 }
 
 // Re-export UserRole để caller không phải import riêng

@@ -1086,6 +1086,30 @@ pub async fn manifest() -> Response {
 /// Lazy-init một lần duy nhất khi được gọi đầu tiên.
 static START_TIME: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 
+/// Health endpoint cho load balancer (Coolify/Kubernetes) — KHÔNG query DB.
+///
+/// Trước đây `/health` chạy `SELECT 1` mỗi probe → 6-12 DB round-trips/phút
+/// mỗi monitor instance. Dưới DB hiccup, query timeout → cascading restart.
+/// LB chỉ cần 200 (sống) / 503 (chết) để route traffic, không cần pool metrics.
+///
+/// Pattern: ping pool bằng `pool.size() > 0` (cheap, in-memory). Nếu pool
+/// đã khởi động thì process ready; nếu DB thực sự down, request đầu tiên
+/// tới `/api/v1/health` (chi tiết) hoặc endpoint thường sẽ 500 → LB đánh dấu.
+pub async fn health_lb(State(_state): State<Arc<AppState>>) -> Response {
+    (
+        axum::http::StatusCode::OK,
+        [(header::CACHE_CONTROL, "no-store, max-age=0")],
+        Json(serde_json::json!({
+            "status": "ok",
+            "version": env!("CARGO_PKG_VERSION"),
+        })),
+    )
+        .into_response()
+}
+
+/// Health endpoint chi tiết — query DB để xác nhận kết nối còn dùng được,
+/// kèm pool metrics cho admin gỡ rối. Dùng cho `/api/v1/health` (đã public
+/// nhưng monitor hiếm khi gọi vì LB dùng `/health`).
 pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
     let started = START_TIME.get_or_init(std::time::Instant::now);
     let uptime_secs = started.elapsed().as_secs();

@@ -67,25 +67,24 @@ impl ReviewRepo {
     pub async fn list_by_game(
         pool: &PgPool,
         game_id: Uuid,
-        viewer_id: Option<Uuid>,
+        _viewer_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> AppResult<Vec<ReviewWithUser>> {
+        // Đã bỏ EXISTS subquery vào `review_helpful` — bảng này chưa tồn tại
+        // trong migration hiện tại. Khi wire-up review UI, tạo migration
+        // `011_review_helpful.sql` rồi thêm lại JOIN + field `is_helpful`.
         let reviews = sqlx::query_as::<_, ReviewWithUser>(
             r"SELECT r.id, r.game_id, r.user_id, r.title, r.content, r.rating,
                 r.helpful_count, r.created_at, r.updated_at,
-                u.display_name as user_name, u.avatar_url as user_avatar,
-                EXISTS(
-                  SELECT 1 FROM review_helpful rh WHERE rh.review_id = r.id AND rh.user_id = $2
-                ) as is_helpful
+                u.display_name as user_name, u.avatar_url as user_avatar
               FROM reviews r
               JOIN users u ON u.id = r.user_id
               WHERE r.game_id = $1
               ORDER BY r.helpful_count DESC, r.created_at DESC
-              LIMIT $3 OFFSET $4",
+              LIMIT $2 OFFSET $3",
         )
         .bind(game_id)
-        .bind(viewer_id.unwrap_or_else(Uuid::nil))
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)

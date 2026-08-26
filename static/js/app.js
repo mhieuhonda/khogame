@@ -7,15 +7,22 @@
 
     // ===== Theme toggle =====
     // localStorage key 'ls-theme' (đổi từ 'kg-theme' cũ khi rebrand).
-    // Tương thích lùi: nếu có 'kg-theme' thì migrate sang 'ls-theme'.
+    // Tương thích lùi: nếu có 'kg-theme' (legacy) nhưng chưa có 'ls-theme',
+    // migrate sang 'ls-theme'. Ưu tiên 'ls-theme' để khớp với layout inline
+    // script (cùng thứ tự ưu tiên) — tránh FOUC khi user có cả 2 key.
     function getStoredTheme() {
+        var ls = localStorage.getItem('ls-theme');
+        if (ls === 'dark' || ls === 'light') {
+            return ls;
+        }
+        // ls-theme chưa set → thử migrate kg-theme cũ
         var legacy = localStorage.getItem('kg-theme');
         if (legacy === 'dark' || legacy === 'light') {
             localStorage.setItem('ls-theme', legacy);
             localStorage.removeItem('kg-theme');
             return legacy;
         }
-        return localStorage.getItem('ls-theme');
+        return null;
     }
 
     function applyTheme(theme) {
@@ -421,6 +428,18 @@
             }
         }
     });
+
+    // ===== Confirm dialog for forms với data-confirm attribute =====
+    // Thay cho inline `onsubmit="return confirm('...')"` để tránh XSS khi
+    // confirm message chứa user-controlled content (vd AI Agent username
+    // có ký tự đặc biệt có thể break-out khỏi JS string).
+    document.addEventListener('submit', function(e) {
+        const form = e.target;
+        const msg = form.getAttribute('data-confirm');
+        if (msg && !confirm(msg)) {
+            e.preventDefault();
+        }
+    }, true); // capture phase: chạy TRƯỚC khi handler khác (vd hx-post)
 
     // ===== Chống double-submit form thường (không HTMX) =====
     // 2 click nhanh nút submit (hoặc Enter + click) gửi 2 request:

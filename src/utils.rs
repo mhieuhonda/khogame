@@ -224,6 +224,28 @@ pub fn xml_escape(s: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+/// Escape JSON cho nhúng an toàn vào trong `<script type="application/ld+json">`.
+///
+/// `serde_json` mặc định KHÔNG escape `<`, `>`, `&` (xem bảng `ESCAPE` trong
+/// `serde_json/src/ser.rs`). Khi JSON chứa chuỗi do user kiểm soát (game.title,
+/// news.title, author.display_name...) và được render raw qua `{{ json_ld|safe }}`
+/// trong Askama, attacker có thể dùng `</script><script>alert(1)</script>` để
+/// đóng script element sớm và chèn JS tuỳ tiện — stored XSS trong session của
+/// mọi visitor, kể cả admin.
+///
+/// Fix: thay `<` bằng `\u003c` (JSON backslash escape hợp lệ trong chuỗi JSON).
+/// `>` và `&` cũng escape luôn để phòng CSP `unsafe-inline` không bật.
+#[must_use]
+pub fn json_ld_safe(json_str: &str) -> String {
+    json_str
+        .replace('<', "\\u003c")
+        .replace('>', "\\u003e")
+        .replace('&', "\\u0026")
+        // Chống HTML comment `<!--` / `-->` break-out (IE legacy nhưng browser
+        // vẫn parse: `<!--` trong <script> bắt đầu comment, `-->` kết thúc).
+        .replace("<!--", "\\u003c!--")
+}
+
 #[must_use]
 pub fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -590,6 +612,41 @@ mod tests {
         assert_eq!(xml_escape("hà-nội"), "hà-nội");
         // & đã escape không bị escape kép
         assert_eq!(xml_escape("a&amp;b"), "a&amp;amp;b");
+    }
+
+    #[test]
+    fn test_json_ld_safe_escapes_script_breakout() {
+        // Payload `</script><script>alert(1)</script>` phải bị vô hiệu hoá
+        // — mọi `<` thay bằng `\u003c`, mọi `>` thay bằng `\u003e`, mọi `&`
+        // thay bằng `\u0026`. Browser JSON parser decode `\u003c` → `<`
+        // trong GIÁ TRỊ chuỗi (không break script element).
+        let payload = "</script><script>alert(document.cookie)</script>";
+        let safe = json_ld_safe(payload);
+        assert!(
+            !safe.contains("</script>"),
+            "safe JSON-LD không được chứa `</script>` literal"
+        );
+        // Quay lại chuỗi gốc khi JSON parse (decode \u003c → <)
+        let decoded = serde_json::from_str::<String>(&format!("\"{safe}\""))
+            .expect("json_ld_safe phải trả về JSON string hợp lệ");
+        assert_eq!(decoded, payload);
+    }
+
+    #[test]
+    fn test_json_ld_safe_preserves_normal_json() {
+        // JSON-LD bình thường không bị escape oan
+        let s = r#"{"@type":"WebSite","name":"Louis Space"}"#;
+        assert_eq!(json_ld_safe(s), s);
+    }
+
+    #[test]
+    fn test_json_ld_safe_html_comment_breakout() {
+        // `<!--` trong <script> bắt đầu HTML comment → có thể break-out
+        // qua `-->` ở nhiều trình duyệt cũ. Đảm bảo bị escape.
+        let payload = "<!--</script>-->";
+        let safe = json_ld_safe(payload);
+        assert!(!safe.contains("<!--"));
+        assert!(!safe.contains("</script>"));
     }
 }
 

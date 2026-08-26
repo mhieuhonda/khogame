@@ -87,7 +87,9 @@ pub async fn home(
     });
     let json_ld = format!(
         "<script type=\"application/ld+json\">\n{}\n</script>",
-        serde_json::to_string_pretty(&json_ld).unwrap_or_default()
+        crate::utils::json_ld_safe(
+            &serde_json::to_string_pretty(&json_ld).unwrap_or_default()
+        )
     );
 
     Ok(IndexTemplate {
@@ -320,7 +322,7 @@ pub async fn create_game(
         match GameRepo::slug_exists(&state.db, &slug).await {
             Ok(false) => break,            // slug free → dùng được
             Ok(true) => {}                 // trùng → thử suffix kế
-            Err(e) => return Err(AppError::from(e)),
+            Err(e) => return Err(e),
         }
         suffix += 1;
         slug = format!("{base_slug}-{suffix}");
@@ -633,7 +635,8 @@ fn build_game_json_ld(
     }
     let pretty = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
     format!(
-        "<script type=\"application/ld+json\">\n{pretty}\n</script>"
+        "<script type=\"application/ld+json\">\n{}\n</script>",
+        crate::utils::json_ld_safe(&pretty)
     )
 }
 

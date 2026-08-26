@@ -20,6 +20,22 @@ impl AppState {
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn new(config: AppConfig) -> anyhow::Result<Self> {
         let db = crate::db::connect(&config.database_url).await?;
+        // Fail-fast: PgPoolOptions::connect có thể trả Ok dù DB thực sự
+        // misconfigured (vd: database sai, postmaster đang restart). Phát
+        // `SELECT 1` ngay — nếu fail, crash với message rõ ràng thay vì
+        // để mỗi request đầu tiên đều 500.
+        sqlx::query_scalar::<_, i32>("SELECT 1")
+            .fetch_one(&db)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "DB health check (SELECT 1) failed sau khi connect — \
+                     pool mở được nhưng query fail: {e}. \
+                     Có thể DATABASE_URL trỏ DB sai, postmaster đang restart, \
+                     hoặc migration chưa chạy. Check config + `psql $DATABASE_URL -c '\\dt'`."
+                )
+            })?;
+        tracing::info!("DB health check (SELECT 1) OK");
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             // Connect timeout riêng ngắn hơn — nếu DNS/TCP handshake chậm

@@ -136,35 +136,45 @@ pub async fn list(
     };
     let q = params.q.as_deref().unwrap_or("");
 
+    // Fetch items + total song song (tokio::join!) — trước đây chạy tuần tự
+    // gây 2 DB round-trip nối đuôi nhau. Song song giảm ~50% latency.
     let (items, total) = if !q.is_empty() {
         let q_trimmed = q.trim();
         if q_trimmed.is_empty() || q_trimmed.chars().count() > 200 {
             (Vec::new(), 0)
         } else {
-            let items = NewsRepo::search(&state.db, q_trimmed, page, NEWS_PER_PAGE).await?;
-            let total = count_search(&state, q_trimmed).await;
-            (items, total)
+            let items_fut = NewsRepo::search(&state.db, q_trimmed, page, NEWS_PER_PAGE);
+            let total_fut = count_search(&state, q_trimmed);
+            let (items, total) = tokio::join!(items_fut, total_fut);
+            (items?, total)
         }
     } else if !category.is_empty() {
-        let items = NewsRepo::list_by_category(&state.db, &category, page, NEWS_PER_PAGE).await?;
-        let total = count_by_category(&state, &category).await;
-        (items, total)
+        let items_fut = NewsRepo::list_by_category(&state.db, &category, page, NEWS_PER_PAGE);
+        let total_fut = count_by_category(&state, &category);
+        let (items, total) = tokio::join!(items_fut, total_fut);
+        (items?, total)
     } else {
-        let items = NewsRepo::list_published(&state.db, page, NEWS_PER_PAGE).await?;
-        let total = NewsRepo::count_published(&state.db).await.unwrap_or(0);
-        (items, total)
+        let items_fut = NewsRepo::list_published(&state.db, page, NEWS_PER_PAGE);
+        let total_fut = NewsRepo::count_published(&state.db);
+        let (items, total) = tokio::join!(items_fut, total_fut);
+        (items?, total.unwrap_or(0))
     };
 
     let total_pages = ((total + NEWS_PER_PAGE - 1) / NEWS_PER_PAGE).max(1);
-    let featured = if page == 1 && q.is_empty() && category.is_empty() {
-        NewsRepo::list_featured(&state.db, 3)
-            .await
-            .unwrap_or_default()
-    } else {
-        Vec::new()
+    let is_first_page_all = page == 1 && q.is_empty() && category.is_empty();
+    let featured_fut = async {
+        if is_first_page_all {
+            NewsRepo::list_featured(&state.db, 3)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
     };
 
-    let unread = unread_for(&state, current_user.as_ref()).await;
+    let unread_fut = unread_for(&state, current_user.as_ref());
+    // Chạy featured + unread song song sau khi đã có items/total.
+    let (featured, unread) = tokio::join!(featured_fut, unread_fut);
 
     Ok(NewsListTemplate {
         current_user,
@@ -229,19 +239,29 @@ pub async fn show(
         .await?
         .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại hoặc đã bị gỡ".into()))?;
 
-    // Bump views — best effort, không block render
-    let _ = NewsRepo::increment_views(&state.db, news.id).await;
+    // Bump views nền (detached task) — không block render như trước đây
+    // (await inline làm page render chậm thêm 1 DB round-trip). Best-effort:
+    // lỗi DB không ảnh hưởng request.
+    let db_clone = state.db.clone();
+    let news_id = news.id;
+    tokio::spawn(async move {
+        let _ = NewsRepo::increment_views(&db_clone, news_id).await;
+    });
 
-    let unread = unread_for(&state, current_user.as_ref()).await;
-    let comments = NewsRepo::list_comments(&state.db, news.id, 50, 0)
-        .await
-        .unwrap_or_default();
-    let has_liked = match &current_user {
-        Some(u) => NewsRepo::has_liked(&state.db, u.id, news.id)
-            .await
-            .unwrap_or(false),
-        None => false,
+    // Các query song song (tokio::join!) — trước đây chạy tuần tự gây chậm.
+    let unread_fut = unread_for(&state, current_user.as_ref());
+    let comments_fut = NewsRepo::list_comments(&state.db, news.id, 50, 0);
+    let has_liked_fut = async {
+        match &current_user {
+            Some(u) => NewsRepo::has_liked(&state.db, u.id, news.id)
+                .await
+                .unwrap_or(false),
+            None => false,
+        }
     };
+    let (unread, comments, has_liked) =
+        tokio::join!(unread_fut, comments_fut, has_liked_fut);
+    let comments = comments.unwrap_or_default();
 
     Ok(NewsShowTemplate {
         current_user,

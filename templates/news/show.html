@@ -17,7 +17,7 @@
 {% when Option::None %}
 {% endmatch %}
 <meta property="article:author" content="{{ news.author_name }}">
-<meta property="article:published_time" content="{% match news.published_at %}{% when Option::Some with (dt) %}{{ dt|format_datetime_vn }}{% when Option::None %}{% endmatch %}">
+<meta property="article:published_time" content="{% match news.published_at %}{% when Option::Some with (dt) %}{{ dt.to_rfc3339() }}{% when Option::None %}{% endmatch %}">
 {% endblock %}
 
 {% block content %}
@@ -56,7 +56,7 @@
     {% endif %}
 
     <div class="news-show-content prose">
-        {{ news.content }}
+        {{ news.content|html }}
     </div>
 
     {% if !news.source_name.is_empty() || !news.source_url.is_empty() %}

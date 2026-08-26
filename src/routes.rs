@@ -135,10 +135,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Static pages
         .route("/terms", get(handlers::pages::terms))
         .route("/privacy", get(handlers::pages::privacy))
-        .route("/health", get(handlers::api::health_detail))
+        .route("/health", get(handlers::api::health_lb))
         .route("/maintenance", get(handlers::pages::maintenance))
         // === News module ===
-        .route("/news", get(handlers::news::list))
+        .route(
+            "/news",
+            get(handlers::news::list).post(handlers::news::create),
+        )
         .route("/news/new", get(handlers::news::new_form))
         .route("/news/{slug}", get(handlers::news::show))
         .route("/news/{slug}/edit", get(handlers::news::edit_form))

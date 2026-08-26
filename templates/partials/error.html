@@ -2,4 +2,9 @@
     <div class="error-icon">⚠️</div>
     <div class="error-message">{{ message }}</div>
     <small>Status: {{ status }}</small>
+    {% match request_id %}
+    {% when Option::Some with (rid) %}
+    <small class="error-request-id">Mã sự cố: <code>{{ rid }}</code> — báo cho admin kèm mã này để được hỗ trợ nhanh hơn.</small>
+    {% when Option::None %}
+    {% endmatch %}
 </div>

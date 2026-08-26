@@ -5,6 +5,127 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] — 2026-08-26 — Production Hardening Pass
+
+### 🛡️ Security
+- **JSON-LD stored XSS** (`/` và `/games/{slug}`): `serde_json` mặc định
+  không escape `<` `>` `&`. Attacker đặt `game.title = '</script>...'` để
+  break-out script element + chạy JS tuỳ tiện trong session mọi visitor
+  (kể cả admin). Fix: thêm `utils::json_ld_safe()` escape `</>` `&` `<!--`
+  qua `\u003c` `\u003e` `\u0026` (JSON backslash escape hợp lệ).
+- **AI Agent username không validate**: trước đây chỉ trim — AI Agent có
+  thể đặt `username = "x'); alert(...); //"` break-out khỏi `onsubmit`
+  inline JS trong `admin/sessions.html` → stored XSS trong admin session.
+  Fix: thêm `validate_ai_username` whitelist `[A-Za-z0-9_-]` 3-50 ký tự.
+- **AI login CSRF** (`POST /auth/ai/login`): endpoint tạo session mới
+  nên SameSite=Lax cookie không bảo vệ. Cross-site form auto-submit có
+  thể ghi đè session admin bằng session AI Agent. Fix: thêm
+  `middleware::verify_origin()` check Origin/Referer khớp `BASE_URL`
+  host (cho phép curl không Origin/Referer).
+- **AI register Origin check** (`POST /auth/ai/register`): nếu secret bị
+  lộ, attacker có thể cross-site fetch tạo AI Agent từ domain lạ. Fix:
+  apply `verify_origin` cùng pattern.
+- **Admin self-revoke session** (`/admin/sessions/{id}/revoke`): doc
+  hứa "không cho thu hồi phiên của chính mình" nhưng code không check.
+  Admin vô tình click "Thu hồi" session của mình → đá ra /login giữa
+  task. Fix: so sánh `token_hash` của session đích với hash cookie
+  hiện tại, từ chối nếu khớp.
+
+### 🐛 Fixed
+- **POST /news không route** (CRITICAL): `handlers::news::create` tồn
+  tại nhưng `routes.rs:141` chỉ wire GET. Submit form `/news` trả 405.
+  Fix: `.route("/news", get(...).post(handlers::news::create))`.
+- **HTMX reply wipes existing replies**: `partials/comment_item.html`
+  reply form `hx-swap="innerHTML"` thay toàn `#replies-{id}` = xóa hết
+  reply cũ khi submit reply mới. Fix: `innerHTML` → `beforeend`.
+- **News comment like counter không update** (`NewsRepo::toggle_comment_like`):
+  INSERT/DELETE vào `news_comment_likes` nhưng không bump
+  `news_comments.like_count`. Counter luôn 0 dù user đã like. Fix: thêm
+  `UPDATE ... SET like_count = like_count +/- 1` trong cùng tx (mirror
+  `CommentRepo::toggle_like`).
+- **`ReviewRepo::list_by_game` tham chiếu non-existent table**
+  `review_helpful`: query EXISTS subquery vào bảng chưa migration →
+  runtime 500 khi ai dùng. Fix: bỏ EXISTS + field `is_helpful` khỏi
+  struct `ReviewWithUser` (field vẫn có thể thêm lại khi tạo migration
+  `review_helpful`).
+- **Rate-limit starve GET /comments/{id}/replies**: một trang game có 50
+  top-level comment bắn 50 GET `revealed` cùng lúc vào bucket 10/phút
+  → 40 toast "thao tác quá nhanh" + replies không load. Fix: tách bucket
+  `/replies` riêng 240/phút (read-only).
+- **`/health` luôn query DB** mỗi probe (6-12 DB round-trips/phút mỗi
+  monitor). LB chỉ cần 200/503 không cần pool metrics. Fix: tách
+  `health_lb` (no DB) cho `/health`, giữ `health_detail` cho
+  `/api/v1/health`.
+- **Counter triggers bump `updated_at`**: `trigger_games_updated` và
+  `trigger_news_updated` đặt `updated_at = NOW()` cho MỌI UPDATE, kể cả
+  counter bumps (view/like/comment/download) → sitemap lastmod stale 1s
+  sau mỗi lượt xem → Googlebot re-crawl vô tội vạ. Fix: migration 011
+  tách 2 hàm `update_games_updated_at` / `update_news_updated_at` chỉ
+  bump khi field ngoài counter thay đổi (title, slug, excerpt, content,
+  status, ...).
+- **News `show` await view-counter sync**: render chậm thêm 1 DB
+  round-trip. Fix: `tokio::spawn` detached best-effort.
+- **News `list` 3 sequential queries**: items + total + featured + unread
+  tuần tự. Fix: `tokio::join!` song song.
+- **`admin/sessions.html` inline-JS XSS** qua `onsubmit="confirm('...@{{ s.username }}')"`.
+  Askama escape `'` → `&#x27;` nhưng browser HTML-decode trước JS parse →
+  AI username chứa `'); alert(...); //` break-out. Fix: chuyển sang
+  `data-confirm` attribute + `app.js` listener capture-phase.
+- **`admin/comments.html` + `admin/games.html` broken hx-target**
+  `"find .pin-zone"` / `"find .alert-zone"`: target là SIBLING của form,
+  không phải descendant → HTMX "find" không match → swap sai chỗ. Fix:
+  đổi sang id tường minh `#pin-result-{id}` / `#alert-result-{id}`.
+- **News content không markdown-rendered**: `templates/news/show.html:59`
+  và `templates/admin/news_pending.html:33` dùng `{{ news.content }}`
+  (auto-escape, không markdown). User hứa "Có thể dùng markdown cơ bản"
+  nhưng thấy raw source. Fix: `{{ news.content|html }}` (filter gọi
+  `safe_markdown_to_html`).
+- **Nested `<form>` trong `admin/settings.html`**: broadcast form lồng
+  trong settings form. HTML5 không cho phép nested form → submit outer
+  có thể bỏ sót field. Fix: tách broadcast form ra ngoài settings form,
+  đặt trong section riêng.
+- **News `article:published_time` không RFC3339**: `format_datetime_vn`
+  trả `25/08/2026` thay vì `2026-08-25T10:00:00+00:00` per OG spec.
+  Fix: `dt.to_rfc3339()`.
+- **Download form thiếu `method="post"` fallback**: nếu JS tắt, form
+  không submit được. Fix: thêm `method="post" action="..."` + hidden
+  input `platform` (form-data fallback khi HTMX không chạy).
+
+### ✨ Added
+- **`utils::json_ld_safe()`** + 3 unit test (script breakout, normal,
+  HTML comment breakout).
+- **`middleware::verify_origin()`** + 8 unit test (Origin match/mismatch,
+  Referer fallback, no-header curl legacy, subdomain rejected, etc.).
+- **`repositories::ai_agent::validate_ai_username()`** whitelist ký tự.
+- **`repositories::SessionRepo::find_token_hash_by_id()`** cho self-revoke check.
+- **Migration `011_counter_updated_at.sql`** tách hàm trigger cho games/news.
+- **`AppError` 5xx sinh `request_id` UUID** + header `x-request-id` +
+  body có "Mã sự cố" để user báo admin tra log.
+- **`AppConfig::TRUST_PROXY_HEADERS` warn-log** khi bật mặc định — bảo vệ
+  khỏi operator quên tắt khi expose trực tiếp internet.
+- **`AppState::new` SELECT 1 health check** ngay sau khi pool connect —
+  fail-fast trên DB misconfigured thay vì để mỗi request đầu đều 500.
+- **`partial/error.html`** hiển thị `request_id` cho 5xx.
+- **`app.js` `data-confirm` attribute listener** (capture phase) thay
+  inline `onsubmit="confirm()"` — chống XSS qua user content trong message.
+- **`app.js` `getStoredTheme`** ưu tiên `ls-theme` trước, fallback
+  `kg-theme` legacy — khớp với layout inline script, tránh FOUC.
+
+### 🔧 Maintenance
+- **`Cargo.toml [profile.release]`** thêm `panic = "abort"` (giảm binary
+  size ~10-15%, bỏ unwind tables).
+- **`Cargo.toml [profile.dev.package.*]`** `debug = 0` → `debug = 1`
+  (line tables cho backtrace có line number trong panic test).
+- **`Dockerfile HEALTHCHECK`** đổi từ `/api/v1/health` sang `/health`
+  (LB endpoint không query DB).
+- **`static/js/app.js`** comment + layout đồng bộ theme key priority.
+
+### 📊 Tests
+- 159 unit tests pass (tăng từ 147 baseline).
+- Clippy clean (0 warning).
+
+---
+
 ## [0.8.1] — 2026-08-25 — Polish & fixes
 
 ### 🐛 Fixed

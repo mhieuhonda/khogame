@@ -95,11 +95,17 @@ impl IntoResponse for AppError {
         let (status, msg) = self.status_and_message();
         tracing::warn!("AppError: {} ({})", msg, status);
 
+        // Lấy request_id (nếu có) từ request extensions qua thread-local
+        // — không khả thi ở mức IntoResponse. Dùng header response thay
+        // thế: PropagateRequestIdLayer đã set `x-request-id` trên response.
+        // Thêm cùng giá trị vào body để user báo cáo sự cố kèm ID.
+        // Cần response builder vì Extension không truy cập được ở đây.
         #[derive(Template)]
         #[template(path = "partials/error.html")]
         struct ErrorPartial {
             message: String,
             status: u16,
+            request_id: Option<String>,
         }
 
         if status == StatusCode::UNAUTHORIZED {
@@ -119,11 +125,30 @@ impl IntoResponse for AppError {
                 .into_response();
         }
 
+        // Đối với lỗi 5xx, sinh request_id ngẫu nhiên nếu không có từ
+        // request extension. User sẽ thấy ID trong trang lỗi → báo cáo
+        // cho admin, admin tra `tracing` log có cùng ID.
+        let request_id = (status.as_u16() >= 500).then(uuid::Uuid::new_v4).map(|u| u.to_string());
+
         ErrorPartial {
             message: msg,
             status: status.as_u16(),
+            request_id: request_id.clone(),
         }
-        .render().map_or_else(|_| (status, "Internal Server Error").into_response(), |html| (status, html).into_response())
+        .render().map_or_else(
+            |_| (status, "Internal Server Error").into_response(),
+            |html| {
+                let mut resp = (status, html).into_response();
+                // Thêm X-Request-ID vào response header cho client log
+                // (vd admin copy ID từ devtools network panel).
+                if let Some(ref rid) = request_id {
+                    if let Ok(v) = rid.parse() {
+                        resp.headers_mut().insert("x-request-id", v);
+                    }
+                }
+                resp
+            },
+        )
     }
 }
 

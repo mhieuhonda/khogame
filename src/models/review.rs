@@ -16,6 +16,12 @@ pub struct Review {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Review kèm thông tin người viết.
+///
+/// `is_helpful` từng được populate từ bảng `review_helpful` (chưa từng được
+/// tạo migration). Hiện dead code — giữ struct để tương lai khi wire-up
+/// review UI, query cần thêm JOIN vào `review_helpful` mới tạo. Tránh reference
+/// bảng không tồn tại trong production hiện tại.
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct ReviewWithUser {
     pub id: Uuid,
@@ -29,5 +35,4 @@ pub struct ReviewWithUser {
     pub updated_at: DateTime<Utc>,
     pub user_name: String,
     pub user_avatar: Option<String>,
-    pub is_helpful: bool,
 }

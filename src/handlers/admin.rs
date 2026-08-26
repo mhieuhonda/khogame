@@ -1153,10 +1153,24 @@ pub async fn sessions(
 pub async fn revoke_session(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
+    jar: axum_extra::extract::CookieJar,
     Path(id): Path<Uuid>,
 ) -> AppResult<Redirect> {
     if !user.role.is_admin() {
         return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    // Chặn self-revoke: admin không thể thu hồi chính phiên đang dùng.
+    // Trước đây doc hứa nhưng code không check → admin vô tình click
+    // "Thu hồi" trên session của mình → bị đá ra /login giữa task.
+    if let Some(my_cookie) = jar.get(crate::auth::SESSION_COOKIE) {
+        let my_token_hash = crate::auth::hash_token(my_cookie.value());
+        if let Some(target_hash) = SessionRepo::find_token_hash_by_id(&state.db, id).await? {
+            if target_hash == my_token_hash {
+                return Err(AppError::BadRequest(
+                    "Không thể thu hồi phiên đang dùng — dùng /auth/logout hoặc /auth/logout-all".into(),
+                ));
+            }
+        }
     }
     let deleted = SessionRepo::delete_by_id(&state.db, id).await?;
     audit(

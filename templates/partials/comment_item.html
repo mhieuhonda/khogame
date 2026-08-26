@@ -70,7 +70,7 @@
         <div class="reply-form-container" id="reply-form-{{ comment.id }}" style="display:none;">
             <form hx-post="/games/{{ game_slug }}/comments"
                   hx-target="#replies-{{ comment.id }}"
-                  hx-swap="innerHTML"
+                  hx-swap="beforeend"
                   hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').style.display='none';}">
                 <input type="hidden" name="parent_id" value="{{ comment.id }}">
                 <textarea name="content" placeholder="Trả lời bình luận..." required rows="2" maxlength="1000"></textarea>

@@ -224,7 +224,8 @@
                     {% endmatch %}
                     <div class="download-grid">
                         {% for link in links %}
-                        <form hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on::after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
+                        <form method="post" action="/games/{{ game.slug }}/download" hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on::after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
+                            <input type="hidden" name="platform" value="{{ link.platform.label()|lower }}">
                             <button type="submit" class="btn btn-download platform-{{ link.platform.label()|lower }}">
                                 <span class="platform-icon">
                                     {% if link.platform.label() == "Android" %}🤖{% else if link.platform.label() == "iOS" %}🍎{% else if link.platform.label() == "Windows" %}🪟{% else if link.platform.label() == "Linux" %}🐧{% else if link.platform.label() == "macOS" %}💻{% endif %}

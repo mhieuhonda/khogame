@@ -23,14 +23,18 @@
                         {% if g.is_featured %}<span class="status-badge" style="color:#f59e0b">⭐ Nổi bật</span>{% endif %}</td>
                     <td>👁️ {{ g.view_count|fmt_num }} · ⬇️ {{ g.download_count|fmt_num }} · ❤️ {{ g.like_count|fmt_num }} · 💬 {{ g.comment_count|fmt_num }}</td>
                     <td class="admin-actions">
+                        {# Trước đây hx-target="find .alert-zone" — nhưng
+                           .alert-zone là SIBLING của form (ở cuối td), không
+                           phải descendant. HTMX "find" chỉ tìm subtree → không
+                           match. Đổi sang id tường minh #alert-result-{id}. #}
                         {% if g.status.label() == "Đã xuất bản" %}
-                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-vals='{"hide":"1"}' hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
+                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-vals='{"hide":"1"}' hx-target="#alert-result-{{ g.id }}" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Ẩn</button></form>
                         {% else %}
-                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-primary btn-sm" type="submit">{% if g.status.label() == "Đã ẩn" %}Hiện{% else %}Duyệt &amp; xuất bản{% endif %}</button></form>
+                        <form hx-post="/admin/games/{{ g.id }}/hide" hx-target="#alert-result-{{ g.id }}" hx-swap="innerHTML"><button class="btn btn-primary btn-sm" type="submit">{% if g.status.label() == "Đã ẩn" %}Hiện{% else %}Duyệt &amp; xuất bản{% endif %}</button></form>
                         {% endif %}
-                        <form hx-post="/admin/games/{{ g.id }}/feature" hx-target="find .alert-zone" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Nổi bật</button></form>
+                        <form hx-post="/admin/games/{{ g.id }}/feature" hx-target="#alert-result-{{ g.id }}" hx-swap="innerHTML"><button class="btn btn-outline btn-sm" type="submit">Nổi bật</button></form>
                         <form hx-post="/admin/games/{{ g.id }}/delete" hx-confirm="Xóa vĩnh viễn game này?" hx-target="closest tr" hx-swap="outerHTML"><button class="btn btn-danger btn-sm" type="submit">Xóa</button></form>
-                        <span class="alert-zone"></span>
+                        <span class="alert-zone" id="alert-result-{{ g.id }}"></span>
                     </td>
                 </tr>
             {% endfor %}

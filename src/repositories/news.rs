@@ -635,6 +635,9 @@ impl NewsRepo {
         user_id: Uuid,
         comment_id: Uuid,
     ) -> AppResult<bool> {
+        // DELETE-first trong transaction — cùng pattern CommentRepo::toggle_like
+        // và InteractionRepo. Trước đây code không update `news_comments.like_count`
+        // → counter luôn 0 dù user like. Fix: +/- atomic trong cùng tx.
         let mut tx = pool.begin().await?;
         let deleted: u64 =
             sqlx::query("DELETE FROM news_comment_likes WHERE user_id = $1 AND comment_id = $2")
@@ -651,8 +654,18 @@ impl NewsRepo {
             .bind(comment_id)
             .execute(&mut *tx)
             .await?;
+            // Bump counter +1 — atomic, không read-then-write.
+            sqlx::query("UPDATE news_comments SET like_count = like_count + 1 WHERE id = $1")
+                .bind(comment_id)
+                .execute(&mut *tx)
+                .await?;
             true
         } else {
+            // Bump counter -1 — atomic.
+            sqlx::query("UPDATE news_comments SET like_count = like_count - 1 WHERE id = $1")
+                .bind(comment_id)
+                .execute(&mut *tx)
+                .await?;
             false
         };
         tx.commit().await?;

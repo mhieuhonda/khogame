@@ -553,6 +553,9 @@ pub struct NotificationItemPartial<'a> {
 pub struct ErrorPartial {
     pub message: String,
     pub status: u16,
+    /// Request ID cho lỗi 5xx — user báo admin kèm ID này để tra log.
+    /// None với 4xx (validation) vì không cần log tra cứu.
+    pub request_id: Option<String>,
 }
 
 #[derive(Template)]

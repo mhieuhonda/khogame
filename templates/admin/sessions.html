@@ -32,7 +32,7 @@
                 <td title="{{ s.expires_at.to_rfc3339() }}">{{ s.expires_at.to_rfc3339()|time_ago }}</td>
                 <td>
                     <form method="post" action="/admin/sessions/{{ s.id }}/revoke"
-                          onsubmit="return confirm('Thu hồi phiên của @{{ s.username }}? Thiết bị đó sẽ bị đăng xuất ngay.');">
+                          data-confirm="Thu hồi phiên của @{{ s.username }}? Thiết bị đó sẽ bị đăng xuất ngay.">
                         <button type="submit" class="btn btn-sm btn-danger">Thu hồi</button>
                     </form>
                 </td>
