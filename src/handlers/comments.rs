@@ -137,6 +137,9 @@ pub async fn edit_comment(
     Ok(Html(partial.render()?))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete_comment(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
