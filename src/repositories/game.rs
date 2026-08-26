@@ -595,6 +595,9 @@ impl GameRepo {
         Ok(cards)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn related(
         pool: &PgPool,
         game_id: Uuid,
@@ -652,6 +655,9 @@ impl GameRepo {
 
     /// Game theo tag — hỗ trợ sort động (trước đây ORDER BY cứng
     /// `published_at` DESC trong khi template vẫn render sort links).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn by_tag(
         pool: &PgPool,
         tag_slug: &str,
