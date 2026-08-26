@@ -54,6 +54,9 @@ impl ReportRepo {
         Ok(r.is_some())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list(
         pool: &PgPool,
         status_filter: Option<&str>,
@@ -115,6 +118,9 @@ impl ReportRepo {
         Ok(r)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn resolve(
         pool: &PgPool,
         id: Uuid,
