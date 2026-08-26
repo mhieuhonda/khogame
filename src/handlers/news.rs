@@ -199,6 +199,9 @@ pub struct ListParams {
 
 // ============= Show (public) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn show(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
@@ -234,6 +237,9 @@ pub async fn show(
 
 // ============= New form (auth required) =============
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn new_form(
     State(_state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,

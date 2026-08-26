@@ -1193,6 +1193,9 @@ pub async fn ai_agents(
 }
 
 /// Trang /admin/ai-reports — live feed báo cáo tiến trình từ AI Agent.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn ai_reports(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
