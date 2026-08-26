@@ -36,15 +36,27 @@ pub async fn run_janitor(state: AppState) {
         DAILY_STATS_RETENTION_DAYS
     );
     loop {
-        // Chạy dọn ngay lần đầu (không đợi trọn chu kỳ) để deploy mới
-        // dọn được rác tồn đọng từ các bản trước ngay lập tức.
+        // Đo thời gian dọn dẹp — nếu quá lâu (VD có 10M session hết hạn),
+        // lần sau sẽ chạy ngay lập tức khi sleep hết, gây DB load cao
+        // liên tục. Log duration để admin quan sát; vẫn giữ hành vi cũ
+        // (sleep interval giữa các lần) vì dọn dẹp là idempotent.
+        let start = std::time::Instant::now();
         let (sessions, notifications, daily_stats) = do_cleanup(&state).await;
+        let elapsed = start.elapsed();
         if sessions > 0 || notifications > 0 || daily_stats > 0 {
             tracing::info!(
-                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ",
+                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ (mất {:?})",
                 sessions,
                 notifications,
-                daily_stats
+                daily_stats,
+                elapsed
+            );
+        } else if elapsed > Duration::from_secs(30) {
+            // Không xoá gì nhưng tốn >30s — có thể DB chậm hoặc query
+            // full-scan thiếu index. Cảnh báo để admin check.
+            tracing::warn!(
+                "Janitor: dọn dẹp mất {:?} nhưng không xoá gì — có thể DB slow",
+                elapsed
             );
         }
         tokio::time::sleep(interval).await;
