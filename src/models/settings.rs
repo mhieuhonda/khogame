@@ -76,10 +76,14 @@ impl SessionRow {
         if ua.is_empty() {
             return "—".into();
         }
-        // Chuẩn hoá các token UA phổ biến
+        // Chuẩn hoá các token UA phổ biến. Thứ tự quan trọng: Edge phải
+        // trước Chrome (chuỗi Edg có chứa Chrome token), Chromium phải
+        // trước Chrome (Chromium UA có thể không có 'Chrome/' riêng).
         let ua = if ua.contains("Edg/") {
             "Edge"
-        } else if ua.contains("Chrome/") && !ua.contains("Chromium") {
+        } else if ua.contains("Chromium") {
+            "Chromium"
+        } else if ua.contains("Chrome/") {
             "Chrome"
         } else if ua.contains("Firefox/") {
             "Firefox"
@@ -126,6 +130,12 @@ mod tests {
             session_with_ua("Mozilla/5.0 Windows NT 10.0 Chrome/120.0.0.0 Edg/120.0.0.0")
                 .ua_summary(),
             "Edge"
+        );
+        // Chromium nhận trước Chrome (UA có thể có cả 'Chrome/' và 'Chromium')
+        assert_eq!(
+            session_with_ua("Mozilla/5.0 X11; Linux x86_64 Chromium/120.0.0.0 Safari/537.36")
+                .ua_summary(),
+            "Chromium"
         );
         assert_eq!(
             session_with_ua("Mozilla/5.0 (X11; Linux x86_64) Chrome/119.0.0.0 Safari/537.36")
