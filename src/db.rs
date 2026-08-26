@@ -47,6 +47,9 @@ impl PoolTuning {
 
 /// Kết nối database với retry — chống crash khi Postgres container
 /// chưa sẵn sàng lúc app khởi động (cold start race trên Coolify/K8s).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
     let tuning = PoolTuning::from_env();
     tracing::info!(
