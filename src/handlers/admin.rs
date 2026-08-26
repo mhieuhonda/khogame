@@ -353,6 +353,9 @@ pub struct AdminGamesQuery {
     pub page: Option<i64>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn games(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -396,6 +399,9 @@ pub async fn games(
     })
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn delete_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
