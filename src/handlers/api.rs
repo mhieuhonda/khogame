@@ -489,11 +489,14 @@ pub async fn news_suggest(
     State(state): State<Arc<AppState>>,
     Query(q): Query<SuggestQuery>,
 ) -> AppResult<Response> {
-    let query = q.q.trim();
+    let raw = q.q.trim();
+    // Clamp 100 ký tự như games_suggest — chống query dài hàng KB
+    // làm ILIKE quét chậm (DoS nhẹ).
+    let query: String = raw.chars().take(100).collect();
     let suggestions = if query.chars().count() < 2 {
         Vec::new()
     } else {
-        NewsRepo::suggest_titles(&state.db, query, 8)
+        NewsRepo::suggest_titles(&state.db, &query, 8)
             .await
             .unwrap_or_default()
     };
