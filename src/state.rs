@@ -22,6 +22,11 @@ impl AppState {
         let db = crate::db::connect(&config.database_url).await?;
         let http_client = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
+            // Connect timeout riêng ngắn hơn — nếu DNS/TCP handshake chậm
+            // (5s+), khả năng cao là mạng/registrar bị lỗi, không phải do
+            // server target phản hồi chậm. Fail nhanh để error.rs có thể
+            // log với delay ngắn, thay vì treo 15s tổng.
+            .connect_timeout(Duration::from_secs(5))
             .user_agent(format!("KhoGame/{} (Rust)", env!("CARGO_PKG_VERSION")))
             .build()?;
         Ok(Self {
