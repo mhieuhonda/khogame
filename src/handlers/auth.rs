@@ -79,6 +79,9 @@ pub struct CallbackQuery {
     pub error: Option<String>,
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn google_callback(
     State(state): State<Arc<AppState>>,
     Query(q): Query<CallbackQuery>,
