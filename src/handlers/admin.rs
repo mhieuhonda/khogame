@@ -1056,6 +1056,9 @@ pub async fn audit_log(
 // ============================================================
 // SESSIONS — quản lý phiên đăng nhập đang hoạt động
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn sessions(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -1075,6 +1078,9 @@ pub async fn sessions(
 /// Thu hồi 1 phiên (buộc đăng xuất thiết bị đó). Không cho thu hồi
 /// phiên của chính mình qua endpoint này — dùng /auth/logout hoặc
 /// /auth/logout-all để tránh tự khoá mình khỏi admin giữa phiên.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn revoke_session(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
