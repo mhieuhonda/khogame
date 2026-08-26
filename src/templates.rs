@@ -726,6 +726,9 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn format_date_vn(
         date: &Option<chrono::NaiveDate>,
         _: &dyn Values,
@@ -736,6 +739,9 @@ pub mod filters {
     }
 
     #[askama::filter_fn]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub fn format_datetime_vn(
         dt: &chrono::DateTime<chrono::Utc>,
         _: &dyn Values,
