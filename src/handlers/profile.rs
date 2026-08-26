@@ -11,6 +11,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 // ============= View profile =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn show_profile(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
