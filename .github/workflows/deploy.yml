@@ -284,27 +284,35 @@ jobs:
         continue-on-error: false
         run: |
           set -uo pipefail
-          # Poll ứng dụng /api/v1/health — app trả version + status.
-          # Cũng check Coolify API cho image digest đang chạy.
+          # Poll Coolify API cho image digest trong compose_raw, so sánh
+          # với digest built ở build-push job. Mismatch → fail (operator
+          # biết web chưa update). Bonus: check web /health endpoint.
           EXPECTED="${{ env.IMAGE_REF }}"
           echo "Expected image: $EXPECTED"
           for i in $(seq 1 12); do
             sleep 15
-            # Query Coolify service cho image trong compose_raw
-            RUNNING=$(curl -sS "${COOLIFY_URL}/api/v1/services/${COOLIFY_SERVICE_UUID}" \
+            # Lưu response ra file rồi parse bằng python heredoc (tránh
+            # quoting hell của python -c '...' với regex chứa parens).
+            curl -sS "${COOLIFY_URL}/api/v1/services/${COOLIFY_SERVICE_UUID}" \
               -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
-              --max-time 10 \
-              | python3 -c '
-          import json,sys,re
-          d=json.load(sys.stdin)
-          c=d.get("docker_compose_raw","")
-          m=re.search(r"image:\s*[\'"]?([^\s\'"]+)[\'"]?", c.split("khogame-db")[0])
-          print(m.group(1) if m else "")
-          ' 2>/dev/null || echo "")
+              --max-time 10 -o /tmp/coolify_svc.json 2>/dev/null || true
+            RUNNING=$(python3 - <<'PYEOF'
+          import json
+          try:
+              d = json.load(open("/tmp/coolify_svc.json"))
+              c = d.get("docker_compose_raw", "").split("khogame-db")[0]
+              for line in c.splitlines():
+                  if "image:" in line and "khogame@" in line:
+                      img = line.split("image:", 1)[1].strip().strip("'\"").strip()
+                      print(img)
+                      break
+          except Exception:
+              print("")
+          PYEOF
+          )
             echo "[$i/12] Coolify compose image: $RUNNING"
             if [ "$RUNNING" = "$EXPECTED" ]; then
               echo "::notice::Coolify compose đã update đúng image built."
-              # Bonus: check web health
               WEB=$(curl -sS --max-time 10 "https://louis.vangioitutien.com/health" 2>/dev/null || echo "FAIL")
               echo "Web /health: $WEB"
               exit 0
