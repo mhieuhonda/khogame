@@ -248,6 +248,9 @@ pub async fn game_comments(
         .into_response())
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn repos_list(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ApiListQuery>,
@@ -344,6 +347,9 @@ pub async fn stats_overview(State(state): State<Arc<AppState>>) -> AppResult<Res
 // ===================== Nội bộ dùng chung =====================
 
 /// Banner thông báo toàn site (layout fetch qua htmx)
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn announcement(
     State(state): State<Arc<AppState>>,
     headers: axum::http::HeaderMap,

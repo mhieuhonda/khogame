@@ -753,6 +753,9 @@ pub async fn download_game(
 }
 
 // ============= Report form (modal HTML) =============
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn report_form(
     State(state): State<Arc<AppState>>,
     AuthUser(_user): AuthUser,
@@ -871,6 +874,9 @@ async fn build_list_template(
 }
 
 /// Danh mục đầy đủ tại /games (trước đây chỉ có POST → GET trả 405)
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn list_all(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
