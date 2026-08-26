@@ -284,6 +284,9 @@ impl CommentRepo {
     /// Gom toàn bộ username rồi truy vấn MỘT lần với `= ANY($1)` —
     /// trước đây mỗi @mention là một round-trip DB riêng (N+1),
     /// comment @tag 10 người = 10 truy vấn.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_mentions(
         pool: &PgPool,
         content: &str,
@@ -314,6 +317,9 @@ impl CommentRepo {
     }
 
     /// Danh sách bình luận mới nhất cho admin (phân trang)
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_recent(
         pool: &PgPool,
         limit: i64,
