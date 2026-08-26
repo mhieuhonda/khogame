@@ -105,6 +105,9 @@ impl UserRepo {
 
     /// Cập nhật `last_login_ip/ua/at` khi user đăng nhập lại.
     /// Best-effort: lỗi không block login flow.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_login(
         pool: &PgPool,
         user_id: Uuid,
@@ -126,6 +129,9 @@ impl UserRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn update_profile(
         pool: &PgPool,
         id: Uuid,
