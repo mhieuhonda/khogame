@@ -296,6 +296,9 @@ impl AiAgentRepo {
     }
 
     /// AI Agent tự cập nhật hồ sơ của mình.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[allow(clippy::too_many_arguments)]
     pub async fn update_profile(
         pool: &PgPool,
@@ -382,6 +385,9 @@ impl AiAgentRepo {
 
     /// Thêm báo cáo tiến trình mới từ AI Agent.
     /// Trả về report đã insert (kèm id).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[allow(clippy::too_many_arguments)]
     pub async fn add_progress(
         pool: &PgPool,
