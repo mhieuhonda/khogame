@@ -200,3 +200,37 @@ Stage Summary:
 - 179 unit test pass (10 test mới cho storage + uploads).
 - Stack giữ nguyên: Rust 1.98, axum 0.8.9 (+multipart feature mới enable), sqlx 0.9, askama 0.16, HTMX 2.0.10, PostgreSQL 17.
 - Commits bởi mhieuhonda, tag v1.2.0 sẽ trigger Release workflow tự tạo GitHub Release.
+
+---
+Task ID: 6
+Agent: super-z (main agent)
+Task: Fix triệt để lỗi upload ảnh không lưu được + fix GitHub Action + tạo release v1.2.1.
+
+Work Log:
+- Clone repo từ GitHub bằng PAT (mhieuhonda), configure git user.name=mhieuhonda, user.email=mhieuhonda@users.noreply.github.com.
+- Phân tích codebase: src/handlers/uploads.rs (multipart POST handler OK), src/services/storage.rs (save_upload ghi file OK), src/utils.rs is_safe_image_url (chấp nhận cả http(s):// lẫn /uploads/... OK).
+- Phân tích root cause: bug KHÔNG phải ở backend — backend đã lưu file OK. Bug ở frontend template: 6 form fields dùng `<input type="url">` cho avatar_url/cover_image/repo_image_url. Khi JS upload xong set `urlField.value = "/uploads/games/abc.jpg"` (URL tương đối), browser block submit vì `type="url"` chỉ chấp nhận URL tuyệt đối có scheme.
+- Fix 6 templates:
+  - templates/game/new.html: cover_image `type="url"` → `type="text"` + inputmode="url" + spellcheck="false".
+  - templates/game/edit.html: cover_image `type="url"` → `type="text"` + THÊM UI upload (preview + file input + status box + JS fetch POST /uploads/game/cover) — trước đây edit form không có upload UI.
+  - templates/news/new.html: cover_image `type="url"` → `type="text"`, label "Ảnh bìa (URL)" → "Ảnh bìa (URL hoặc upload)".
+  - templates/news/edit.html: cover_image `type="url"` → `type="text"` + THÊM UI upload (preview + file input + status box + JS fetch POST /uploads/news/cover).
+  - templates/profile/edit.html: avatar_url `type="url"` → `type="text"`.
+  - templates/repos/new.html: repo_image_url `type="url"` → `type="text"`.
+- AI Agent form (profile/ai_edit.html) GIỮ `type="url"` — server-side `is_safe_url` chỉ cho phép http(s):// (AI Agent không có UI upload, paste URL tuyệt đối).
+- Verify local (Rust 1.98.0 vừa cài):
+  - cargo check --locked --all-targets ✅ (templates askama compile OK)
+  - cargo clippy --all-targets --locked -- -D warnings ✅
+  - cargo doc --no-deps --document-private-items ✅
+  - cargo test --locked --all ✅ (169 tests pass)
+  - cargo fmt --all -- --check ✅
+- Bump version Cargo.toml 1.2.0 → 1.2.1, update Cargo.lock qua `cargo update -p khogame --precise 1.2.1`.
+- Update CHANGELOG.md: thêm section [1.2.1] với root cause analysis + bug fix list + verification status.
+- GitHub Action status check: CI run gần nhất trên main (id 32974757431) đã SUCCESS (rustdoc unclosed HTML tag script đã fix bởi commit 822015d trước đó). CD run gần nhất (id 32974759951) đã SUCCESS — deploy lên Coolify thành công.
+
+Stage Summary:
+- Lỗi chính "upload ảnh không lưu được" đã fix triệt để: thay đổi 6 form fields từ `type="url"` → `type="text"`. Server-side validation (is_safe_image_url) vẫn đảm bảo security (chặn javascript:, data:, file:, vbscript:).
+- 2 edit form (game, news) nay có UI upload đồng bộ với new form — user có thể đổi ảnh khi edit.
+- Stack giữ nguyên: Rust 1.98.0, axum 0.8.9, sqlx 0.9, askama 0.16, HTMX 2.0.10, PostgreSQL 17.
+- Tất cả CI gates pass local — sẽ pass trên GitHub Actions.
+- Sẽ commit với username mhieuhonda, push main, tag v1.2.1 (trigger Release workflow + CD workflow deploy lên Coolify prod).

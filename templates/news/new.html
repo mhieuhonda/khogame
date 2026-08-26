@@ -96,12 +96,13 @@
 
         <div class="field-group">
             <label for="cover_image">
-                <span>Ảnh bìa (URL)</span>
+                <span>Ảnh bìa (URL hoặc upload)</span>
                 <span class="field-optional">tuỳ chọn</span>
             </label>
-            <input type="url" id="cover_image" name="cover_image" value="{{ form.cover_image }}"
-                   placeholder="https://example.com/cover.jpg">
-            <small class="hint">Bắt đầu bằng <code>http://</code> hoặc <code>https://</code>. Hoặc tải ảnh lên bên dưới.</small>
+            <input type="text" id="cover_image" name="cover_image" value="{{ form.cover_image }}"
+                   placeholder="https://example.com/cover.jpg hoặc dùng nút Tải ảnh bên dưới"
+                   inputmode="url" autocomplete="off" spellcheck="false">
+            <small class="hint">Bắt đầu bằng <code>http://</code> hoặc <code>https://</code>, hoặc <code>/uploads/...</code> (ảnh đã upload). Hoặc tải ảnh lên bên dưới.</small>
         </div>
 
         <div class="field-group">

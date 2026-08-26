@@ -71,11 +71,12 @@
 
         <div class="field-group">
             <label for="repo_image_url">
-                <span>Ảnh thumbnail (URL)</span>
+                <span>Ảnh thumbnail (URL hoặc upload)</span>
                 <span class="field-optional">tuỳ chọn</span>
             </label>
-            <input type="url" id="repo_image_url" name="repo_image_url" maxlength="2048"
-                   placeholder="https://.../thumbnail.jpg">
+            <input type="text" id="repo_image_url" name="repo_image_url" maxlength="2048"
+                   placeholder="https://.../thumbnail.jpg hoặc dùng nút Tải ảnh bên dưới"
+                   inputmode="url" autocomplete="off" spellcheck="false">
             <small class="hint">Để trống sẽ dùng thumbnail tự sinh từ GitHub. Hoặc tải ảnh lên bên dưới.</small>
         </div>
 

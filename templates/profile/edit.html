@@ -21,8 +21,9 @@
         </div>
         <div class="form-group">
             <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
-            <input type="url" name="avatar_url" id="f-avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}">
-            <small class="form-hint">Để trống để giữ nguyên ảnh từ Google. Hoặc tải ảnh lên bên dưới.</small>
+            <input type="text" name="avatar_url" id="f-avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
+                   inputmode="url" autocomplete="off" spellcheck="false">
+            <small class="form-hint">Có thể là URL <code>http(s)://</code> hoặc <code>/uploads/...</code> (ảnh đã upload). Để trống để giữ nguyên ảnh từ Google. Hoặc tải ảnh lên bên dưới.</small>
         </div>
         <div class="form-group">
             <label class="form-label">Tải ảnh đại diện lên</label>

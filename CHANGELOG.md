@@ -9,6 +9,56 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.1] — 2026-08-26 — Fix upload ảnh không lưu được (type=url → type=text)
+
+🐛 **Hotfix release** — fix triệt để lỗi user upload ảnh xong, form không
+submit được vì trường URL là `<input type="url">` (HTML5), chỉ chấp nhận URL
+tuyệt đối `http(s)://...`. Khi JS set giá trị `/uploads/...` (URL tương đối
+do server sinh ra sau khi upload), browser block submit → user thấy URL
+hiện trong field nhưng **form không submit, game/news không lưu**. Đây chính
+là hiện tượng "chỉ hiện URL ảnh, không lưu được".
+
+### 🐛 Bug fixes
+
+- **`templates/game/new.html`** — đổi `<input type="url" name="cover_image">`
+  → `<input type="text">`. Server-side `is_safe_image_url` vẫn validate
+  cả `http(s)://` lẫn `/uploads/...` — không giảm security. Thêm `inputmode="url"`
+  để mobile vẫn hiện bàn phím URL.
+- **`templates/game/edit.html`** — cùng fix `type="url"` → `type="text"`,
+  **thêm UI upload** (preview + file input + status box) — trước đây edit
+  form không có upload UI, user muốn đổi ảnh phải copy URL tay. Nay đồng
+  bộ với new form.
+- **`templates/news/new.html`** — fix `cover_image` field từ `type="url"`
+  → `type="text"`. Label đổi "Ảnh bìa (URL)" → "Ảnh bìa (URL hoặc upload)"
+  cho rõ ràng.
+- **`templates/news/edit.html`** — fix `type="url"` → `type="text"` +
+  **thêm UI upload** (preview + file input + status box) — đồng bộ với
+  new form, trước đây edit form không có upload.
+- **`templates/profile/edit.html`** — fix `avatar_url` field từ `type="url"`
+  → `type="text"`. Hint update để giải thích URL `/uploads/...` hợp lệ.
+- **`templates/repos/new.html`** — fix `repo_image_url` field từ
+  `type="url"` → `type="text"`.
+
+### 🔍 Root cause analysis
+
+Spec HTML5 `<input type="url">` (W3C HTML §4.10.5.1.17) chỉ chấp nhận
+"valid URL" với scheme, host. URL tương đối `/uploads/games/abc.jpg`
+không match → `input.validity.valid = false` → `form.submit()` bị
+browser block. Trước đây chỉ hiện "URL ảnh" trong field nhưng không có
+gì submit cả → user tưởng upload fail, thực ra server đã ghi file
+OK nhưng form save metadata không gửi đi được.
+
+### ✅ Verification
+
+- `cargo check --locked --all-targets` ✅
+- `cargo clippy --all-targets --locked -- -D warnings` ✅
+- `cargo doc --no-deps --document-private-items` ✅
+- `cargo test --locked --all` (169 tests) ✅
+- `cargo fmt --all -- --check` ✅
+- Rust 1.98.0 (exact pin — `rust-toolchain.toml`) ✅
+
+---
+
 ## [1.2.0] — 2026-08-26 — Image uploads (VPS storage) + CI autofmt fix
 
 🚀 **Feature + reliability release** — thêm upload ảnh cho 4 loại (avatar
