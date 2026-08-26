@@ -1223,6 +1223,9 @@ fn game_card_to_json(g: &crate::models::game::GameCard) -> serde_json::Value {
 
 /// Game liên quan — cùng category (hoặc top downloads nếu không có
 /// category). Lợi cho sidebar "Related games" ở client bên ngoài.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn game_related(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -1241,6 +1244,9 @@ pub async fn game_related(
 
 /// Liệt kê game theo thể loại — JSON API cho client bên ngoài lọc game
 /// theo category mà không cần cào trang HTML.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn games_by_category(
     State(state): State<Arc<AppState>>,
     Path(cat_slug): Path<String>,
@@ -1280,6 +1286,9 @@ pub async fn games_by_category(
 }
 
 /// Liệt kê game theo tag — JSON API cho client bên ngoài.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn games_by_tag(
     State(state): State<Arc<AppState>>,
     Path(tag_slug): Path<String>,
