@@ -93,6 +93,9 @@ impl NewsRepo {
     }
 
     /// Lấy danh sách tin đã published, phân trang, mới nhất trước.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_published(
         pool: &PgPool,
         page: i64,
