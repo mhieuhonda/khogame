@@ -128,6 +128,9 @@ where
 }
 
 /// Admin-only middleware
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn require_admin(
     State(state): State<Arc<AppState>>,
     request: Request,
@@ -529,6 +532,9 @@ impl IntoResponse for RateLimited {
 }
 
 /// Middleware giới hạn tốc độ cho các endpoint nhạy cảm
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn rate_limit(
     State(state): State<Arc<AppState>>,
     request: Request,
@@ -678,6 +684,9 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
 // Ưu tiên kiểm tra Authorization: Bearer <token> trước (lấy từ header).
 // Nếu không có, fallback sang session cookie (AI đã đăng nhập qua web).
 // ============================================================
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn require_ai_agent(
     State(state): State<Arc<AppState>>,
     request: Request,
