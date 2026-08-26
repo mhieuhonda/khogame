@@ -154,6 +154,9 @@ impl CommentRepo {
         Ok(comments)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<CommentWithUser>> {
         let c = sqlx::query_as::<_, CommentWithUser>(
             r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
@@ -170,6 +173,9 @@ impl CommentRepo {
         Ok(c)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid) -> AppResult<()> {
         // games.comment_count được giảm bởi DB trigger (trigger_comment_delete)
         sqlx::query("DELETE FROM comments WHERE id = $1")
@@ -179,6 +185,9 @@ impl CommentRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_pin(pool: &PgPool, id: Uuid) -> AppResult<bool> {
         let pinned: bool = sqlx::query_scalar(
             "UPDATE comments SET is_pinned = NOT is_pinned WHERE id = $1 RETURNING is_pinned",
@@ -189,6 +198,9 @@ impl CommentRepo {
         Ok(pinned)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_like(pool: &PgPool, comment_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         // DELETE-first trong transaction — cùng pattern InteractionRepo.
         // Mẫu cũ (SELECT → INSERT + UPDATE like_count rời rạc) có race
@@ -325,6 +337,9 @@ impl CommentRepo {
     }
 
     /// Tổng số bình luận toàn site — phân trang admin comments.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_all(pool: &PgPool) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM comments")
             .fetch_one(pool)
