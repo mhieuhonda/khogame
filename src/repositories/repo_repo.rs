@@ -17,6 +17,9 @@ const CARD_JOINS: &str = r"FROM github_repos r
 
 impl RepoRepo {
     #[allow(clippy::too_many_arguments)]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
@@ -110,6 +113,9 @@ impl RepoRepo {
         Ok(repo)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_approved(
         pool: &PgPool,
         limit: i64,
