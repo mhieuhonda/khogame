@@ -9,6 +9,29 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.0] — 2026-08-26 — GA (Generally Available)
+
+🎉 **Phát hành chính thức — production-ready.**
+
+### ✅ Verification
+- Build clean với Rust 1.98.0.
+- Clippy clean (0 warning) với `cargo clippy --all-targets`.
+- 159 unit tests pass (`cargo test --lib`).
+- Migration chain 001 → 011 idempotent (chạy trên DB đã có dữ liệu OK).
+- Codebase 18 841 LOC tách thành:
+  - `src/handlers/` (13 file, 250KB): HTTP handler layer.
+  - `src/repositories/` (15 file, 220KB): DB access layer.
+  - `src/services/` (2 file, 5KB): cross-cutting logic (audit, json_ld).
+  - `src/models/` (14 file, 60KB): domain models.
+  - `src/templates.rs` (1 file, 1073 lines): Askama template structs.
+
+### 📊 Stats
+- Commits: 2 (v0.9.0 hardening + v1.0.0-rc.1 refactor).
+- Files changed: 45 (34 + 11).
+- Lines added: ~1034. Lines removed: ~279.
+
+---
+
 ## [1.0.0-rc.1] — 2026-08-26 — Production-ready candidate
 
 ### 🔧 Refactor
