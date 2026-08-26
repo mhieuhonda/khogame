@@ -401,10 +401,12 @@ pub async fn create(
         Some(&connect_info.0),
         state.config.trust_proxy_headers,
     );
+    // Clamp UA 512 ký tự — tránh lưu 1MB User-Agent header vào
+    // TEXT column news.author_ua (DB bloat + backup phình to).
     let ua = headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
-        .map(std::string::ToString::to_string);
+        .map(|s| s.chars().take(512).collect::<String>());
 
     let id = NewsRepo::create(&state.db, user.id, &form, &slug, Some(&ip), ua.as_deref()).await?;
 
