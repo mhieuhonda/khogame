@@ -76,6 +76,9 @@ impl NotificationRepo {
 
     /// Lấy 1 notification của đúng user (để re-render item HTMX sau khi
     /// `mark_read` mà không phải fetch cả danh sách).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_for_user(
         pool: &PgPool,
         id: Uuid,
