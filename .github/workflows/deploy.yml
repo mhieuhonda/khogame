@@ -284,41 +284,54 @@ jobs:
         continue-on-error: false
         run: |
           set -uo pipefail
-          # Poll Coolify API cho image digest trong compose_raw, so sánh
-          # với digest built ở build-push job. Mismatch → fail (operator
-          # biết web chưa update). Bonus: check web /health endpoint.
-          EXPECTED="${{ env.IMAGE_REF }}"
-          echo "Expected image: $EXPECTED"
+          # Verify deploy thành công bằng cách check web /health version
+          # match với version trong Cargo.toml. Robust với race condition
+          # khi main + tag CD chạy đồng thời (2 image cùng version, digest
+          # khác nhau → exact digest check false-fail). Check version là
+          # signal đúng: nếu web trả expected version → deploy OK.
+          EXPECTED_VERSION=$(grep -E '^version = "[0-9]' Cargo.toml | head -1 | sed -E 's/.*"([0-9.]+)".*/\1/')
+          EXPECTED_IMAGE="${{ env.IMAGE_REF }}"
+          echo "Expected version: $EXPECTED_VERSION"
+          echo "Expected image:    $EXPECTED_IMAGE"
+          if [ -z "$EXPECTED_VERSION" ]; then
+            echo "::error::Cannot read version from Cargo.toml"; exit 1
+          fi
           for i in $(seq 1 12); do
             sleep 15
-            # Lưu response ra file rồi parse bằng python heredoc (tránh
-            # quoting hell của python -c '...' với regex chứa parens).
-            curl -sS "${COOLIFY_URL}/api/v1/services/${COOLIFY_SERVICE_UUID}" \
-              -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
-              --max-time 10 -o /tmp/coolify_svc.json 2>/dev/null || true
-            RUNNING=$(python3 - <<'PYEOF'
+            # 1) Check web /health (primary signal)
+            WEB=$(curl -sS --max-time 10 "https://louis.vangioitutien.com/health" 2>/dev/null || echo "FAIL")
+            echo "[$i/12] Web /health: $WEB"
+            WEB_VERSION=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("version",""))' 2>/dev/null || echo "")
+            WEB_STATUS=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))' 2>/dev/null || echo "")
+            if [ "$WEB_STATUS" = "ok" ] && [ "$WEB_VERSION" = "$EXPECTED_VERSION" ]; then
+              echo "::notice::Web serving version $EXPECTED_VERSION (status ok) → deploy thành công."
+              # 2) Check Coolify compose digest (informational — có thể mismatch do race)
+              curl -sS "${COOLIFY_URL}/api/v1/services/${COOLIFY_SERVICE_UUID}" \
+                -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+                --max-time 10 -o /tmp/coolify_svc.json 2>/dev/null || true
+              RUNNING=$(python3 - <<'PYEOF'
           import json
           try:
               d = json.load(open("/tmp/coolify_svc.json"))
               c = d.get("docker_compose_raw", "").split("khogame-db")[0]
               for line in c.splitlines():
                   if "image:" in line and "khogame@" in line:
-                      img = line.split("image:", 1)[1].strip().strip("'\"").strip()
-                      print(img)
+                      print(line.split("image:", 1)[1].strip().strip("'\"").strip())
                       break
           except Exception:
               print("")
           PYEOF
           )
-            echo "[$i/12] Coolify compose image: $RUNNING"
-            if [ "$RUNNING" = "$EXPECTED" ]; then
-              echo "::notice::Coolify compose đã update đúng image built."
-              WEB=$(curl -sS --max-time 10 "https://louis.vangioitutien.com/health" 2>/dev/null || echo "FAIL")
-              echo "Web /health: $WEB"
+              echo "Coolify compose image: $RUNNING"
+              if [ "$RUNNING" = "$EXPECTED_IMAGE" ]; then
+                echo "::notice::Coolify compose digest match exact build."
+              else
+                echo "::notice::Coolify compose digest khác build (race condition khi main+tag deploy đồng thời — OK vì cùng version $EXPECTED_VERSION)."
+              fi
               exit 0
             fi
           done
-          echo "::error::Image mismatch sau 3 phút — Coolify compose chưa reflect image built. Patch có thể chưa apply. Manual check needed."
+          echo "::error::Web chưa serve version $EXPECTED_VERSION sau 3 phút. Last /health: $WEB"
           exit 1
 
       - name: Deploy summary
