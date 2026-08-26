@@ -1042,11 +1042,14 @@ pub async fn broadcast(
     }
     // Validate link: chỉ chấp nhận relative URL (bắt đầu bằng '/') hoặc
     // http(s):// tuyệt đối — chặn javascript: scheme để chống XSS khi user
-    // click vào notification link.
+    // click vào notification link. Path relative phải qua sanitize_redirect
+    // để chặn control char (CR/LF) chống header injection khi URL được dùng
+    // làm Location header.
     let link = form.link.as_deref().unwrap_or("").trim();
     if !link.is_empty() {
-        let is_safe = link.starts_with('/')
-            && !link.starts_with("//") // protocol-relative
+        let is_safe = (link.starts_with('/')
+            && !link.starts_with("//")
+            && !link.bytes().any(|b| b.is_ascii_control()))
             || crate::utils::is_safe_url(link);
         if !is_safe {
             return Err(AppError::BadRequest(
