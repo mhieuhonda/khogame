@@ -233,6 +233,9 @@ impl InteractionRepo {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_user_rating(
         pool: &PgPool,
         game_id: Uuid,
