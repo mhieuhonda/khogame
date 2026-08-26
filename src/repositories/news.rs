@@ -187,6 +187,9 @@ impl NewsRepo {
     }
 
     /// Tìm kiếm full-text dùng trgm index.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn search(
         pool: &PgPool,
         query: &str,
@@ -497,6 +500,9 @@ impl NewsRepo {
 
     // ===== Comments =====
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn create_comment(
         pool: &PgPool,
         news_id: Uuid,
