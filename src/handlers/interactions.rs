@@ -76,6 +76,9 @@ pub async fn toggle_bookmark(
     Ok(Html(partial.render()?))
 }
 
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn rate(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
