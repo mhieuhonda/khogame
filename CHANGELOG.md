@@ -9,6 +9,142 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.0.1] — 2026-08-26 — Production hardening (post-GA bugfix)
+
+🛡️ **Critical bug fixes** sau khi audit sâu codebase bằng 5 subagent song
+song. Stack vẫn Rust 1.98 / axum 0.8.9 / sqlx 0.9 / askama 0.16. **BẮT BUỘC
+upgrade từ v1.0.0** — migration 011 có broken triggers khiến mọi UPDATE
+trên `games` và `news` đều crash ở runtime.
+
+### 🚨 Critical (production-breaking)
+- **Migration 012 fix broken triggers từ 011** — `update_games_updated_at()`
+  tham chiếu cột `is_public` không tồn tại (chỉ có `is_featured`);
+  `update_news_updated_at()` tham chiếu `author_id` và `category_id`
+  không tồn tại (news dùng `user_id` và `category VARCHAR(50)`). plpgsql
+  compile lazy → CREATE FUNCTION thành công nhưng mọi UPDATE crash runtime
+  → user không thể comment/like game hoặc news, admin không edit được.
+  Migration 012 dùng `CREATE OR REPLACE FUNCTION` (giữ OID, trigger tự
+  pickup body mới) + sanity check force-compile trên row thật để fail-fast
+  lúc deploy.
+- **AI Agent auth broken từ v0.9** — `repositories/ai_agent.rs::find_by_api_token`
+  SELECT thiếu 5 cột tracking (`signup_ip`, `signup_ua`, `last_login_ip`,
+  `last_login_ua`, `last_login_at`) do migration 009 thêm. `User::FromRow`
+  không có `#[sqlx(default)]` → `ColumnNotFound` runtime → middleware
+  `require_ai_agent` swallow `.ok()` → mọi request Bearer token 401,
+  `/auth/ai/login` trả 500. Fix: thêm 5 cột vào SELECT + RETURNING.
+
+### 🔒 Security (HIGH)
+- **CSS injection qua `<div style="background-image:url('{{ url }}')">`**
+  ở `templates/index.html`, `news/list.html`, `news/show.html` — server
+  validate URL scheme `http(s)` nhưng không escape `&#x27;` (browser
+  HTML-decode trước khi parse CSS) → attacker URL có `'` chèn CSS tuỳ ý
+  (theft via `url(evil.com/track.png)`). Fix: thay bằng `<img src>`
+  (attribute context được escape đúng).
+- **Security headers middleware ở layer INNERMOST** — comment nói
+  "outermost áp dụng mọi response" nhưng code đặt `security_headers` là
+  layer đầu tiên (axum coi đầu là innermost). Hậu quả: response 429
+  (rate-limited) và 503 (maintenance) BYPASS CSP, X-Frame-Options,
+  HSTS — XSS qua error page không bị CSP block. Fix: reorder layer
+  `rate_limit` (innermost) → `maintenance_guard` → `security_headers`
+  (outermost).
+- **`sanitize_redirect` bypass `/\evil.com`** — WHATWG URL parser
+  normalise `\` → `/`, nên `/\evil.com` được hiểu là `//evil.com`
+  (open redirect). Dùng trong `google_callback` Location header từ
+  cookie `next` → phishing. Fix: reject path starts_with `/\`.
+- **`SESSION_KEY` không check độ dài** — operator set `SESSION_KEY=dev`
+  (3 byte) pass config. Khi enable HMAC cookie signing (roadmap), key
+  yếu cho phép session forgery. Fix: fail-fast `< 32 byte` ở startup.
+- **`cover_image` stored XSS qua news update** — `update()` handler set
+  `cover_image` từ raw user input bypass `validate_url()` (create có
+  validate, update không). Pending-news owner set `cover_image=javascript:...`
+  → stored XSS qua `<img>` trên /news/{slug}. Fix: validate_url ở update.
+- **API game_detail / game_related leak draft/hidden** — public JSON
+  API trả full metadata cho game draft/hidden nếu biết slug. Fix: check
+  `g.status != Published` return 404.
+
+### 🐛 Bug fixes (MEDIUM)
+- **news owner-edit-pending broken** — `find_by_slug_public` filter
+  `status IN ('published','archived')` → owner không edit được pending/
+  rejected news của mình. Logic "edit rejected → reset về pending" không
+  reachable. Fix: SELECT trực tiếp không filter status, ownership check
+  ở handler.
+- **parent_id IDOR** — comment tạo `parent_id` không verify cùng
+  game/news → orphan reply cross-resource. Fix: check
+  `parent.game_id == game.id` / `parent.news_id == news.id`.
+- **AI Agent update_profile thiếu validation** — `accent_color` hex,
+  `privacy_level` whitelist (register có, update không). Register
+  whitelist cho phép `"private"` nhưng enum chỉ có `Public`/`Anonymous`.
+  Fix: đồng bộ validation 2 path.
+- **pagination overflow** — `(page - 1) * per_page` panic debug / wrap
+  release khi `?page=i64::MAX`. Fix: `page.saturating_sub(1).saturating_mul
+  (per_page)` ở 4 list endpoints (news).
+- **counter underflow** — `like_count - 1` có thể âm nếu không có trigger
+  guard. Fix: `GREATEST(0, like_count - 1)` ở 2 repo (comment, news_comment).
+- **`interaction.rs::set_rating` non-atomic** — INSERT rating +
+  UPDATE games.rating_avg 2 query riêng. Fix: wrap trong transaction.
+- **ILIKE escape backslash leak** — `escape_like` thiếu escape `\`, manual
+  escape ở `news.rs::search` và `suggest_titles` không nhất quán. Fix:
+  dùng `crate::utils::escape_like` + explicit `ESCAPE '\\'`.
+- **`BASE_URL` trailing slash inconsistency** — config.rs không trim
+  nhưng templates.rs trim → `strip_prefix` mismatch khi operator set
+  `BASE_URL=https://louis.com/`. Fix: trim ở config.rs ngay sau env read.
+- **`shutdown_signal` second Ctrl+C swallowed** — tokio `ctrl_c()` install
+  global handler override OS default; sau khi future đầu hoàn tất, signal
+  thứ hai không có future đón → operator đợi full 30s grace hoặc SIGKILL.
+  Fix: spawn 2nd signal future gọi `process::exit(1)`.
+- **`audit()` silent error swallow** — `let _ = AdminLogRepo::log(...)`
+  nuốt DB error. Fix: `if let Err(e) = ... { tracing::warn!(...) }`.
+- **comment content `nl2br`** inconsistency — news comment render flat
+  text, game comment có `|nl2br`. Fix: đồng bộ dùng `|nl2br`.
+- **HTMX double-click** trên like/delete/pin/edit-form/reply-form ở
+  `comment_item.html` — thiếu `hx-disabled-elt`. Fix: thêm.
+- **news my_news delete button** — thiếu `hx-target` + `hx-swap`, default
+  swap xóa nút chứ không xóa item. Fix: `hx-target="closest .my-news-item"`
+  + `hx-swap="outerHTML"`.
+
+### 🐛 Bug fixes (LOW)
+- `news.update` thêm length validation title/excerpt/content giống create.
+- `games.share_game` check status published.
+- `admin.news_reject` clamp note length ≤2000.
+- `news.count_search` ILIKE escape.
+- Deterministic ORDER BY thêm `, created_at DESC, id` tiebreaker.
+- `profile.show.html` avatar-xl thêm `width`/`height`/`loading`/`decoding`.
+- `repos/new.html` input `type="url"` cho URL field.
+
+### 🔧 CI/CD overhaul
+- **Xoá workflows cũ** (`ci.yml`, `deploy.yml` v1) — dùng `actions/checkout@v7`
+  không tồn tại (latest là v4), CI fail 100% từ v1.0.0-rc.1.
+- **Tạo workflow mới**:
+  - `ci.yml`: 6 job song song (check / fmt / clippy / test / doc / audit).
+    `paths-ignore` cho doc-only changes. Cache `Swatinem/rust-cache@v2`.
+    `cargo audit` `continue-on-error` (advisory, không block).
+  - `deploy.yml`: `ci-gate` → `build-push` (multi-tag: sha, semver, latest)
+    → `deploy-coolify` (best-effort, retry 3 lần với backoff, continue-on-error
+    để image ở GHCR sẵn sàng deploy manual nếu Coolify down).
+  - `release.yml`: trigger tag `v*` → trích CHANGELOG section →
+    `gh release create --verify-tag --notes-file`.
+- **Dockerfile hardening**: thêm OCI labels (`org.opencontainers.image.*`),
+  `--chown` trên COPY để giảm layer size, comment rõ HEALTHCHECK dùng
+  `/health` (lightweight) thay vì `/api/v1/health` (DB probe).
+- **deploy/compose.prod.yml hardening**: `read_only: true`, `tmpfs: /tmp`,
+  `cap_drop: ALL`, `security_opt: no-new-privileges`, `pids_limit`, `mem_limit`,
+  `cpus`, log rotation (`max-size: 10m`, `max-file: 5`) cho cả app + db.
+- **`.dockerignore`** mới (70+ dòng) — loại `target/`, `.git/`, `.env*`,
+  `node_modules/`, `*.md`, `docs/`, `scripts/`, `.vscode/`, `.idea/`.
+  Trước đây `COPY . .` copy `target/` (~5GB) → build context phình + leak.
+- **`.env.example`** mới (115 dòng) — list đủ env vars với comment giải
+  thích, placeholder an toàn, link hướng dẫn (`openssl rand -hex 32`).
+
+### 📊 Stats
+- Files changed: ~35 (handlers 6, repositories 6, models 0, infra 7,
+  templates 8, migrations 1 new, docker 4, github workflows 3).
+- Lines added: ~1200. Lines removed: ~280.
+- Bugs fixed: 30+ (1 critical trigger, 1 critical AI auth, 4 high security,
+  12 medium, 13 low).
+- Tests: vẫn 159 pass, clippy clean (0 warning), rustdoc clean, fmt clean.
+
+---
+
 ## [1.0.0] — 2026-08-26 — GA (Generally Available)
 
 🎉 **Phát hành chính thức — production-ready.**

@@ -240,7 +240,11 @@
                 {% match n.cover_image %}
                 {% when Option::Some with (url) %}
                     {% if !url.is_empty() %}
-                    <div class="news-card-cover" style="background-image:url('{{ url }}')"></div>
+                    {# XSS-safe: tránh <div style="background-image:url('{{ url }}')">
+                       vì URL user-input (đã server-validate http(s) nhưng có thể
+                       chứa ký tự thoát CSS như ');body{...}//' → CSS injection.
+                       <img src> được Askama escape attribute đầy đủ, không parse CSS. #}
+                    <div class="news-card-cover"><img src="{{ url }}" alt="{{ n.title }}" loading="lazy" decoding="async" width="320" height="180" style="width:100%;height:100%;object-fit:cover;display:block"></div>
                     {% else %}
                     <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
                     {% endif %}

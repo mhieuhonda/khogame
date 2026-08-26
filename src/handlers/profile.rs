@@ -3,7 +3,7 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
 use crate::state::AppState;
-use crate::templates::{ProfileTemplate, EditProfileTemplate, BookmarksTemplate};
+use crate::templates::{BookmarksTemplate, EditProfileTemplate, ProfileTemplate};
 use axum::extract::{Path, Query, State};
 use axum::response::Redirect;
 use axum::Form;
@@ -27,9 +27,7 @@ pub async fn show_profile(
     if user.is_banned {
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
-    let is_self = current_user
-        .as_ref()
-        .is_some_and(|u| u.id == user.id);
+    let is_self = current_user.as_ref().is_some_and(|u| u.id == user.id);
     // 5 query độc lập (stats/games/follow-check/preferences/ai_profile)
     // chạy SONG SONG — trước đây tuần tự, trang hồ sơ chịu tổng thời
     // gian 5 round-trip DB liền nhau.

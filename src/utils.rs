@@ -307,8 +307,15 @@ pub fn sanitize_redirect(s: &str) -> String {
     // Path nội bộ tuyệt đối, KHÔNG có control char (chống header
     // injection qua Location: \r\nSet-Cookie:...), và không bắt đầu
     // bằng `//` (chống protocol-relative redirect mở ra domain khác).
+    //
+    // Cũng chặn `/\` ở đầu: nhiều browser (Chrome/Edge/IE) coi `\` như
+    // path separator tương đương `/`, nên `/\evil.com` được interpret
+    // thành `//evil.com` → protocol-relative URL → redirect sang domain
+    // khác (open redirect bypass). Spec WHATWG URL Parser chính thức
+    // normalise `\` thành `/` trong special-scheme URL.
     if s.starts_with('/')
         && !s.starts_with("//")
+        && !s.starts_with("/\\")
         && !s.bytes().any(|b| b.is_ascii_control())
     {
         s.to_string()
@@ -459,6 +466,13 @@ mod tests {
         assert_eq!(sanitize_redirect("/\tfoo"), "/");
         // Path có null byte → từ chối
         assert_eq!(sanitize_redirect("/games\0"), "/");
+        // Backslash bypass: `/\evil.com` browser sẽ coi `\` như `/`
+        // → `//evil.com` protocol-relative URL → open redirect. Chặn.
+        assert_eq!(sanitize_redirect("/\\evil.com"), "/");
+        assert_eq!(sanitize_redirect("/\\"), "/");
+        // Backslash KHÔNG ở đầu path thì an toàn (giữ nguyên — browser
+        // interpret `/foo\bar` thành `/foo/bar` cùng origin).
+        assert_eq!(sanitize_redirect("/games/foo\\bar"), "/games/foo\\bar");
     }
 
     #[test]
@@ -523,7 +537,7 @@ mod tests {
         assert!(!is_safe_url("vbscript:msgbox"));
         assert!(!is_safe_url("//evil.com/x")); // protocol-relative
         assert!(!is_safe_url("javascript:")); // rỗng sau scheme
-        // CR/LF trong URL → không an toàn (chống header injection)
+                                              // CR/LF trong URL → không an toàn (chống header injection)
         assert!(!is_safe_url("https://evil.com/\r\nSet-Cookie: bad=1"));
         assert!(!is_safe_url("https://evil.com/\n"));
         assert!(!is_safe_url("https://evil.com/\tfoo"));

@@ -62,6 +62,14 @@ pub async fn create_comment(
         let parent = CommentRepo::find_by_id(&state.db, pid)
             .await?
             .ok_or_else(|| AppError::BadRequest("Bình luận cha không tồn tại".into()))?;
+        // Verify parent belongs to same game — chống IDOR qua parent_id
+        // chỉ comment của game khác (sẽ tạo bình luận mồ côi không hiển thị
+        // ở đâu, làm rác DB + có thể dẫn đến leak metadata của game khác).
+        if parent.game_id != game.id {
+            return Err(AppError::BadRequest(
+                "Bình luận cha không thuộc game này".into(),
+            ));
+        }
         if let Some(grand) = parent.parent_id {
             parent_id = Some(grand);
         }

@@ -155,12 +155,7 @@ impl AgeRating {
     }
     #[must_use]
     pub const fn all() -> &'static [Self] {
-        &[
-            Self::Everyone,
-            Self::Teen,
-            Self::Mature,
-            Self::Adult,
-        ]
+        &[Self::Everyone, Self::Teen, Self::Mature, Self::Adult]
     }
 }
 
@@ -498,9 +493,7 @@ mod tests {
             let l = r.label();
             assert!(l.contains(" - "), "label phải dạng 'X - mô tả': {l}");
             assert!(
-                l.chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_uppercase()),
+                l.chars().next().is_some_and(|c| c.is_ascii_uppercase()),
                 "prefix phân loại viết hoa: {l}"
             );
         }

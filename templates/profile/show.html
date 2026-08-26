@@ -10,7 +10,7 @@
             <div class="profile-avatar">
                 {% match user.avatar_url %}
                 {% when Option::Some with (url) %}
-                <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-xl">
+                <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-xl" width="96" height="96" loading="lazy" decoding="async">
                 {% when Option::None %}
                 <div class="avatar avatar-xl avatar-fallback">{{ user.display_name|initials }}</div>
                 {% endmatch %}

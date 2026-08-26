@@ -23,6 +23,7 @@
                     hx-post="/comments/{{ comment.id }}/like"
                     hx-target="find .like-count"
                     hx-swap="innerHTML"
+                    hx-disabled-elt="this"
                     aria-pressed="{% if comment.is_liked %}true{% else %}false{% endif %}"
                     aria-label="Thích bình luận — {{ comment.like_count }} lượt thích">
                 ❤️ <span class="like-count" aria-hidden="true">{{ comment.like_count }}</span>
@@ -36,6 +37,7 @@
                         hx-delete="/comments/{{ comment.id }}"
                         hx-target="closest .comment-item"
                         hx-swap="outerHTML"
+                        hx-disabled-elt="this"
                         hx-confirm="Bạn chắc chắn muốn xóa bình luận này?">
                     🗑️ Xóa
                 </button>
@@ -44,7 +46,8 @@
                 <button class="comment-action pin-comment"
                         hx-post="/admin/comments/{{ comment.id }}/pin"
                         hx-target="closest .comment-item"
-                        hx-swap="outerHTML">
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this">
                     📌 {% if comment.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}
                 </button>
                 {% endif %}
@@ -56,7 +59,7 @@
         {% when Option::Some with (cu) %}
             {% if cu.id == comment.user_id %}
             <div class="reply-form-container edit-form-container" id="edit-form-{{ comment.id }}" style="display:none;">
-                <form hx-post="/comments/{{ comment.id }}/edit" hx-target="closest .comment-item" hx-swap="outerHTML">
+                <form hx-post="/comments/{{ comment.id }}/edit" hx-target="closest .comment-item" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
                     <textarea name="content" required rows="2" maxlength="1000">{{ comment.content }}</textarea>
                     <div>
                         <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
@@ -71,6 +74,7 @@
             <form hx-post="/games/{{ game_slug }}/comments"
                   hx-target="#replies-{{ comment.id }}"
                   hx-swap="beforeend"
+                  hx-disabled-elt="find button[type=submit]"
                   hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').style.display='none';}">
                 <input type="hidden" name="parent_id" value="{{ comment.id }}">
                 <textarea name="content" placeholder="Trả lời bình luận..." required rows="2" maxlength="1000"></textarea>

@@ -291,9 +291,12 @@ impl UserRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_admins(pool: &PgPool) -> AppResult<Vec<User>> {
+        // SELECT đủ cột cho FromRow<User> — trước đây thiếu các cột tracking
+        // (migration 009) → `query_as::<_, User>` raise ColumnNotFound.
         let users = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
               FROM users WHERE role IN ('admin', 'moderator') ORDER BY created_at",
         )
         .fetch_all(pool)
@@ -329,7 +332,7 @@ impl UserRepo {
                 COUNT(g.id) FILTER (WHERE g.status = 'published')::bigint AS games_count
               FROM users u
               LEFT JOIN games g ON g.user_id = u.id
-              WHERE ($1 = '%%' OR u.email ILIKE $1 OR u.username ILIKE $1 OR u.display_name ILIKE $1)
+              WHERE ($1 = '%%' OR u.email ILIKE $1 ESCAPE '\' OR u.username ILIKE $1 ESCAPE '\' OR u.display_name ILIKE $1 ESCAPE '\')
               GROUP BY u.id
               ORDER BY u.created_at DESC
               LIMIT $2 OFFSET $3",
@@ -387,7 +390,7 @@ impl UserRepo {
         );
         let c: i64 = sqlx::query_scalar(
             r"SELECT COUNT(*) FROM users
-               WHERE ($1 = '%%' OR email ILIKE $1 OR username ILIKE $1 OR display_name ILIKE $1)",
+               WHERE ($1 = '%%' OR email ILIKE $1 ESCAPE '\' OR username ILIKE $1 ESCAPE '\' OR display_name ILIKE $1 ESCAPE '\')",
         )
         .bind(pattern)
         .fetch_one(pool)

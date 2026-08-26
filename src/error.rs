@@ -81,10 +81,11 @@ impl AppError {
             Self::Unauthorized => self.to_string(),
             Self::Forbidden(m) => m.clone(),
             Self::BadRequest(m) | Self::Conflict(m) => m.clone(),
-            Self::Template(_) | Self::Database(_) | Self::OAuth(_)
-            | Self::Http(_) | Self::Internal(_) => {
-                "Lỗi hệ thống, vui lòng thử lại sau ít phút".to_string()
-            }
+            Self::Template(_)
+            | Self::Database(_)
+            | Self::OAuth(_)
+            | Self::Http(_)
+            | Self::Internal(_) => "Lỗi hệ thống, vui lòng thử lại sau ít phút".to_string(),
         };
         (status, user_msg)
     }
@@ -128,14 +129,17 @@ impl IntoResponse for AppError {
         // Đối với lỗi 5xx, sinh request_id ngẫu nhiên nếu không có từ
         // request extension. User sẽ thấy ID trong trang lỗi → báo cáo
         // cho admin, admin tra `tracing` log có cùng ID.
-        let request_id = (status.as_u16() >= 500).then(uuid::Uuid::new_v4).map(|u| u.to_string());
+        let request_id = (status.as_u16() >= 500)
+            .then(uuid::Uuid::new_v4)
+            .map(|u| u.to_string());
 
         ErrorPartial {
             message: msg,
             status: status.as_u16(),
             request_id: request_id.clone(),
         }
-        .render().map_or_else(
+        .render()
+        .map_or_else(
             |_| (status, "Internal Server Error").into_response(),
             |html| {
                 let mut resp = (status, html).into_response();

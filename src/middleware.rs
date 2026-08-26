@@ -51,21 +51,21 @@ static LAST_SEEN_THROTTLE: std::sync::OnceLock<
 fn touch_last_seen(state: &AppState, user: &User) {
     // Chỉ update khi DB cho thấy đã stale > 1h (tránh spam map với user
     // thường xuyên quay lại trong phiên ngắn).
-    let stale = user
-        .last_seen_at
-        .is_none_or(|t| {
-            chrono::Utc::now()
-                .signed_duration_since(t)
-                .num_hours()
-                .abs()
-                >= 1
-        });
+    let stale = user.last_seen_at.is_none_or(|t| {
+        chrono::Utc::now()
+            .signed_duration_since(t)
+            .num_hours()
+            .abs()
+            >= 1
+    });
     if !stale {
         return;
     }
     let map = LAST_SEEN_THROTTLE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     // Khôi phục từ poison — throttle không đáng để panic cả server.
-    let mut map = map.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let now = std::time::Instant::now();
     match map.get(&user.id) {
         Some(last) if now.duration_since(*last) < std::time::Duration::from_secs(3600) => {
@@ -229,7 +229,10 @@ impl RateLimiter {
     pub fn check(&self, key: &str, max_requests: usize, window_secs: u64) -> bool {
         // Khôi phục từ mutex poison thay vì propagate panic — rate limit
         // không nên bring down toàn bộ server.
-        let mut map = self.hits.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut map = self
+            .hits
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let now = Instant::now();
         let window = std::time::Duration::from_secs(window_secs);
         let entry = map.entry(key.to_string()).or_default();
@@ -347,10 +350,7 @@ mod path_normalization_tests {
             norm(&format!("/comments/{id1}/like")),
             norm(&format!("/comments/{id2}/like"))
         );
-        assert_eq!(
-            norm(&format!("/comments/{id1}/like")),
-            "/comments/{x}/like"
-        );
+        assert_eq!(norm(&format!("/comments/{id1}/like")), "/comments/{x}/like");
     }
 
     #[test]
@@ -448,7 +448,10 @@ fn is_valid_ip_string(s: &str) -> bool {
 /// Trả về `Ok(())` nếu Origin/Referer hợp lệ hoặc rỗng (không có header).
 /// Trả về `Err(AppError::Forbidden)` nếu Origin/Referer có nhưng không khớp
 /// base_url — fail-closed.
-pub fn verify_origin(headers: &axum::http::HeaderMap, base_url: &str) -> crate::error::AppResult<()> {
+pub fn verify_origin(
+    headers: &axum::http::HeaderMap,
+    base_url: &str,
+) -> crate::error::AppResult<()> {
     let base_host = base_url
         .trim_start_matches("https://")
         .trim_start_matches("http://")
@@ -496,9 +499,7 @@ pub fn verify_origin(headers: &axum::http::HeaderMap, base_url: &str) -> crate::
             // Không có cả Origin lẫn Referer — request kỳ lạ (curl, legacy
             // browser). Cho phép qua để không phá tương thích curl test,
             // nhưng log để admin quan sát.
-            tracing::debug!(
-                "POST không có Origin/Referer — cho phép qua (curl/legacy client)"
-            );
+            tracing::debug!("POST không có Origin/Referer — cho phép qua (curl/legacy client)");
             Ok(())
         }
     }
@@ -958,10 +959,7 @@ mod verify_origin_tests {
     #[test]
     fn test_origin_match_referer_mismatch_uses_origin() {
         // Origin đúng → OK dù Referer sai (Origin là chuẩn RFC 6454)
-        let h = hm_origin_referer(
-            "https://louis.vangioitutien.com",
-            "https://evil.com/path",
-        );
+        let h = hm_origin_referer("https://louis.vangioitutien.com", "https://evil.com/path");
         assert!(verify_origin(&h, "https://louis.vangioitutien.com").is_ok());
     }
 }

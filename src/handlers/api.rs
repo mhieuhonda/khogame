@@ -139,6 +139,12 @@ pub async fn game_detail(
     let g = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ trả metadata cho game đã published — đồng bộ với game_comments
+    // và trang HTML show_game. Trước đây API /games/{slug} không check
+    // status → ai biết slug đều xem được draft/hidden (info leak metadata).
+    if g.status != crate::models::game::GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     // 5 query độc lập (links/tags/author/category/screenshots) chạy SONG
     // SONG — trước đây tuần tự, latency = tổng 5 lần round-trip DB. Trang
     // HTML show_game đã song song hoá từ trước nhưng API JSON bị bỏ sót.
@@ -1344,6 +1350,11 @@ pub async fn game_related(
     let g = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ gợi ý related cho game đã published — tránh lộ metadata game
+    // draft/hidden qua API (cùng chuẩn với game_detail).
+    if g.status != crate::models::game::GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     let related = GameRepo::related(&state.db, g.id, g.category_id, 10).await?;
     let data: Vec<serde_json::Value> = related.iter().map(game_card_to_json).collect();
     Ok((

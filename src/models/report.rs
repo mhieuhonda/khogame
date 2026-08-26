@@ -171,10 +171,7 @@ mod tests {
             ReportStatus::Dismissed,
         ] {
             let c = s.color();
-            assert!(
-                c.starts_with('#') && c.len() == 7,
-                "color={c} phải là hex"
-            );
+            assert!(c.starts_with('#') && c.len() == 7, "color={c} phải là hex");
             assert!(!s.label().is_empty());
         }
     }

@@ -58,7 +58,11 @@ impl SettingsRepo {
     pub async fn get_map(pool: &PgPool, keys: &[&str]) -> AppResult<HashMap<String, String>> {
         let rows: Vec<(String, String)> =
             sqlx::query_as("SELECT key, value FROM settings WHERE key = ANY($1)")
-                .bind(keys.iter().map(std::string::ToString::to_string).collect::<Vec<_>>())
+                .bind(
+                    keys.iter()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<_>>(),
+                )
                 .fetch_all(pool)
                 .await?;
         Ok(rows.into_iter().collect())

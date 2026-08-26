@@ -128,11 +128,16 @@ impl AiAgentRepo {
         let mut tx = pool.begin().await?;
 
         // 1) Tạo user
+        // RETURNING phải đủ cột cho FromRow<User> — trước đây thiếu
+        // signup_ip/signup_ua/last_login_ip/last_login_ua/last_login_at
+        // (được thêm ở migration 009) → `query_as::<_, User>` fail với
+        // sqlx::Error::ColumnNotFound tại runtime khi AI Agent đăng ký mới.
         let user: User = sqlx::query_as::<_, User>(
             r"INSERT INTO users (email, username, display_name, avatar_url, bio, google_sub, role, provider)
               VALUES ($1, $2, $3, $4, $5, $6, 'ai_agent', 'ai_agent')
               RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at",
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
         )
         .bind(&email_final)
         .bind(&username_unique)
@@ -205,9 +210,15 @@ impl AiAgentRepo {
             return Ok(None);
         }
         let token_hash = crate::auth::hash_token(plain_token);
+        // SELECT phải đủ cột cho FromRow<User> — trước đây thiếu các cột
+        // tracking (migration 009). Khi AI Agent gọi /ai/login hoặc
+        // middleware `require_ai_agent` duyệt Bearer token, query_as::<User>
+        // raise sqlx::Error::ColumnNotFound → middleware nuốt `.ok()` thành
+        // None → AI Agent tưởng token sai / token bị revoke (thực ra là bug).
         let row = sqlx::query_as::<_, User>(
             r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio,
-                     u.google_sub, u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at
+                     u.google_sub, u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
+                     u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at
               FROM ai_agent_tokens t
               JOIN users u ON u.id = t.user_id
               WHERE t.token_hash = $1
@@ -575,7 +586,8 @@ pub fn validate_ai_username(username: &str) -> AppResult<()> {
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
     {
         return Err(AppError::BadRequest(
-            "Username AI Agent chỉ được chứa chữ cái, số, dấu gạch dưới (_), và gạch ngang (-)".into(),
+            "Username AI Agent chỉ được chứa chữ cái, số, dấu gạch dưới (_), và gạch ngang (-)"
+                .into(),
         ));
     }
     Ok(())

@@ -334,14 +334,30 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::api::security_txt),
         )
         .fallback(handlers::pages::not_found)
-        // Đặt security_headers ngoài cùng (áp dụng cho mọi response).
-        // rate_limit và maintenance_guard đã có từ trước, giữ thứ tự này.
-        .layer(middleware::from_fn(security_headers))
+        // Layer ordering (outermost LAST):
+        //   1. rate_limit          (innermost — quyết định per-path/IP, có thể 429)
+        //   2. maintenance_guard    (có thể 503 khi bảo trì)
+        //   3. security_headers     (áp dụng cho MỌI response, kể cả 429/503)
+        //   4. PropagateRequestIdLayer
+        //   5. TraceLayer
+        //   6. SetRequestIdLayer    (set x-request-id đầu tiên cho các layer khác log)
+        //   7. CompressionLayer    (outermost — nén body cuối cùng)
+        //
+        // TRƯỚC ĐÂY (bug): security_headers được `.layer()` đầu tiên → thành
+        // INNERMOST. Khi rate_limit short-circuit trả 429, response KHÔNG
+        // qua security_headers → thiếu X-Frame-Options, CSP, HSTS trên 429.
+        // Tương tự 503 maintenance thiếu headers. Bất kỳ XSS/iframe-embedding
+        // nào qua response 429/503 sẽ không bị CSP chặn.
+        // FIX: đặt security_headers SAU rate_limit + maintenance_guard (outer
+        // hơn) để mọi response — kể cả short-circuit 429/503 — đều có security
+        // headers. Comment cũ "đặt ngoài cùng" đã nói đúng ý nhưng code sai
+        // thứ tự `.layer()` (layer gọi sau sẽ là outer).
         .layer(middleware::from_fn_with_state(state.clone(), rate_limit))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             maintenance_guard,
         ))
+        .layer(middleware::from_fn(security_headers))
         .layer(PropagateRequestIdLayer::new(
             axum::http::HeaderName::from_static("x-request-id"),
         ))

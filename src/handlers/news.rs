@@ -5,7 +5,9 @@ use crate::models::news::NewsStatus;
 use crate::repositories::news::NewsForm;
 use crate::repositories::NewsRepo;
 use crate::state::AppState;
-use crate::templates::{NewsListTemplate, NewsShowTemplate, NewsNewTemplate, NewsEditTemplate, MyNewsTemplate};
+use crate::templates::{
+    MyNewsTemplate, NewsEditTemplate, NewsListTemplate, NewsNewTemplate, NewsShowTemplate,
+};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::header;
@@ -125,15 +127,12 @@ pub async fn list(
     // Validate category trước khi query — nếu category lạ, fallback
     // về danh sách toàn bộ thay vì trả 0 kết quả gây nhầm lẫn.
     let category_raw = params.category.as_deref().unwrap_or("");
-    let category = if category_raw.is_empty()
-        || NEWS_CATEGORIES
-            .iter()
-            .any(|(k, _)| *k == category_raw)
-    {
-        category_raw.to_string()
-    } else {
-        String::new()
-    };
+    let category =
+        if category_raw.is_empty() || NEWS_CATEGORIES.iter().any(|(k, _)| *k == category_raw) {
+            category_raw.to_string()
+        } else {
+            String::new()
+        };
     let q = params.q.as_deref().unwrap_or("");
 
     // Fetch items + total song song (tokio::join!) — trước đây chạy tuần tự
@@ -198,9 +197,12 @@ pub async fn list(
 async fn count_search(state: &AppState, q: &str) -> i64 {
     // Query thực để đếm chính xác — không fallback về 0 vì hiển thị
     // "Tìm thấy 0 kết quả" khi DB lỗi là gây hiểu lầm.
-    let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+    // Dùng escape_like (chống wildcard %, _, \) + ESCAPE '\\' để tìm theo
+    // literal. Trước đây dùng replace thủ công chỉ escape % và _ mà quên
+    // escape `\` (escape char) → user tìm chuỗi chứa `\` bị match sai.
+    let pattern = format!("%{}%", crate::utils::escape_like(q));
     sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM news WHERE status = 'published' AND (title ILIKE $1 OR content ILIKE $1)",
+        "SELECT COUNT(*) FROM news WHERE status = 'published' AND (title ILIKE $1 ESCAPE '\\' OR content ILIKE $1 ESCAPE '\\')",
     )
     .bind(&pattern)
     .fetch_one(&state.db)
@@ -259,8 +261,7 @@ pub async fn show(
             None => false,
         }
     };
-    let (unread, comments, has_liked) =
-        tokio::join!(unread_fut, comments_fut, has_liked_fut);
+    let (unread, comments, has_liked) = tokio::join!(unread_fut, comments_fut, has_liked_fut);
     let comments = comments.unwrap_or_default();
 
     Ok(NewsShowTemplate {
@@ -459,16 +460,21 @@ pub async fn edit_form(
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
 ) -> AppResult<NewsEditTemplate> {
-    let news = NewsRepo::find_by_slug_public(&state.db, &slug)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
-
-    // Lấy bản gốc để kiểm tra quyền (find_by_slug_public chỉ trả published;
-    // owner pending/rejected cũng cần edit được)
-    let full = match NewsRepo::find_by_id(&state.db, news.id).await? {
-        Some(n) => n,
-        None => return Err(AppError::NotFound("Tin tức không tồn tại".into())),
-    };
+    // Lookup news by slug WITHOUT status filter — trước đây code gọi
+    // find_by_slug_public (chỉ trả status IN published, archived) rồi mới
+    // find_by_id → owner pending/rejected nhận 404 ngay cả cho tin của
+    // chính mình, chặn luồng reject→edit→resubmit mà comment dưới đây
+    // hứa. Bỏ qua public filter ở đây: quyền truy cập được kiểm soát
+    // bằng ownership check ngay sau đó (owner hoặc admin).
+    let news_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM news WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.db)
+        .await?;
+    let full = match news_id {
+        Some(id) => NewsRepo::find_by_id(&state.db, id).await?,
+        None => None,
+    }
+    .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
     if full.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền sửa tin này".into()));
     }
@@ -497,12 +503,19 @@ pub async fn update(
     Path(slug): Path<String>,
     Form(params): Form<NewsFormParams>,
 ) -> AppResult<Response> {
-    let news = NewsRepo::find_by_slug_public(&state.db, &slug)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
-    let full = NewsRepo::find_by_id(&state.db, news.id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
+    // Lookup news by slug WITHOUT status filter — cùng lý do edit_form
+    // (find_by_slug_public chặn owner truy cập pending/rejected của
+    // chính mình). Quyền truy cập được kiểm soát bởi ownership check
+    // phía dưới.
+    let news_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM news WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.db)
+        .await?;
+    let full = match news_id {
+        Some(id) => NewsRepo::find_by_id(&state.db, id).await?,
+        None => None,
+    }
+    .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
     if full.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền sửa".into()));
     }
@@ -516,11 +529,14 @@ pub async fn update(
         title: params.title.trim().to_string(),
         excerpt: params.excerpt.trim().to_string(),
         content: params.content.trim().to_string(),
-        cover_image: params
-            .cover_image
-            .as_deref()
-            .filter(|s| !s.is_empty())
-            .map(std::string::ToString::to_string),
+        // Validate cover_image qua validate_url — trước đây update() lấy
+        // raw user input bypass kiểm tra scheme (create() có validate,
+        // update không → AI/attacker có thể sửa tin set cover_image
+        // javascript:... → XSS khi <img src> render trên trang show).
+        cover_image: match validate_url(params.cover_image.as_deref().unwrap_or(""))? {
+            u if u.is_empty() => None,
+            u => Some(u),
+        },
         category: validate_category(params.category.as_deref().unwrap_or(""))?,
         source_url: validate_url(params.source_url.as_deref().unwrap_or(""))?,
         source_name: params
@@ -535,8 +551,20 @@ pub async fn update(
     if form.title.is_empty() {
         return Err(AppError::BadRequest("Tiêu đề không được để trống".into()));
     }
+    // Validate title/content/excerpt length — đồng bộ với create() để
+    // không cho phép cập nhật thành chuỗi dài vô hạn (DB TEXT không
+    // constraint, trước đây chỉ create kiểm tra).
+    if form.title.chars().count() > 200 {
+        return Err(AppError::BadRequest("Tiêu đề tối đa 200 ký tự".into()));
+    }
     if form.content.is_empty() {
         return Err(AppError::BadRequest("Nội dung không được để trống".into()));
+    }
+    if form.content.chars().count() > 50_000 {
+        return Err(AppError::BadRequest("Nội dung tối đa 50.000 ký tự".into()));
+    }
+    if form.excerpt.chars().count() > 500 {
+        return Err(AppError::BadRequest("Tóm tắt tối đa 500 ký tự".into()));
     }
     // Nếu edit lại tin rejected → reset status về pending để admin duyệt lại
     if full.status == NewsStatus::Rejected {
@@ -559,12 +587,18 @@ pub async fn delete(
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
 ) -> AppResult<Response> {
-    let news = NewsRepo::find_by_slug_public(&state.db, &slug)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
-    let full = NewsRepo::find_by_id(&state.db, news.id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
+    // Lookup news by slug WITHOUT status filter — owner cần xoá được
+    // pending/rejected của chính mình (find_by_slug_public chặn status
+    // != published/archived → 404 nhầm cho owner).
+    let news_id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM news WHERE slug = $1")
+        .bind(&slug)
+        .fetch_optional(&state.db)
+        .await?;
+    let full = match news_id {
+        Some(id) => NewsRepo::find_by_id(&state.db, id).await?,
+        None => None,
+    }
+    .ok_or_else(|| AppError::NotFound("Tin tức không tồn tại".into()))?;
     if full.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền xóa".into()));
     }
@@ -634,6 +668,20 @@ pub async fn create_comment(
         .as_deref()
         .filter(|s| !s.is_empty())
         .and_then(|s| Uuid::parse_str(s).ok());
+    // Verify parent comment belongs to the same news — chống IDOR qua
+    // parent_id chỉ comment của tin khác (sẽ tạo bình luận mồ côi không
+    // hiển thị ở đâu, làm rác DB và bypass hiểu biết của user về cấu trúc
+    // thread).
+    if let Some(pid) = parent_id {
+        let parent = NewsRepo::find_comment_by_id(&state.db, pid)
+            .await?
+            .ok_or_else(|| AppError::BadRequest("Bình luận cha không tồn tại".into()))?;
+        if parent.news_id != news.id {
+            return Err(AppError::BadRequest(
+                "Bình luận cha không thuộc tin tức này".into(),
+            ));
+        }
+    }
 
     let _id = NewsRepo::create_comment(&state.db, news.id, user.id, parent_id, content).await?;
 

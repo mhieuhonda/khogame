@@ -4,9 +4,14 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, NewsRepo, ReportRepo, TagRepo};
-use crate::services::json_ld::{build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld};
+use crate::services::json_ld::{
+    build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld,
+};
 use crate::state::AppState;
-use crate::templates::{IndexTemplate, NewGameTemplate, GameShowTemplate, EditGameTemplate, ReportModalPartial, GameListTemplate, CategoriesPageTemplate, SearchTemplate, MyGamesTemplate};
+use crate::templates::{
+    CategoriesPageTemplate, EditGameTemplate, GameListTemplate, GameShowTemplate, IndexTemplate,
+    MyGamesTemplate, NewGameTemplate, ReportModalPartial, SearchTemplate,
+};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -262,19 +267,11 @@ pub async fn create_game(
 ) -> AppResult<Redirect> {
     validate_game_form(&form)?;
     validate_category(&state, &form).await?;
-    if form
-        .android_link
-        .as_deref().is_none_or(|s| s.is_empty())
+    if form.android_link.as_deref().is_none_or(|s| s.is_empty())
         && form.ios_link.as_deref().is_none_or(|s| s.is_empty())
-        && form
-            .windows_link
-            .as_deref().is_none_or(|s| s.is_empty())
-        && form
-            .linux_link
-            .as_deref().is_none_or(|s| s.is_empty())
-        && form
-            .macos_link
-            .as_deref().is_none_or(|s| s.is_empty())
+        && form.windows_link.as_deref().is_none_or(|s| s.is_empty())
+        && form.linux_link.as_deref().is_none_or(|s| s.is_empty())
+        && form.macos_link.as_deref().is_none_or(|s| s.is_empty())
     {
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
@@ -302,8 +299,8 @@ pub async fn create_game(
         // UUID random → user nhận URL xấu (my-game-101-{uuid}) mà
         // không biết DB đang lỗi.
         match GameRepo::slug_exists(&state.db, &slug).await {
-            Ok(false) => break,            // slug free → dùng được
-            Ok(true) => {}                 // trùng → thử suffix kế
+            Ok(false) => break, // slug free → dùng được
+            Ok(true) => {}      // trùng → thử suffix kế
             Err(e) => return Err(e),
         }
         suffix += 1;
@@ -366,13 +363,9 @@ pub async fn show_game(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
 
-    let is_owner = current_user
-        .as_ref()
-        .is_some_and(|u| u.id == game.user_id);
+    let is_owner = current_user.as_ref().is_some_and(|u| u.id == game.user_id);
     // Staff (admin/moderator) được xem game ẩn/nháp để kiểm duyệt báo cáo
-    let is_staff = current_user
-        .as_ref()
-        .is_some_and(|u| u.role.is_staff());
+    let is_staff = current_user.as_ref().is_some_and(|u| u.role.is_staff());
     if !is_owner && !is_staff && !matches!(game.status, GameStatus::Published) {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }
@@ -485,7 +478,6 @@ pub async fn show_game(
         json_ld: format!("{json_ld}\n{breadcrumb_ld}"),
     })
 }
-
 
 // ============= Edit game =============
 /// # Errors
@@ -726,8 +718,7 @@ async fn build_list_template(
 ) -> AppResult<GameListTemplate> {
     let sort_raw = q.sort.unwrap_or_else(|| default_sort.to_string());
     // Validate sort whitelist — đồng nhất với API games_list và search.
-    const SORT_WHITELIST: &[&str] =
-        &["latest", "trending", "downloads", "top_rated", "liked"];
+    const SORT_WHITELIST: &[&str] = &["latest", "trending", "downloads", "top_rated", "liked"];
     if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
         return Err(AppError::BadRequest(format!(
             "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
@@ -897,8 +888,7 @@ pub async fn list_by_category(
         .await?
         .ok_or_else(|| AppError::NotFound("Thể loại không tồn tại".into()))?;
     let sort_raw = q.sort.unwrap_or_else(|| "latest".into());
-    const SORT_WHITELIST: &[&str] =
-        &["latest", "trending", "downloads", "top_rated", "liked"];
+    const SORT_WHITELIST: &[&str] = &["latest", "trending", "downloads", "top_rated", "liked"];
     if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
         return Err(AppError::BadRequest(format!(
             "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
@@ -946,8 +936,7 @@ pub async fn list_by_tag(
         .await?
         .ok_or_else(|| AppError::NotFound("Tag không tồn tại".into()))?;
     let sort_raw = q.sort.unwrap_or_else(|| "latest".into());
-    const SORT_WHITELIST: &[&str] =
-        &["latest", "trending", "downloads", "top_rated", "liked"];
+    const SORT_WHITELIST: &[&str] = &["latest", "trending", "downloads", "top_rated", "liked"];
     if !SORT_WHITELIST.contains(&sort_raw.as_str()) {
         return Err(AppError::BadRequest(format!(
             "Sort '{sort_raw}' không hợp lệ. Chấp nhận: {SORT_WHITELIST:?}"
@@ -1111,6 +1100,13 @@ pub async fn share_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // Chỉ ghi share analytics cho game đã xuất bản — đồng bộ với
+    // download_game/like/bookmark. Trước đây share không kiểm status,
+    // ai biết slug draft/hidden đều bump share_count ảo (analytics bị
+    // bẩn, có thể che giấu tín hiệu spam).
+    if !matches!(game.status, GameStatus::Published) {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     let user_id = current_user.as_ref().map(|u| u.id);
     // Chuẩn hoá platform về enum DB qua SharePlatform::from_str —
     // trước đây handler tự giữ whitelist string riêng, trùng logic với

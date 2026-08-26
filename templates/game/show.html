@@ -129,7 +129,7 @@
                 <h2 class="section-heading">🖼️ Ảnh chụp màn hình</h2>
                 <div class="screenshots-grid">
                     {% for shot in screenshots %}
-                    <a href="{{ shot.url }}" class="screenshot-item" target="_blank">
+                    <a href="{{ shot.url }}" class="screenshot-item" target="_blank" rel="noopener">
                         <img src="{{ shot.url }}" alt="{{ shot.caption.clone().unwrap_or_default() }}" loading="lazy" decoding="async" width="320" height="180">
                     </a>
                     {% endfor %}
@@ -266,7 +266,7 @@
                         <button type="button" class="share-btn share-native" data-share-platform="native" title="Chia sẻ qua ứng dụng">📤</button>
                     </div>
                     {% if !is_owner %}
-                    <button class="action-btn report-btn" onclick="openReportModal('{{ game.slug }}')">
+                    <button type="button" class="action-btn report-btn" onclick="openReportModal('{{ game.slug }}')">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         <span>Báo cáo</span>
                     </button>

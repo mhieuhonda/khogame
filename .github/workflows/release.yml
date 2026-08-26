@@ -1,0 +1,139 @@
+name: Release
+
+# ============================================================
+# Release — Tạo GitHub Release tự động khi push tag v*.
+# Trích section CHANGELOG.md tương ứng với tag → release notes.
+# Stack: Rust 1.98 (pin exact), axum 0.8.9.
+# ============================================================
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Cần full history để trích CHANGELOG
+
+      - name: Resolve tag name
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF##*/}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Verify tag starts with v
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match v*.*.* pattern"
+            exit 1
+          fi
+          echo "Tag format OK: $TAG"
+
+      - name: Extract CHANGELOG section for this tag
+        id: notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          # CHANGELOG.md format: "## [x.y.z] - YYYY-MM-DD" header, next "## [" ends section.
+          # Match either [v1.0.1] or [1.0.1] (user might omit v prefix in changelog).
+          VERSION="${TAG#v}"
+          echo "Extracting changelog for tag=$TAG version=$VERSION"
+
+          python3 - "$VERSION" <<'PY' > /tmp/release_notes.md
+          import re, sys
+          version = sys.argv[1]
+          try:
+              with open("CHANGELOG.md", encoding="utf-8") as f:
+                  content = f.read()
+          except FileNotFoundError:
+              print(f"CHANGELOG.md not found")
+              sys.exit(1)
+
+          # Match "## [x.y.z] - YYYY-MM-DD" or "## [vx.y.z] - YYYY-MM-DD"
+          pattern = rf"^##\s*\[v?{re.escape(version)}\].*?$(.*?)(?=^##\s*\[v?\d+\.\d+\.\d+\]|\Z)"
+          match = re.search(pattern, content, re.MULTILINE | re.DOTALL)
+          if not match:
+              print(f"Section [{version}] not found in CHANGELOG.md")
+              sys.exit(1)
+          body = match.group(1).strip()
+          if not body:
+              print(f"Section [{version}] is empty")
+              sys.exit(1)
+          print(body)
+          PY
+
+          if [ $? -ne 0 ]; then
+            echo "::warning::CHANGELOG extraction failed — using generic release notes"
+            {
+              echo "## Release $TAG"
+              echo ""
+              echo "See [CHANGELOG.md](./CHANGELOG.md) for full details."
+              echo ""
+              echo "### Docker image"
+              echo ""
+              echo "- \`ghcr.io/mhieuhonda/khogame:$TAG\`"
+              echo "- \`ghcr.io/mhieuhonda/khogame:latest\` (if main)"
+            } > /tmp/release_notes.md
+          fi
+
+          echo "── Release notes preview ──"
+          cat /tmp/release_notes.md
+
+      - name: Verify tag exists in repo
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' does not exist locally"
+            exit 1
+          fi
+          echo "Tag verified: $(git rev-list -n 1 $TAG)"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — skipping creation"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --verify-tag \
+            --notes-file /tmp/release_notes.md \
+            --title "Louis Space $TAG"
+
+          echo "Release created: https://github.com/mhieuhonda/khogame/releases/tag/$TAG"
+
+      - name: Release summary
+        if: always()
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tag**: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release URL**: https://github.com/mhieuhonda/khogame/releases/tag/$TAG" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker images**:" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`ghcr.io/mhieuhonda/khogame:$TAG\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`ghcr.io/mhieuhonda/khogame:latest\` (if on main)" >> $GITHUB_STEP_SUMMARY

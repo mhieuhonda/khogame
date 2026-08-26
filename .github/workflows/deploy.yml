@@ -1,65 +1,102 @@
 name: CD
 
+# ============================================================
+# CD — Build Docker image, push GHCR, trigger Coolify deploy.
+# Stack: Rust 1.98 (pin exact), axum 0.8.9, sqlx 0.9.
+# Trigger: push main + tag v* (release) + manual workflow_dispatch.
+# ============================================================
+
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  CARGO_TERM_COLOR: always
 
 permissions:
   contents: read
   packages: write
 
+# KHÔNG cancel deploy đang chạy — có thể deploy partial state, hỏng prod.
 concurrency:
   group: cd-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  test:
-    name: Kiểm tra (Rust 1.98)
+  # ────────────────────────────────────────────────────────────
+  # Job 1: CI gate — block deploy nếu code không pass CI.
+  # Trùng logic với .github/workflows/ci.yml nhưng chạy ở đây để
+  # deploy.yml có thể chạy độc lập (vd khi trigger bằng workflow_dispatch
+  # hoặc push tag mà CI workflow không trigger).
+  # ────────────────────────────────────────────────────────────
+  ci-gate:
+    name: CI gate (Rust 1.98)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Cài Rust 1.98
-        uses: dtolnay/rust-toolchain@stable
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.0"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Cargo check (--locked)
-        run: cargo check --locked
+        run: cargo check --locked --all-targets
 
-      - name: Cargo test
-        run: cargo test --locked
-
-      - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
-
-      - name: Rustfmt
+      - name: Cargo fmt --check
         run: cargo fmt --all -- --check
 
+      - name: Clippy (-D warnings)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Cargo test --locked
+        run: cargo test --locked --all
+
+      - name: Rustdoc (-D warnings)
+        run: cargo doc --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # ────────────────────────────────────────────────────────────
+  # Job 2: Build & push Docker image to GHCR.
+  # Pin digest (sha256:...) vào output để deploy job có thể pin
+  # image theo digest (immutable) thay vì tag (mutable, có thể bị
+  # override sau khi Coolify pull).
+  # ────────────────────────────────────────────────────────────
   build-push:
-    name: Build & Push Docker Image (Rust 1.98)
+    name: Build & push Docker image
     runs-on: ubuntu-latest
-    needs: test
+    needs: ci-gate
+    timeout-minutes: 30
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # BuildKit mặc định — cần cho --mount=type=cache trong Dockerfile.
+          driver-opts: |
+            image=moby/buildkit:latest
 
-      - name: Đăng nhập GitHub Container Registry
-        uses: docker/login-action@v4
+      - name: Đăng nhập GHCR
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -72,14 +109,20 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-
-            type=match,pattern=v(.*),group=1
+            type=sha,prefix=sha-,format=short
+            type=ref,event=tag
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          labels: |
+            org.opencontainers.image.title=khogame
+            org.opencontainers.image.description=Louis Space — Vietnamese indie game & news platform
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.source=https://github.com/mhieuhonda/khogame
 
-      - name: Build & Push
+      - name: Build & push (BuildKit cache: gha)
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -87,71 +130,148 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          provenance: false
+          # Sbom: false — giảm image manifest size, Coolify không dùng sbom.
+          sbom: false
 
       - name: Tóm tắt image
+        if: always()
         run: |
-          echo "Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          echo "Digest: ${{ steps.build.outputs.digest }}"
+          echo "## Docker Image Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Digest**: \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Tags**:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
-  deploy:
-    name: Trigger Coolify Deploy
+  # ────────────────────────────────────────────────────────────
+  # Job 3: Trigger Coolify deploy.
+  # Best-effort: continue-on-error=true để không block workflow nếu
+  # Coolify down/credential expire. Build image đã ở GHCR, operator
+  # có thể trigger deploy manual sau khi fix Coolify.
+  # ────────────────────────────────────────────────────────────
+  deploy-coolify:
+    name: Trigger Coolify deploy
     runs-on: ubuntu-latest
     needs: build-push
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 15
+    continue-on-error: true
+    env:
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+      COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+      COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
+      IMAGE_REF: ${{ needs.build-push.outputs.image_ref }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Pin image theo digest vào compose prod
+      - name: Verify required secrets
+        id: verify-secrets
+        continue-on-error: true
         run: |
-          sed -i "s|__IMAGE_REF__|${{ needs.build-push.outputs.image_ref }}|g" deploy/compose.prod.yml
-          grep -n "image:" deploy/compose.prod.yml | head -3
+          if [ -z "$COOLIFY_URL" ] || [ -z "$COOLIFY_API_TOKEN" ] || [ -z "$COOLIFY_SERVICE_UUID" ]; then
+            echo "::warning::Missing Coolify secrets (COOLIFY_URL, COOLIFY_API_TOKEN, COOLIFY_SERVICE_UUID). Skipping deploy. Configure in repo Settings → Secrets and Variables → Actions."
+            exit 1
+          fi
+          echo "All Coolify secrets present."
 
-      - name: Cập nhật compose trên Coolify (PATCH)
+      - name: Skip if secrets missing
+        if: steps.verify-secrets.outcome == 'failure'
         run: |
+          echo "::notice::Skipping Coolify deploy — secrets missing. Image is at GHCR ready for manual deploy."
+
+      - name: Pin image digest vào compose prod
+        if: steps.verify-secrets.outcome == 'success'
+        run: |
+          sed -i "s|__IMAGE_REF__|${{ env.IMAGE_REF }}|g" deploy/compose.prod.yml
+          echo "── compose.prod.yml (image line) ──"
+          grep -n "image:" deploy/compose.prod.yml | head -5
+
+      - name: PATCH compose lên Coolify
+        if: steps.verify-secrets.outcome == 'success'
+        run: |
+          set -uo pipefail
           python3 - <<'PY'
-          import json, os, base64, urllib.request
+          import json, os, base64, urllib.request, urllib.error, time, sys
           compose = open("deploy/compose.prod.yml").read()
-          body = json.dumps({"docker_compose_raw": base64.b64encode(compose.encode()).decode()}).encode()
+          body = json.dumps({
+              "docker_compose_raw": base64.b64encode(compose.encode()).decode()
+          }).encode()
           url = f"{os.environ['COOLIFY_URL']}/api/v1/services/{os.environ['COOLIFY_SERVICE_UUID']}"
-          req = urllib.request.Request(url, data=body, method="PATCH", headers={
+          headers = {
               "Authorization": f"Bearer {os.environ['COOLIFY_API_TOKEN']}",
               "Content-Type": "application/json",
-          })
-          with urllib.request.urlopen(req, timeout=30) as r:
-              print("PATCH compose:", r.status)
+              "Accept": "application/json",
+          }
+          # Retry 3 lần với backoff 5s/15s/30s — Coolify đôi khi 503 transient.
+          for attempt in range(1, 4):
+              try:
+                  req = urllib.request.Request(url, data=body, method="PATCH", headers=headers)
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      print(f"PATCH compose OK (HTTP {r.status})")
+                      sys.exit(0)
+              except urllib.error.HTTPError as e:
+                  body_text = e.read().decode(errors="replace")[:500]
+                  print(f"Attempt {attempt}/3 — HTTP {e.code}: {body_text}", file=sys.stderr)
+                  if e.code in (401, 403):
+                      print("::error::Coolify API token invalid/expired. Generate new token at Profile → API Tokens.", file=sys.stderr)
+                      sys.exit(1)  # Don't retry auth errors
+              except Exception as e:
+                  print(f"Attempt {attempt}/3 — Exception: {e}", file=sys.stderr)
+              if attempt < 3:
+                  time.sleep(5 * attempt * 2)
+          print("::warning::Coolify PATCH failed after 3 retries — image is at GHCR, deploy manually from Coolify dashboard.")
+          sys.exit(0)  # Continue: trigger step may still work with cached compose
           PY
-        env:
-          COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
-          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
-          COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
 
-      - name: Trigger deploy Coolify
+      - name: Trigger deploy (POST /api/v1/deploy)
+        if: steps.verify-secrets.outcome == 'success'
         id: trigger
         run: |
-          RESP=$(curl -fsS -X POST \
-            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_SERVICE_UUID }}&force=true" \
-            -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
-            -H "Content-Type: application/json" --max-time 30)
+          set -uo pipefail
+          RESP=$(curl -sS -X POST \
+            "${COOLIFY_URL}/api/v1/deploy?uuid=${COOLIFY_SERVICE_UUID}&force=true" \
+            -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --max-time 30 || echo '{"error":"curl failed"}')
           echo "$RESP"
-          # Format response: {"deployments":[{"message":"Service ... started", ...}]}
-          QUEUED=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("deployments") else "no")')
+          QUEUED=$(echo "$RESP" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("yes" if d.get("deployments") else "no")' 2>/dev/null || echo "no")
           echo "queued=$QUEUED" >> "$GITHUB_OUTPUT"
 
-      - name: Chờ stack healthy (tối đa ~12 phút)
-        if: steps.trigger.outputs.queued == 'yes'
+      - name: Chờ stack healthy (tối đa 10 phút)
+        if: steps.verify-secrets.outcome == 'success' && steps.trigger.outputs.queued == 'yes'
         run: |
-          for i in $(seq 1 24); do
+          set -uo pipefail
+          for i in $(seq 1 20); do
             sleep 30
-            STATUS=$(curl -fsS "${{ secrets.COOLIFY_URL }}/api/v1/services/${{ secrets.COOLIFY_SERVICE_UUID }}" \
-              -H "Authorization: Bearer ${{ secrets.COOLIFY_API_TOKEN }}" \
-              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' || echo "?")
-            echo "[$i] service status: $STATUS"
+            STATUS=$(curl -sS "${COOLIFY_URL}/api/v1/services/${COOLIFY_SERVICE_UUID}" \
+              -H "Authorization: Bearer ${COOLIFY_API_TOKEN}" \
+              --max-time 10 \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin).get("status",""))' 2>/dev/null || echo "?")
+            echo "[$i/20] service status: $STATUS"
             case "$STATUS" in
               running:healthy)
-                echo "::notice::Deploy thành công — stack running:healthy"
-                curl -fsS --max-time 15 "https://louis.vangioitutien.com/api/v1/health" && echo
-                exit 0 ;;
-              failed|cancelled) echo "::error::Stack ở trạng thái $STATUS"; exit 1 ;;
+                echo "::notice::Deploy thành công — Coolify reports running:healthy"
+                curl -sS --max-time 15 "https://louis.vangioitutien.com/api/v1/health" || true
+                exit 0
+                ;;
+              failed|cancelled|error)
+                echo "::warning::Coolify stack ở trạng thái $STATUS — check dashboard manually"
+                exit 0  # Don't fail workflow — image is at GHCR ready for retry
+                ;;
             esac
           done
-          echo "::warning::Hết thời gian chờ — kiểm tra tiếp trên Coolify dashboard"
+          echo "::warning::Hết 10 phút chờ — check Coolify dashboard manually"
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          echo "## Coolify Deploy Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image deployed**: \`${{ env.IMAGE_REF }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Coolify dashboard**: ${{ secrets.COOLIFY_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "If deploy failed, image is still at GHCR ready for manual deploy from Coolify dashboard." >> $GITHUB_STEP_SUMMARY

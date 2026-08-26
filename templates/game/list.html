@@ -93,9 +93,9 @@
     {% set total_pages = (total + per_page - 1) / per_page %}
     {% if total_pages > 1 %}
     <nav class="pagination" aria-label="Phân trang danh sách game">
-        {% if page > 1 %}<a href="{{ base_url }}?sort={{ sort }}&page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        {% if page > 1 %}<a href="{{ base_url }}?sort={{ sort }}&amp;page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
         <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
-        {% if page < total_pages %}<a href="{{ base_url }}?sort={{ sort }}&page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+        {% if page < total_pages %}<a href="{{ base_url }}?sort={{ sort }}&amp;page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
     </nav>
     {% endif %}
     {% endif %}

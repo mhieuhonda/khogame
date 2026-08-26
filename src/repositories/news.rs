@@ -104,7 +104,9 @@ impl NewsRepo {
         page: i64,
         per_page: i64,
     ) -> AppResult<Vec<NewsWithAuthor>> {
-        let offset = (page - 1).max(0) * per_page;
+        // saturating_sub/saturating_mul: chố overflow i64 khi page = i64::MAX
+        // (debug panic / release wrap → OFFSET âm → Postgres 500).
+        let offset = page.saturating_sub(1).saturating_mul(per_page);
         let items = sqlx::query_as::<_, NewsWithAuthor>(
             r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
@@ -170,7 +172,7 @@ impl NewsRepo {
         page: i64,
         per_page: i64,
     ) -> AppResult<Vec<NewsWithAuthor>> {
-        let offset = (page - 1).max(0) * per_page;
+        let offset = page.saturating_sub(1).saturating_mul(per_page);
         let items = sqlx::query_as::<_, NewsWithAuthor>(
             r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
@@ -202,8 +204,13 @@ impl NewsRepo {
         page: i64,
         per_page: i64,
     ) -> AppResult<Vec<NewsWithAuthor>> {
-        let offset = (page - 1).max(0) * per_page;
-        let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
+        let offset = page.saturating_sub(1).saturating_mul(per_page);
+        // escape_like: escape wildcard %, _ VÀ backslash (escape char) —
+        // trước đây chỉ escape % và _, không escape \ → user tìm ký tự `
+        // làm Postgres hiểu ký tự kế tiếp bị escape (match sai). Phải kèm
+        // `ESCAPE '\\'` để cố định escape char (mặc định PG đã là \\ nhưng
+        // tường minh tránh phụ thuộc session standard_conforming_strings).
+        let pattern = format!("%{}%", crate::utils::escape_like(query));
         let items = sqlx::query_as::<_, NewsWithAuthor>(
             r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
                      n.cover_image, n.category, n.source_url, n.source_name,
@@ -214,8 +221,8 @@ impl NewsRepo {
               FROM news n
               JOIN users u ON u.id = n.user_id
               WHERE n.status = 'published'
-                AND (n.title ILIKE $1 OR n.content ILIKE $1)
-              ORDER BY n.published_at DESC NULLS LAST
+                AND (n.title ILIKE $1 ESCAPE '\\' OR n.content ILIKE $1 ESCAPE '\\')
+              ORDER BY n.published_at DESC NULLS LAST, n.created_at DESC, n.id
               LIMIT $2 OFFSET $3",
         )
         .bind(&pattern)
@@ -313,7 +320,7 @@ impl NewsRepo {
         page: i64,
         per_page: i64,
     ) -> AppResult<Vec<NewsForAdmin>> {
-        let offset = (page - 1).max(0) * per_page;
+        let offset = page.saturating_sub(1).saturating_mul(per_page);
         let items = sqlx::query_as::<_, NewsForAdmin>(
             r"SELECT n.*, u.display_name AS author_name,
                      u.username AS author_username, u.email AS author_email,
@@ -661,11 +668,15 @@ impl NewsRepo {
                 .await?;
             true
         } else {
-            // Bump counter -1 — atomic.
-            sqlx::query("UPDATE news_comments SET like_count = like_count - 1 WHERE id = $1")
-                .bind(comment_id)
-                .execute(&mut *tx)
-                .await?;
+            // Bump counter -1 — atomic. GREATEST(0, x-1) chố underflow:
+            // nếu like_count đã = 0 (race, schema drift, hoặc trigger cũ
+            // chưa có guard) thì trừ sẽ thành -1 → UI hiển thị "-1 lượt thích".
+            sqlx::query(
+                "UPDATE news_comments SET like_count = GREATEST(0, like_count - 1) WHERE id = $1",
+            )
+            .bind(comment_id)
+            .execute(&mut *tx)
+            .await?;
             false
         };
         tx.commit().await?;
@@ -723,13 +734,15 @@ impl NewsRepo {
         query: &str,
         limit: i64,
     ) -> AppResult<Vec<(String, String)>> {
-        // Escape wildcard + clamp 100 ký tự như search công khai
+        // Escape wildcard + clamp 100 ký tự như search công khai.
+        // escape_like escape cả backslash (escape char) — phải kèm ESCAPE '\\'
+        // để PG hiểu chính xác ký tự escape (xem NewsRepo::search cho chi tiết).
         let q: String = query.chars().take(100).collect();
-        let pattern = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let pattern = format!("%{}%", crate::utils::escape_like(&q));
         let rows: Vec<(String, String)> = sqlx::query_as(
             r"SELECT title, slug FROM news
-              WHERE status = 'published' AND title ILIKE $1
-              ORDER BY published_at DESC NULLS LAST
+              WHERE status = 'published' AND title ILIKE $1 ESCAPE '\\'
+              ORDER BY published_at DESC NULLS LAST, id
               LIMIT $2",
         )
         .bind(&pattern)

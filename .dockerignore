@@ -1,15 +1,124 @@
-# Build context tối giản cho Docker
+# ============================================================
+# .dockerignore — loại trừ file không cần trong build context
+# ============================================================
+# Docker build context (gửi tới daemon khi `docker build .`) mặc định
+# là toàn bộ repo. Không có .dockerignore → `target/` (~5GB khi build
+# local), `.git/` (~50MB-1GB), `node_modules/` (nếu có), `.env` (leak
+# secret!) cũng bị copy → image phình + build chậm + leak risk.
+#
+# Quy tắc:
+# - Loại trừ những gì KHÔNG cần cho `cargo build` + chạy binary.
+# - GIỮ: Cargo.toml, Cargo.lock, src/, templates/, migrations/,
+#   static/, .env.example (chỉ để docs), Dockerfile, rust-toolchain.toml
+#   (buildx cần để biết Rust version).
+# - LOẠI: target/, .git/, .env, .env.* (trừ .env.example), *.md,
+#   docs/, scripts/, tests/, .github/, .vscode/, .idea/, v.v.
+
+# ─── Build artifacts (lớn nhất) ─────────────────────────────
 target/
+**/target/
+**/*.rs.bk
+
+# ─── Version control ────────────────────────────────────────
 .git/
 .gitignore
+.gitattributes
+.gitmodules
+.github/
+.gitreview
+
+# ─── Secrets (CRITICAL — không bao giờ copy vào image) ──────
 .env
 .env.*
 !.env.example
+.env.local
+.env.*.local
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+.aws/
+.ssh/
+
+# ─── Docs & metadata (không cần runtime) ────────────────────
 *.md
+!README.md
+!CHANGELOG.md
+!LICENSE
 docs/
+SECURITY.md
+WORKLOG.md
+worklog.md
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+ISSUE_TEMPLATE/
+PULL_REQUEST_TEMPLATE.md
+
+# ─── Docker metadata (chỉ cần để build, không cần trong image) ───
 docker-compose*.yml
-.github/
-rust-toolchain*
-tools/
+deploy/
+Dockerfile.*
+.dockerignore
+.docker/
+compose*.yaml
+
+# ─── IDE / editor config ────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.claude/
+.cursor/
+.fleet/
+.history/
+*.iml
+
+# ─── CI / scripts (chỉ devops dùng, không cần trong image) ──
 scripts/
+tools/
 examples/
+tests/
+test/
+benches/
+
+# ─── Rust toolchain (buildx cần rust-toolchain.toml để biết Rust
+#     version, KHÔNG loại trừ). rust-toolchain.toml được GIỮ ───
+# (không có dòng ignore cho rust-toolchain*)
+
+# ─── Coverage / test artifacts ──────────────────────────────
+coverage/
+tarpaulin/
+*.profraw
+*.profdata
+*.gcov
+lcov.info
+
+# ─── Logs / temp files ──────────────────────────────────────
+*.log
+*.log.*
+logs/
+log/
+*.tmp
+*.temp
+*.bak
+*.old
+
+# ─── OS-specific clutter ────────────────────────────────────
+.Trashes
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ─── Cargo metadata (không cần runtime) ─────────────────────
+.cargo/
+cargo-home/
+
+# ─── Download directory (nếu operator có) ───────────────────
+download/
+dist/
+out/
+build/

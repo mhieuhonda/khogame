@@ -163,16 +163,12 @@ impl SessionRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn find_token_hash_by_id(
-        pool: &PgPool,
-        id: Uuid,
-    ) -> AppResult<Option<String>> {
-        let hash: Option<String> = sqlx::query_scalar(
-            "SELECT token_hash FROM sessions WHERE id = $1",
-        )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?;
+    pub async fn find_token_hash_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<String>> {
+        let hash: Option<String> =
+            sqlx::query_scalar("SELECT token_hash FROM sessions WHERE id = $1")
+                .bind(id)
+                .fetch_optional(pool)
+                .await?;
         Ok(hash)
     }
 }

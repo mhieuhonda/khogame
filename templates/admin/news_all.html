@@ -31,7 +31,7 @@
         <tbody>
             {% for n in items %}
             <tr>
-                <td><a href="/news/{{ n.slug }}" target="_blank">{{ n.title }}</a></td>
+                <td><a href="/news/{{ n.slug }}" target="_blank" rel="noopener">{{ n.title }}</a></td>
                 <td>
                     <a href="/u/{{ n.author_username }}">{{ n.author_name }}</a>
                     <br><small>{{ n.author_email }}</small>

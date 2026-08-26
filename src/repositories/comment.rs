@@ -224,10 +224,16 @@ impl CommentRepo {
                 .execute(&mut *tx)
                 .await?;
         if deleted.rows_affected() > 0 {
-            sqlx::query("UPDATE comments SET like_count = like_count - 1 WHERE id = $1")
-                .bind(comment_id)
-                .execute(&mut *tx)
-                .await?;
+            // GREATEST(0, x-1) chống underflow: comments.like_count không có
+            // trigger guard (trigger chỉ có cho likes/likes_of_games), nên
+            // nếu like_count đã = 0 do race/schema drift, phép trừ sẽ tạo
+            // -1 → UI hiển thị "-1 lượt thích".
+            sqlx::query(
+                "UPDATE comments SET like_count = GREATEST(0, like_count - 1) WHERE id = $1",
+            )
+            .bind(comment_id)
+            .execute(&mut *tx)
+            .await?;
             tx.commit().await?;
             Ok(false)
         } else {

@@ -66,15 +66,20 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
 
 /// Lắng nghe tín hiệu dừng: SIGTERM (container/orchestrator) và SIGINT (Ctrl+C).
 ///
-/// Trả về khi nhận được tín hiệu đầu tiên. Tín hiệu thứ hai (nhấn Ctrl+C
-/// lần nữa trong lúc chờ grace period) sẽ buộc thoát ngay nhờ hành vi
-/// mặc định của tokio (không swallow).
+/// Trả về khi nhận được tín hiệu đầu tiên. Sau khi nhận, spawn 2 task nền:
+///   1. Grace period timer: sau `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` (mặc định 30s),
+///      nếu vẫn còn in-flight connection, `std::process::exit(0)` force-thoát
+///      tránh treo vĩnh viễn chờ docker SIGKILL.
+///   2. Second-signal handler: đợi SIGINT/SIGTERM thứ hai, nếu nhận →
+///      `std::process::exit(1)` ngay lập tức (bypass grace period).
+///      Operator nhấn Ctrl+C lần nữa khi đã chờ quá lâu sẽ force-kill thay
+///      vì phải đợi hết grace period.
 ///
-/// Sau khi nhận tín hiệu, spawn bộ đếm grace period
-/// (`GRACEFUL_SHUTDOWN_TIMEOUT_SECS`, mặc định 30s): nếu hết thời gian mà
-/// vẫn còn connection treo (client chậm, download dài), force exit để
-/// không treo vĩnh viễn chờ docker SIGKILL — đúng như comment tài liệu
-/// đã hứa nhưng trước đây chưa được triển khai.
+/// Lưu ý về behavior: tokio `signal::ctrl_c()` cài handler toàn cục đè
+/// default OS action (terminate). Sau khi future đầu tiên hoàn thành (signal
+/// thứ nhất) và bị drop trong `tokio::select!`, handler vẫn còn đăng ký
+/// nhưng KHÔNG có future nào đợi → signal thứ hai bị swallow (không exit).
+/// Fix: spawn thêm `ctrl_c()` future thứ hai đón signal thứ hai → exit(1).
 async fn shutdown_signal() {
     let ctrl_c = async {
         let _ = tokio::signal::ctrl_c().await;
@@ -106,6 +111,9 @@ async fn shutdown_signal() {
         .and_then(|v| v.parse().ok())
         .filter(|v| *v > 0)
         .unwrap_or(30);
+    // Task 1: grace period timer — force exit nếu in-flight connection vẫn
+    // treo sau grace_secs (docker SIGKILL sẽ tới sau ~10s nữa, mình chủ động
+    // exit trước để log sạch).
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(grace_secs)).await;
         tracing::warn!(
@@ -113,5 +121,32 @@ async fn shutdown_signal() {
             grace_secs
         );
         std::process::exit(0);
+    });
+    // Task 2: second-signal handler — operator nhấn Ctrl+C lần 2 (hoặc
+    // SIGTERM lần 2 từ docker kill) sẽ force-exit ngay không chờ grace.
+    // Trước đây comment doc nói "tín hiệu thứ hai sẽ force exit nhờ hành vi
+    // mặc định của tokio" — KHÔNG ĐÚNG: tokio đã cài handler đè default,
+    // signal thứ hai chỉ bị swallow. Phải spawn handler riêng để đón.
+    tokio::spawn(async move {
+        let second_ctrl_c = async {
+            let _ = tokio::signal::ctrl_c().await;
+        };
+        #[cfg(unix)]
+        let second_terminate = async {
+            match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+                Ok(mut sig) => {
+                    sig.recv().await;
+                }
+                Err(_) => std::future::pending::<()>().await,
+            }
+        };
+        #[cfg(not(unix))]
+        let second_terminate = std::future::pending::<()>();
+        tokio::select! {
+            () = second_ctrl_c => {}
+            () = second_terminate => {}
+        }
+        tracing::warn!("Nhận tín hiệu dừng lần 2 — force exit ngay (bypass grace period)");
+        std::process::exit(1);
     });
 }

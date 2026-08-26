@@ -57,9 +57,9 @@
         <div class="form-actions">
             <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
             <a href="/news/{{ news.slug }}" class="btn btn-ghost">Xem tin</a>
-            <form method="post" action="/news/{{ news.slug }}/delete" onsubmit="return confirm('Xóa vĩnh viễn tin này?')">
-                <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
-            </form>
+            <button type="button" class="btn btn-danger btn-sm"
+                    hx-delete="/news/{{ news.slug }}"
+                    hx-confirm="Xóa vĩnh viễn tin này?">Xóa</button>
         </div>
     </form>
 </section>

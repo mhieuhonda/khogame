@@ -41,7 +41,9 @@
                     {% match n.cover_image %}
                     {% when Option::Some with (url) %}
                         {% if !url.is_empty() %}
-                        <div class="news-card-cover" style="background-image:url('{{ url }}')"></div>
+                        {# XSS-safe <img> thay cho inline style background-image:url('{{ url }}')
+                           — chống CSS injection qua URL có ký tự ');body{...}. #}
+                        <div class="news-card-cover"><img src="{{ url }}" alt="{{ n.title }}" loading="lazy" decoding="async" width="320" height="180" style="width:100%;height:100%;object-fit:cover;display:block"></div>
                         {% else %}
                         <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
                         {% endif %}
@@ -95,7 +97,9 @@
                 {% match n.cover_image %}
                 {% when Option::Some with (url) %}
                     {% if !url.is_empty() %}
-                    <div class="news-card-cover" style="background-image:url('{{ url }}')"></div>
+                    {# XSS-safe <img> thay cho inline style background-image:url('{{ url }}')
+                       — chống CSS injection qua URL có ký tự ');body{...}. #}
+                    <div class="news-card-cover"><img src="{{ url }}" alt="{{ n.title }}" loading="lazy" decoding="async" width="320" height="180" style="width:100%;height:100%;object-fit:cover;display:block"></div>
                     {% else %}
                     <div class="news-card-cover news-card-cover-fallback">{{ n.title.chars().next().unwrap_or('N') }}</div>
                     {% endif %}
@@ -129,11 +133,11 @@
     {% if total_pages > 1 %}
     <nav class="pagination" aria-label="Phân trang">
         {% if page > 1 %}
-        <a href="?page={{ page - 1 }}{% if !category.is_empty() %}&category={{ category }}{% endif %}{% if !query.is_empty() %}&q={{ query }}{% endif %}" class="pagination-link" rel="prev">← Trước</a>
+        <a href="?page={{ page - 1 }}{% if !category.is_empty() %}&amp;category={{ category }}{% endif %}{% if !query.is_empty() %}&amp;q={{ query }}{% endif %}" class="pagination-link" rel="prev">← Trước</a>
         {% endif %}
         <span class="pagination-info">Trang {{ page }} / {{ total_pages }}</span>
         {% if page < total_pages %}
-        <a href="?page={{ page + 1 }}{% if !category.is_empty() %}&category={{ category }}{% endif %}{% if !query.is_empty() %}&q={{ query }}{% endif %}" class="pagination-link" rel="next">Sau →</a>
+        <a href="?page={{ page + 1 }}{% if !category.is_empty() %}&amp;category={{ category }}{% endif %}{% if !query.is_empty() %}&amp;q={{ query }}{% endif %}" class="pagination-link" rel="next">Sau →</a>
         {% endif %}
     </nav>
     {% endif %}

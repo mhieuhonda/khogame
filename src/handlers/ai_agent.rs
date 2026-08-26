@@ -141,7 +141,9 @@ pub async fn register(
     // Validate email — RFC 5321 max 254 ký tự
     if let Some(email) = req.email.as_deref() {
         if !email.is_empty() && email.trim().chars().count() > 254 {
-            return Err(AppError::BadRequest("Email quá dài (tối đa 254 ký tự)".into()));
+            return Err(AppError::BadRequest(
+                "Email quá dài (tối đa 254 ký tự)".into(),
+            ));
         }
     }
     // Validate username length — repo tự slugify nhưng text raw vẫn
@@ -161,9 +163,13 @@ pub async fn register(
     }
     // Validate privacy_level — whitelist
     if let Some(level) = req.privacy_level.as_deref() {
-        if !matches!(level, "public" | "private" | "internal") {
+        // Đồng bộ với repo: chỉ chấp nhận "public" hoặc "anonymous"
+        // (enum AiPrivacyLevel chỉ có 2 variant). Trước đây handler cho
+        // qua "private"/"internal" rồi repo reject với message khác —
+        // user nhận 400 khó hiểu.
+        if !matches!(level, "public" | "anonymous") {
             return Err(AppError::BadRequest(
-                "Privacy level phải là public/private/internal".into(),
+                "Privacy level phải là 'public' hoặc 'anonymous'".into(),
             ));
         }
     }
@@ -194,7 +200,11 @@ pub async fn register(
     let display_name = req
         .display_name
         .as_deref()
-        .filter(|s| !s.trim().is_empty()).map_or_else(|| req.model_name.trim().to_string(), |s| s.trim().to_string());
+        .filter(|s| !s.trim().is_empty())
+        .map_or_else(
+            || req.model_name.trim().to_string(),
+            |s| s.trim().to_string(),
+        );
     let token_label = req
         .token_label
         .as_deref()
@@ -443,9 +453,7 @@ async fn report_progress_impl(
         // Validate JSON hợp lệ — trước đây chỉ from_str().ok() silently
         // drop metadata nếu JSON lỗi, AI tưởng đã lưu nhưng thực ra không.
         if serde_json::from_str::<serde_json::Value>(md).is_err() {
-            return Err(AppError::BadRequest(
-                "Metadata phải là JSON hợp lệ".into(),
-            ));
+            return Err(AppError::BadRequest("Metadata phải là JSON hợp lệ".into()));
         }
     }
     let percentage = req.percentage.unwrap_or(0).clamp(0, 100);
@@ -557,6 +565,24 @@ pub async fn update_profile(
             ));
         }
     }
+    // Validate accent_color — phải là hex color (#RGB hoặc #RRGGBB).
+    // Cùng chuẩn với register: chặn payload lạ vào DB (có thể vỡ CSS
+    // render hoặc lách CSP qua value cũ) và giữ giá trị mặc định khi rỗng.
+    let accent_color = form.accent_color.as_deref().unwrap_or("#7c3aed");
+    if !is_valid_hex_color(accent_color) {
+        return Err(AppError::BadRequest(
+            "Accent color phải là hex color (vd #7c3aed)".into(),
+        ));
+    }
+    // Validate privacy_level — whitelist giá trị hợp lệ. Trước đây update
+    // không kiểm tra (chỉ register có check) → AI Agent có thể set giá trị
+    // lạ, vỡ cast sang privacy_level enum khi repo bind.
+    let privacy_level = form.privacy_level.as_deref().unwrap_or("public");
+    if !matches!(privacy_level, "public" | "anonymous") {
+        return Err(AppError::BadRequest(
+            "Privacy level phải là 'public' hoặc 'anonymous'".into(),
+        ));
+    }
     let capabilities: Vec<String> = form
         .capabilities
         .as_deref()
@@ -586,8 +612,8 @@ pub async fn update_profile(
         form.vendor.as_str(),
         form.version.as_str(),
         &capabilities,
-        form.privacy_level.as_deref().unwrap_or("public"),
-        form.accent_color.as_deref().unwrap_or("#7c3aed"),
+        privacy_level,
+        accent_color,
         form.bio.as_deref().unwrap_or(""),
         form.avatar_url.as_deref(),
     )

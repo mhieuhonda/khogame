@@ -221,6 +221,12 @@ impl InteractionRepo {
         user_id: Uuid,
         score: i16,
     ) -> AppResult<()> {
+        // Bọc trong tx: INSERT rating + UPDATE games.rating_avg/rating_count
+        // phải atomic. Trước đây 2 query rời nhau → nếu UPDATE thứ 2 fail
+        // (DB chập chờn, lock contention), bảng `ratings` có điểm mới nhưng
+        // `games.rating_avg` vẫn là giá trị cũ → UI hiển thị star_avg sai
+        // cho đến khi user khác rate lại game đó.
+        let mut tx = pool.begin().await?;
         sqlx::query(
             r"INSERT INTO ratings (game_id, user_id, score)
               VALUES ($1, $2, $3)
@@ -229,7 +235,7 @@ impl InteractionRepo {
         .bind(game_id)
         .bind(user_id)
         .bind(score)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         // Recompute game rating_avg / rating_count
@@ -240,8 +246,9 @@ impl InteractionRepo {
               WHERE id = $1",
         )
         .bind(game_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 

@@ -11,6 +11,7 @@
                   hx-post="/games/{{ slug }}/report"
                   hx-target="#report-form-result-{{ slug }}"
                   hx-swap="innerHTML"
+                  hx-disabled-elt="find button[type=submit]"
                   hx-on::after-request="if(event.detail.successful) setTimeout(() => { document.getElementById('report-modal-{{ slug }}').remove(); }, 1500)">
                 <div class="form-group">
                     <label class="form-label">Lý do báo cáo <span class="required">*</span></label>

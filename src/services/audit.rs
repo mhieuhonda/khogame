@@ -16,6 +16,12 @@ use uuid::Uuid;
 /// `target_type`: kiểu đối tượng như `user`, `game`, `news`, `session`.
 /// `target_id`: ID (UUID) hoặc giá trị định danh đối tượng.
 /// `detail`: thông tin thêm (vd `"on"`, `"vì vi phạm X"`, JSON ngắn).
+///
+/// Trước đây `audit()` dùng `let _ = AdminLogRepo::log(...).await;` silent
+/// swallow — nếu DB lỗi, admin không có cách nào biết audit log bị thiếu →
+/// mất khả năng tra cứu sau này (compliance/forensics). Giữ best-effort
+/// (không fail request, signature vẫn `async fn (...)`) NHƯNG log warning
+/// để admin thấy được khi insert fail.
 pub async fn audit(
     state: &AppState,
     admin_id: Uuid,
@@ -24,7 +30,7 @@ pub async fn audit(
     target_id: &str,
     detail: &str,
 ) {
-    let _ = AdminLogRepo::log(
+    if let Err(e) = AdminLogRepo::log(
         &state.db,
         admin_id,
         action,
@@ -33,5 +39,15 @@ pub async fn audit(
         detail,
         None,
     )
-    .await;
+    .await
+    {
+        // KHÔNG fail request (audit là best-effort). Nhưng log warning để
+        // admin quan sát — trước đây `let _ =` silent swallow khiến log bị
+        // thiếu mà không ai biết cho đến khi cần tra cứu (đã muộn).
+        tracing::warn!(
+            "Audit log FAILED (admin_id={admin_id}, action={action}, \
+             target={target_type}/{target_id}): {e:?} — hành động vẫn \
+             thành công nhưng audit trail bị thiếu."
+        );
+    }
 }

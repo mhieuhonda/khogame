@@ -1,8 +1,11 @@
 # Dependabot: tự kiểm tra cập nhật dependency
 # - cargo: Rust crates (axum, sqlx, tokio...) — nhóm lại 1 PR/tuần
 #   để không spam PR riêng lẻ từng crate.
-# - github-actions: pin lại các action chính (checkout v4...)
+# - github-actions: pin lại các action chính (checkout v4, buildx v3...)
 # - docker: base image rust:1.98-slim / debian:bookworm-slim
+#
+# Sau khi Dependabot mở PR, CI (`.github/workflows/ci.yml`) chạy cargo
+# check + clippy + test + cargo-audit. PR merge khi CI xanh.
 version: 2
 updates:
   - package-ecosystem: "cargo"
@@ -13,19 +16,33 @@ updates:
       timezone: "Asia/Ho_Chi_Minh"
     open-pull-requests-limit: 5
     groups:
-      # Gom các crate phụ thành 1 PR lớn; crate chính để riêng dễ review
+      # Gom các crate phụ minor/patch thành 1 PR lớn — giảm review fatigue.
+      # Major version bump (vd axum 0.8 → 0.9) để PR riêng dễ review +
+      # rollback nếu breaking change API (vd sqlx 0.9 thay đổi query macro).
       minor-and-patch:
         update-types:
           - "minor"
           - "patch"
-    # Rust toolchain pin 1.98 — major version bump của axum/sqlx cần
-    # review thủ công (thường kèm breaking change API).
+        # Exclude crate chính để riêng — major bump của chúng cần review thủ công.
+        exclude-patterns:
+          - "axum"
+          - "sqlx"
+          - "tokio"
+    # Rust toolchain pin 1.98 — major version bump của axum/sqlx/tokio
+    # thường kèm breaking change API + đôi khi yêu cầu Rust mới hơn → cần
+    # review thủ công + smoke test trước khi merge.
     ignore:
       - dependency-name: "axum"
         update-types: ["version-update:semver-major"]
       - dependency-name: "sqlx"
         update-types: ["version-update:semver-major"]
       - dependency-name: "tokio"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "reqwest"
+        update-types: ["version-update:semver-major"]
+      # askama 0.16 → 0.17 (nếu ra) có thể thay đổi template syntax —
+      # cấm auto major, review thủ công khi upgrade.
+      - dependency-name: "askama"
         update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(deps)"
@@ -38,7 +55,25 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      timezone: "Asia/Ho_Chi_Minh"
     open-pull-requests-limit: 3
+    groups:
+      # Gom tất cả action minor/patch (vd checkout v4.1.0 → v4.2.0)
+      # thành 1 PR — các action GitHub thường backward-compatible.
+      github-actions-all:
+        update-types:
+          - "minor"
+          - "patch"
+    # Major bump của actions/checkout, docker/build-push-action có thể
+    # thay đổi input syntax → để PR riêng review.
+    ignore:
+      - dependency-name: "actions/checkout"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "docker/build-push-action"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "docker/setup-buildx-action"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(ci)"
     labels:
@@ -49,7 +84,23 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+      timezone: "Asia/Ho_Chi_Minh"
     open-pull-requests-limit: 2
+    groups:
+      # Gom 2 base image (rust:1.98-slim + debian:bookworm-slim) thành
+      # 1 PR khi cùng có patch available.
+      docker-base-images:
+        update-types:
+          - "minor"
+          - "patch"
+    # Major bump (rust 1.98 → 1.99, debian bookworm → trixie) cần
+    # review toolchain compat (rust-toolchain.toml pin 1.98).
+    ignore:
+      - dependency-name: "rust"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "debian"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore(docker)"
     labels:

@@ -35,9 +35,12 @@
             </div>
             <div class="my-news-actions">
                 <a href="/news/{{ n.slug }}/edit" class="btn btn-outline btn-sm">Sửa</a>
-                <form method="post" action="/news/{{ n.slug }}/delete" onsubmit="return confirm('Xóa vĩnh viễn?')">
-                    <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
-                </form>
+                <button type="button" class="btn btn-danger btn-sm"
+                        hx-delete="/news/{{ n.slug }}"
+                        hx-target="closest .my-news-item"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this"
+                        hx-confirm="Xóa vĩnh viễn?">Xóa</button>
             </div>
         </div>
         {% endfor %}

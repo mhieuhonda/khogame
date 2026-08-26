@@ -9,8 +9,8 @@
 //! stored XSS qua `</script>` breakout (serde_json mặc định không
 //! escape `<` `>` `&`).
 
-use crate::models::game::{Game, GameLink};
 use crate::models::category::Category;
+use crate::models::game::{Game, GameLink};
 use crate::models::user::User;
 use crate::utils::json_ld_safe;
 

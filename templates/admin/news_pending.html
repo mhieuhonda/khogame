@@ -22,7 +22,7 @@
             <header class="admin-news-header">
                 <span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span>
                 <h3>{{ n.title }}</h3>
-                <a href="/news/{{ n.slug }}" class="btn btn-outline btn-sm" target="_blank">Xem trước</a>
+                <a href="/news/{{ n.slug }}" class="btn btn-outline btn-sm" target="_blank" rel="noopener">Xem trước</a>
             </header>
             <div class="admin-news-body">
                 {% if !n.excerpt.is_empty() %}

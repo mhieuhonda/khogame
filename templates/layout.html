@@ -177,7 +177,7 @@
         </div>
     </header>
 
-    <div id="announcement-slot"></div>
+    <div id="announcement-slot" aria-live="polite" aria-atomic="true"></div>
 
     <main class="site-main" id="main-content">
         <div class="container">
@@ -237,7 +237,7 @@
         </div>
     </footer>
 
-    <script src="/static/js/app.js?v=1.0.0"></script>
+    <script src="/static/js/app.js?v=1.0.0" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

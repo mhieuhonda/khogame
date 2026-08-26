@@ -46,7 +46,9 @@
     {% match news.cover_image %}
     {% when Option::Some with (url) %}
     {% if !url.is_empty() %}
-    <div class="news-show-cover" style="background-image:url('{{ url }}')"></div>
+    {# XSS-safe <img> thay cho inline style background-image:url('{{ url }}')
+       — chống CSS injection qua URL có ký tự ');body{...}. #}
+    <div class="news-show-cover"><img src="{{ url }}" alt="{{ news.title }}" loading="lazy" decoding="async" width="1200" height="675" style="width:100%;height:100%;object-fit:cover;display:block"></div>
     {% endif %}
     {% when Option::None %}
     {% endmatch %}
@@ -74,7 +76,8 @@
         {% match current_user %}
         {% when Option::Some with (user) %}
         <button class="btn {% if has_liked %}btn-primary{% else %}btn-outline{% endif %} btn-sm"
-                hx-post="/news/{{ news.slug }}/like" hx-swap="outerHTML"
+                hx-post="/news/{{ news.slug }}/like" hx-target="this" hx-swap="outerHTML"
+                hx-disabled-elt="this"
                 aria-pressed="{% if has_liked %}true{% else %}false{% endif %}">
             ❤️ {{ news.like_count }}
         </button>
@@ -116,7 +119,7 @@
                     {% endmatch %}
                     <strong>{{ c.author_name }}</strong>
                 </a>
-                <div class="comment-body">{{ c.content }}</div>
+                <div class="comment-body">{{ c.content|nl2br }}</div>
                 <div class="comment-meta">
                     <span>{{ c.created_at|format_datetime_vn }}</span>
                 </div>

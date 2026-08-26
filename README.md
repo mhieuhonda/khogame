@@ -9,7 +9,7 @@
 ![Askama](https://img.shields.io/badge/Askama-0.16-purple)
 ![sqlx](https://img.shields.io/badge/sqlx-0.9-green)
 ![Tests](https://img.shields.io/badge/tests-159%2B-brightgreen)
-![Version](https://img.shields.io/badge/version-1.0.0-0f172a)
+![Version](https://img.shields.io/badge/version-1.0.1-0f172a)
 
 ## 🛠️ Công nghệ
 

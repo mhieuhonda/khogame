@@ -5,7 +5,7 @@
     <div class="page-header"><h1>⚙️ Cài đặt hệ thống</h1><p>Cấu hình site, thông báo và chế độ bảo trì.</p></div>
     {% include "admin/_nav.html" %}
     {% if saved %}
-    <div class="alert alert-success">✓ Đã lưu cài đặt.</div>
+    <div class="alert alert-success" role="alert" aria-live="polite">✓ Đã lưu cài đặt.</div>
     {% endif %}
     {# Form chính: site settings — KHÔNG lồng form khác vào trong. #}
     <form action="/admin/settings" method="post" class="admin-settings-form">

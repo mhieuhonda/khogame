@@ -1,3 +1,16 @@
+# ============================================================
+# Louis Space - Local dev compose (app + PostgreSQL 17)
+# Dùng cho `docker compose up -d --build` từ repo root.
+# Production compose: deploy/compose.prod.yml.
+#
+# Khác biệt chính với prod:
+#  - Build từ source (build: .) thay vì pull image pin-digest.
+#  - Google OAuth credentials lấy từ .env (operator tự điền).
+#  - Storage là named volume (persistent local giữa các lần up).
+#  - Không có Traefik labels (dev dùng http://localhost:3000 trực tiếp).
+#  - Không có mem/caps hardening (dev cần debug dễ hơn).
+# ============================================================
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -6,6 +19,7 @@ services:
       POSTGRES_USER: khogame
       POSTGRES_PASSWORD: khogame_local_dev
       POSTGRES_DB: khogame
+      TZ: Asia/Ho_Chi_Minh
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -15,6 +29,10 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      # start_period 30s: postgres container có thể mất 5-15s để init
+      # data dir lần đầu (initdb) — không có start_period, compose có
+      # thể báo unhealthy trước khi postgres sẵn sàng.
+      start_period: 30s
 
   app:
     image: khogame:local
@@ -28,21 +46,36 @@ services:
       PORT: "3000"
       BASE_URL: http://localhost:3000
       DATABASE_URL: postgres://khogame:khogame_local_dev@postgres:5432/khogame
+      # SESSION_KEY default 64 hex zeros — CHỈ dùng cho dev, prod phải set
+      # key thật (`openssl rand -hex 32`). Bất kỳ >= 32 byte nào cũng pass
+      # check độ dài trong config.rs; default này hợp lệ để local dev chạy
+      # không cần copy .env.example.
       SESSION_KEY: ${SESSION_KEY:-change_me_64_hex_chars_in_production_0000000000000}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      # Google OAuth credentials bắt buộc — config.rs fail-fast nếu thiếu.
+      # Lấy từ .env (operator tự điền sau khi `cp .env.example .env`).
+      # `${VAR:?error}` syntax: nếu thiếu, compose fail với message rõ ràng
+      # thay vì im lặng pass empty string (để config.rs báo lỗi mơ hồ).
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID missing — cp .env.example .env và điền OAuth credentials}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET missing — cp .env.example .env và điền OAuth credentials}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-khongdich.admin@gmail.com}
-      RUST_LOG: khogame=info,tower_http=warn
+      RUST_LOG: ${RUST_LOG:-khogame=debug,tower_http=info}
+      TZ: Asia/Ho_Chi_Minh
     ports:
       - "3000:3000"
     volumes:
       - storage:/app/storage
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

@@ -82,13 +82,12 @@ impl RepoRepo {
         }
         // Lấy id của row vừa INSERT — query lại vì RETURNING không dùng
         // được với ON CONFLICT DO NOTHING khi row đã tồn tại (race case).
-        let id: Uuid = sqlx::query_scalar(
-            "SELECT id FROM github_repos WHERE owner = $1 AND repo_name = $2",
-        )
-        .bind(owner)
-        .bind(repo_name)
-        .fetch_one(pool)
-        .await?;
+        let id: Uuid =
+            sqlx::query_scalar("SELECT id FROM github_repos WHERE owner = $1 AND repo_name = $2")
+                .bind(owner)
+                .bind(repo_name)
+                .fetch_one(pool)
+                .await?;
         Ok(id)
     }
 

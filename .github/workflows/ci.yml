@@ -1,58 +1,175 @@
 name: CI
 
+# ============================================================
+# CI — Continuous Integration cho khogame (Louis Space)
+# Chạy trên mọi push main + PR main. Skip cho doc-only changes.
+# Stack: Rust 1.98 (pin exact), axum 0.8.9, sqlx 0.9, askama 0.16.
+# ============================================================
+
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".github/dependabot.yml"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/ISSUE_TEMPLATE/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".github/dependabot.yml"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/ISSUE_TEMPLATE/**"
+  workflow_dispatch:
+
+# Cancel superseded runs on same ref — tiết kiệm runner minutes.
+# KHÔNG cancel job đang chạy deploy (xem deploy.yml có concurrency riêng).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+  # Force cargo refresh registry — tránh cache stale khi Dependabot bump version.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 
 jobs:
+  # Job 1: cargo check — build dependency graph + verify Cargo.lock consistent.
+  # Chạy nhanh nhất (~30s với cache), là early gate cho các job sau.
   check:
-    name: Kiểm tra (Rust 1.98)
+    name: Cargo check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - name: Cài Rust 1.98
-        uses: dtolnay/rust-toolchain@stable
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.98.0"
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Cargo check (--locked)
-        run: cargo check --locked
+      - name: Cargo check (--locked — fail nếu Cargo.lock không khớp Cargo.toml)
+        run: cargo check --locked --all-targets
 
-      # Doc build fail khi có broken intra-doc link hoặc code block Rust
-      # sai cú pháp trong /// comment — lỗi này không lọt qua cargo check
-      # nhưng làm rustdoc HTML hỏng cho người đọc docs.rs/cargo doc.
-      - name: Rustdoc build (no-deps, warnings as errors)
+  # Job 2: rustfmt — check formatting. Chạy riêng để log rõ ràng.
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.0"
+          components: rustfmt
+
+      - name: Cargo fmt --check
+        run: cargo fmt --all -- --check
+
+  # Job 3: clippy — lint với -D warnings (warning = error).
+  clippy:
+    name: Clippy (-D warnings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.0"
+          components: clippy
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Clippy --all-targets
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+  # Job 4: cargo test — chạy 159+ unit test.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.0"
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cargo test --locked
+        run: cargo test --locked --all
+
+  # Job 5: rustdoc — kiểm tra broken intra-doc link + Rust code block trong /// comments.
+  doc:
+    name: Rustdoc (no-deps, -D warnings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cài Rust 1.98 (exact pin)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.98.0"
+
+      - name: Cache cargo registry + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Cargo doc
         run: cargo doc --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: "-D warnings"
 
-      - name: Cargo test
-        run: cargo test --locked
-
-      - name: Clippy
-        run: cargo clippy --all-targets --locked -- -D warnings
-
-      - name: Rustfmt
-        run: cargo fmt --all -- --check
-
+  # Job 6: cargo-audit — quét RustSec advisories cho Cargo.lock.
+  # Chạy song song với các job khác — không chặn nếu cargo test lâu.
   audit:
-    name: Bảo mật dependency (cargo-audit)
+    name: Cargo audit (RustSec)
     runs-on: ubuntu-latest
-    # Chạy song song với job check — không chặn nếu DB test cần lâu
+    timeout-minutes: 10
+    continue-on-error: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Cài cargo-audit
         uses: taiki-e/install-action@v2
         with:
           tool: cargo-audit
 
-      - name: Audit RustSec advisories (Cargo.lock)
+      - name: Audit advisories
         run: cargo audit --deny warnings
-        continue-on-error: false

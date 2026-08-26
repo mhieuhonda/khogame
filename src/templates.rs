@@ -1,4 +1,7 @@
-use crate::models::{user, GameCard, category, tag, news, ai_agent, game, comment, notification, report, settings, repo, NewsStatus};
+use crate::models::{
+    ai_agent, category, comment, game, news, notification, repo, report, settings, tag, user,
+    GameCard, NewsStatus,
+};
 use askama::Template;
 
 /// Implement `axum::response::IntoResponse` for a template type by rendering it.
@@ -590,7 +593,9 @@ pub mod filters {
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn abs_url(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
-        let base = super::SITE_BASE_URL.get().map_or("", std::string::String::as_str);
+        let base = super::SITE_BASE_URL
+            .get()
+            .map_or("", std::string::String::as_str);
         Ok(format!("{}{}", base, s.as_ref()))
     }
 

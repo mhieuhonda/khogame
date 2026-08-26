@@ -3,7 +3,9 @@ use crate::middleware::AuthUser;
 use crate::models::game::GameStatus;
 use crate::repositories::{GameRepo, InteractionRepo};
 use crate::state::AppState;
-use crate::templates::{LikeButtonPartial, BookmarkButtonPartial, RatingStarsPartial, FollowButtonPartial};
+use crate::templates::{
+    BookmarkButtonPartial, FollowButtonPartial, LikeButtonPartial, RatingStarsPartial,
+};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::Html;

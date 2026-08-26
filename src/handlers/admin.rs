@@ -8,7 +8,12 @@ use crate::repositories::{
 };
 use crate::services::audit;
 use crate::state::AppState;
-use crate::templates::{AdminTemplate, AdminReportsTemplate, CommentItemPartial, AdminGamesTemplate, AdminUsersTemplate, AdminCommentsTemplate, AdminCategoriesTemplate, AdminReposTemplate, AdminSettingsTemplate, AdminAuditTemplate, AdminSessionsTemplate, AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminUserDetailTemplate, AdminNewsPendingTemplate, AdminNewsAllTemplate};
+use crate::templates::{
+    AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminAuditTemplate, AdminCategoriesTemplate,
+    AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate, AdminNewsPendingTemplate,
+    AdminReportsTemplate, AdminReposTemplate, AdminSessionsTemplate, AdminSettingsTemplate,
+    AdminTemplate, AdminUserDetailTemplate, AdminUsersTemplate, CommentItemPartial,
+};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -689,7 +694,8 @@ pub async fn save_category(
         .id
         .as_deref()
         .filter(|s| !s.is_empty())
-        .and_then(|s| Uuid::parse_str(s).ok()) {
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
         CategoryRepo::update(&state.db, id, name, description, icon).await?;
         audit(
             &state,
@@ -1151,7 +1157,8 @@ pub async fn revoke_session(
         if let Some(target_hash) = SessionRepo::find_token_hash_by_id(&state.db, id).await? {
             if target_hash == my_token_hash {
                 return Err(AppError::BadRequest(
-                    "Không thể thu hồi phiên đang dùng — dùng /auth/logout hoặc /auth/logout-all".into(),
+                    "Không thể thu hồi phiên đang dùng — dùng /auth/logout hoặc /auth/logout-all"
+                        .into(),
                 ));
             }
         }
@@ -1508,6 +1515,14 @@ pub async fn news_reject(
         .await?
         .ok_or_else(|| AppError::NotFound("Tin không tồn tại".into()))?;
     let note = form.note.as_deref().unwrap_or("").trim();
+    // Validate note length — đồng bộ với resolve_report (2000 ký tự).
+    // Trước đây không check → admin có thể paste payload lớn vào
+    // news.review_note (DB TEXT không constraint) → bloat DB + backup.
+    if note.chars().count() > 2000 {
+        return Err(AppError::BadRequest(
+            "Ghi chú từ chối tối đa 2000 ký tự".into(),
+        ));
+    }
     NewsRepo::reject(&state.db, id, user.id, note).await?;
     let _ = NotificationRepo::create_system(
         &state.db,

@@ -46,10 +46,17 @@ impl AppConfig {
             .filter(|s| !s.is_empty())
             .unwrap_or_default();
         let ai_agent_enabled = !ai_agent_secret.is_empty();
+        // Trim trailing slash trên BASE_URL để đồng nhất với `templates::init_base_url`
+        // (trim_end_matches('/')) — trước đây config KHÔNG trim nên GOOGLE_REDIRECT_URI
+        // check `strip_prefix(&base_url)` fail nếu BASE_URL có `/` cuối (vd `https://x.com/`
+        // vs redirect `https://x.com/auth/...`). Cookie SameSite=None path cũng lợi từ
+        // base_url nhất quán.
         let base_url = env::var("BASE_URL")
             .ok()
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "http://localhost:3000".into());
+            .unwrap_or_else(|| "http://localhost:3000".into())
+            .trim_end_matches('/')
+            .to_string();
         // Cảnh báo prod nếu BASE_URL là http://localhost — cookie sẽ
         // không có Secure, og:image trỏ về localhost, không nên chạy
         // production như vậy. Chỉ warn chứ không fail để dev/test vẫn OK.
@@ -83,15 +90,41 @@ impl AppConfig {
         }
         Ok(Self {
             host: env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into()),
+            // PORT: nếu set nhưng parse fail (vd `PORT=abc`), warn rồi fallback 3000
+            // thay vì silent default — operator dễ nhận ra config sai.
             port: env::var("PORT")
                 .ok()
-                .and_then(|p| p.parse().ok())
-                .unwrap_or(3000),
+                .map_or(3000, |raw| match raw.trim().parse::<u16>() {
+                    Ok(p) => p,
+                    Err(_) => {
+                        tracing::warn!(
+                            "PORT={raw:?} không hợp lệ (phải là u16 0-65535), fallback 3000"
+                        );
+                        3000
+                    }
+                }),
             base_url,
             database_url: env::var("DATABASE_URL")
                 .map_err(|_| anyhow::anyhow!("DATABASE_URL is required"))?,
-            session_key: env::var("SESSION_KEY")
-                .map_err(|_| anyhow::anyhow!("SESSION_KEY is required"))?,
+            // SESSION_KEY là secret dùng để HMAC-sign cookie trong tương lai (hiện
+            // chưa bật nhưng field bắt buộc để sẵn sàng). Validate length ≥32 bytes
+            // ngay từ startup: RFC 2104 HMAC-SHA256 khuyến nghị key ≥ block size
+            // (64 bytes) nhưng ≥32 bytes (256 bit) đã đủ entropy. Fail-fast
+            // thay vì im lặng dùng key yếu (`"dev"`, `"secret"`) — operator
+            // không_để_ý sẽ bị lộ nếu sau này bật HMAC.
+            session_key: {
+                let k = env::var("SESSION_KEY")
+                    .map_err(|_| anyhow::anyhow!("SESSION_KEY is required"))?;
+                if k.len() < 32 {
+                    return Err(anyhow::anyhow!(
+                        "SESSION_KEY phải có tối thiểu 32 bytes (hiện {} bytes) — \
+                         tạo bằng `openssl rand -hex 32` hoặc `head -c 32 /dev/urandom | base64`. \
+                         Key yếu (<32 bytes) không đủ entropy cho HMAC-SHA256.",
+                        k.len()
+                    ));
+                }
+                k
+            },
             google_client_id: env::var("GOOGLE_CLIENT_ID")
                 .map_err(|_| anyhow::anyhow!("GOOGLE_CLIENT_ID is required"))?,
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET")
@@ -114,12 +147,10 @@ impl AppConfig {
                 .map(|d| d.min(365))
                 .unwrap_or(90),
             trust_proxy_headers: {
-                let v = env::var("TRUST_PROXY_HEADERS")
-                    .ok()
-                    .is_none_or(|v| {
-                        let v = v.trim().to_ascii_lowercase();
-                        !(v == "0" || v == "false" || v == "no" || v == "off")
-                    });
+                let v = env::var("TRUST_PROXY_HEADERS").ok().is_none_or(|v| {
+                    let v = v.trim().to_ascii_lowercase();
+                    !(v == "0" || v == "false" || v == "no" || v == "off")
+                });
                 if v {
                     // Cảnh báo khi bật: nếu app expose trực tiếp internet
                     // (không có Traefik/Coolify/CDN), attacker có thể tự

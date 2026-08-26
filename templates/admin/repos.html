@@ -46,9 +46,9 @@
     <nav class="pagination" aria-label="Phân trang repo">
         {% match status_filter %}
         {% when Option::Some with (s) %}
-        {% if page > 1 %}<a href="/admin/repos?status={{ s }}&page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
+        {% if page > 1 %}<a href="/admin/repos?status={{ s }}&amp;page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
         <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>
-        {% if page < total_pages %}<a href="/admin/repos?status={{ s }}&page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
+        {% if page < total_pages %}<a href="/admin/repos?status={{ s }}&amp;page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
         {% when Option::None %}
         {% if page > 1 %}<a href="/admin/repos?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>{% endif %}
         <span class="page-link current" aria-current="page">{{ page }} / {{ total_pages }}</span>

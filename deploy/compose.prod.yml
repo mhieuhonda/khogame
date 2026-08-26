@@ -22,6 +22,8 @@ services:
     # Graceful shutdown: app đã bắt SIGTERM và chờ request hoàn tất;
     # cho Docker 30s grace period trước khi SIGKILL (mặc định chỉ 10s,
     # đủ làm đứt các request download/comment đang xử lý lúc deploy).
+    # Phải khớp `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` (mặc định 30s) trong env
+    # app để force-exit timer không kích hoạt quá sớm.
     stop_grace_period: 30s
     environment:
       - DATABASE_URL=postgres://khogame:${DB_PASSWORD}@khogame-db:5432/khogame
@@ -47,6 +49,46 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    # ─── Security hardening ─────────────────────────────────────────
+    # read_only: filesystem layer image là read-only, chỉ /app/storage
+    #   (volume) và /tmp (tmpfs) ghi được. Attacker RCE cũng không viết
+    #   được webshell vào /app/static.
+    # tmpfs: /tmp ghi được nhưng trong RAM (không persist ra disk, tự
+    #   xoá khi container restart — giảm risk artifact còn sót).
+    # cap_drop ALL + chỉ add back những cap cần: app Rust thuần không
+    #   cần capability nào (không bind port <1024, không chown, không
+    #   setuid). Tránh để cap mặc định (NET_BIND_SERVICE, CHOWN, DAC_OVERRIDE)
+    #   tạo attack surface nếu bị RCE.
+    # no-new-privileges: child process không thể setuid lên quyền cao
+    #   hơn cha — chặn sudo/suid escalation path.
+    # pids_limit: chặn fork bomb (Rust panic gây spawn nhiều task, hoặc
+    #   RCE chạy `:(){ :|:& };:`).
+    # ─── Resource limits (Coolify standalone, không phải swarm) ─────
+    # mem_limit: 1G cho Rust app (binary 12MB, runtime ~50-100MB,
+    #   dư 800MB cho sqlx pool + template render + reqwest HTTP buffer).
+    # cpus: 1.5 — app single-process tokio; thread pool thường dùng
+    #   2-4 thread, 1.5 core đủ throughput cho site ~100k req/ngày.
+    # memswap_limit: bằng mem_limit → disable swap (tránh OOM thrash
+    #   gây latency spike khi host áp lực).
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 200
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.5
+    # ─── Log rotation (json-file driver default không xoay → disk đầy) ───
+    # Coolify host thường có disk 20-50GB; app log ~1MB/phút nếu traffic
+    # cao → đầy disk trong ~1 tuần nếu không rotate.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     labels:
       - traefik.enable=true
       - traefik.http.routers.kgx-https.rule=Host(`louis.vangioitutien.com`)
@@ -88,6 +130,33 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 30s
+    # ─── Security hardening (DB container) ───────────────────────────
+    # Postgres alpine entrypoint chạy root để chown data dir (nếu cần),
+    # sau đó drop xuống user `postgres' (UID 70). Không cần capability
+    # đặc biệt sau khi init — cap_drop ALL an toàn.
+    # no-new-privileges: chặn setuid escalation (postgres binary không
+    #   setuid nhưng phòng thủ sâu).
+    # pids_limit: chặn query tạo nhiều connection phụ (fork-bomb-via-DB).
+    # ─── Resource limits ─────────────────────────────────────────────
+    # mem 1G: shared_buffers default 128MB + work_mem 4MB × max_connections
+    #   (DB_MAX_CONNECTIONS=15 → 60MB) + cache + overhead → ~500MB peak,
+    #   dư 500MB cho vacuum/autovacuum burst.
+    # cpus 2: postgres cần CPU cho query plan + WAL flush + autovacuum,
+    #   2 core là sweet spot cho small/medium traffic.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 300
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: "2"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   khogame-storage:
