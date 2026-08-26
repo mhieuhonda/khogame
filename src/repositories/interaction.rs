@@ -13,6 +13,9 @@ impl InteractionRepo {
     /// (2 request cùng thấy 'chưa like' → cùng INSERT → đếm like sai).
     /// DELETE-first atomic: nếu DELETE xoá được row → đã unlike; ngược
     /// lại INSERT. Result consistent dù bao nhiêu request đè nhau.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_like(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         let mut tx = pool.begin().await?;
         let deleted = sqlx::query("DELETE FROM likes WHERE game_id = $1 AND user_id = $2")
@@ -36,6 +39,9 @@ impl InteractionRepo {
         }
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn is_liked(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         let r: Option<i32> =
             sqlx::query_scalar("SELECT 1 FROM likes WHERE game_id = $1 AND user_id = $2")
@@ -46,6 +52,9 @@ impl InteractionRepo {
         Ok(r.is_some())
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_bookmark(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race)
         let mut tx = pool.begin().await?;
@@ -70,6 +79,9 @@ impl InteractionRepo {
         }
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn is_bookmarked(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
         let r: Option<i32> =
             sqlx::query_scalar("SELECT 1 FROM bookmarks WHERE game_id = $1 AND user_id = $2")
@@ -115,6 +127,9 @@ impl InteractionRepo {
     }
 
     /// Đếm số bookmark của user (chỉ game published) để phân trang.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn count_bookmarks_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar(
             r"SELECT COUNT(*) FROM bookmarks b
@@ -281,6 +296,9 @@ impl InteractionRepo {
         Ok(n)
     }
 
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn followers_count(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
         let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM follows WHERE followee_id = $1")
             .bind(user_id)
