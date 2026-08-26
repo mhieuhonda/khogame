@@ -4,6 +4,7 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, NewsRepo, ReportRepo, TagRepo};
+use crate::services::json_ld::{build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld};
 use crate::state::AppState;
 use crate::templates::{IndexTemplate, NewGameTemplate, GameShowTemplate, EditGameTemplate, ReportModalPartial, GameListTemplate, CategoriesPageTemplate, SearchTemplate, MyGamesTemplate};
 use askama::Template;
@@ -67,30 +68,11 @@ pub async fn home(
     let total_news = news_count_res.unwrap_or(0);
     let unread = unread_for(&state, current_user.as_ref()).await;
 
-    // JSON-LD schema.org/WebSite với SearchAction — giúp Google hiển thị
-    // sitelinks searchbox ngay trên kết quả tìm kiếm (rich result).
-    let json_ld = serde_json::json!({
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Louis Space",
-        "url": state.config.base_url,
-        "description": "Nền tảng chia sẻ game độc lập & tin tức cộng đồng Việt Nam",
-        "inLanguage": "vi-VN",
-        "potentialAction": {
-            "@type": "SearchAction",
-            "target": {
-                "@type": "EntryPoint",
-                "urlTemplate": format!("{}/search?q={{search_term_string}}", state.config.base_url),
-            },
-            "query-input": "required name=search_term_string",
-        }
-    });
-    let json_ld = format!(
-        "<script type=\"application/ld+json\">\n{}\n</script>",
-        crate::utils::json_ld_safe(
-            &serde_json::to_string_pretty(&json_ld).unwrap_or_default()
-        )
-    );
+    // JSON-LD schema.org/WebSite — builder đã chuyển sang
+    // `crate::services::json_ld::build_homepage_json_ld` để tái sử dụng +
+    // tách logic structured data ra khỏi handler. Output đã qua
+    // `json_ld_safe` escape `</script>` breakout.
+    let json_ld = build_homepage_json_ld(&state.config.base_url);
 
     Ok(IndexTemplate {
         current_user,
@@ -504,141 +486,6 @@ pub async fn show_game(
     })
 }
 
-/// Dựng JSON-LD schema.org/BreadcrumbList: Trang chủ › [Thể loại] › Tên game.
-/// Đồng bộ markup với \<nav class="breadcrumb"\> trong template show.html.
-fn build_breadcrumb_json_ld(
-    base_url: &str,
-    game: &crate::models::game::Game,
-    category: Option<&crate::models::category::Category>,
-) -> String {
-    let mut items = vec![serde_json::json!({
-        "@type": "ListItem",
-        "position": 1,
-        "name": "Trang chủ",
-        "item": base_url,
-    })];
-    if let Some(cat) = category {
-        items.push(serde_json::json!({
-            "@type": "ListItem",
-            "position": 2,
-            "name": cat.name,
-            "item": format!("{}/c/{}", base_url, cat.slug),
-        }));
-    }
-    items.push(serde_json::json!({
-        "@type": "ListItem",
-        "position": items.len() + 1,
-        "name": game.title,
-    }));
-    let ld = serde_json::json!({
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": items,
-    });
-    format!(
-        "<script type=\"application/ld+json\">\n{}\n</script>",
-        serde_json::to_string_pretty(&ld).unwrap_or_default()
-    )
-}
-
-/// Dựng JSON-LD schema.org/VideoGame để nhúng vào \<head\> của trang game.
-/// Dùng `serde_json::Value` để tránh lỗi cú pháp JSON (escape không đúng).
-/// Trả về tag <script type="application/ld+json">...</script> hoàn chỉnh.
-fn build_game_json_ld(
-    base_url: &str,
-    game: &crate::models::game::Game,
-    author: &crate::models::user::User,
-    links: &[crate::models::game::GameLink],
-    tags: &[String],
-    category: Option<&crate::models::category::Category>,
-) -> String {
-    use serde_json::{json, Value};
-    let mut root = json!({
-        "@context": "https://schema.org",
-        "@type": "VideoGame",
-        "name": game.title,
-        "url": format!("{}/games/{}", base_url, game.slug),
-        "author": {
-            "@type": "Person",
-            "name": author.display_name,
-            "url": format!("{}/u/{}", base_url, author.username),
-        },
-        "publisher": {
-            "@type": "Organization",
-            "name": "Louis Space",
-            "url": base_url,
-        },
-        "operatingSystem": links.iter().map(|l| l.platform.label()).collect::<Vec<_>>(),
-        "interactionStatistic": [
-            json!({
-                "@type": "InteractionCounter",
-                "interactionType": "https://schema.org/WatchAction",
-                "userInteractionCount": game.view_count,
-            }),
-            json!({
-                "@type": "InteractionCounter",
-                "interactionType": "https://schema.org/DownloadAction",
-                "userInteractionCount": game.download_count,
-            }),
-            json!({
-                "@type": "InteractionCounter",
-                "interactionType": "https://schema.org/LikeAction",
-                "userInteractionCount": game.like_count,
-            }),
-            json!({
-                "@type": "InteractionCounter",
-                "interactionType": "https://schema.org/CommentAction",
-                "userInteractionCount": game.comment_count,
-            }),
-        ],
-    });
-    let obj = if let Some(obj) = root.as_object_mut() {
-        obj
-    } else {
-        // Defense-in-depth: root được build bằng json!({...}) phía trên nên
-        // luôn là object. Nếu invariant bị破, trả string rỗng thay vì panic.
-        tracing::error!("build_game_json_ld: root không phải JSON object");
-        return String::new();
-    };
-    if !game.excerpt_or().is_empty() {
-        obj.insert("description".into(), json!(game.excerpt_or()));
-    }
-    if let Some(url) = game.cover_image.as_deref().filter(|s| !s.is_empty()) {
-        obj.insert("image".into(), json!(url));
-    }
-    if game.rating_count > 0 {
-        obj.insert(
-            "aggregateRating".into(),
-            json!({
-                "@type": "AggregateRating",
-                "ratingValue": game.rating_avg_f64(),
-                "ratingCount": game.rating_count,
-                "bestRating": 5,
-                "worstRating": 1,
-            }),
-        );
-    }
-    if let Some(d) = game.release_date {
-        obj.insert(
-            "datePublished".into(),
-            json!(d.format("%Y-%m-%d").to_string()),
-        );
-    }
-    if let Some(cat) = category {
-        obj.insert("genre".into(), json!(cat.name));
-    }
-    if !tags.is_empty() {
-        obj.insert(
-            "keywords".into(),
-            Value::Array(tags.iter().map(|t| json!(t)).collect()),
-        );
-    }
-    let pretty = serde_json::to_string_pretty(&root).unwrap_or_else(|_| "{}".into());
-    format!(
-        "<script type=\"application/ld+json\">\n{}\n</script>",
-        crate::utils::json_ld_safe(&pretty)
-    )
-}
 
 // ============= Edit game =============
 /// # Errors

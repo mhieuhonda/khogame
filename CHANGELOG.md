@@ -5,6 +5,28 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+---
+
+## [1.0.0-rc.1] — 2026-08-26 — Production-ready candidate
+
+### 🔧 Refactor
+- Tách `src/services/` module layer cho cross-cutting flows:
+  - `services/audit.rs` — `audit()` helper (chuyển từ `handlers/admin.rs`).
+  - `services/json_ld.rs` — `build_game_json_ld`, `build_homepage_json_ld`,
+    `build_breadcrumb_json_ld` (chuyển từ `handlers/games.rs`).
+- Giảm kích thước `handlers/games.rs` từ 1649 → 1495 lines (~150 lines).
+- `handlers/admin.rs` dùng `crate::services::audit` thay vì local private.
+- Tests vẫn pass (159), clippy clean.
+
+Đánh dấu: candidate lên production. Sau khi test integration trên staging
+với PostgreSQL thật (chạy migrations 001-011 + smoke test các endpoint
+chính: /, /games/{slug}, /news, /auth/ai/login, /admin/), bump lên v1.0.0
+chính thức.
+
+---
+
 ## [0.9.0] — 2026-08-26 — Production Hardening Pass
 
 ### 🛡️ Security

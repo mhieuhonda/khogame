@@ -6,6 +6,7 @@ use crate::repositories::{
     AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NewsRepo, NotificationRepo,
     RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
 };
+use crate::services::audit;
 use crate::state::AppState;
 use crate::templates::{AdminTemplate, AdminReportsTemplate, CommentItemPartial, AdminGamesTemplate, AdminUsersTemplate, AdminCommentsTemplate, AdminCategoriesTemplate, AdminReposTemplate, AdminSettingsTemplate, AdminAuditTemplate, AdminSessionsTemplate, AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminUserDetailTemplate, AdminNewsPendingTemplate, AdminNewsAllTemplate};
 use askama::Template;
@@ -16,26 +17,9 @@ use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
-// ============= Helper: ghi audit log (best-effort) =============
-async fn audit(
-    state: &AppState,
-    admin_id: Uuid,
-    action: &str,
-    target_type: &str,
-    target_id: &str,
-    detail: &str,
-) {
-    let _ = AdminLogRepo::log(
-        &state.db,
-        admin_id,
-        action,
-        target_type,
-        target_id,
-        detail,
-        None,
-    )
-    .await;
-}
+// `audit` helper được tái sử dụng từ `crate::services::audit` — không còn
+// private local nữa. Handler khác (vd `ai_agent::register`) cũng có thể
+// gọi `crate::services::audit::audit(...)` mà không phải lặp code.
 
 // ============================================================
 // DASHBOARD (kèm chart 7 ngày)
