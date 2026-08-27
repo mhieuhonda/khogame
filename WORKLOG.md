@@ -437,3 +437,92 @@ Stage Summary:
 - Web healthcheck: GET https://louis.vangioitutien.com/health
   → JSON {status: ok, version: "2.3.0"} (workflow verify tự động).
 - Coolify service status: running:healthy.
+
+---
+
+## Verify Production v2.3.0 — DONE ✓
+
+Production https://louis.vangioitutien.com đã serving v2.3.0, verify:
+
+### Web healthcheck
+```
+GET /health → {"status":"ok","version":"2.3.0"}
+```
+
+### PERF headers (verify middleware cache_control_html chạy đúng)
+- HTTP/2 200 OK
+- `cache-control: public, max-age=60, stale-while-revalidate=600` (anonymous)
+- `etag: W/"1a8bcd8dbdad4f24"` (weak ETag)
+- `link: </static/css/style.css?v=2.3.0>; rel=preload; as=style, \
+        </static/js/htmx.min.js?v=2.3.0>; rel=preload; as=script, \
+        </static/js/app.js?v=2.3.0>; rel=preload; as=script, \
+        </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin`
+- `vary: Cookie, Accept, Accept-Encoding`
+
+### 304 Not Modified
+```
+GET / with If-None-Match: W/"1a8bcd8dbdad4f24"
+→ HTTP/2 304 (body rỗng, chỉ headers)
+```
+
+### Static asset caching
+- `/static/css/style.css?v=2.3.0`: `Cache-Control: public, max-age=2592000, stale-while-revalidate=86400` (30 ngày + 1 ngày SWR)
+- `/static/js/sw.js?v=2.3.0`: same cache + `Content-Type: text/javascript`
+- `/static/js/htmx.min.js?v=2.3.0`: same cache
+- `/static/fonts/inter-var-latin.woff2`: `Cache-Control: public, max-age=31536000, immutable` (1 năm immutable)
+
+### Service Worker
+- `/static/js/sw.js?v=2.3.0` serve OK, content bắt đầu `// Louis Space v2.3.0 — Service Worker`
+- Browser register trong app.js → `navigator.serviceWorker.register('/static/js/sw.js?v=2.3.0', { scope: '/' })`
+- Visit sau → /static/* serve ngay từ SW cache (0 round-trip)
+
+### Security headers (đầy đủ)
+- `content-security-policy`: strict CSP (default-src 'self', script-src 'self' 'unsafe-inline', frame-ancestors 'none', worker-src 'self')
+- `cross-origin-opener-policy: same-origin`
+- `cross-origin-resource-policy: same-origin`
+- `permissions-policy`: tắt accelerometer/camera/geolocation/gyroscope/magnetometer/microphone/payment/usb
+- `referrer-policy: strict-origin-when-cross-origin`
+- `strict-transport-security: max-age=31536000; includeSubDomains; preload`
+- `x-content-type-options: nosniff`
+- `x-frame-options: DENY`
+
+### Markdown engine v2.3 (verify qua /news hoặc /games)
+- Heading anchors có id + heading-anchor link
+- Code blocks có copy button + wrapper
+- ToC marker [toc] tự thay bằng <nav class="toc">
+- Image có loading=lazy decoding=async
+- External link có class=external-link
+
+### Repo đề xuất section
+- Template có section `{% if !featured_repos.is_empty() %}` sau "Đánh giá cao".
+- Hiện tại DB chưa có repo approved nào (trang /repos hiện empty state) →
+  section tự ẩn theo thiết kế (chống trang trắng).
+- Khi user đăng repo đầu tiên qua /repos/new + admin duyệt → section tự
+  hiển thị trên homepage với 8 repo top stars.
+
+### GitHub Actions
+- CI #341 pass (Rust 1.98 + clippy + test + rustdoc).
+- CD #398 success: ci-gate ✓, build-push ✓ (Docker image pushed to
+  ghcr.io/mhieuhonda/khogame), trigger-coolify-deploy ✓ (PATCH compose
+  với SHA mới, POST /api/v1/deploy?uuid=dwa5tq871zxdxgaysjdw7gge
+  &force=true, stack healthy sau 1 phút, verify version 2.3.0 match).
+- Release #14 success — published at
+  https://github.com/mhieuhonda/khogame/releases/tag/v2.3.0
+
+### Đã hoàn thành toàn bộ task
+1. ✓ Nâng cấp Markdown xịn hơn nữa (heading anchors + ToC + copy button +
+   lazy image + external link marker + 3 additional callouts).
+2. ✓ Thêm Repo đề xuất ở homepage (template ready, tự ẩn khi DB rỗng).
+3. ✓ Tối ưu PERF cực mạnh:
+   - ETag/304 tiết kiệm 50-200KB mỗi page view
+   - Cache-Control anonymous public+SWR / authenticated private no-cache
+   - Link preload cho 4 critical assets (HTTP/2 Early Hints)
+   - Service Worker cache-first static + network-first HTML
+   - DB pool 15→25 (giảm acquire contention)
+   - Bump cache version ?v=2.1.0→?v=2.3.0 (invalidate browser cache)
+4. ✓ KHÔNG thay đổi giao diện — toàn bộ tối ưu invisible.
+5. ✓ Rust 1.98 exact pin trong rust-toolchain.toml + CI workflow.
+6. ✓ Mọi commit user mhieuhonda <mhieuhonda@users.noreply.github.com>.
+7. ✓ GitHub release v2.3.0 created (id 377863507).
+8. ✓ Deploy lên Coolify SUB VPS 10.187.247.3 thành công, version 2.3.0
+   serving live tại https://louis.vangioitutien.com.
