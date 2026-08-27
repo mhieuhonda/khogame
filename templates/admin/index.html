@@ -27,10 +27,31 @@
             </div>
         </div>
         <div class="admin-stat-card">
+            <div class="stat-icon-wrap green">🟢</div>
+            <div>
+                <div class="stat-value">{{ online_users }}</div>
+                <div class="stat-label">Đang online</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
             <div class="stat-icon-wrap green">⬇️</div>
             <div>
                 <div class="stat-value">{{ total_downloads }}</div>
                 <div class="stat-label">Lượt tải</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap purple">👁️</div>
+            <div>
+                <div class="stat-value">{{ total_views }}</div>
+                <div class="stat-label">Lượt xem (game)</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap yellow">💬</div>
+            <div>
+                <div class="stat-value">{{ total_comments }}</div>
+                <div class="stat-label">Bình luận</div>
             </div>
         </div>
         <div class="admin-stat-card">
@@ -63,7 +84,35 @@
                 <div class="stat-label">Repo GitHub</div>
             </div>
         </div>
+        {% if banned_users > 0 %}
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap red">🚫</div>
+            <div>
+                <div class="stat-value">{{ banned_users }}</div>
+                <div class="stat-label">User bị cấm</div>
+            </div>
+        </div>
+        {% endif %}
     </div>
+
+    {% if !recent_active_users.is_empty() %}
+    <section class="admin-section">
+        <div class="section-header"><h2>🟢 Hoạt động gần đây</h2></div>
+        <div class="admin-games-list">
+            {% for u in recent_active_users %}
+            <div class="admin-game-row">
+                <a href="/u/{{ u.username }}">{{ u.display_name }}</a>
+                <span class="game-meta">⏱
+                    {% match u.last_seen_at %}
+                    {% when Option::Some with (t) %}{{ t.to_rfc3339()|time_ago }}
+                    {% when Option::None %}{{ u.created_at.to_rfc3339()|time_ago }}
+                    {% endmatch %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     {% if !status_counts.is_empty() %}
     <section class="admin-section">

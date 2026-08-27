@@ -3645,3 +3645,308 @@ a:hover { color: var(--accent-light); }
         animation: none;
     }
 }
+
+/* ============================================
+   v1.4.0 — DESKTOP ENHANCEMENTS (≥1024px)
+   Mobile-first hiện tại ưu tiên điện thoại; block này bổ sung
+   tối ưu cho desktop/tablet lớn mà KHÔNG phá mobile hiện có.
+   Nguyên tắc:
+   - Mobile rules không bị override (mobile first)
+   - Desktop rule chỉ kick in tại min-width: 1024px+
+   - Tận dụng không gian rộng: nav ngang sticky, multi-column
+     admin layout, game grid nhiều cột hơn, typography rộng hơn.
+   ============================================ */
+
+/* Desktop container rộng hơn — 1440px cho phép 3 cột thoải mái */
+@media (min-width: 1024px) {
+    :root { --container: 1440px; }
+
+    /* Hide hamburger menu-toggle trên desktop — menu always visible */
+    .menu-toggle { display: none !important; }
+
+    /* Site menu luôn visible + horizontal layout trên desktop */
+    .site-menu {
+        display: block !important;
+        position: static;
+        max-height: none;
+        overflow: visible;
+        background: transparent;
+        border-top: none;
+        box-shadow: none;
+        padding: 0;
+    }
+    .site-menu[hidden] { display: block !important; }
+    .site-menu-inner {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        padding: 0;
+        max-width: none;
+    }
+    .menu-col { display: contents; }
+    .menu-heading { display: none; }
+    .menu-link {
+        padding: 6px 10px;
+        font-size: 13px;
+        border-radius: 6px;
+        white-space: nowrap;
+    }
+    .menu-link.menu-link-accent { font-weight: 600; }
+    .menu-link.menu-link-danger { margin-left: auto; }
+
+    /* Search bar rộng hơn trên desktop */
+    .search-bar {
+        flex: 1;
+        max-width: 480px;
+    }
+
+    /* Admin layout: nav sticky bên trái, content bên phải */
+    .admin-page {
+        display: grid;
+        grid-template-columns: 240px 1fr;
+        gap: 24px;
+        align-items: start;
+    }
+    .admin-page > .page-header,
+    .admin-page > .admin-search-form,
+    .admin-page > .admin-filter-chips,
+    .admin-page > .pagination {
+        grid-column: 1 / -1;
+    }
+    .admin-nav {
+        position: sticky;
+        top: calc(var(--header-h) + 16px);
+        flex-direction: column;
+        flex-wrap: nowrap;
+        gap: 2px;
+        padding: 8px;
+        margin: 0;
+        max-height: calc(100vh - var(--header-h) - 32px);
+        overflow-y: auto;
+    }
+    .admin-nav-link {
+        padding: 8px 12px;
+        font-size: 14px;
+        white-space: nowrap;
+    }
+    .admin-nav-link.admin-only {
+        border-left: 2px solid var(--accent);
+        font-weight: 500;
+    }
+
+    /* Game grid nhiều cột hơn trên desktop rộng */
+    .game-grid {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 24px;
+    }
+
+    /* Footer 4 cột — đã có responsive nhưng tăng gap trên desktop */
+    .footer-grid { gap: 32px; }
+
+    /* Hero content rộng hơn */
+    .hero-content { max-width: 920px; }
+
+    /* Game detail layout: dùng 2 cột cho screenshots + info */
+    .game-detail-layout {
+        grid-template-columns: minmax(0, 1fr) 320px !important;
+    }
+
+    /* Admin table: gợi ý min-width để horizontal scroll info rõ ràng */
+    .admin-table-wrap { overflow-x: auto; }
+    .admin-table { min-width: 800px; }
+
+    /* News list 2 cột trên desktop rộng */
+    .news-list-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 24px;
+    }
+
+    /* Profile page 2 cột: info + activity feed */
+    .profile-layout {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 32px;
+        align-items: start;
+    }
+    .profile-sidebar {
+        position: sticky;
+        top: calc(var(--header-h) + 16px);
+    }
+
+    /* Compact form page (game/news forms) rộng hơn */
+    .compact-form-page {
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    /* Chat panel 2 cột: history + online users */
+    .chat-layout {
+        display: grid;
+        grid-template-columns: 1fr 240px;
+        gap: 16px;
+        align-items: start;
+    }
+}
+
+/* Desktop rất rộng (≥1440px) — tăng container + 4 cột game */
+@media (min-width: 1440px) {
+    :root { --container: 1600px; }
+    .game-grid {
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+}
+
+/* Desktop ultra-wide (≥1920px) — giới hạn để readability tốt */
+@media (min-width: 1920px) {
+    :root { --container: 1760px; }
+    /* Body text max-width để line length đọc dễ (~70-80 chars) */
+    .news-content, .game-content, .profile-bio {
+        max-width: 760px;
+    }
+}
+
+/* v1.4.0: admin filter chip cho trang users — fix bug "luôn hiện Hoạt động" */
+.admin-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 18px;
+}
+.admin-filter-chips .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-decoration: none;
+    transition: all 0.15s;
+}
+.admin-filter-chips .chip:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.admin-filter-chips .chip-active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* Admin checkbox inline (cho news_categories active checkbox) */
+.admin-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.admin-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* News category table input — wide description field */
+.admin-table .input-wide {
+    min-width: 180px;
+    width: 100%;
+}
+
+/* ===== v1.4.0: Toast notifications + sticky bottom mobile admin nav ===== */
+#toast-container {
+    position: fixed;
+    top: 80px;
+    right: 16px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+    max-width: calc(100vw - 32px);
+}
+.toast {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    padding: 12px 16px;
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    border-left: 4px solid var(--accent);
+    font-size: 14px;
+    max-width: 360px;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    pointer-events: auto;
+    word-wrap: break-word;
+}
+.toast.toast-show {
+    opacity: 1;
+    transform: translateX(0);
+}
+.toast.toast-error {
+    border-left-color: var(--danger);
+}
+.toast.toast-info {
+    border-left-color: var(--info);
+}
+.toast.toast-success {
+    border-left-color: var(--success);
+}
+
+/* v1.4.0: Sticky bottom mobile admin nav — mobile UX */
+@media (max-width: 768px) {
+    .admin-nav {
+        position: sticky;
+        bottom: 0;
+        margin: 24px -16px 0;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+        background: var(--bg-card);
+        border-top: 1px solid var(--border);
+        border-radius: 0;
+        z-index: 100;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+    }
+    .admin-nav-link {
+        flex-shrink: 0;
+        padding: 8px 12px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    .admin-nav-link.admin-only {
+        display: none; /* hide admin-only links in mobile bottom bar for security */
+    }
+}
+
+/* v1.4.0: News list 2-col grid cho desktop */
+.news-list-grid {
+    display: grid;
+    gap: 16px;
+}
+@media (min-width: 768px) {
+    .news-list-grid {
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    }
+}
+
+/* v1.4.0: User status badge with icon */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.04);
+}
+[data-theme="dark"] .status-badge {
+    background: rgba(255,255,255,0.08);
+}

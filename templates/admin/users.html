@@ -8,9 +8,17 @@
         <input type="search" name="q" id="admin-user-search" value="{{ search }}" placeholder="Tìm theo tên, email, username..." aria-label="Tìm người dùng theo tên, email hoặc username">
         <button class="btn btn-primary btn-sm" type="submit">Tìm</button>
     </form>
+    {# v1.4.0: filter chip theo trạng thái thật — Banned/New/Online/Active/Inactive/Dormant.
+       Trước đây badge chỉ phân biệt Banned/Hoạt động nên filter không có ý nghĩa. #}
+    <div class="admin-filter-chips" role="group" aria-label="Lọc theo trạng thái">
+        <a href="/admin/users{% if !search.is_empty() %}?q={{ search|esc }}{% endif %}" class="chip {% if status_filter.is_empty() %}chip-active{% endif %}">Tất cả ({{ total }})</a>
+        {% for (key, label, count) in status_options %}
+        <a href="/admin/users?q={{ search|esc }}&amp;status={{ key }}" class="chip {% if status_filter == key %}chip-active{% endif %}">{{ label }} ({{ count }})</a>
+        {% endfor %}
+    </div>
     <div class="admin-table-wrap">
         <table class="admin-table">
-            <thead><tr><th>Người dùng</th><th>Email</th><th>Vai trò</th><th>Game</th><th>Trạng thái</th><th>Tham gia</th><th>Hành động</th></tr></thead>
+            <thead><tr><th>Người dùng</th><th>Email</th><th>Vai trò</th><th>Game</th><th>Trạng thái</th><th>Hoạt động cuối</th><th>Tham gia</th><th>Hành động</th></tr></thead>
             <tbody>
             {% for u in users %}
                 <tr id="user-row-{{ u.id }}">
@@ -35,8 +43,15 @@
                     </td>
                     <td>{{ u.games_count }}</td>
                     <td id="ban-{{ u.id }}">
-                        {% if u.is_banned %}<span class="status-badge" style="color:#ef4444">Bị cấm</span>
-                        {% else %}<span class="status-badge" style="color:#10b981">Hoạt động</span>{% endif %}
+                        {# v1.4.0: badge tính theo is_banned + created_at + last_seen_at
+                           Admin rà soát thấy đúng trạng thái thật. #}
+                        <span class="status-badge" style="color:{{ u.status_badge_color() }}">{{ u.status_badge_label() }}</span>
+                    </td>
+                    <td>
+                        {% match u.last_seen_at %}
+                        {% when Option::Some with (t) %}<small>{{ t.to_rfc3339()|time_ago }}</small>
+                        {% when Option::None %}<small style="color:#94a3b8">chưa đăng nhập</small>
+                        {% endmatch %}
                     </td>
                     <td>{{ u.created_at.to_rfc3339()|time_ago }}</td>
                     <td class="admin-actions">
@@ -57,9 +72,9 @@
     {% set total_pages = (total + per_page - 1) / per_page %}
     {% if total_pages > 1 %}
     <nav class="pagination">
-        {% if page > 1 %}<a href="?q={{ search|esc }}&amp;page={{ page - 1 }}" class="page-link">← Trước</a>{% endif %}
+        {% if page > 1 %}<a href="?q={{ search|esc }}{% if !status_filter.is_empty() %}&amp;status={{ status_filter }}{% endif %}&amp;page={{ page - 1 }}" class="page-link">← Trước</a>{% endif %}
         <span class="page-link current">{{ page }} / {{ total_pages }}</span>
-        {% if page < total_pages %}<a href="?q={{ search|esc }}&amp;page={{ page + 1 }}" class="page-link">Sau →</a>{% endif %}
+        {% if page < total_pages %}<a href="?q={{ search|esc }}{% if !status_filter.is_empty() %}&amp;status={{ status_filter }}{% endif %}&amp;page={{ page + 1 }}" class="page-link">Sau →</a>{% endif %}
     </nav>
     {% endif %}
 </section>

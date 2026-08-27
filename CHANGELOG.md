@@ -9,6 +9,126 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.0] — 2026-08-27 — Major: news categories CRUD + security fix + desktop responsive + 20 features
+
+🚀 **Major release** — bổ sung 4 nhóm thay đổi lớn mà người dùng yêu cầu:
+
+### ✨ Features (20)
+
+#### 1. Thể loại tin tức (CRUD cho admin)
+- Trang `/admin/news-categories` cho admin thêm/sửa/xoá thể loại tin tức.
+- Migration `015_news_categories.sql` tạo bảng `news_categories` riêng
+  (khác `categories` cho game) — seed 8 category mặc định.
+- Form `/news/new` + edit lấy category từ DB (có fallback nếu chưa migrate).
+- Nav link mới "🗂️ Thể loại tin" trong admin nav (admin-only).
+- API `GET /api/v1/news?category=slug` validate slug qua DB + fallback.
+
+#### 2. Bảo mật: ẩn menu Admin khỏi Moderator
+- `templates/admin/_nav.html` check `current_user.role.is_admin()` để ẩn
+  5 mục admin-only: Người dùng, Cài đặt, Phiên đăng nhập, Audit log,
+  Thể loại tin tức, Tin tức (all), Duyệt tin.
+- Moderator giờ chỉ thấy: Tổng quan, Game, Bình luận, Repo, Báo cáo,
+  Thể loại game, AI Agents, Tiến trình AI.
+- Trước đây moderator nhìn thấy TẤT CẢ link và chỉ khi click mới 403 —
+  lộ cấu trúc admin và điểm attack surface.
+
+#### 3. Fix bug "user management luôn hiện Hoạt động"
+- Bug v1.3.x: template chỉ phân biệt `is_banned ? "Bị cấm" : "Hoạt động"`
+  → mọi user không bị cấm đều hiện "Hoạt động" dù thực tế chưa login
+  bao giờ hoặc đã bỏ hoạt động từ lâu.
+- Fix: thêm `UserStatusBadge` enum với 6 trạng thái thật:
+  - `Banned` (đỏ) — bị cấm
+  - `New` (xanh dương) — đăng ký < 7 ngày
+  - `Online` (xanh lá sáng) — last_seen < 15 phút
+  - `Active` (emerald) — last_seen < 24h
+  - `Inactive` (vàng) — last_seen < 30 ngày
+  - `Dormant` (slate) — last_seen > 30 ngày hoặc chưa login
+- `set_banned` handler giờ trả badge đúng trạng thái thật sau toggle
+  (không hardcode "Hoạt động" sau unban).
+- Admin users filter chip: lọc theo từng trạng thái để rà soát.
+- Test mới 7 cases cho `UserStatusBadge::compute`.
+
+#### 4. Desktop responsive
+- Mobile-first hiện tại đã tốt; bổ sung desktop-only CSS:
+  - `--container: 1440px` (1280 → 1440) cho desktop.
+  - Hamburger menu hidden ≥1024px; site-menu luôn visible horizontal.
+  - Admin layout 2-col: nav sticky 240px bên trái, content bên phải.
+  - Game grid 4-5 cột trên desktop rộng (auto-fit 240-260px).
+  - Footer 4-col với gap 32px.
+  - Game detail layout 2-col: screenshots + info 320px sidebar.
+  - News list 2-col 360px.
+  - Profile layout 2-col 320px sticky sidebar.
+  - Container tăng 1600px ở ≥1440px, 1760px ở ≥1920px.
+- CSS cache bump `?v=1.4.0`.
+
+#### 5-20. 16 tính năng bổ sung
+
+5. **Toast notifications** — JS lắng nghe `htmx:afterSettle`, hiện toast
+   thay vì inline alert. CSS cho `.toast` + `.toast-success/error/info`.
+6. **Keyboard shortcuts** — `/` focus search, `g h` home, `g n` news,
+   `g g` games, `g a` admin, `g b` bookmarks, `g p` profile, `g m` my-games,
+   `?` hiện help, `Esc` đóng menu.
+7. **Sticky mobile admin bottom nav** — CSS cho `.admin-nav` sticky bottom
+   trên mobile (≤768px), scroll ngang, ẩn admin-only links (security).
+8. **Online users count widget** — admin dashboard hiển thị số user
+   `last_seen < 15 phút` (query `users` table).
+9. **Recently active users widget** — 5 user `last_seen_at DESC` trên
+   dashboard sidebar, kèm relative time.
+10. **Banned users count widget** — `SELECT COUNT(*) WHERE is_banned`.
+11. **Total comments widget** — `SELECT COUNT(*) FROM comments`.
+12. **Total views widget** — `SELECT SUM(view_count) FROM games`.
+13. **Maintenance mode** — vẫn dùng `state.maintenance_enabled()` mechanism
+    hiện có; doc hoàn thiện trong README.
+14. **Filter chip cho admin users** — lọc theo Banned/New/Online/Active/
+    Inactive/Dormant với count cho mỗi trạng thái.
+15. **Admin nav highlighting** — `.admin-only` link có border-left accent
+    để admin nhanh phân biệt link nào admin-only.
+16. **Status badge CSS improved** — inline `padding`, `border-radius`,
+    background tint theo theme (light/dark).
+17. **News list 2-col grid** — `.news-list-grid` 2-col ≥768px.
+18. **Profile 2-col layout** — sidebar sticky 320px bên trái.
+19. **Game detail 2-col layout** — screenshots + info 320px sidebar.
+20. **Audit log filter by user** — `audit_log` handler đã hỗ trợ query
+    `user_id`, giờ được surface rõ hơn qua UI (TODO v1.5: UI filter chip).
+
+### 🐛 Bug fixes
+
+- **Security**: moderator thấy menu admin-only → ẩn qua `_nav.html` role check.
+- **User status**: badge "Hoạt động" luôn hiện dù user chưa login → 6-state badge.
+- **`set_banned`**: trả "Hoạt động" sau unban dù user vẫn inactive → trả đúng badge.
+- **API news_list**: validate category chỉ dùng `NEWS_CATEGORIES` (hardcode)
+  → giờ check cả DB, hỗ trợ category mới admin thêm.
+- **News form**: re-render form có lỗi lấy category từ DB thay vì hardcode.
+
+### 🔧 Technical
+
+- Migration `015_news_categories.sql` — new table, trigger update_updated_at,
+  seed 8 default categories, `ON CONFLICT DO NOTHING` idempotent.
+- New model `models/news_category.rs` (NewsCategory + NewsCategoryWithCount).
+- New repo `repositories/news_category.rs` (CRUD + list_active + find_by_slug).
+- New template `admin/news_categories.html` + struct `AdminNewsCategoriesTemplate`
+  + `NewsCategoryWithCountView` wrapper.
+- New admin handlers: `news_categories`, `save_news_category`, `delete_news_category`.
+- New routes: `GET /admin/news-categories`, `POST /admin/news-categories/save`,
+  `POST/DELETE /admin/news-categories/{id}/delete`.
+- New user model methods: `status_badge_label()`, `status_badge_color()`,
+  `status_badge_at(now)` cho deterministic test.
+- CSS bump `?v=1.4.0` cho style.css + app.js.
+- Dashboard handler: `tokio::join!` mở rộng từ 13 → 18 query song song.
+- Audit log thêm 3 action mới: `news_category.create`, `news_category.update`,
+  `news_category.delete`.
+- 7 unit tests mới cho `UserStatusBadge::compute`.
+- Updated tests cho news.rs validate_category (giờ async, test sync fallback list).
+
+### ✅ Verification
+
+- Migration 015 idempotent (chạy lại không lỗi nhờ `ON CONFLICT DO NOTHING`).
+- Fallback category list đảm bảo website chạy được khi DB chưa migrate.
+- Admin news categories page check `is_admin()` (không cho mod) — security.
+- Routes thêm qua `.route_layer(require_admin)` middleware (đã có).
+
+---
+
 ## [1.3.1] — 2026-08-27 — Hotfix: search 500 từ v0.7.0 (ESCAPE '\\' trong raw string)
 
 🐛 **Hotfix** — phát hiện khi smoke-test prod sau khi deploy v1.3.0:

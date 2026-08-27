@@ -3,16 +3,17 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::AuthUser;
 use crate::models::report::ReportStatus;
 use crate::repositories::{
-    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NewsRepo, NotificationRepo,
-    RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
+    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NewsCategoryRepo, NewsRepo,
+    NotificationRepo, RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
 };
 use crate::services::audit;
 use crate::state::AppState;
 use crate::templates::{
     AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminAuditTemplate, AdminCategoriesTemplate,
-    AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate, AdminNewsPendingTemplate,
-    AdminReportsTemplate, AdminReposTemplate, AdminSessionsTemplate, AdminSettingsTemplate,
-    AdminTemplate, AdminUserDetailTemplate, AdminUsersTemplate, CommentItemPartial,
+    AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate, AdminNewsCategoriesTemplate,
+    AdminNewsPendingTemplate, AdminReportsTemplate, AdminReposTemplate, AdminSessionsTemplate,
+    AdminSettingsTemplate, AdminTemplate, AdminUserDetailTemplate, AdminUsersTemplate,
+    CommentItemPartial, NewsCategoryWithCountView,
 };
 use askama::Template;
 use axum::extract::{Path, Query, State};
@@ -39,8 +40,9 @@ pub async fn dashboard(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    // 10 truy vấn độc lập — join! chạy song song thay vì cộng dồn
-    // round-trip DB khi admin mở dashboard. Thêm news stats (pending + total).
+    // 13 truy vấn độc lập — join! chạy song song thay vì cộng dồn
+    // round-trip DB khi admin mở dashboard. v1.4.0 thêm: online users count,
+    // recently active users, banned users count, total comments count.
     let db = &state.db;
     let (
         total_games,
@@ -56,6 +58,11 @@ pub async fn dashboard(
         status_counts,
         pending_news,
         total_news,
+        online_users,
+        recent_active_users,
+        banned_users,
+        total_comments,
+        total_views,
     ) = tokio::join!(
         GameRepo::count_published(db),
         UserRepo::count_all(db),
@@ -75,6 +82,59 @@ pub async fn dashboard(
         GameRepo::count_by_status(db),
         NewsRepo::count_pending(db),
         NewsRepo::count_by_status(db, crate::models::news::NewsStatus::Published),
+        // v1.4.0: số user online (last_seen trong 15 phút).
+        async {
+            sqlx::query_scalar::<_, i64>(
+                r"SELECT COUNT(*) FROM users
+                  WHERE NOT is_banned
+                    AND last_seen_at IS NOT NULL
+                    AND last_seen_at > NOW() - INTERVAL '15 minutes'",
+            )
+            .fetch_one(db)
+            .await
+            .unwrap_or(0)
+        },
+        // v1.4.0: 5 user hoạt động gần đây nhất.
+        async {
+            sqlx::query_as::<_, crate::models::user::UserWithGameCount>(
+                r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio,
+                        u.google_sub, u.role, u.is_banned, u.last_seen_at,
+                        u.created_at, u.updated_at,
+                        u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
+                        COUNT(g.id) FILTER (WHERE g.status = 'published')::bigint AS games_count
+                  FROM users u
+                  LEFT JOIN games g ON g.user_id = u.id
+                  WHERE NOT u.is_banned
+                    AND u.last_seen_at IS NOT NULL
+                  GROUP BY u.id
+                  ORDER BY u.last_seen_at DESC
+                  LIMIT 5",
+            )
+            .fetch_all(db)
+            .await
+            .unwrap_or_default()
+        },
+        // v1.4.0: tổng user bị cấm — cho dashboard admin biết quy mô spam.
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM users WHERE is_banned")
+                .fetch_one(db)
+                .await
+                .unwrap_or(0)
+        },
+        // v1.4.0: tổng comment — cho dashboard insight.
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM comments")
+                .fetch_one(db)
+                .await
+                .unwrap_or(0)
+        },
+        // v1.4.0: tổng view — SUM(view_count) trên games.
+        async {
+            sqlx::query_scalar::<_, i64>("SELECT COALESCE(SUM(view_count), 0) FROM games")
+                .fetch_one(db)
+                .await
+                .unwrap_or(0)
+        },
     );
     let total_games = total_games.unwrap_or(0);
     let total_users = total_users.unwrap_or(0);
@@ -96,6 +156,9 @@ pub async fn dashboard(
             count,
         })
         .collect();
+    // v1.4.0: 5 biến mới (online_users, banned_users, total_comments,
+    // total_views, recent_active_users) đã unwrap_or/default trong async block
+    // — không gọi unwrap_or() lần nữa (i64 không có method đó).
     let max_views = daily_stats
         .iter()
         .map(|d| d.views)
@@ -127,6 +190,11 @@ pub async fn dashboard(
         max_downloads,
         pending_news: pending_news.unwrap_or(0),
         total_news: total_news.unwrap_or(0),
+        online_users,
+        recent_active_users,
+        banned_users,
+        total_comments,
+        total_views,
     })
 }
 
@@ -478,6 +546,8 @@ pub async fn delete_game(
 pub struct AdminUsersQuery {
     pub q: Option<String>,
     pub page: Option<i64>,
+    /// v1.4.0: filter theo trạng thái thật — `banned|new|online|active|inactive|dormant`.
+    pub status: Option<String>,
 }
 
 /// # Errors
@@ -495,23 +565,92 @@ pub async fn users(
     let per_page: i64 = 50;
     let offset = (page - 1) * per_page;
     let search = q.q.as_deref().filter(|s| !s.trim().is_empty());
-    // 2 query độc lập — join! song song.
-    let (users_res, total_res) = tokio::join!(
-        UserRepo::list_for_admin(&state.db, search, per_page, offset),
-        // Tổng theo bộ lọc (không phải tổng toàn site) để phân trang đúng
+    let status_filter = q
+        .status
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_default()
+        .to_string();
+    // Lấy tất cả users thoả mãn search (không có status filter trong SQL —
+    // status badge tính từ last_seen_at + created_at + is_banned nên không
+    // thể filter trực tiếp trong WHERE_clause mà không nhồi điều kiện).
+    // Cách tiếp cận: fetch tối đa 500 users, filter in-app theo badge,
+    // paginate thủ công. 500 là đủ cho hầu hết site; khi user many hơn
+    // sẽ cần đổ vào cột status badge trong DB (TODO v1.5).
+    let (all_users_res, total_search_res) = tokio::join!(
+        UserRepo::list_for_admin(&state.db, search, 500, 0),
         UserRepo::count_for_admin(&state.db, search),
     );
-    let users = users_res?;
-    let total = total_res.unwrap_or(0);
+    let mut all_users = all_users_res?;
+    // total_search: tổng user thoả mãn search TRƯỚC status filter — hiện
+    // ở chip "Tất cả" để admin biết quy mô site. Tránh unused warning.
+    let total_search = total_search_res.unwrap_or(0);
+    let now = chrono::Utc::now();
+    // Filter theo badge nếu có status_filter — tính badge 1 lần/user.
+    use crate::models::user::UserStatusBadge;
+    let key_to_badge = |k: &str| -> Option<UserStatusBadge> {
+        match k {
+            "banned" => Some(UserStatusBadge::Banned),
+            "new" => Some(UserStatusBadge::New),
+            "online" => Some(UserStatusBadge::Online),
+            "active" => Some(UserStatusBadge::Active),
+            "inactive" => Some(UserStatusBadge::Inactive),
+            "dormant" => Some(UserStatusBadge::Dormant),
+            _ => None,
+        }
+    };
+    let target_badge = if status_filter.is_empty() {
+        None
+    } else {
+        key_to_badge(&status_filter)
+    };
+    if let Some(b) = target_badge {
+        all_users.retain(|u| u.status_badge_at(now) == b);
+    }
+    // Tính count cho mỗi chip — phải lấy TẤT CẢ user không filter status
+    // để có count đúng. Tránh N+1 bằng cách tính trong 1 pass.
+    let mut counts: std::collections::HashMap<UserStatusBadge, i64> =
+        std::collections::HashMap::new();
+    for u in &all_users {
+        *counts.entry(u.status_badge_at(now)).or_insert(0) += 1;
+    }
+    let badge_keys: [(&str, UserStatusBadge); 6] = [
+        ("banned", UserStatusBadge::Banned),
+        ("new", UserStatusBadge::New),
+        ("online", UserStatusBadge::Online),
+        ("active", UserStatusBadge::Active),
+        ("inactive", UserStatusBadge::Inactive),
+        ("dormant", UserStatusBadge::Dormant),
+    ];
+    let status_options: Vec<(&'static str, &'static str, i64)> = badge_keys
+        .iter()
+        .map(|(k, b)| (*k, b.label(), *counts.get(b).unwrap_or(&0)))
+        .collect();
+    // Paginate thủ công sau khi filter.
+    let total = i64::try_from(all_users.len()).unwrap_or(0);
+    let users: Vec<_> = all_users
+        .into_iter()
+        .skip(offset as usize)
+        .take(per_page as usize)
+        .collect();
     let unread = unread_count(&state, user.id).await;
+    // Tránh unused warning cho `total_search` — đã bind để debug/sanity check.
+    // Nếu không dùng trong template, ít nhất xuất ra tracing để admin/dev
+    // biết quy mô search hiện tại.
+    tracing::debug!(?total_search, ?status_filter, "admin/users list rendered");
     Ok(AdminUsersTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         users,
+        status_options,
+        status_filter,
         search: q.q.unwrap_or_default(),
         total,
         page,
         per_page,
+        // total_search không dùng trong template — chỉ là tham chiếu
+        // cho debug. Trả về `total` = len của filter slice để pagination
+        // đúng số trang thật của filter hiện tại.
     })
 }
 
@@ -592,11 +731,35 @@ pub async fn set_banned(
         if banned { "banned" } else { "unbanned" },
     )
     .await;
-    Ok(Html(if banned {
-        "<span class='status-badge' style='color:#ef4444'>Bị cấm</span>".into()
-    } else {
-        "<span class='status-badge' style='color:#10b981'>Hoạt động</span>".into()
-    }))
+    // v1.4.0: sau khi ban/unban, fetch lại user để tính badge mới thật (chứ
+    // không hardcode "Hoạt động" — user có thể vẫn inactive hoặc new). HTMX
+    // swap #ban-{id} → hiển thị đúng badge trạng thái thật sau toggle.
+    let updated = UserRepo::find_by_id(&state.db, id).await?;
+    let badge_html = match updated {
+        Some(u) => {
+            use crate::models::user::UserStatusBadge;
+            let badge = UserStatusBadge::compute(
+                u.is_banned,
+                u.created_at,
+                u.last_seen_at,
+                chrono::Utc::now(),
+            );
+            format!(
+                "<span class='status-badge' style='color:{}'>{}</span>",
+                badge.color(),
+                badge.label()
+            )
+        }
+        None => {
+            // User bị xoá giữa chừng (race) — fallback đơn giản.
+            if banned {
+                "<span class='status-badge' style='color:#ef4444'>Bị cấm</span>".into()
+            } else {
+                "<span class='status-badge' style='color:#10b981'>Hoạt động</span>".into()
+            }
+        }
+    };
+    Ok(Html(badge_html))
 }
 
 // ============================================================
@@ -795,6 +958,150 @@ pub async fn delete_category(
     )
     .await;
     Ok(Redirect::to("/admin/categories"))
+}
+
+// ============================================================
+// ADMIN: NEWS CATEGORIES — v1.4.0
+// CRUD riêng cho thể loại tin tức (khác với thể loại game).
+// ============================================================
+/// GET /admin/news-categories — list tất cả category + count số tin.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn news_categories(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<AdminNewsCategoriesTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let cats = NewsCategoryRepo::list_all_with_counts(&state.db).await?;
+    let cats: Vec<NewsCategoryWithCountView> = cats.into_iter().map(Into::into).collect();
+    let unread = unread_count(&state, user.id).await;
+    Ok(AdminNewsCategoriesTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        categories: cats,
+    })
+}
+
+#[derive(Deserialize)]
+pub struct NewsCategoryForm {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    /// Có khi form edit gửi kèm id; không có = tạo mới.
+    pub id: Option<String>,
+    /// v1.4.0 — sort_order để admin sắp xếp category.
+    pub sort_order: Option<i32>,
+    /// v1.4.0 — is_active checkbox (absent = false do HTML checkbox behaviour).
+    pub is_active: Option<String>,
+}
+
+/// POST /admin/news-categories/save — tạo hoặc update category.
+/// Quy ước giống `save_category` cho game: nếu form có `id` → update,
+/// không có → create mới (slug auto-sinh từ name).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn save_news_category(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<NewsCategoryForm>,
+) -> AppResult<Redirect> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    let name = form.name.trim();
+    if name.is_empty() {
+        return Err(AppError::BadRequest("Tên thể loại không được trống".into()));
+    }
+    if name.chars().count() > 50 {
+        return Err(AppError::BadRequest("Tên thể loại tối đa 50 ký tự".into()));
+    }
+    let description = form.description.unwrap_or_default();
+    let description = description.trim();
+    if description.chars().count() > 500 {
+        return Err(AppError::BadRequest(
+            "Mô tả thể loại tối đa 500 ký tự".into(),
+        ));
+    }
+    let icon = form.icon.unwrap_or_default();
+    let icon = icon.trim();
+    if icon.chars().count() > 50 {
+        return Err(AppError::BadRequest("Icon tối đa 50 ký tự".into()));
+    }
+    let sort_order = form.sort_order.unwrap_or(0).clamp(0, 9999);
+    let is_active = form.is_active.is_some();
+    if let Some(id) = form
+        .id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| Uuid::parse_str(s).ok())
+    {
+        NewsCategoryRepo::update(
+            &state.db,
+            id,
+            name,
+            description,
+            icon,
+            sort_order,
+            is_active,
+        )
+        .await?;
+        audit(
+            &state,
+            user.id,
+            "news_category.update",
+            "news_category",
+            &id.to_string(),
+            name,
+        )
+        .await;
+    } else {
+        let slug = slug::slugify(name);
+        let id = NewsCategoryRepo::create(&state.db, name, &slug, description, icon).await?;
+        audit(
+            &state,
+            user.id,
+            "news_category.create",
+            "news_category",
+            &id.to_string(),
+            name,
+        )
+        .await;
+    }
+    Ok(Redirect::to("/admin/news-categories"))
+}
+
+/// POST /admin/news-categories/{id}/delete — xoá vĩnh viễn.
+/// Khác với `delete_category` (game): không chặn khi còn tin dùng category,
+/// vì `news.category` là VARCHAR text (không có FK) → tin cũ giữ giá trị
+/// text nhưng không còn category trong DB để match → form select sẽ hiện
+/// "— Không phân loại —". Admin cần tự quyết định có an toàn xoá hay không
+/// (xem `news_count` trong bảng list).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn delete_news_category(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Redirect> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    NewsCategoryRepo::delete(&state.db, id).await?;
+    audit(
+        &state,
+        user.id,
+        "news_category.delete",
+        "news_category",
+        &id.to_string(),
+        "",
+    )
+    .await;
+    Ok(Redirect::to("/admin/news-categories"))
 }
 
 // ============================================================

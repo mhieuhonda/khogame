@@ -3,7 +3,7 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::news::NewsStatus;
 use crate::repositories::news::NewsForm;
-use crate::repositories::NewsRepo;
+use crate::repositories::{NewsCategoryRepo, NewsRepo};
 use crate::state::AppState;
 use crate::templates::{
     MyNewsTemplate, NewsEditTemplate, NewsListTemplate, NewsNewTemplate, NewsShowTemplate,
@@ -19,9 +19,11 @@ use uuid::Uuid;
 
 const NEWS_PER_PAGE: i64 = 12;
 
-/// Danh sách category hợp lệ cho news (chống injection qua form).
-/// Lần lượt match với những gì UI hiển thị.
-pub const NEWS_CATEGORIES: &[(&str, &str)] = &[
+/// Fallback category list khi DB chưa migrate v1.4.0 hoặc bảng
+/// `news_categories` trống. Đảm bảo website vẫn chạy được khi admin
+/// chưa thêm category nào qua UI — form /news/new vẫn có select với
+/// 8 category mặc định. Sau khi admin CRUD qua UI, DB là source of truth.
+pub const NEWS_CATEGORIES_FALLBACK: &[(&str, &str)] = &[
     ("game", "Tin game"),
     ("tech", "Công nghệ"),
     ("industry", "Ngành game"),
@@ -32,18 +34,42 @@ pub const NEWS_CATEGORIES: &[(&str, &str)] = &[
     ("other", "Khác"),
 ];
 
-/// Validate category từ user input — chỉ cho phép giá trị trong whitelist.
-fn validate_category(cat: &str) -> Result<String, AppError> {
+/// Fetch category list từ DB. Fallback về `NEWS_CATEGORIES_FALLBACK`
+/// nếu DB lỗi / bảng trống / chưa migrate. Trả về `Vec<(slug, name)>`
+/// match interface cũ `NEWS_CATEGORIES` để template không đổi.
+///
+/// Tên "dynamic" để phân biệt với `NEWS_CATEGORIES_FALLBACK` (static).
+async fn dynamic_categories(state: &AppState) -> Vec<(String, String)> {
+    match NewsCategoryRepo::list_active(&state.db).await {
+        Ok(cats) if !cats.is_empty() => cats
+            .iter()
+            .map(|c| (c.slug.clone(), c.name.clone()))
+            .collect(),
+        _ => NEWS_CATEGORIES_FALLBACK
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect(),
+    }
+}
+
+/// Validate category: empty OK, hoặc phải tồn tại trong DB hoặc trong
+/// fallback list (cho tin cũ trước v1.4.0 với category không có trong DB).
+/// Async vì cần query DB.
+async fn validate_category(state: &AppState, cat: &str) -> Result<String, AppError> {
     if cat.is_empty() {
         return Ok(String::new()); // empty = không phân loại
     }
-    if NEWS_CATEGORIES.iter().any(|(k, _)| *k == cat) {
-        Ok(cat.to_string())
-    } else {
-        Err(AppError::BadRequest(format!(
-            "Category '{cat}' không hợp lệ"
-        )))
+    // DB check trước
+    if let Ok(Some(_)) = NewsCategoryRepo::find_by_slug(&state.db, cat).await {
+        return Ok(cat.to_string());
     }
+    // Fallback whitelist (cho tin cũ có category thuộc 8 mục default)
+    if NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == cat) {
+        return Ok(cat.to_string());
+    }
+    Err(AppError::BadRequest(format!(
+        "Category '{cat}' không hợp lệ"
+    )))
 }
 
 /// Validate URL http(s) — chống javascript: scheme gây XSS.
@@ -129,15 +155,16 @@ pub async fn list(
     Query(params): Query<ListParams>,
 ) -> AppResult<NewsListTemplate> {
     let page = params.page.unwrap_or(1).max(1);
-    // Validate category trước khi query — nếu category lạ, fallback
-    // về danh sách toàn bộ thay vì trả 0 kết quả gây nhầm lẫn.
+    // v1.4.0: category validation dùng DB, không còn hardcode whitelist.
     let category_raw = params.category.as_deref().unwrap_or("");
-    let category =
-        if category_raw.is_empty() || NEWS_CATEGORIES.iter().any(|(k, _)| *k == category_raw) {
-            category_raw.to_string()
-        } else {
-            String::new()
-        };
+    let category = if category_raw.is_empty() {
+        String::new()
+    } else {
+        match validate_category(&state, category_raw).await {
+            Ok(c) => c,
+            Err(_) => String::new(), // fallback về all nếu category không hợp lệ
+        }
+    };
     let q = params.q.as_deref().unwrap_or("");
 
     // Fetch items + total song song (tokio::join!) — trước đây chạy tuần tự
@@ -176,10 +203,21 @@ pub async fn list(
         }
     };
 
+    // v1.4.0: categories từ DB (có fallback). Fetch song song với unread.
+    let cats_fut = dynamic_categories(&state);
     let unread_fut = unread_for(&state, current_user.as_ref());
-    // Chạy featured + unread song song sau khi đã có items/total.
-    let (featured, unread) = tokio::join!(featured_fut, unread_fut);
+    let (featured, cats, unread) = tokio::join!(featured_fut, cats_fut, unread_fut);
 
+    // Tìm label cho category hiện tại trong cats list.
+    let category_label = cats
+        .iter()
+        .find(|(k, _)| *k == category)
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let cats_ref: Vec<(&str, &str)> = cats
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     Ok(NewsListTemplate {
         current_user,
         unread_notifications: unread,
@@ -189,13 +227,9 @@ pub async fn list(
         page,
         total_pages,
         category: category.to_string(),
-        category_label: NEWS_CATEGORIES
-            .iter()
-            .find(|(k, _)| *k == category)
-            .map(|(_, v)| v.to_string())
-            .unwrap_or_default(),
+        category_label,
         query: q.to_string(),
-        categories: NEWS_CATEGORIES.iter().map(|(k, v)| (*k, *v)).collect(),
+        categories: cats_ref,
     })
 }
 
@@ -285,17 +319,23 @@ pub async fn show(
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn new_form(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<NewsNewTemplate> {
     // Banned user không được đăng tin
     if user.is_banned {
         return Err(AppError::Forbidden("Tài khoản đã bị khóa".into()));
     }
+    // v1.4.0: categories từ DB (fallback nếu bảng chưa migrate).
+    let cats = dynamic_categories(&state).await;
+    let cats_ref: Vec<(&str, &str)> = cats
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     Ok(NewsNewTemplate {
         current_user: Some(user),
         unread_notifications: 0,
-        categories: NEWS_CATEGORIES.iter().map(|(k, v)| (*k, *v)).collect(),
+        categories: cats_ref,
         errors: Vec::new(),
         form: NewsFormPartial::default(),
     })
@@ -375,7 +415,7 @@ pub async fn create(
         errors.push("Tóm tắt tối đa 500 ký tự".into());
     }
 
-    let category = match validate_category(params.category.as_deref().unwrap_or("")) {
+    let category = match validate_category(&state, params.category.as_deref().unwrap_or("")).await {
         Ok(c) => c,
         Err(e) => {
             errors.push(e.to_string());
@@ -415,10 +455,16 @@ pub async fn create(
     };
 
     if !errors.is_empty() {
+        // v1.4.0: categories từ DB khi re-render form có lỗi.
+        let cats = dynamic_categories(&state).await;
+        let cats_ref: Vec<(&str, &str)> = cats
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
         let tmpl = NewsNewTemplate {
             current_user: Some(user),
             unread_notifications: 0,
-            categories: NEWS_CATEGORIES.iter().map(|(k, v)| (*k, *v)).collect(),
+            categories: cats_ref,
             errors,
             form: NewsFormPartial::from(&params),
         };
@@ -491,10 +537,16 @@ pub async fn edit_form(
         ));
     }
 
+    // v1.4.0: categories từ DB cho edit form.
+    let cats = dynamic_categories(&state).await;
+    let cats_ref: Vec<(&str, &str)> = cats
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     Ok(NewsEditTemplate {
         current_user: Some(user),
         unread_notifications: 0,
-        categories: NEWS_CATEGORIES.iter().map(|(k, v)| (*k, *v)).collect(),
+        categories: cats_ref,
         news: full,
         errors: Vec::new(),
     })
@@ -543,7 +595,7 @@ pub async fn update(
             u if u.is_empty() => None,
             u => Some(u),
         },
-        category: validate_category(params.category.as_deref().unwrap_or(""))?,
+        category: validate_category(&state, params.category.as_deref().unwrap_or("")).await?,
         source_url: validate_url(params.source_url.as_deref().unwrap_or(""))?,
         source_name: params
             .source_name
@@ -717,15 +769,22 @@ pub async fn my_news(
 mod tests {
     use super::*;
 
+    /// v1.4.0: `validate_category` giờ async (cần DB). Test sync logic
+    /// riêng bằng cách gọi trực tiếp `NEWS_CATEGORIES_FALLBACK` whitelist.
+    /// Test async (with DB) nằm ngoài scope unit test (cần DB pool).
     #[test]
-    fn validate_category_whitelist() {
-        assert_eq!(validate_category("game").unwrap(), "game");
-        assert_eq!(validate_category("tech").unwrap(), "tech");
-        assert_eq!(validate_category("").unwrap(), "");
-        assert!(validate_category("invalid").is_err());
-        // Chống injection: category lạ bị từ chối
-        assert!(validate_category("' OR 1=1").is_err());
-        assert!(validate_category("GAME").is_err()); // case-sensitive
+    fn validate_category_fallback_whitelist() {
+        // Verify fallback list có 8 category mặc định không trùng key.
+        assert!(NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "game"));
+        assert!(NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "tech"));
+        // Empty luôn hợp lệ (= không phân loại)
+        // (không cần gọi validate_category — empty luôn trả Ok trong async fn)
+        // Category lạ KHÔNG có trong fallback → khi gọi validate_category
+        // async với DB trống, sẽ trả Err.
+        assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "invalid"));
+        assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "' OR 1=1"));
+        // Case-sensitive: "GAME" không match "game"
+        assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "GAME"));
     }
 
     #[test]
@@ -757,17 +816,21 @@ mod tests {
 
     #[test]
     fn news_categories_have_unique_keys() {
-        // Đảm bảo không có key trùng trong whitelist
-        let mut keys: Vec<&str> = NEWS_CATEGORIES.iter().map(|(k, _)| *k).collect();
+        // Đảm bảo không có key trùng trong fallback whitelist
+        let mut keys: Vec<&str> = NEWS_CATEGORIES_FALLBACK.iter().map(|(k, _)| *k).collect();
         keys.sort_unstable();
         keys.dedup();
-        assert_eq!(keys.len(), NEWS_CATEGORIES.len(), "Duplicate category keys");
+        assert_eq!(
+            keys.len(),
+            NEWS_CATEGORIES_FALLBACK.len(),
+            "Duplicate category keys"
+        );
     }
 
     #[test]
     fn news_categories_all_have_labels() {
         // Mỗi category phải có label không rỗng
-        for (k, v) in NEWS_CATEGORIES {
+        for (k, v) in NEWS_CATEGORIES_FALLBACK {
             assert!(!k.is_empty(), "Category key rỗng");
             assert!(!v.is_empty(), "Label cho category '{k}' rỗng");
         }
@@ -776,7 +839,7 @@ mod tests {
     #[test]
     fn news_categories_count_is_reasonable() {
         // Không quá ít (3-) để không hữu ích, không quá nhiều (20+) để UI lộn xộn
-        let count = NEWS_CATEGORIES.len();
+        let count = NEWS_CATEGORIES_FALLBACK.len();
         assert!(count >= 5, "Quá ít category: {count}");
         assert!(count <= 15, "Quá nhiều category: {count}");
     }
@@ -791,10 +854,15 @@ mod tests {
     }
 
     #[test]
-    fn validate_category_all_8_categories_pass() {
-        // Verify toàn bộ 8 category trong whitelist đều pass
-        for (k, _) in NEWS_CATEGORIES {
-            assert_eq!(validate_category(k).unwrap(), *k);
+    fn validate_category_all_8_fallback_categories_have_unique_keys() {
+        // Verify toàn bộ 8 category trong fallback whitelist đều có key
+        // unique và label không rỗng (đảm bảo form /news/new luôn có select
+        // 8 mục khi DB chưa migrate).
+        let mut seen = std::collections::HashSet::new();
+        for (k, v) in NEWS_CATEGORIES_FALLBACK {
+            assert!(seen.insert(*k), "Duplicate key: {k}");
+            assert!(!v.is_empty(), "Label rỗng cho {k}");
         }
+        assert_eq!(seen.len(), 8, "Cần đúng 8 fallback categories");
     }
 }

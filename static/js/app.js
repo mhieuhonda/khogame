@@ -599,3 +599,121 @@
     // Không console.log ở prod: noise trong devtools người dùng cuối,
     // một số công ty quét console.log khi audit vendor JS.
 })();
+
+// ===== v1.4.0: Toast notifications for HTMX actions =====
+// Show a transient toast when HTMX swap returns success/error indicator.
+// Works with handler returning <div class="alert alert-success">...</div>
+// or <div class="alert alert-danger">...</div>.
+(function() {
+    function ensureToastContainer() {
+        var c = document.getElementById('toast-container');
+        if (!c) {
+            c = document.createElement('div');
+            c.id = 'toast-container';
+            c.setAttribute('aria-live', 'polite');
+            c.setAttribute('aria-atomic', 'true');
+            document.body.appendChild(c);
+        }
+        return c;
+    }
+    function showToast(message, type) {
+        type = type || 'success';
+        var c = ensureToastContainer();
+        var t = document.createElement('div');
+        t.className = 'toast toast-' + type;
+        t.textContent = message;
+        c.appendChild(t);
+        // Trigger animation
+        requestAnimationFrame(function() { t.classList.add('toast-show'); });
+        setTimeout(function() {
+            t.classList.remove('toast-show');
+            setTimeout(function() { if (t.parentNode) t.remove(); }, 300);
+        }, 3500);
+    }
+    // Expose global for inline onclick fallbacks
+    window.lsToast = showToast;
+
+    // Listen HTMX afterSettle — look for .alert-success / .alert-danger
+    // in swapped content and convert to toast (instead of inline alert).
+    document.addEventListener('htmx:afterSettle', function(e) {
+        var target = e.detail.target;
+        if (!target) return;
+        var alerts = target.querySelectorAll ? target.querySelectorAll('.alert-success, .alert-danger') : [];
+        for (var i = 0; i < alerts.length; i++) {
+            var a = alerts[i];
+            var text = (a.textContent || '').trim();
+            if (!text) continue;
+            var type = a.classList.contains('alert-danger') ? 'error' : 'success';
+            showToast(text, type);
+            // Remove inline alert — toast đã thay thế.
+            a.remove();
+        }
+    });
+})();
+
+// ===== v1.4.0: Keyboard shortcuts =====
+// `/` focuses the search input (any page with .search-bar input).
+// `g h` → home, `g n` → news, `g g` → games, `g a` → admin (nếu staff).
+// `Esc` closes any open menu/modal.
+// `?` shows shortcut help (toast).
+(function() {
+    var lastG = 0;
+    document.addEventListener('keydown', function(e) {
+        // Ignore khi user đang gõ trong input/textarea
+        var tag = (e.target.tagName || '').toUpperCase();
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) {
+            if (e.key === 'Escape' && tag === 'INPUT') {
+                e.target.blur();
+            }
+            return;
+        }
+        // `/` focus search
+        if (e.key === '/') {
+            e.preventDefault();
+            var s = document.querySelector('.search-bar input, input[name="q"]');
+            if (s) { s.focus(); s.select(); }
+            return;
+        }
+        // `?` show help
+        if (e.key === '?') {
+            e.preventDefault();
+            if (window.lsToast) {
+                window.lsToast('Phím tắt: / (tìm) · g h (trang chủ) · g n (tin) · g g (game) · g a (admin)', 'info');
+            }
+            return;
+        }
+        // `g <letter>` sequence — go to URL
+        if (e.key === 'g') {
+            lastG = Date.now();
+            return;
+        }
+        if (lastG && Date.now() - lastG < 800) {
+            var url = null;
+            switch (e.key) {
+                case 'h': url = '/'; break;
+                case 'n': url = '/news'; break;
+                case 'g': url = '/games/latest'; break;
+                case 'a': url = '/admin'; break;
+                case 'b': url = '/bookmarks'; break;
+                case 'p': url = '/profile'; break;
+                case 'm': url = '/my-games'; break;
+            }
+            if (url) {
+                e.preventDefault();
+                window.location.href = url;
+                lastG = 0;
+                return;
+            }
+            lastG = 0;
+        }
+        // Escape — close site menu
+        if (e.key === 'Escape') {
+            var menu = document.getElementById('site-menu');
+            if (menu && !menu.hidden) {
+                menu.hidden = true;
+                var toggle = document.getElementById('menuToggle');
+                if (toggle) { toggle.classList.remove('open'); toggle.setAttribute('aria-expanded', 'false'); }
+            }
+        }
+    });
+})();

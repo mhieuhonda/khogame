@@ -66,6 +66,8 @@ impl_template_response!(
     AdminNewsAllTemplate,
     // Admin user detail (chỉ admin, không phải mod)
     AdminUserDetailTemplate,
+    // v1.4.0 — admin news categories (CRUD)
+    AdminNewsCategoriesTemplate,
 );
 
 /// Home page
@@ -293,6 +295,16 @@ pub struct AdminTemplate {
     /// News stats cho admin dashboard
     pub pending_news: i64,
     pub total_news: i64,
+    /// v1.4.0 — online users count (last_seen < 15 phút)
+    pub online_users: i64,
+    /// v1.4.0 — 5 user hoạt động gần đây (sidebar widget)
+    pub recent_active_users: Vec<user::UserWithGameCount>,
+    /// v1.4.0 — tổng user bị cấm
+    pub banned_users: i64,
+    /// v1.4.0 — tổng comment (insight)
+    pub total_comments: i64,
+    /// v1.4.0 — tổng view (SUM view_count trên games)
+    pub total_views: i64,
 }
 
 /// Admin reports
@@ -337,6 +349,10 @@ pub struct AdminUsersTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub users: Vec<user::UserWithGameCount>,
+    /// (key, label, count) cho chip filter — vd ("online", "Đang online", 5).
+    /// Count được tính trong handler, không phải template, để tránh N+1 query.
+    pub status_options: Vec<(&'static str, &'static str, i64)>,
+    pub status_filter: String,
     pub search: String,
     pub total: i64,
     pub page: i64,
@@ -362,6 +378,51 @@ pub struct AdminCategoriesTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub categories: Vec<category::CategoryWithCount>,
+}
+
+/// v1.4.0 — Admin news categories (CRUD). Tách riêng khỏi `AdminCategoriesTemplate`
+/// (thể loại game) để admin có 2 trang khác nhau, 2 bảng khác nhau.
+#[derive(Template)]
+#[template(path = "admin/news_categories.html")]
+pub struct AdminNewsCategoriesTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Category + count số tin thuộc category (cho admin biết xoá có an toàn).
+    pub categories: Vec<NewsCategoryWithCountView>,
+}
+
+/// Wrapper view cho `NewsCategoryWithCount` thêm `is_active_label` để
+/// template không phải gọi method — Askama có gọi được nhưng bọc trong
+/// struct dễ debug + format text inline.
+#[derive(Debug, Clone)]
+pub struct NewsCategoryWithCountView {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: String,
+    pub icon: String,
+    pub sort_order: i32,
+    pub is_active: bool,
+    pub is_active_label: &'static str,
+    pub news_count: i64,
+}
+
+impl From<crate::models::news_category::NewsCategoryWithCount>
+    for NewsCategoryWithCountView
+{
+    fn from(c: crate::models::news_category::NewsCategoryWithCount) -> Self {
+        Self {
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            description: c.description,
+            icon: c.icon,
+            sort_order: c.sort_order,
+            is_active: c.is_active,
+            is_active_label: if c.is_active { "Hiển thị" } else { "Ẩn" },
+            news_count: c.news_count,
+        }
+    }
 }
 
 /// Admin repos

@@ -1,0 +1,84 @@
+{% extends "layout.html" %}
+{% block title %}Thể loại tin tức{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <h1>🗂️ Thể loại tin tức</h1>
+        <p>Thêm, sửa, xóa thể loại cho tin tức. Người dùng sẽ chọn từ danh sách này khi đăng tin mới.</p>
+    </div>
+    {% include "admin/_nav.html" %}
+
+    {# Section 1: form thêm category mới #}
+    <section class="admin-section">
+        <div class="section-header"><h2>➕ Thêm thể loại mới</h2></div>
+        <form action="/admin/news-categories/save" method="post" class="admin-form-row">
+            <input type="text" name="name" placeholder="Tên thể loại (vd: Sự kiện)" maxlength="50" required>
+            <input type="text" name="icon" placeholder="Icon emoji (vd: 🎉)" maxlength="50">
+            <input type="text" name="description" placeholder="Mô tả ngắn" maxlength="500">
+            <button class="btn btn-primary" type="submit">Thêm</button>
+        </form>
+        <p class="hint" style="margin-top:8px">
+            <small>Slug tự sinh từ tên (vd "Sự kiện" → "su-kien"). Nếu 2 tên khác ra cùng slug, system sẽ báo trùng.</small>
+        </p>
+    </section>
+
+    {# Section 2: bảng list + edit inline #}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Tên</th>
+                    <th>Slug</th>
+                    <th>Số tin</th>
+                    <th>Mô tả</th>
+                    <th>Icon</th>
+                    <th>Thứ tự</th>
+                    <th>Trạng thái</th>
+                    <th>Hành động</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for c in categories %}
+            <tr>
+                {# Dùng `form=` HTML5 cho 1 form duy nhất / hàng #}
+                <td>
+                    <input type="text" name="name" value="{{ c.name }}" form="ncat-edit-{{ c.id }}" maxlength="50" required>
+                </td>
+                <td><code>{{ c.slug }}</code></td>
+                <td>{{ c.news_count }}</td>
+                <td>
+                    <input type="text" name="description" value="{{ c.description }}" class="input-wide" form="ncat-edit-{{ c.id }}" maxlength="500">
+                </td>
+                <td>
+                    <input type="text" name="icon" value="{{ c.icon }}" form="ncat-edit-{{ c.id }}" maxlength="50" placeholder="vd 🎮">
+                </td>
+                <td>
+                    <input type="number" name="sort_order" value="{{ c.sort_order }}" form="ncat-edit-{{ c.id }}" min="0" max="9999" style="width:64px">
+                </td>
+                <td>
+                    <label class="admin-checkbox">
+                        <input type="checkbox" name="is_active" form="ncat-edit-{{ c.id }}" {% if c.is_active %}checked{% endif %}>
+                        <span>{{ c.is_active_label }}</span>
+                    </label>
+                </td>
+                <td class="admin-actions">
+                    <form id="ncat-edit-{{ c.id }}" action="/admin/news-categories/save" method="post"></form>
+                    <input type="hidden" name="id" value="{{ c.id }}" form="ncat-edit-{{ c.id }}">
+                    <button class="btn btn-outline btn-sm" type="submit" form="ncat-edit-{{ c.id }}">Lưu</button>
+                    <form action="/admin/news-categories/{{ c.id }}/delete" method="post"
+                          onsubmit="return confirm('Xoá thể loại tin tức này? Tin cũ sẽ mất phân loại — không thể hoàn tác.');">
+                        <button class="btn btn-danger btn-sm" type="submit">Xóa</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if categories.is_empty() %}
+    <div class="empty-state">
+        <p>Chưa có thể loại tin tức nào. Thêm thể loại đầu tiên ở form trên.</p>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

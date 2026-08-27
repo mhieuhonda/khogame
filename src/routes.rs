@@ -268,6 +268,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/categories/{id}/delete",
             post(handlers::admin::delete_category).delete(handlers::admin::delete_category),
         )
+        // v1.4.0 — News Categories (CRUD riêng cho tin tức, khác với categories game)
+        .route(
+            "/admin/news-categories",
+            get(handlers::admin::news_categories),
+        )
+        .route(
+            "/admin/news-categories/save",
+            post(handlers::admin::save_news_category),
+        )
+        .route(
+            "/admin/news-categories/{id}/delete",
+            post(handlers::admin::delete_news_category)
+                .delete(handlers::admin::delete_news_category),
+        )
         // Repos
         .route("/admin/repos", get(handlers::admin::repos))
         .route(

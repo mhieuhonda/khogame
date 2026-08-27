@@ -1212,14 +1212,18 @@ pub async fn news_list(
     let page = params.page.unwrap_or(1).max(1);
     let per_page = 12i64;
     let category_raw = params.category.as_deref().unwrap_or("");
-    // Validate category against whitelist — tránh query vô nghĩa nếu
-    // client gửi category lạ (sẽ trả 0 kết quả, không phải lỗi security
-    // nhưng gây nhầm lẫn cho người dùng API).
+    // v1.4.0: validate category bằng DB + fallback whitelist.
+    // API vẫn cần xác thực để tránh query vô nghĩa khi client gửi category lạ.
     let category = if category_raw.is_empty() {
         String::new()
-    } else if crate::handlers::news::NEWS_CATEGORIES
+    } else if crate::handlers::news::NEWS_CATEGORIES_FALLBACK
         .iter()
         .any(|(k, _)| *k == category_raw)
+        || crate::repositories::NewsCategoryRepo::find_by_slug(&state.db, category_raw)
+            .await
+            .ok()
+            .flatten()
+            .is_some()
     {
         category_raw.to_string()
     } else {
