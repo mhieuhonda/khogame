@@ -9,6 +9,81 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.0.0] — 2026-08-27 — Major: redesign toàn bộ giao diện "Prism" (GitHub Primer + Vercel Geist + X)
+
+🚀 **Major release** — viết lại hoàn toàn frontend (CSS + HTML + JS) với
+design system mới, giữ nguyên 100% backend, logic template và endpoint HTMX.
+
+### ✨ Design system "Prism" — kết hợp 3 ngôn ngữ thiết kế hàng đầu
+
+- **GitHub Primer**: bảng màu trung tính (light `#ffffff` / dark `#0d1117`),
+  viền tinh tế, bảng biểu & form chuẩn GitHub, token semantic
+  (success/danger/warning/done), focus ring accessible, UnderlineNav
+  cho sort bar / admin nav / profile tabs.
+- **Vercel Geist**: typography chặt (tiêu đề 800 weight, letter-spacing âm),
+  số liệu dùng font JetBrains Mono, card phẳng + hover elevation,
+  hero section gradient aura + dot grid, stats bar số mono + label uppercase.
+- **X (Twitter)**: pill buttons/tags (border-radius 9999px), accent blue
+  `#1d9bf0` cho nút CTA, timeline comments, avatar tròn, header sticky
+  với backdrop-blur, chat bubbles kiểu DM.
+
+### ✨ Giao diện mới
+
+- **CSS mới ~5.900 dòng, 35 sections có tổ chức**: design tokens light/dark
+  đầy đủ qua CSS custom properties, dark mode chuẩn GitHub dark, toast
+  system, modal, skeleton loading, HTMX progress bar + spinner cho nút,
+  responsive 400px→1440px, print styles, custom scrollbar mỏng.
+- **53/53 templates Askama viết lại**: thay toàn bộ emoji icons bằng
+  inline SVG (feather-style); platform icons (🤖🍎🪟🐧💻) → mono chips
+  `AND/iOS/WIN/LIN/MAC`; meta số liệu dùng SVG icon + JetBrains Mono;
+  profile header kiểu X (cover gradient + avatar overlap); game detail
+  với breadcrumb, stats grid, sidebar sticky.
+- **Header mới**: sticky + backdrop-blur (X style), search pill có focus
+  ring + gợi ý phím tắt `/`, mega menu 2 cột với SVG icons + animation.
+- **Live chat mới**: bubble layout kiểu X DM — tin của mình căn phải
+  màu xanh, tin của người khác căn trái nền subtle, avatar tròn,
+  presence dot nhấp nháy.
+
+### 🐛 Bug fixes (2 bug nghiêm trọng từ các bản trước)
+
+- **FIX chat.js sập hoàn toàn**: selector
+  `a.avatar-linkref^="/u/"` là CSS syntax error → `querySelector` throw →
+  toàn bộ `init()` của chat sập → **chat không load được history** từ
+  trước tới nay. Fix: `a.avatar-link[href^="/u/"]` + try-catch fail-safe.
+- **FIX duplicate-check game form**: từ bản cũ, check trùng tiêu đề chỉ
+  gắn vào `#title` (id của form news) — form đăng game (`#f-title`)
+  **không bao giờ được cảnh báo**. Fix: gắn check cho cả hai form.
+
+### ⚡ Cải thiện JS (~1.000 dòng viết lại)
+
+- **app.js**: toast notifications (thay alert), theme sync đa tab,
+  HTMX error toasts thân thiện (401/403/429/5xx), search autocomplete
+  + phím tắt `/`, generic upload handler (`data-upload-endpoint` thay
+  6 block JS copy-paste cũ), `data-confirm` forms, chống double-submit,
+  char counter cho mọi form, admin nav tự highlight theo path.
+- **chat.js**: render message bằng DOM API an toàn (không innerHTML cho
+  nội dung user — XSS-safe), reconnect WebSocket exponential backoff,
+  auto-reconnect khi quay lại tab sau 5 phút ẩn.
+
+### 🎨 Chi tiết khác
+
+- `manifest.json`: theme_color `#0f172a` → `#0d1117` đồng bộ dark theme.
+- Cache-busting: `?v=2.0.0` cho CSS/JS/fonts.
+- Accessibility giữ nguyên và nâng cấp: focus-visible nhất quán,
+  `prefers-reduced-motion`, skip-link, ARIA labels đầy đủ.
+- Số liệu thống kê (views/downloads/likes) format mono tabular-nums —
+  không bị nhảy layout khi số thay đổi.
+
+### ✅ Kiểm thử
+
+- `cargo check` / `cargo clippy -D warnings` / `cargo test` (191 passed)
+  / `cargo fmt` / `cargo doc -D warnings`: PASS với Rust 1.98.0.
+- E2E: PostgreSQL 17 thật + server chạy local + 30+ routes HTTP 200,
+  không console errors, review giao diện bằng browser + VLM
+  (light/dark/mobile 390px) — không lỗi layout.
+
+---
+
 ## [1.4.0] — 2026-08-27 — Major: news categories CRUD + security fix + desktop responsive + 20 features
 
 🚀 **Major release** — bổ sung 4 nhóm thay đổi lớn mà người dùng yêu cầu:
