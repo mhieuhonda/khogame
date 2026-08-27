@@ -765,8 +765,12 @@ mod tests {
         // (không cần gọi validate_category — empty luôn trả Ok trong async fn)
         // Category lạ KHÔNG có trong fallback → khi gọi validate_category
         // async với DB trống, sẽ trả Err.
-        assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "invalid"));
-        assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "' OR 1=1"));
+        assert!(!NEWS_CATEGORIES_FALLBACK
+            .iter()
+            .any(|(k, _)| *k == "invalid"));
+        assert!(!NEWS_CATEGORIES_FALLBACK
+            .iter()
+            .any(|(k, _)| *k == "' OR 1=1"));
         // Case-sensitive: "GAME" không match "game"
         assert!(!NEWS_CATEGORIES_FALLBACK.iter().any(|(k, _)| *k == "GAME"));
     }

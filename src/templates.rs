@@ -407,9 +407,7 @@ pub struct NewsCategoryWithCountView {
     pub news_count: i64,
 }
 
-impl From<crate::models::news_category::NewsCategoryWithCount>
-    for NewsCategoryWithCountView
-{
+impl From<crate::models::news_category::NewsCategoryWithCount> for NewsCategoryWithCountView {
     fn from(c: crate::models::news_category::NewsCategoryWithCount) -> Self {
         Self {
             id: c.id,
