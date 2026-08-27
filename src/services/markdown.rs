@@ -172,7 +172,7 @@ impl SyntaxHighlighterAdapter for SyntectHighlighter {
 ///
 /// Comrak gọi `enter` cho mỗi heading trước khi render nội dung heading,
 /// `exit` sau. Ta gom tất cả anchor info vào một thread-local-style
-/// (Mutex<Vec>) để phase 2 (ToC) dùng được.
+/// (`Mutex<Vec>`) để phase 2 (ToC) dùng được.
 struct AnchorHeadingAdapter;
 
 /// Một entry ToC: text + slug + level.
@@ -183,7 +183,7 @@ struct TocEntry {
     level: u8,
 }
 
-/// Cache ToC per-render — dùng Mutex<Vec> trong OnceLock vì Comrak Adapter
+/// Cache ToC per-render — dùng `Mutex<Vec>` trong OnceLock vì Comrak Adapter
 /// trait không cho truyền state qua &self mut. Một render chỉ chạy trên 1
 /// thread, một lúc; nên tạm clear → push → collect trong mutex an toàn.
 fn toc_buffer() -> &'static Mutex<Vec<TocEntry>> {
