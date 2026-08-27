@@ -6808,3 +6808,167 @@ textarea:focus-visible,
 [data-theme="dark"] .game-content blockquote.callout-quote {
     background: rgba(148, 163, 184, 0.1);
 }
+
+/* ============================================================
+   v2.4.0 — Markdown UX additions (KHÔNG thay đổi UI hiện có)
+   - .md-figure: figure caption cho ảnh (alt có prefix "caption:")
+   - .code-lang-label: badge tên ngôn ngữ trên code block
+   - .callout-collapsible: <details><summary> cho [!NOTE]+/-
+   - .reading-time-badge: badge "X phút đọc" trong meta
+   ============================================================ */
+
+/* Figure với caption — áp dụng cả .news-content và .game-content */
+.prose-md figure.md-figure,
+.news-content figure.md-figure,
+.game-content figure.md-figure {
+    margin: 1.25rem 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+.prose-md figure.md-figure img,
+.news-content figure.md-figure img,
+.game-content figure.md-figure img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+.prose-md figure.md-figure figcaption,
+.news-content figure.md-figure figcaption,
+.game-content figure.md-figure figcaption {
+    font-size: 0.875em;
+    color: var(--muted, #6b7280);
+    text-align: center;
+    font-style: italic;
+    max-width: 90%;
+}
+
+/* Language label badge trên code block — không ảnh hưởng layout */
+.prose-md .code-block-wrapper,
+.news-content .code-block-wrapper,
+.game-content .code-block-wrapper {
+    position: relative;
+}
+.prose-md .code-lang-label,
+.news-content .code-lang-label,
+.game-content .code-lang-label {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 0.15em 0.6em;
+    font-size: 0.7em;
+    font-family: var(--font-mono, monospace);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted, #6b7280);
+    background: rgba(0, 0, 0, 0.05);
+    border-bottom-left-radius: 6px;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+.prose-md .code-block-wrapper:hover .code-lang-label,
+.news-content .code-block-wrapper:hover .code-lang-label,
+.game-content .code-block-wrapper:hover .code-lang-label {
+    opacity: 1;
+}
+[data-theme="dark"] .prose-md .code-lang-label,
+[data-theme="dark"] .news-content .code-lang-label,
+[data-theme="dark"] .game-content .code-lang-label {
+    color: #9ca3af;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+/* Collapsible callout (<details><summary>) — variants theo kind */
+.prose-md details.callout-collapsible,
+.news-content details.callout-collapsible,
+.game-content details.callout-collapsible {
+    margin: 1rem 0;
+    padding: 0;
+    border-radius: 8px;
+    border-left: 4px solid var(--accent, #6366f1);
+    background: rgba(99, 102, 241, 0.05);
+    overflow: hidden;
+}
+.prose-md details.callout-collapsible > .callout-summary,
+.news-content details.callout-collapsible > .callout-summary,
+.game-content details.callout-collapsible > .callout-summary {
+    padding: 0.625rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.prose-md details.callout-collapsible > .callout-summary::before,
+.news-content details.callout-collapsible > .callout-summary::before,
+.game-content details.callout-collapsible > .callout-summary::before {
+    content: "▸";
+    font-size: 0.85em;
+    transition: transform 0.2s ease;
+    color: var(--muted, #6b7280);
+}
+.prose-md details.callout-collapsible[open] > .callout-summary::before,
+.news-content details.callout-collapsible[open] > .callout-summary::before,
+.game-content details.callout-collapsible[open] > .callout-summary::before {
+    transform: rotate(90deg);
+}
+.prose-md details.callout-collapsible > .callout-summary::-webkit-details-marker,
+.news-content details.callout-collapsible > .callout-summary::-webkit-details-marker,
+.game-content details.callout-collapsible > .callout-summary::-webkit-details-marker {
+    display: none;
+}
+.prose-md details.callout-collapsible > .callout-body,
+.news-content details.callout-collapsible > .callout-body,
+.game-content details.callout-collapsible > .callout-body {
+    padding: 0 1rem 0.75rem;
+}
+.prose-md details.callout-collapsible > .callout-body > p:first-child,
+.news-content details.callout-collapsible > .callout-body > p:first-child,
+.game-content details.callout-collapsible > .callout-body > p:first-child {
+    margin-top: 0;
+}
+
+/* Color variants for collapsible — mirror static callouts */
+.prose-md details.callout-note, .news-content details.callout-note, .game-content details.callout-note { border-left-color: #6366f1; background: rgba(99, 102, 241, 0.06); }
+.prose-md details.callout-tip, .news-content details.callout-tip, .game-content details.callout-tip { border-left-color: #10b981; background: rgba(16, 185, 129, 0.06); }
+.prose-md details.callout-info, .news-content details.callout-info, .game-content details.callout-info { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.06); }
+.prose-md details.callout-warning, .news-content details.callout-warning, .game-content details.callout-warning { border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.06); }
+.prose-md details.callout-danger, .news-content details.callout-danger, .game-content details.callout-danger { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.06); }
+.prose-md details.callout-important, .news-content details.callout-important, .game-content details.callout-important { border-left-color: #8b5cf6; background: rgba(139, 92, 246, 0.06); }
+.prose-md details.callout-success, .news-content details.callout-success, .game-content details.callout-success { border-left-color: #22c55e; background: rgba(34, 197, 94, 0.06); }
+.prose-md details.callout-question, .news-content details.callout-question, .game-content details.callout-question { border-left-color: #3b82f6; background: rgba(59, 130, 246, 0.08); }
+.prose-md details.callout-quote, .news-content details.callout-quote, .game-content details.callout-quote { border-left-color: #94a3b8; background: rgba(148, 163, 184, 0.06); }
+
+/* Description lists (<dl><dt><dd>) — comrak description_lists feature */
+.prose-md dl, .news-content dl, .game-content dl {
+    margin: 1rem 0;
+    padding-left: 1rem;
+    border-left: 3px solid rgba(99, 102, 241, 0.25);
+}
+.prose-md dt, .news-content dt, .game-content dt {
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+.prose-md dd, .news-content dd, .game-content dd {
+    margin: 0.25rem 0 0.5rem 1rem;
+    color: var(--text-muted, #4b5563);
+}
+[data-theme="dark"] .prose-md dd,
+[data-theme="dark"] .news-content dd,
+[data-theme="dark"] .game-content dd {
+    color: #9ca3af;
+}
+
+/* Reading time badge — subtle meta-item */
+.news-show-meta .reading-time-badge {
+    color: var(--muted, #6b7280);
+    opacity: 0.85;
+}
+

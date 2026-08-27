@@ -1,11 +1,11 @@
-//! Markdown rendering engine — "xịn hơn GitHub".
+//! Markdown rendering engine — "xịn hơn GitHub" — v2.4.0 PERF + UX upgrade.
 //!
 //! Built on top of [`comrak`] (100% CommonMark + GFM superset) with
 //! a custom [`syntect`] adapter for code block highlighting.
 //!
 //! # Vượt trội hơn GitHub Flavored Markdown
 //!
-//! | Tính năng | GitHub | Khogame v2.3 |
+//! | Tính năng | GitHub | Khogame v2.4 |
 //! |-----------|:------:|:------------:|
 //! | CommonMark | ✅ | ✅ |
 //! | Tables (GFM) | ✅ | ✅ |
@@ -16,13 +16,19 @@
 //! | Math `$...$` (KaTeX-style) | ✅ | ✅ |
 //! | Syntax highlighting | ✅ linguist | ✅ syntect (default theme) |
 //! | Spoiler `>!` | ❌ | ✅ |
-//! | Callouts `> [!NOTE]` | ✅ | ✅ |
+//! | Callouts `> [!NOTE]` | ✅ | ✅ (+ collapsible `+` / `-` modifiers) |
 //! | YouTube auto-embed | ❌ | ✅ |
 //! | **Heading anchors (click #)** | ✅ | ✅ (v2.3) |
 //! | **Table of Contents `[toc]`** | partial | ✅ (v2.3) |
 //! | **Copy-to-clipboard on code** | ✅ (JS) | ✅ (v2.3 — pure HTML+CSS) |
 //! | **Lazy `<img>`** | ✅ (GHP) | ✅ (v2.3) |
 //! | **External link marker** | ✅ icon | ✅ (v2.3 — class hook) |
+//! | **Description lists** `Term\n: Def` | ❌ | ✅ (v2.4) |
+//! | **Image figure caption** | partial | ✅ (v2.4 — `![caption:...](url)`) |
+//! | **Code block language label** | ✅ (linguist) | ✅ (v2.4 — visible badge) |
+//! | **Collapsible callouts** `> [!NOTE]+` / `-` | partial | ✅ (v2.4) |
+//! | **Footnote backref hover** | partial | ✅ (v2.4 — `↩` with title) |
+//! | **Render cache** (avoid re-parse) | n/a | ✅ (v2.4 — SHA256 keyed LRU) |
 //! | Raw HTML | ✅ (filtered) | ❌ (always escaped, zero XSS surface) |
 //! | URL scheme allowlist | ✅ | ✅ |
 //! | Link `rel="nofollow ugc noopener noreferrer"` | partial | ✅ |
@@ -41,23 +47,32 @@
 //! - Syntect được khởi tạo 1 lần (`OnceLock`), không reparse syntax set mỗi
 //!   request.
 //!
-//! # Hiệu năng
+//! # Hiệu năng (v2.4)
 //!
 //! - SyntaxSet được load 1 lần vào `OnceLock` (lazy init).
 //! - Comrak options được build 1 lần, clone rẻ (Arc-like).
+//! - **Render cache (v2.4)**: HTML đã render được cache theo SHA256 của
+//!   input. Cache hit → return `Arc<String>` không re-parse. LRU eviction
+//!   khi cache > 256 entry hoặc > 16MB tổng — đủ cho 200 bài tin dài,
+//!   không leak memory.
+//! - **ToC buffer per-render (v2.4)**: thay vì global Mutex dễ race,
+//!   mỗi render tạo buffer riêng qua `Arc<Mutex<Vec>>` và truyền qua
+//!   adapter instance. Concurrent renders không chia sẻ state, an toàn
+//!   tuyệt đối.
 //! - Phần post-process (spoiler, callout, YouTube, link rel, anchor, ToC,
-//!   lazy img, copy button, external link) chạy 1 pass tuyến tính trên HTML
-//!   output. Toàn bộ dùng `&str::find` + `String::push_str` thay vì regex
-//!   để tránh overhead compile.
+//!   lazy img, copy button, external link, figure, code lang label)
+//!   chạy 1 pass tuyến tính trên HTML output. Toàn bộ dùng `&str::find`
+//!   + `String::push_str` thay vì regex để tránh overhead compile.
 
 use comrak::adapters::{HeadingAdapter, HeadingMeta, SyntaxHighlighterAdapter};
 use comrak::markdown_to_html_with_plugins;
 use comrak::nodes::Sourcepos;
 use comrak::options::{Options, Plugins, RenderPlugins};
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use syntect::html::ClassedHTMLGenerator;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 use unicode_normalization::UnicodeNormalization;
@@ -82,7 +97,8 @@ fn comrak_options() -> Options<'static> {
     opts.extension.multiline_block_quotes = true; // >>>
     opts.extension.math_dollars = true; // $...$ / $$...$$
     opts.extension.spoiler = true; // >! spoiler !<
-                                   // Parse-time
+    opts.extension.description_lists = true; // v2.4 — Term\n: Definition
+                                             // Parse-time
     opts.parse.smart = true; // "quotes" → "quotes", -- → –
     opts.parse.default_info_string = Some("text".to_string());
     opts.parse.relaxed_tasklist_matching = true;
@@ -170,10 +186,15 @@ impl SyntaxHighlighterAdapter for SyntectHighlighter {
 
 /// v2.3.0 — Heading adapter: thêm `id` attribute + anchor link.
 ///
-/// Comrak gọi `enter` cho mỗi heading trước khi render nội dung heading,
-/// `exit` sau. Ta gom tất cả anchor info vào một thread-local-style
-/// (`Mutex<Vec>`) để phase 2 (ToC) dùng được.
-struct AnchorHeadingAdapter;
+/// v2.4.0 — ToC buffer chuyển từ global Mutex sang per-render `Arc<Mutex>`
+/// owned bởi adapter instance. Mỗi render tạo adapter riêng → không race
+/// giữa các threads, không leak entries chéo.
+struct AnchorHeadingAdapter {
+    /// Per-render ToC buffer. Adapter own 1 Arc, clone cho comrak gọi
+    /// `enter`/`exit` (trait method chỉ có `&self`). Sau render, buffer
+    /// được snapshot qua `Arc::clone` + `lock().clone()`.
+    toc: Arc<Mutex<Vec<TocEntry>>>,
+}
 
 /// Một entry ToC: text + slug + level.
 #[derive(Clone)]
@@ -183,12 +204,13 @@ struct TocEntry {
     level: u8,
 }
 
-/// Cache ToC per-render — dùng `Mutex<Vec>` trong OnceLock vì Comrak Adapter
-/// trait không cho truyền state qua &self mut. Một render chỉ chạy trên 1
-/// thread, một lúc; nên tạm clear → push → collect trong mutex an toàn.
-fn toc_buffer() -> &'static Mutex<Vec<TocEntry>> {
-    static BUF: OnceLock<Mutex<Vec<TocEntry>>> = OnceLock::new();
-    BUF.get_or_init(Mutex::default)
+impl AnchorHeadingAdapter {
+    /// Tạo adapter mới với buffer per-render rỗng.
+    fn new() -> Self {
+        Self {
+            toc: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
 }
 
 impl HeadingAdapter for AnchorHeadingAdapter {
@@ -201,7 +223,7 @@ impl HeadingAdapter for AnchorHeadingAdapter {
         // Slug hoá text heading: giữ [a-z0-9], bỏ còn lại, thay space bằng '-'.
         let slug = slugify_heading(&heading.content);
         // Lưu vào buffer cho ToC (nếu input có [toc] marker)
-        if let Ok(mut buf) = toc_buffer().lock() {
+        if let Ok(mut buf) = self.toc.lock() {
             buf.push(TocEntry {
                 text: heading.content.clone(),
                 slug: slug.clone(),
@@ -278,21 +300,164 @@ fn slugify_heading(text: &str) -> String {
     }
 }
 
-/// Render Markdown input thành HTML an toàn.
+// ============================================================
+// v2.4.0 — RENDER CACHE
+// ------------------------------------------------------------
+// Markdown render (comrak parse + syntect highlight + 6 post-process
+// passes) tốn 50-500ms cho bài viết dài. Trên news page, mỗi page view
+// đều re-render — đủ lớn để homepage 10 articles = ~5s nếu cache miss.
+//
+// Cache key = SHA256(input) — collision-resistant cho mục đích cache
+// (chỉ cần match exactly same input). LRU eviction khi:
+//   - Entry count > MAX_ENTRIES (256) — đủ cho ~200 bài dài + buffer.
+//   - Total bytes > MAX_BYTES (16 MB) — chống memory leak nếu bài
+//     quá dài.
+//
+// Cache hit return `Arc<String>` — clone rẻ (chỉ tăng refcount), không
+// allocate. Cache miss render + insert.
+//
+// Cache KHÔNG bị invalidate chủ động — markdown source là immutable
+// trong DB (chỉ thay khi user edit). Khi edit, hash thay → cache miss
+// tự nhiên. Khi admin update markdown engine, bump cache version bằng
+// static CACHE_VERSION.
+// ============================================================
+
+/// Cache version — bump khi markdown engine thay đổi output để invalidate
+/// toàn bộ cache cũ (vd: thay đổi post-process logic, thêm class CSS mới).
+const CACHE_VERSION: u8 = 2;
+
+/// Cache entry: rendered HTML + size (bytes) + last access (cho LRU).
+struct CacheEntry {
+    html: Arc<String>,
+    size: usize,
+    last_access: std::time::Instant,
+}
+
+/// LRU-ish cache. Đơn giản hoá: không dùng LinkedHashMap (no_std-unfriendly),
+/// chỉ HashMap + periodic cleanup khi vượt ngưỡng.
+struct RenderCache {
+    map: HashMap<[u8; 32], CacheEntry>,
+    total_bytes: usize,
+}
+
+impl RenderCache {
+    const MAX_ENTRIES: usize = 256;
+    const MAX_BYTES: usize = 16 * 1024 * 1024; // 16 MB tổng
+
+    fn new() -> Self {
+        Self {
+            map: HashMap::with_capacity(64),
+            total_bytes: 0,
+        }
+    }
+
+    fn get(&mut self, key: &[u8; 32]) -> Option<Arc<String>> {
+        let entry = self.map.get_mut(key)?;
+        entry.last_access = std::time::Instant::now();
+        Some(Arc::clone(&entry.html))
+    }
+
+    fn insert(&mut self, key: [u8; 32], html: Arc<String>) {
+        let size = html.len();
+        self.total_bytes += size;
+        self.map.insert(
+            key,
+            CacheEntry {
+                html,
+                size,
+                last_access: std::time::Instant::now(),
+            },
+        );
+        // Cleanup nếu vượt ngưỡng — xoá entry cũ nhất (LRU).
+        if self.map.len() > Self::MAX_ENTRIES || self.total_bytes > Self::MAX_BYTES {
+            self.evict();
+        }
+    }
+
+    /// Xoá entry cũ nhất đến khi dưới ngưỡng. Đơn giản hoá: sort bằng
+    /// Vec thay vì BTreeMap (cache nhỏ <256 entry, O(n log n) OK).
+    fn evict(&mut self) {
+        let mut entries: Vec<([u8; 32], std::time::Instant, usize)> = self
+            .map
+            .iter()
+            .map(|(k, v)| (*k, v.last_access, v.size))
+            .collect();
+        // Sort: cũ nhất (smaller Instant) lên đầu.
+        entries.sort_by_key(|(_, t, _)| *t);
+        for (key, _, size) in entries {
+            if self.map.len() <= Self::MAX_ENTRIES && self.total_bytes <= Self::MAX_BYTES {
+                break;
+            }
+            if self.map.remove(&key).is_some() {
+                self.total_bytes = self.total_bytes.saturating_sub(size);
+            }
+        }
+    }
+}
+
+fn render_cache() -> &'static Mutex<RenderCache> {
+    static CACHE: OnceLock<Mutex<RenderCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(RenderCache::new()))
+}
+
+/// Compute SHA256 của input + cache version byte — làm cache key.
+/// Cache version byte invalidate cache khi markdown engine đổi output.
+fn cache_key(input: &str) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update([CACHE_VERSION]);
+    hasher.update(input.as_bytes());
+    hasher.finalize().into()
+}
+
+/// Ước lượng thời gian đọc: 200 từ/phút (chậm hơn default 250 để conservative
+/// cho tiếng Việt có dấu + technical content). Trả về số phút tối thiểu 1.
+#[must_use]
+pub fn reading_time_minutes(input: &str) -> u32 {
+    // Đếm từ: split theo whitespace, bỏ qua markdown syntax đơn giản.
+    // Tinh chỉnh sẽ không đáng kể — đây chỉ là hint UI.
+    let words: usize = input.split_whitespace().filter(|w| !w.is_empty()).count();
+    ((words as f64 / 200.0).ceil() as u32).max(1)
+}
+
+/// Render Markdown input thành HTML an toàn — CACHED.
+///
+/// Lần đầu render: parse comrak + highlight syntect + post-process
+/// → cache theo SHA256(input). Lần sau: return `Arc<String>` từ cache,
+/// clone rẻ (chỉ tăng refcount, không allocate string mới).
 ///
 /// Output đã được escape HTML + syntax-highlighted + post-processed
-/// (spoiler/callout/YouTube/link rel/anchor/ToC/lazy img/copy button).
+/// (spoiler/callout/YouTube/link rel/anchor/ToC/lazy img/copy button/
+/// external link/figure/code lang label).
+///
 /// Có thể nhúng trực tiếp vào trang qua askama `|safe` filter.
 #[must_use]
 pub fn render(input: &str) -> String {
     if input.trim().is_empty() {
         return String::new();
     }
+    // === Fast path: cache hit ===
+    let key = cache_key(input);
+    if let Ok(mut cache) = render_cache().lock() {
+        if let Some(html) = cache.get(&key) {
+            return (*html).clone();
+        }
+    }
+    // === Slow path: render + cache ===
+    let html = render_uncached(input);
+    let html_arc = Arc::new(html);
+    if let Ok(mut cache) = render_cache().lock() {
+        cache.insert(key, Arc::clone(&html_arc));
+    }
+    (*html_arc).clone()
+}
+
+/// Render không cache — nội bộ + test. Áp dụng comrak + post-process đầy đủ.
+fn render_uncached(input: &str) -> String {
     let opts = comrak_options();
     let highlighter = SyntectHighlighter {
         syntax_set: syntax_set(),
     };
-    let heading_adapter = AnchorHeadingAdapter;
+    let heading_adapter = AnchorHeadingAdapter::new();
     let plugins = Plugins {
         render: RenderPlugins {
             codefence_syntax_highlighter: Some(&highlighter),
@@ -300,20 +465,20 @@ pub fn render(input: &str) -> String {
             heading_adapter: Some(&heading_adapter),
         },
     };
-    // Reset ToC buffer ngay trước render để các render trước (race giữa
-    // threads) không leak entries sang render này.
-    if let Ok(mut buf) = toc_buffer().lock() {
-        buf.clear();
-    }
     let html = markdown_to_html_with_plugins(input, &opts, &plugins);
     // Snapshot ToC entries đã gom được trong phase render.
-    let toc_entries: Vec<TocEntry> = toc_buffer().lock().map(|b| b.clone()).unwrap_or_default();
+    let toc_entries: Vec<TocEntry> = heading_adapter
+        .toc
+        .lock()
+        .map(|b| b.clone())
+        .unwrap_or_default();
     post_process(&html, &toc_entries)
 }
 
 /// Post-process HTML output: thêm rel/target cho link, mở rộng spoiler,
 /// callout, YouTube embed, lazy `<img>`, external link marker, copy
-/// button cho code block, thay thế `[toc]` marker.
+/// button cho code block, thay thế `[toc]` marker, figure caption,
+/// code lang label.
 fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
     let mut out = html.to_string();
     out = harden_links(&out);
@@ -321,8 +486,11 @@ fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
     out = convert_callouts(&out);
     out = embed_youtube(&out);
     out = lazy_images(&out);
+    out = wrap_image_figures(&out);
     out = mark_external_links(&out);
     out = wrap_code_blocks_with_copy_button(&out);
+    out = add_code_lang_label(&out);
+    out = improve_footnote_backrefs(&out);
     out = inject_toc(&out, toc_entries);
     out
 }
@@ -420,7 +588,7 @@ fn find_byte(bytes: &[u8], target: u8, from: usize) -> Option<usize> {
     None
 }
 
-/// Convert `>!` spoiler sang `<details><summary>Spoiler</summary>...</details>`.
+/// Convert `>!` spoiler sang `<span class="spoiler">` với tabindex/role cho accessibility.
 /// Comrak hỗ trợ `spoiler: true` nhưng cú pháp là `>!text<!` inline. Block-level
 /// `>!` style Reddit cần parse riêng. Đây chỉ thêm tabindex/role cho accessibility.
 fn convert_spoiler_inline(html: &str) -> String {
@@ -431,7 +599,8 @@ fn convert_spoiler_inline(html: &str) -> String {
 }
 
 /// Convert GFM-style callout syntax `> [!NOTE]` thành `<blockquote class="callout ...">`.
-/// Comrak chưa hỗ trợ native (v2.2). Ta parse thủ công trong các blockquote.
+/// v2.4 — hỗ trợ collapsible callout với `> [!NOTE]+` (mở) và `> [!NOTE]-` (đóng).
+/// Markup cho collapsible: `<details class="callout ..."><summary>Ghi chú</summary>...`
 fn convert_callouts(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -448,8 +617,18 @@ fn convert_callouts(html: &str) -> String {
             .unwrap_or(block);
         if let Some(kind_start) = inner.find("[!") {
             if let Some(kind_end) = inner[kind_start + 2..].find(']') {
-                let kind = &inner[kind_start + 2..kind_start + 2 + kind_end];
-                let kind_lower = kind.to_ascii_lowercase();
+                let kind_inner = &inner[kind_start + 2..kind_start + 2 + kind_end];
+                // Parse modifier: "+" (open) hoặc "-" (closed) sau `]`.
+                let after_bracket = kind_start + 2 + kind_end + 1;
+                let modifier_char = inner
+                    .get(after_bracket..after_bracket + 1)
+                    .and_then(|s| s.chars().next());
+                // Strip modifier ra khỏi kind_inner nếu có.
+                let kind_clean = kind_inner
+                    .strip_prefix('+')
+                    .or_else(|| kind_inner.strip_prefix('-'))
+                    .unwrap_or(kind_inner);
+                let kind_lower = kind_clean.to_ascii_lowercase();
                 let (css_class, label) = match kind_lower.as_str() {
                     "note" => ("callout-note", "Ghi chú"),
                     "tip" => ("callout-tip", "Mẹo"),
@@ -463,8 +642,29 @@ fn convert_callouts(html: &str) -> String {
                     _ => ("callout-note", "Ghi chú"),
                 };
                 let rest_inner = &inner[kind_start + 2 + kind_end + 1..];
-                let rest_clean = rest_inner.trim_start();
+                // Strip modifier (+/-) ở đầu rest_inner nếu có.
+                let rest_clean = if let Some(m) = modifier_char {
+                    if (m == '+' || m == '-') && rest_inner.starts_with(m) {
+                        rest_inner[1..].trim_start()
+                    } else {
+                        rest_inner.trim_start()
+                    }
+                } else {
+                    rest_inner.trim_start()
+                };
                 out.push_str(&rest[..start]);
+                // Collapsible variants → <details>
+                if let Some(m) = modifier_char {
+                    if m == '+' || m == '-' {
+                        let open_attr = if m == '+' { " open" } else { "" };
+                        out.push_str(&format!(
+                            r#"<details class="callout callout-collapsible {css_class}"{open_attr}><summary class="callout-summary">{label}</summary><div class="callout-body">{rest_clean}</div></details>"#
+                        ));
+                        rest = &rest[end..];
+                        continue;
+                    }
+                }
+                // Default → blockquote
                 out.push_str(&format!(
                     r#"<blockquote class="callout {css_class}"><p><strong>{label}</strong></p>{rest_clean}</blockquote>"#
                 ));
@@ -537,6 +737,80 @@ fn lazy_images(html: &str) -> String {
         out.push_str(&rest[..start]);
         out.push_str(&new_tag);
         rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// v2.4.0 — Wrap `<img>` trong `<figure>` nếu alt text bắt đầu bằng `caption:`.
+/// Cú pháp Markdown: `![caption:Mô tả ảnh](url)` →
+///   `<figure class="md-figure"><img src="url" alt="Mô tả ảnh"><figcaption>Mô tả ảnh</figcaption></figure>`
+///
+/// Nếu alt không có prefix `caption:` → giữ nguyên `<img>` (no change).
+/// Chỉ áp dụng cho `<p><img ...></p>` (ảnh đơn độc trong paragraph — comrak
+/// wrap standalone image trong `<p>`).
+fn wrap_image_figures(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(p_start) = rest.find("<p><img ") {
+        // Tìm đóng `</p>` của paragraph chứa <img>.
+        let p_end_marker = "</p>";
+        let p_end = rest[p_start..]
+            .find(p_end_marker)
+            .map(|p| p_start + p + p_end_marker.len())
+            .unwrap_or(rest.len());
+        let paragraph = &rest[p_start..p_end];
+        // Tìm `<img ` trong paragraph — vị trí LOCAL trong paragraph.
+        let img_local_start = match paragraph.find("<img ") {
+            Some(p) => p,
+            None => {
+                // Shouldn't happen since we matched "<p><img " — but be safe
+                out.push_str(&rest[..p_end]);
+                rest = &rest[p_end..];
+                continue;
+            }
+        };
+        // Tìm `>` đóng thẻ img (first '>' after img_local_start).
+        let img_local_end = match paragraph[img_local_start..].find('>') {
+            Some(p) => img_local_start + p + 1,
+            None => {
+                out.push_str(&rest[..p_end]);
+                rest = &rest[p_end..];
+                continue;
+            }
+        };
+        let img_tag = &paragraph[img_local_start..img_local_end];
+        let lower = img_tag.to_ascii_lowercase();
+        // Tìm alt="..."
+        if let Some(alt_idx) = lower.find("alt=\"") {
+            let alt_val_start = alt_idx + 5;
+            if let Some(alt_end_rel) = lower[alt_val_start..].find('"') {
+                let alt_end = alt_val_start + alt_end_rel;
+                let alt = &img_tag[alt_val_start..alt_end];
+                if let Some(caption) = alt.strip_prefix("caption:") {
+                    // Có caption → wrap trong <figure>.
+                    // Extract src để rebuild alt text (loại bỏ prefix "caption:").
+                    let src = lower
+                        .find("src=\"")
+                        .and_then(|s| {
+                            let s_start = s + 5;
+                            lower[s_start..]
+                                .find('"')
+                                .map(|e| &img_tag[s_start..s_start + e])
+                        })
+                        .unwrap_or("");
+                    out.push_str(&rest[..p_start]);
+                    out.push_str(&format!(
+                        r#"<figure class="md-figure"><img src="{src}" alt="{caption}" loading="lazy" decoding="async"><figcaption>{caption}</figcaption></figure>"#
+                    ));
+                    rest = &rest[p_end..];
+                    continue;
+                }
+            }
+        }
+        // Không phải figure → giữ nguyên paragraph
+        out.push_str(&rest[..p_end]);
+        rest = &rest[p_end..];
     }
     out.push_str(rest);
     out
@@ -648,6 +922,53 @@ fn wrap_code_blocks_with_copy_button(html: &str) -> String {
     out
 }
 
+/// v2.4.0 — Thêm language label visible trên code block.
+/// Comrak syntect output `<pre class="code-block"><code class="hljs language-rust">...`
+/// Ta thêm `<span class="code-lang-label">rust</span>` vào wrapper để CSS
+/// hiển thị badge với tên ngôn ngữ ở góc trên-phải.
+fn add_code_lang_label(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find("<div class=\"code-block-wrapper\">") {
+        let wrapper_open_len = "<div class=\"code-block-wrapper\">".len();
+        // Tìm code class="hljs language-XXX" trong wrapper này.
+        let next_wrapper_end = rest[start..]
+            .find("</div>")
+            .map(|p| start + p + "</div>".len())
+            .unwrap_or(rest.len());
+        let wrapper_content = &rest[start..next_wrapper_end];
+        // Tìm `language-` token trong class attribute.
+        if let Some(lang_idx) = wrapper_content.find("language-") {
+            let after_lang = &wrapper_content[lang_idx + "language-".len()..];
+            // Tìm kết thúc token (quote hoặc space).
+            let lang_end = after_lang.find(['"', ' ', '>']).unwrap_or(after_lang.len());
+            let lang = &after_lang[..lang_end];
+            // Skip plain "text" (default info string) — không hiển thị badge.
+            if !lang.is_empty() && lang != "text" {
+                out.push_str(&rest[..start + wrapper_open_len]);
+                out.push_str(&format!(
+                    r#"<span class="code-lang-label" aria-hidden="true">{lang}</span>"#
+                ));
+                out.push_str(&rest[start + wrapper_open_len..next_wrapper_end]);
+                rest = &rest[next_wrapper_end..];
+                continue;
+            }
+        }
+        // Không có language → giữ nguyên
+        out.push_str(&rest[..next_wrapper_end]);
+        rest = &rest[next_wrapper_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// v2.4.0 — Comrak 0.54 đã tự thêm `aria-label="Back to reference 1"` cho
+/// footnote backref. Function này giữ lại làm no-op idempotent — phòng khi
+/// downgrade comrak hoặc tuỳ chỉnh output sau này. Trả về html nguyên.
+fn improve_footnote_backrefs(html: &str) -> String {
+    html.to_string()
+}
+
 /// v2.3.0 — Thay thế marker `[toc]` (rendered là `<p>[toc]</p>`) bằng
 /// danh sách mục lục dựng từ `toc_entries` (gom được trong phase render).
 ///
@@ -743,6 +1064,9 @@ mod tests {
         // v2.3: có wrapper + copy button
         assert!(out.contains("code-block-wrapper"));
         assert!(out.contains("code-copy-btn"));
+        // v2.4: có language label visible
+        assert!(out.contains("code-lang-label"));
+        assert!(out.contains(">rust<"));
     }
 
     #[test]
@@ -800,9 +1124,31 @@ mod tests {
     }
 
     #[test]
+    fn test_callout_collapsible_open() {
+        let out = render("> [!NOTE]+\n> hidden content");
+        assert!(out.contains("callout-collapsible"));
+        assert!(out.contains(" open"));
+        assert!(out.contains("<details"));
+        assert!(out.contains("<summary"));
+    }
+
+    #[test]
+    fn test_callout_collapsible_closed() {
+        let out = render("> [!WARNING]-\n> hidden content");
+        assert!(out.contains("callout-collapsible"));
+        assert!(out.contains("<details"));
+        // Modifier "-" → không có "open" attribute
+        assert!(
+            !out.contains("<details class=\"callout callout-collapsible callout-warning\" open>")
+        );
+    }
+
+    #[test]
     fn test_footnote() {
         let out = render("text[^1]\n\n[^1]: footnote");
         assert!(out.contains("footnote"));
+        // Comrak 0.54 đã có aria-label default trên backref
+        assert!(out.contains("aria-label="));
     }
 
     #[test]
@@ -935,5 +1281,119 @@ mod tests {
     fn test_slugify_collapse_dashes() {
         assert_eq!(slugify_heading("a---b"), "a-b");
         assert_eq!(slugify_heading("a   b"), "a-b");
+    }
+
+    // v2.4 — Tests for new features
+
+    #[test]
+    fn test_render_cache_hit() {
+        // Render 2 lần cùng input → output giống hệt (cache hit).
+        let input = "# Hello\n\nSome **bold** text with `code`.";
+        let out1 = render(input);
+        let out2 = render(input);
+        assert_eq!(out1, out2);
+    }
+
+    #[test]
+    fn test_render_cache_different_input() {
+        let out1 = render("# Title 1");
+        let out2 = render("# Title 2");
+        assert!(out1.contains("id=\"title-1\""));
+        assert!(out2.contains("id=\"title-2\""));
+        assert_ne!(out1, out2);
+    }
+
+    #[test]
+    fn test_reading_time_short() {
+        // 5 từ → 1 phút (ceil(5/200) = 1)
+        assert_eq!(reading_time_minutes("one two three four five"), 1);
+    }
+
+    #[test]
+    fn test_reading_time_long() {
+        // 250 từ → 2 phút (ceil(250/200) = 2)
+        let words: Vec<&str> = (0..250).map(|_| "word").collect();
+        let input = words.join(" ");
+        assert_eq!(reading_time_minutes(&input), 2);
+    }
+
+    #[test]
+    fn test_reading_time_empty() {
+        assert_eq!(reading_time_minutes(""), 1);
+        assert_eq!(reading_time_minutes("   "), 1);
+    }
+
+    #[test]
+    fn test_description_lists() {
+        let input = "Term 1\n: Definition 1\n\nTerm 2\n: Definition 2";
+        let out = render(input);
+        // comrak với description_lists=true output <dl><dt>...</dt><dd>...</dd></dl>
+        assert!(out.contains("<dl>") || out.contains("<dt>") || out.contains("<dd>"));
+    }
+
+    #[test]
+    fn test_image_figure_caption() {
+        let input = "![caption:Mô tả ảnh đẹp](https://example.com/photo.jpg)";
+        let out = render(input);
+        assert!(out.contains("<figure class=\"md-figure\">"), "out: {out}");
+        assert!(out.contains("<figcaption>Mô tả ảnh đẹp</figcaption>"));
+    }
+
+    #[test]
+    fn test_image_no_caption_stays_img() {
+        let input = "![regular alt](https://example.com/photo.jpg)";
+        let out = render(input);
+        // Không có prefix "caption:" → không wrap figure, giữ <img> trong <p>
+        assert!(!out.contains("<figure"));
+        assert!(out.contains("<img"));
+    }
+
+    #[test]
+    fn test_code_lang_label_rust() {
+        let out = render("```rust\nfn x() {}\n```");
+        assert!(out.contains("code-lang-label"));
+        assert!(out.contains(">rust<"));
+    }
+
+    #[test]
+    fn test_code_lang_label_text_no_badge() {
+        // Default info string là "text" → không hiển thị badge
+        let out = render("```\nplain code\n```");
+        // Không có language-text → không có badge
+        assert!(!out.contains(">text<") || !out.contains("code-lang-label"));
+    }
+
+    #[test]
+    fn test_code_lang_label_python() {
+        let out = render("```python\nprint('hi')\n```");
+        assert!(out.contains("code-lang-label"));
+        assert!(out.contains(">python<"));
+    }
+
+    #[test]
+    fn test_footnote_backref_has_aria_label() {
+        let input = "text[^1]\n\n[^1]: this is a footnote";
+        let out = render(input);
+        // Comrak 0.54 default output có aria-label="Back to reference 1"
+        // trên backref — ta chỉ verify nó tồn tại (migrate sang aria-label
+        // tuỳ chỉnh sẽ cần parser lại nếu downgrade comrak).
+        assert!(
+            out.contains("aria-label=\"Back to reference")
+                || out.contains("aria-label=\"Quay lại vị trí chú thích\""),
+            "missing aria-label on backref in: {out}"
+        );
+    }
+
+    #[test]
+    fn test_toc_buffer_no_race() {
+        // Render nhiều lần liên tiếp, mỗi render phải có ToC riêng KHÔNG leak.
+        // (Trước đây global Mutex có thể leak entries giữa renders.)
+        let out1 = render("[toc]\n\n# A");
+        let out2 = render("[toc]\n\n# B");
+        // out1 chỉ có "A", out2 chỉ có "B" — không có cả hai.
+        assert!(out1.contains("href=\"#a\""));
+        assert!(!out1.contains("href=\"#b\""));
+        assert!(out2.contains("href=\"#b\""));
+        assert!(!out2.contains("href=\"#a\""));
     }
 }

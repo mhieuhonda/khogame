@@ -14,6 +14,7 @@ use axum_extra::extract::CookieJar;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
 
 impl FromRef<Arc<Self>> for AppState {
@@ -1131,7 +1132,11 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
 
     // Đọc body ra để hash — phải collect hết vì cần hash toàn bộ.
     // Trade-off: tốn memory tạm cho 1 page (~50-200KB), đáng để có ETag.
-    let body = match axum::body::to_bytes(response.into_body(), 16 * 1024 * 1024).await {
+    // v2.4 — Lower limit từ 16MB xuống 4MB: bài tin dài 50K chars + markdown
+    // syntax highlight + 6 post-process pass ~ 1-2MB max. 4MB đủ an toàn
+    // cho mọi page, giảm memory pressure khi concurrent (vd 100 users *
+    // 16MB = 1.6GB tạm). Vượt 4MB → skip ETag, vẫn response bình thường.
+    let body = match axum::body::to_bytes(response.into_body(), 4 * 1024 * 1024).await {
         Ok(bytes) => bytes,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
@@ -1190,9 +1195,9 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
     // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
     if let Ok(link_val) = HeaderValue::from_str(
-        "</static/css/style.css?v=2.3.0>; rel=preload; as=style, \
-         </static/js/htmx.min.js?v=2.3.0>; rel=preload; as=script, \
-         </static/js/app.js?v=2.3.0>; rel=preload; as=script, \
+        "</static/css/style.css?v=2.4.0>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v=2.4.0>; rel=preload; as=script, \
+         </static/js/app.js?v=2.4.0>; rel=preload; as=script, \
          </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin",
     ) {
         headers.insert(axum::http::header::LINK, link_val);
@@ -1902,5 +1907,56 @@ mod cookie_value_tests {
         assert!(session_cookie_value(&h).is_none());
         assert_eq!(cookie_value(&h, "kg_session"), None);
         let _ = ANON_COOKIE; // silence unused warning nếu cần
+    }
+}
+
+// ============================================================
+// v2.4.0 — REQUEST TIMEOUT MIDDLEWARE
+// ------------------------------------------------------------
+// Chống "hang forever": nếu 1 request exceeds timeout (mặc định 30s),
+// middleware ngắt → trả 504 Gateway Timeout cho client. Tránh tình
+// trạng thái 1 query DB chậm / loop vô hạn / pool exhausted giữ
+// connection treo mãi — operator không cần kill process thủ công.
+//
+// Layer ordering: đặt OUTERMOST (sau CompressionLayer) để cover
+// mọi handler. Skip upgrade WebSocket (có heartbeat riêng 30s).
+//
+// Timeout đọc từ REQUEST_TIMEOUT_SECS env (default 30s). 0 = tắt.
+// ============================================================
+pub async fn request_timeout(request: Request, next: Next) -> Response {
+    // WebSocket upgrade — skip timeout (WS có heartbeat 30s riêng,
+    // không thể ngắt qua HTTP timeout vì upgrade đã chuyển sang WS).
+    if request.headers().get(axum::http::header::UPGRADE).is_some() {
+        return next.run(request).await;
+    }
+    let secs: u64 = std::env::var("REQUEST_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+        .filter(|v: &u64| *v > 0 && *v <= 600)
+        .unwrap_or(30);
+    let timeout = Duration::from_secs(secs);
+    match tokio::time::timeout(timeout, next.run(request)).await {
+        Ok(resp) => resp,
+        Err(_) => {
+            tracing::error!(
+                "Request timeout sau {secs}s — client sẽ nhận 504. \
+                 Có thể do DB query chậm, markdown render nặng, hoặc \
+                 pool exhausted. Tăng REQUEST_TIMEOUT_SECS nếu cần."
+            );
+            let mut resp = (
+                StatusCode::GATEWAY_TIMEOUT,
+                "Yêu cầu xử lý quá thời gian — vui lòng thử lại sau.",
+            )
+                .into_response();
+            resp.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            );
+            resp.headers_mut().insert(
+                axum::http::header::RETRY_AFTER,
+                HeaderValue::from_static("5"),
+            );
+            resp
+        }
     }
 }

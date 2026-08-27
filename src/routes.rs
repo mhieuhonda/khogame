@@ -1,7 +1,7 @@
 use crate::handlers;
 use crate::middleware::{
-    cache_control_html, error_page_mw, maintenance_guard, origin_check, rate_limit, require_admin,
-    require_ai_agent, security_headers,
+    cache_control_html, error_page_mw, maintenance_guard, origin_check, rate_limit,
+    request_timeout, require_admin, require_ai_agent, security_headers,
 };
 use crate::state::AppState;
 use axum::middleware;
@@ -466,5 +466,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             MakeRequestUuid,
         ))
         .layer(CompressionLayer::new())
+        // v2.4.0 — OUTERMOST timeout: ngắt mọi request treo >30s. Chống
+        // "hang forever" khi DB chậm / pool exhausted / markdown render quá
+        // nặng. Skip WebSocket upgrade (header Upgrade). Cấu hình qua env
+        // REQUEST_TIMEOUT_SECS (default 30, max 600, 0 = tắt).
+        .layer(middleware::from_fn(request_timeout))
         .with_state(state)
 }

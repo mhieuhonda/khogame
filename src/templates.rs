@@ -719,6 +719,18 @@ pub mod filters {
         Ok(Safe(u::safe_markdown_to_html(s.as_ref())))
     }
 
+    /// v2.4.0 — Ước lượng thời gian đọc (phút) từ markdown source.
+    /// Dùng cho badge "X phút đọc" ở đầu bài tin / game detail. Tính 200
+    /// từ/phút (conservative cho tiếng Việt có dấu).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[askama::filter_fn]
+    pub fn reading_time(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
+        let mins = crate::services::markdown::reading_time_minutes(s.as_ref());
+        Ok(format!("{mins} phút đọc"))
+    }
+
     /// Escape HTML thủ công (không escape lần 2)
     /// # Errors
     ///

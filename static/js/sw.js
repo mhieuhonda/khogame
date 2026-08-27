@@ -13,7 +13,7 @@
 //   - POST/PUT/PATCH/DELETE: BYPASS (không intercept, gửi thẳng).
 //
 // AN TOÀN:
-//   - Cache version key 'ls-sw-v2.3.0' — bump khi cần invalidate cache
+//   - Cache version key 'ls-sw-v2.4.0' — bump khi cần invalidate cache
 //     (vd: schema thay đổi). Activate handler xoá cache cũ.
 //   - Cache 50 entry tối đa cho HTML (LRU-eviction ngầm).
 //   - Static cache KHÔNG giới hạn (immutable, không stale).
@@ -21,7 +21,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v2.3.0';
+var CACHE_VERSION = 'ls-sw-v2.4.0';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;
@@ -62,10 +62,10 @@ self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.open(STATIC_CACHE).then(function(cache) {
             return cache.addAll([
-                '/static/js/htmx.min.js?v=2.3.0',
-                '/static/css/style.css?v=2.3.0',
-                '/static/css/fonts.css?v=2.3.0',
-                '/static/js/app.js?v=2.3.0',
+                '/static/js/htmx.min.js?v=2.4.0',
+                '/static/css/style.css?v=2.4.0',
+                '/static/css/fonts.css?v=2.4.0',
+                '/static/js/app.js?v=2.4.0',
                 '/static/img/favicon.svg'
             ]).catch(function() {
                 // Critical pre-cache fail (vd: file chưa tồn tại) → không
