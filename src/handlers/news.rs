@@ -160,10 +160,10 @@ pub async fn list(
     let category = if category_raw.is_empty() {
         String::new()
     } else {
-        match validate_category(&state, category_raw).await {
-            Ok(c) => c,
-            Err(_) => String::new(), // fallback về all nếu category không hợp lệ
-        }
+        // Clippy: unwrap_or_default() thay match thủ công.
+        validate_category(&state, category_raw)
+            .await
+            .unwrap_or_default()
     };
     let q = params.q.as_deref().unwrap_or("");
 
