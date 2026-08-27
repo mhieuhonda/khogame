@@ -6536,3 +6536,275 @@ textarea:focus-visible,
 [data-theme="dark"] .news-related-thumb {
     background: rgba(0, 0, 0, 0.3);
 }
+
+/* ============================================================
+   v2.3.0 — Markdown rendering extensions
+   Hỗ trợ: heading anchors (# link), ToC (Table of Contents),
+   code-block copy button, lazy image enhancements, external
+   link marker, additional callout variants.
+   KHÔNG thay đổi giao diện cũ — chỉ THÊM style cho element mới.
+   ============================================================ */
+
+/* --- Heading anchor link (GitHub-style "#" on hover) ---
+   Anchor link do AnchorHeadingAdapter::exit() phát ra nằm cuối heading,
+   được CSS định vị tuyệt đối góc trên-trái heading. Hidden mặc định,
+   hiện khi hover heading. Click vào để copy URL với #slug. */
+.prose-md h1, .prose-md h2, .prose-md h3, .prose-md h4, .prose-md h5, .prose-md h6,
+.news-content h1, .news-content h2, .news-content h3, .news-content h4, .news-content h5, .news-content h6,
+.game-content h1, .game-content h2, .game-content h3, .game-content h4, .game-content h5, .game-content h6 {
+    position: relative;
+}
+.prose-md .heading-anchor,
+.news-content .heading-anchor,
+.game-content .heading-anchor {
+    position: absolute;
+    top: 0;
+    left: -1.2em;
+    width: 1em;
+    height: 100%;
+    color: var(--fg-muted, #6c757d);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.85em;
+}
+.prose-md .heading-anchor::before,
+.news-content .heading-anchor::before,
+.game-content .heading-anchor::before {
+    content: "#";
+    font-weight: 600;
+}
+.prose-md h1:hover .heading-anchor,
+.prose-md h2:hover .heading-anchor,
+.prose-md h3:hover .heading-anchor,
+.prose-md h4:hover .heading-anchor,
+.prose-md h5:hover .heading-anchor,
+.prose-md h6:hover .heading-anchor,
+.news-content h1:hover .heading-anchor,
+.news-content h2:hover .heading-anchor,
+.news-content h3:hover .heading-anchor,
+.news-content h4:hover .heading-anchor,
+.news-content h5:hover .heading-anchor,
+.news-content h6:hover .heading-anchor,
+.game-content h1:hover .heading-anchor,
+.game-content h2:hover .heading-anchor,
+.game-content h3:hover .heading-anchor,
+.game-content h4:hover .heading-anchor,
+.game-content h5:hover .heading-anchor,
+.game-content h6:hover .heading-anchor {
+    opacity: 1;
+}
+.prose-md .heading-anchor:focus,
+.news-content .heading-anchor:focus,
+.game-content .heading-anchor:focus {
+    opacity: 1;
+    outline: 2px solid var(--accent, #2563eb);
+    outline-offset: 2px;
+    border-radius: 2px;
+}
+
+/* --- Table of Contents (ToC) ---
+   Markup: <nav class="toc"><p class="toc-title">Mục lục</p><ul class="toc-list">... */
+.prose-md .toc,
+.news-content .toc,
+.game-content .toc {
+    background: var(--bg-subtle, rgba(0,0,0,0.03));
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    padding: 1em 1.2em;
+    margin: 1.5em 0;
+    font-size: 0.92em;
+}
+.prose-md .toc-title,
+.news-content .toc-title,
+.game-content .toc-title {
+    font-weight: 600;
+    margin: 0 0 0.5em;
+    color: var(--fg-strong, #1a1a1a);
+    font-size: 1em;
+}
+.prose-md .toc-list,
+.news-content .toc-list,
+.game-content .toc-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+.prose-md .toc-list .toc-list,
+.news-content .toc-list .toc-list,
+.game-content .toc-list .toc-list {
+    padding-left: 1.2em;
+    margin: 0.2em 0;
+}
+.prose-md .toc-list li,
+.news-content .toc-list li,
+.game-content .toc-list li {
+    margin: 0.2em 0;
+}
+.prose-md .toc-list a,
+.news-content .toc-list a,
+.game-content .toc-list a {
+    color: var(--accent, #2563eb);
+    text-decoration: none;
+    transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+.prose-md .toc-list a:hover,
+.news-content .toc-list a:hover,
+.game-content .toc-list a:hover {
+    color: var(--accent-strong, #1d4ed8);
+    text-decoration: underline;
+}
+
+/* --- Code block copy button ---
+   Wrapper: <div class="code-block-wrapper">
+            <button class="code-copy-btn">Sao chép</button>
+            <pre class="code-block">...</pre>
+           </div>
+   Button positioned absolutely top-right. Hidden khi không hover (xó khó
+   nhìn), hiện khi hover (show-on-hover).
+   Click handler ở static/js/app.js (xem registerCopyCodeButtons). */
+.prose-md .code-block-wrapper,
+.news-content .code-block-wrapper,
+.game-content .code-block-wrapper {
+    position: relative;
+    margin: 1em 0;
+}
+.prose-md .code-block-wrapper pre.code-block,
+.news-content .code-block-wrapper pre.code-block,
+.game-content .code-block-wrapper pre.code-block {
+    margin: 0;
+}
+.prose-md .code-copy-btn,
+.news-content .code-copy-btn,
+.game-content .code-copy-btn {
+    position: absolute;
+    top: 0.4em;
+    right: 0.4em;
+    padding: 0.25em 0.6em;
+    font-size: 0.78em;
+    font-family: var(--font-sans, 'Inter', sans-serif);
+    background: var(--bg-card, #fff);
+    color: var(--fg-muted, #6c757d);
+    border: 1px solid var(--border, #d0d7de);
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s ease, background 0.15s ease, color 0.15s ease;
+    z-index: 1;
+}
+.prose-md .code-block-wrapper:hover .code-copy-btn,
+.news-content .code-block-wrapper:hover .code-copy-btn,
+.game-content .code-block-wrapper:hover .code-copy-btn,
+.prose-md .code-copy-btn:focus-visible,
+.news-content .code-copy-btn:focus-visible,
+.game-content .code-copy-btn:focus-visible {
+    opacity: 1;
+}
+.prose-md .code-copy-btn:hover,
+.news-content .code-copy-btn:hover,
+.game-content .code-copy-btn:hover {
+    background: var(--accent, #2563eb);
+    color: #fff;
+    border-color: var(--accent, #2563eb);
+}
+/* "Đã sao chép" state — JS thêm class .code-copy-btn-copied sau khi click */
+.prose-md .code-copy-btn-copied,
+.news-content .code-copy-btn-copied,
+.game-content .code-copy-btn-copied {
+    background: #10b981 !important;
+    color: #fff !important;
+    border-color: #10b981 !important;
+    opacity: 1 !important;
+}
+
+/* --- External link marker ---
+   Markdown engine thêm class="external-link" cho mọi <a href="http(s)://...">
+   ngoại trừ localhost. CSS thêm icon ↗ nhỏ sau link (decorative, không
+   ảnh hưởng text). */
+.prose-md .external-link::after,
+.news-content .external-link::after,
+.game-content .external-link::after {
+    content: "↗";
+    display: inline-block;
+    margin-left: 0.15em;
+    font-size: 0.85em;
+    vertical-align: super;
+    color: var(--fg-muted, #6c757d);
+    text-decoration: none;
+}
+
+/* --- Additional callout variants v2.3.0 ---
+   Kế thừa style callout cũ, thêm:
+   - callout-success (xanh lá)
+   - callout-question (xanh dương đậm)
+   - callout-quote (xám, italic) */
+.prose-md blockquote.callout-success, .news-content blockquote.callout-success, .game-content blockquote.callout-success {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+}
+.prose-md blockquote.callout-success strong, .news-content blockquote.callout-success strong, .game-content blockquote.callout-success strong {
+    color: #059669;
+}
+.prose-md blockquote.callout-question, .news-content blockquote.callout-question, .game-content blockquote.callout-question {
+    border-left-color: #3b82f6;
+    background: rgba(59, 130, 246, 0.08);
+}
+.prose-md blockquote.callout-question strong, .news-content blockquote.callout-question strong, .game-content blockquote.callout-question strong {
+    color: #2563eb;
+}
+.prose-md blockquote.callout-quote, .news-content blockquote.callout-quote, .game-content blockquote.callout-quote {
+    border-left-color: #94a3b8;
+    background: rgba(148, 163, 184, 0.08);
+    font-style: italic;
+}
+.prose-md blockquote.callout-quote strong, .news-content blockquote.callout-quote strong, .game-content blockquote.callout-quote strong {
+    color: #475569;
+    font-style: normal;
+}
+
+/* Dark mode tweaks for v2.3.0 elements */
+[data-theme="dark"] .prose-md .toc,
+[data-theme="dark"] .news-content .toc,
+[data-theme="dark"] .game-content .toc {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .prose-md .code-copy-btn,
+[data-theme="dark"] .news-content .code-copy-btn,
+[data-theme="dark"] .game-content .code-copy-btn {
+    background: rgba(255, 255, 255, 0.06);
+    color: #b1bac4;
+    border-color: rgba(255, 255, 255, 0.12);
+}
+[data-theme="dark"] .prose-md .heading-anchor,
+[data-theme="dark"] .news-content .heading-anchor,
+[data-theme="dark"] .game-content .heading-anchor {
+    color: #8b949e;
+}
+[data-theme="dark"] .prose-md blockquote.callout-success,
+[data-theme="dark"] .news-content blockquote.callout-success,
+[data-theme="dark"] .game-content blockquote.callout-success {
+    background: rgba(16, 185, 129, 0.12);
+}
+[data-theme="dark"] .prose-md blockquote.callout-success strong,
+[data-theme="dark"] .news-content blockquote.callout-success strong,
+[data-theme="dark"] .game-content blockquote.callout-success strong {
+    color: #34d399;
+}
+[data-theme="dark"] .prose-md blockquote.callout-question,
+[data-theme="dark"] .news-content blockquote.callout-question,
+[data-theme="dark"] .game-content blockquote.callout-question {
+    background: rgba(59, 130, 246, 0.14);
+}
+[data-theme="dark"] .prose-md blockquote.callout-question strong,
+[data-theme="dark"] .news-content blockquote.callout-question strong,
+[data-theme="dark"] .game-content blockquote.callout-question strong {
+    color: #60a5fa;
+}
+[data-theme="dark"] .prose-md blockquote.callout-quote,
+[data-theme="dark"] .news-content blockquote.callout-quote,
+[data-theme="dark"] .game-content blockquote.callout-quote {
+    background: rgba(148, 163, 184, 0.1);
+}

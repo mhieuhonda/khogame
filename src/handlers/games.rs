@@ -3,7 +3,9 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
-use crate::repositories::{CategoryRepo, GameRepo, InteractionRepo, NewsRepo, ReportRepo, TagRepo};
+use crate::repositories::{
+    CategoryRepo, GameRepo, InteractionRepo, NewsRepo, RepoRepo, ReportRepo, TagRepo,
+};
 use crate::services::json_ld::{
     build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld,
 };
@@ -41,6 +43,8 @@ pub async fn home(
     // tự, latency trang chủ = tổng thời gian 7 query. PgPool nội bộ là
     // Arc nên clone rẻ; mỗi future mượn connection riêng từ pool.
     // Thêm news queries (latest 3 published + count) cho section "Tin tức" ở homepage.
+    // v2.3.0 — Thêm 1 query nữa cho `featured_repos` (top 8 approved theo
+    // stars desc) để render section "Repo đề xuất" ngay sau "Đánh giá cao".
     let (
         featured_res,
         latest_res,
@@ -51,6 +55,7 @@ pub async fn home(
         total_res,
         latest_news_res,
         news_count_res,
+        featured_repos_res,
     ) = tokio::join!(
         GameRepo::featured(&state.db, 6, 0),
         GameRepo::list_published(&state.db, 12, 0, "latest"),
@@ -61,6 +66,7 @@ pub async fn home(
         GameRepo::count_published(&state.db),
         NewsRepo::list_published(&state.db, 1, 3),
         NewsRepo::count_published(&state.db),
+        RepoRepo::list_approved(&state.db, 8, 0, "stars"),
     );
     let featured_games = featured_res.unwrap_or_default();
     let latest_games = latest_res?;
@@ -71,6 +77,10 @@ pub async fn home(
     let total_games = total_res.unwrap_or(0);
     let latest_news = latest_news_res.unwrap_or_default();
     let total_news = news_count_res.unwrap_or(0);
+    // Repo đề xuất — unwrap_or_default trả Vec rỗng nếu DB lỗi → template
+    // tự ẩn section. Không escalate lỗi vì repo là tính năng bonus, không
+    // phải critical path của homepage.
+    let featured_repos = featured_repos_res.unwrap_or_default();
     let unread = unread_for(&state, current_user.as_ref()).await;
 
     // JSON-LD schema.org/WebSite — builder đã chuyển sang
@@ -93,6 +103,7 @@ pub async fn home(
         json_ld,
         latest_news,
         total_news,
+        featured_repos,
     })
 }
 

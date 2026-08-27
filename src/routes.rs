@@ -1,7 +1,7 @@
 use crate::handlers;
 use crate::middleware::{
-    error_page_mw, maintenance_guard, origin_check, rate_limit, require_admin, require_ai_agent,
-    security_headers,
+    cache_control_html, error_page_mw, maintenance_guard, origin_check, rate_limit, require_admin,
+    require_ai_agent, security_headers,
 };
 use crate::state::AppState;
 use axum::middleware;
@@ -451,6 +451,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             state.clone(),
             maintenance_guard,
         ))
+        // v2.3.0 PERF — ETag/Cache-Control/Link preload cho HTML responses.
+        // NẰM TRONG security_headers (inner hơn) để mọi response — kể cả
+        // 304 Not Modified — đều được gắn CSP/HSTS đầy đủ. Bỏ qua API,
+        // HTMX, static, non-GET, non-2xx (xem cache_control_html impl).
+        .layer(middleware::from_fn(cache_control_html))
         .layer(middleware::from_fn(security_headers))
         .layer(PropagateRequestIdLayer::new(
             axum::http::HeaderName::from_static("x-request-id"),

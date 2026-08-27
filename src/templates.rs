@@ -92,6 +92,11 @@ pub struct IndexTemplate {
     /// 3 tin tức nổi bật mới nhất để hiển thị section "Tin tức" ở homepage
     pub latest_news: Vec<news::NewsWithAuthor>,
     pub total_news: i64,
+    /// v2.3.0 — Top GitHub repos (approved, sắp xếp theo stars desc) để
+    /// hiển thị section "Repo đề xuất" ở homepage. Lấy 8 repo đầu, nếu
+    /// không có repo nào approved → section tự ẩn (template dùng
+    /// `{% if !featured_repos.is_empty() %}`).
+    pub featured_repos: Vec<repo::GithubRepoCard>,
 }
 
 /// Login page

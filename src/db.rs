@@ -4,10 +4,12 @@ use std::time::Duration;
 
 /// Cấu hình pool đọc từ biến môi trường với giá trị mặc định an toàn cho prod.
 ///
-/// - `DB_MAX_CONNECTIONS` (mặc định 15): số connection tối đa. PostgreSQL 17
+/// - `DB_MAX_CONNECTIONS` (mặc định 25): số connection tối đa. PostgreSQL 17
 ///   mặc định cho phép 100 connection; nếu chạy nhiều service chung một
-///   cluster thì nên giảm để tránh cạn slot.
-/// - `DB_MIN_CONNECTIONS` (mặc định 1): số connection giữ ấm, giảm latency
+///   cluster thì nên giảm để tránh cạn slot. v2.3.0 tăng từ 15 → 25 để
+///   giảm acquire contention khi concurrent request tăng (homepage chạy
+///   10 queries song song, đa section cần pool rộng).
+/// - `DB_MIN_CONNECTIONS` (mặc định 2): số connection giữ ấm, giảm latency
 ///   của request đầu tiên sau khi idle.
 /// - `DB_ACQUIRE_TIMEOUT_SECS` (mặc định 10): thời gian tối đa chờ một
 ///   connection rảnh từ pool trước khi trả 500 — tăng nếu có query nặng.
@@ -24,12 +26,12 @@ impl PoolTuning {
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .filter(|v| *v > 0)
-            .unwrap_or(15);
+            .unwrap_or(25);
         let min_connections = std::env::var("DB_MIN_CONNECTIONS")
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .filter(|v| *v <= max_connections)
-            .unwrap_or(1);
+            .unwrap_or(2);
         let acquire_timeout = Duration::from_secs(
             std::env::var("DB_ACQUIRE_TIMEOUT_SECS")
                 .ok()
@@ -112,7 +114,7 @@ mod tests {
 
     #[test]
     fn test_pool_tuning_defaults() {
-        // Không set env → dùng default 15/1/10s (test chạy trong process
+        // Không set env → dùng default 25/2/10s (test chạy trong process
         // riêng nên an toàn khi đọc env).
         let t = PoolTuning::from_env();
         assert!(t.max_connections > 0);

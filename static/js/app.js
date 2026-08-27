@@ -669,6 +669,97 @@
     }
 
     // ==========================================
+    // 12. v2.3.0 — CODE BLOCK COPY BUTTON + SERVICE WORKER
+    // ==========================================
+    // Copy-to-clipboard cho mọi .code-block-wrapper (được markdown engine
+    // emit khi render code fence). Click button → textContent của <pre>
+    // kề cận → navigator.clipboard.writeText.
+    // Fallback cho browser không hỗ trợ Clipboard API (vd: không-HTTPS):
+    // dùng execCommand + temporary <textarea>.
+    function copyToClipboard(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(text).catch(function() {
+                return legacyCopy(text);
+            });
+        }
+        return Promise.resolve(legacyCopy(text));
+    }
+
+    function legacyCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        ta.style.pointerEvents = 'none';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok ? Promise.resolve() : Promise.reject(new Error('execCommand failed'));
+    }
+
+    function initCopyCodeButtons() {
+        // Event delegation: 1 listener cho document → xử lý click bất kỳ
+        // .code-copy-btn, kể cả cho button render sau HTMX swap.
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest && e.target.closest('.code-copy-btn');
+            if (!btn) return;
+            var wrapper = btn.closest('.code-block-wrapper');
+            if (!wrapper) return;
+            var pre = wrapper.querySelector('pre.code-block');
+            if (!pre) return;
+            // textContent strip HTML tags — syntect đã escape HTML nên
+            // textContent trả về code gốc (không có HTML entities).
+            var code = pre.textContent || '';
+            copyToClipboard(code).then(
+                function() {
+                    btn.classList.add('code-copy-btn-copied');
+                    var orig = btn.textContent;
+                    btn.textContent = 'Đã chép';
+                    setTimeout(function() {
+                        btn.classList.remove('code-copy-btn-copied');
+                        btn.textContent = orig || 'Sao chép';
+                    }, 1500);
+                },
+                function() {
+                    if (window.lsToast) {
+                        window.lsToast('Không sao chép được — trình duyệt chặn clipboard', 'error');
+                    }
+                }
+            );
+        });
+    }
+
+    // Service Worker: cache-first cho /static/* (immutable), network-only
+    // cho HTML + API + WebSocket. Lợi ích: visit sau → static assets
+    // serve ngay từ cache (0 round-trip), FCP cực nhanh.
+    // Chỉ đăng ký trên HTTPS (bảo mật). Skip trên dev localhost.
+    function initServiceWorker() {
+        if (!('serviceWorker' in navigator)) return;
+        if (!window.isSecureContext) return;
+        // Version query trong URL buộc browser download SW mới khi deploy
+        // mới (URL khác → SW script khác → SW update). SW strategy:
+        // skipWaiting → clients.claim để update apply ngay lập tức.
+        window.addEventListener('load', function() {
+            navigator.serviceWorker
+                .register('/static/js/sw.js?v=2.3.0', { scope: '/' })
+                .then(function(reg) {
+                    if (reg && typeof reg.update === 'function') {
+                        // Trigger update check sau 60s nếu user keep tab mở
+                        setTimeout(function() { reg.update && reg.update(); }, 60000);
+                    }
+                })
+                .catch(function(err) {
+                    // SW fail không break UI — chỉ log console
+                    if (window.console && console.warn) {
+                        console.warn('SW registration failed:', err);
+                    }
+                });
+        });
+    }
+
+    // ==========================================
     // BOOTSTRAP
     // ==========================================
     document.addEventListener('DOMContentLoaded', function() {
@@ -683,6 +774,8 @@
         initDoubleSubmitGuard();
         initMisc();
         initNewsSearchAutocomplete();
+        initCopyCodeButtons();
+        initServiceWorker();
 
         // Duplicate check — game form (#f-title) + news form (#title)
         // v2.0 FIX: bản cũ chỉ check #title (id của form news) nên

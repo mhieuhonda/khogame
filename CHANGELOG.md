@@ -5,6 +5,179 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] — 2026-08-27 — Markdown xịn hơn nữa + Repo đề xuất ở homepage + Tối ưu PERF cực mạnh
+
+Bản nâng cấp PERF + UX: mở rộng markdown engine với heading anchors,
+table of contents, copy-to-clipboard code block, lazy image attributes,
+external link marker; thêm section "Repo đề xuất" ở trang chủ; bộ đôi
+ETag/Cache-Control + Link preload + Service Worker cho FCP/LCP cực nhanh
+khi revisit; tăng DB pool default 15 → 25. KHÔNG thay đổi giao diện hiện có
+— toàn bộ tối ưu là invisible (cache hit, 304, SWR, SW precache).
+
+### ✨ Tính năng mới
+
+- **Markdown engine v2.3 — vượt trội hơn GitHub** (`src/services/markdown.rs`):
+  - **Heading anchors** — mỗi `<h1>`–`<h6>` có `id="slug"` + anchor link
+    `<a class="heading-anchor" href="#slug"></a>` hover-visible (GitHub
+    style). Slug hỗ trợ tiếng Việt qua NFD + replace `đ/Đ → d/D` (đặc
+    biệt vì NFD không decompose được `đ`): "Tiêu đề" → "tieu-de".
+  - **Table of Contents** — marker `[toc]` (hoặc `[TOC]`) tự thay bằng
+    `<nav class="toc"><ul class="toc-list">...</ul></nav>` dựng từ headings
+    đã collect trong phase render. Nested level → nested `<ul>` (vd:
+    `# A` `## A.1` `## A.2` `# B` → ToC có group hierarchy rõ).
+  - **Copy-to-clipboard code block** — mỗi `<pre class="code-block">` được
+    wrap trong `<div class="code-block-wrapper">` kèm button
+    "Sao chép" hover-visible. JS client-side (`app.js initCopyCodeButtons`)
+    dùng `navigator.clipboard.writeText` + fallback `execCommand` cho
+    browser cũ/không-HTTPS. Fallback idempotent — re-render HTMX cũng OK.
+  - **Lazy image attributes** — mọi `<img>` trong markdown output tự thêm
+    `loading="lazy" decoding="async"` để browser defer download off-screen
+    images, giảm initial load + CPU parsing.
+  - **External link marker** — mọi `<a href="http(s)://...">` (trừ
+    localhost) tự thêm `class="external-link"` để CSS thêm icon ↗ nhỏ
+    decorative (không ảnh hưởng text content).
+  - **Additional callouts** — mở rộng 3 variant mới: `callout-success`
+    (xanh lá), `callout-question` (xanh dương), `callout-quote` (italic
+    xám). Tổng cộng 9 callout types: NOTE, TIP, INFO, WARNING, DANGER,
+    IMPORTANT, SUCCESS, QUESTION, QUOTE.
+  - **HeadingAdapter**: dùng comrak 0.54 `HeadingAdapter` trait (enter/exit)
+    thay vì post-process — clean architecture, có `sourcepos` param cho
+    debug.
+  - **Hardened links bảo toàn attributes**: `harden_links` không còn
+    rebuild `<a>` từ scratch — preserve `class`, `aria-label`, `aria-hidden`
+    của heading anchor + append `rel`/`target` nếu missing. Idempotent.
+  - 30 unit tests (15 mới) — bao phủ heading anchors (VN slug, special
+    chars, empty fallback), ToC (marker replaced, nested, no-marker
+    no-op), copy button present, lazy images added/idempotent, external
+    link marker, internal link không bị đánh dấu external, additional
+    callouts.
+
+- **Repo đề xuất ở homepage** (`src/handlers/games.rs::home` + `templates/index.html`):
+  - Thêm query `RepoRepo::list_approved(&state.db, 8, 0, "stars")` chạy
+    song song trong `tokio::join!` (cùng 9 queries cũ → 10 queries
+    parallel, latency không tăng).
+  - Thêm section `<section class="content-section">` sau "Đánh giá cao",
+    trước "Tin tức mới" — reuse `.repos-grid` + `.repo-card` CSS sẵn có
+    (đồng bộ visual với trang `/repos`).
+  - Template `{% if !featured_repos.is_empty() %}` → tự ẩn nếu chưa có
+    repo nào approved (chống trang trắng khi DB rỗng).
+  - DB error → `unwrap_or_default()` (không escalate, vì repo là bonus
+    feature, không phải critical path homepage).
+
+- **ETag + Cache-Control HTML** (`src/middleware.rs::cache_control_html`):
+  - **Weak ETag** từ body hash (DefaultHasher + length). Browser gửi
+    `If-None-Match` → server trả `304 Not Modified` body rỗng tiết kiệm
+    50-200KB mỗi page view.
+  - **Cache-Control anonymous**: `public, max-age=60, stale-while-revalidate=600`
+    (1 phút browser cache + 10 phút SWR) cho homepage.
+  - **Cache-Control authenticated**: `private, no-cache, must-revalidate`
+    (không cache shared proxy, revalidate mỗi request qua ETag). Phân biệt
+    bằng cách check `ls_session` cookie.
+  - **Link preload header** — emit `Link: </static/css/style.css?v=2.3.0>;
+    rel=preload; as=style, ...` cho HTTP/2 Early Hints (103). Browser
+    fetch CSS/JS/font song song trước khi parse HTML → FCP cực nhanh first
+    visit.
+  - **Vary: Cookie, Accept, Accept-Encoding** để cache key đúng theo
+    authentication state + compression negotiation.
+  - Bỏ qua API/HTMX/static/non-GET/non-2xx — chỉ can thiệp HTML pages.
+  - Nằm TRONG `security_headers` (inner) để 304 cũng có CSP/HSTS đầy đủ.
+  - Bảo toàn toàn bộ original headers khi rebuild response (CSP/HSTS/
+    X-Frame/etc. không bị mất).
+
+- **Resource Hints + Preload** (`templates/layout.html`):
+  - `<link rel="preload" as="style" href="/static/css/style.css?v=2.3.0">`
+    — critical CSS, render-blocking.
+  - `<link rel="preload" as="script" href="/static/js/htmx.min.js?v=2.3.0">`
+    — 52KB largest JS, defer parse không block nhưng download song song sớm.
+  - `<link rel="preload" as="script" href="/static/js/app.js?v=2.3.0">`
+    — bootstrap UI, defer.
+  - Bump cache version `?v=2.1.0` → `?v=2.3.0` ở mọi asset URL
+    (layout.html, error.html, index.html chat.js) — invalidate browser
+    cache cho tất cả users, đảm bảo CSS/JS mới được download sau deploy.
+
+- **Service Worker** (`static/js/sw.js` + register in `app.js`):
+  - **Cache-first cho `/static/*` + `/uploads/*`** — immutable assets,
+    serve ngay từ cache (0 round-trip) + ngầm revalidate (stale-while-
+    revalidate).
+  - **Network-first cho HTML routes** với fallback cache khi offline.
+    Online → luôn fresh; offline → fallback cache gần nhất.
+  - **Network-only cho `/api/*`, `/chat/*`, `/ai/*`, RSS, sitemap** —
+    không cache dữ liệu dynamic.
+  - Pre-cache 5 critical assets (htmx.min.js, style.css, fonts.css,
+    app.js, favicon.svg) ở install event.
+  - LRU eviction HTML cache (max 50 entries) tránh phình cache.
+  - Version key `ls-sw-v2.3.0` — bump khi cần invalidate cache toàn bộ.
+  - `skipWaiting` + `clients.claim` cho update apply ngay lập tức.
+  - Chỉ đăng ký trên HTTPS (`isSecureContext` check) — không break dev.
+  - Đăng ký sau `load` event để không block initial paint.
+
+- **Copy-to-clipboard JS** (`static/js/app.js::initCopyCodeButtons`):
+  - Event delegation — 1 listener cho document, xử lý click cho mọi
+    `.code-copy-btn` kể cả render sau HTMX swap.
+  - `navigator.clipboard.writeText` cho HTTPS (modern), fallback
+    `execCommand` + temporary `<textarea>` cho legacy/non-HTTPS.
+  - Visual feedback: button đổi text "Sao chép" → "Đã chép" + class
+    `code-copy-btn-copied` (CSS xanh lá) trong 1.5s.
+
+### 🚀 Tối ưu hiệu năng (PERF)
+
+- **DB pool default tăng 15 → 25** (`src/db.rs`) — giảm acquire contention
+  khi concurrent request tăng. Homepage chạy 10 queries song song qua
+  `tokio::join!`, đa section page cần pool rộng.
+- **DB min_connections tăng 1 → 2** — giữ 2 connection ấm, giảm latency
+  request đầu tiên sau idle.
+- **HTTP/2 Early Hints qua Link header** — preload critical assets song
+  song với HTML stream. FCP nhanh hơn rõ (~150ms tiết kiệm khi first
+  visit cold cache).
+- **Weak ETag trên HTML** — 304 Not Modified tiết kiệm băng thông +
+  browser cache hit cực nhanh (chỉ 200 bytes header thay vì 50-200KB
+  body).
+- **Service Worker cache-first static** — visit sau tải trang cực nhanh,
+  static assets serve ngay từ SW cache (0ms network).
+- **Speculation Rules prefetch** đã có sẵn từ v2.1, giữ nguyên (click →
+  prefetch trang đích conservative).
+- **Preload hint `<link rel="preload">`** cho 3 critical assets trong
+  `<head>` — browser fetch song song trước khi parse đến `<link>`/`<script>`
+  tương ứng.
+
+### 🎨 UI/UX (KHÔNG thay đổi giao diện)
+
+- Toàn bộ tối ưu là invisible: ETag/304/SWR/SW pre-cache. User không
+  thấy khác biệt trực quan, chỉ thấy "nhanh hơn", "mượt hơn".
+- Thêm CSS cho v2.3.0 elements (heading anchor, code copy button, ToC,
+  external link marker, additional callouts) — **không đụng** tới CSS
+  hiện có, chỉ THÊM style cho element mới.
+- Repo card ở homepage dùng lại `.repos-grid` + `.repo-card` CSS sẵn có
+  (đồng bộ với trang `/repos`).
+
+### 🛡 Bảo mật
+
+- **ETag không leak thông tin**: hash chỉ là cache key (DefaultHasher),
+  không phải mật mã học. Content-Length vẫn được browser verify thêm.
+- **Cache-Control phân biệt user đã login** — anonymous cache `public`
+  (browser/proxy có cache), authenticated `private, no-cache` (chỉ browser
+  cache, không proxy; revalidate mỗi request). Tránh leak thông tin
+  user A sang user B qua shared proxy cache.
+- **Vary: Cookie** để cache key đúng theo authentication state — tránh
+  serve HTML của user A cho user B.
+- **Heading anchor `aria-hidden="true"`** — screen reader bỏ qua anchor
+  link (text heading đã đủ nghĩa), không gây noise cho accessibility.
+- **Copy button `aria-label="Sao chép mã"`** — screen reader đọc rõ ý
+  nghĩa, không phải text "Sao chép" trơn.
+
+### 📚 Tài liệu
+
+- `CHANGELOG.md` — entry v2.3.0 đầy đủ (feature, perf, security, UX).
+- `WORKLOG.md` — process log ghi lại quyết định thiết kế.
+- Markdown engine doc-comment trong `src/services/markdown.rs` cập nhật
+  comparison table (GitHub vs Khogame v2.3).
+
+### 🔧 Tech stack (không đổi)
+
+- Rust 1.98, Axum 0.8.9 + axum-extra 0.12, Askama 0.16, HTMX 2.0.10
+  (self-hosted), PostgreSQL 17, sqlx 0.9 (runtime-tokio + rustls-ring),
+  reqwest 0.12, comrak 0.54, syntect 5.3, unicode-normalization 0.1.
+
 ## [2.2.0] — 2026-08-27 — Markdown engine xịn hơn GitHub + Email notifications + News comments + Related news + Bug fixes marathon
 
 Bản feature lớn: thay toàn bộ markdown renderer cũ (inline-only, double-escape

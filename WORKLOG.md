@@ -296,3 +296,100 @@ Work Log:
 Stage Summary:
 - Search game + search tin tức + autocomplete tin tức hoạt động trở lại (verify sau deploy).
 - Bài học: raw string r"..." không unescape — ESCAPE '\\' trong raw string = 2 ký tự, khác regular string.
+
+---
+
+## v2.3.0 — 2026-08-27 — Markdown xịn hơn nữa + Repo đề xuất + PERF
+
+### Mục tiêu (user brief)
+
+- Nâng cấp Markdown support "xịn hơn nữa mạnh hơn nữa"
+- Thêm đề xuất repo ở ngoài trang chủ (hiện chưa có)
+- Làm web load cực nhanh, siêu mượt, tuyệt đối — KHÔNG thay đổi giao diện
+- Rust 1.98 bắt buộc
+- Mọi commit user `mhieuhonda`
+- Tạo release tag sau khi xong
+- Deploy lên Coolify SUB VPS 10.187.247.3
+
+### Công việc đã làm
+
+#### 1. Markdown engine v2.3 (src/services/markdown.rs)
+- Thêm `AnchorHeadingAdapter` (impl `comrak::adapters::HeadingAdapter`) —
+  emit `<hN id="slug">` + anchor link `<a class="heading-anchor"
+  href="#slug" aria-hidden="true"></a>`.
+- Slug hỗ trợ tiếng Việt qua NFD decomposition + replace `đ/Đ → d/D`
+  (đặc biệt vì NFD không decompose được `đ`). Thêm dep `unicode-normalization`.
+- Thêm `[toc]` / `[TOC]` marker → thay bằng `<nav class="toc">` nested
+  ul dựng từ heading entries collected qua `toc_buffer()` (Mutex<Vec>).
+- `wrap_code_blocks_with_copy_button` — wrap `<pre class="code-block">`
+  trong `<div class="code-block-wrapper">` + button "Sao chép".
+- `lazy_images` — thêm `loading="lazy" decoding="async"` cho mọi `<img>`.
+- `mark_external_links` — thêm `class="external-link"` cho `<a href="http(s)">`
+  trừ localhost. CSS thêm icon ↗ decorative.
+- Mở rộng callouts: thêm SUCCESS, QUESTION, QUOTE (3 mới).
+- Refactor `harden_links` để preserve `class`/`aria-*` của anchor link
+  (bản v2.2 rebuild `<a>` từ scratch → mất class).
+- 30 unit tests (15 mới) — full coverage.
+
+#### 2. Repo đề xuất ở homepage (src/handlers/games.rs + templates/index.html + src/templates.rs)
+- Thêm field `featured_repos: Vec<repo::GithubRepoCard>` vào `IndexTemplate`.
+- Thêm query `RepoRepo::list_approved(&state.db, 8, 0, "stars")` vào
+  `tokio::join!` (10 queries song song — latency không tăng).
+- Thêm section `<section class="content-section">` trong index.html
+  giữa "Đánh giá cao" và "Tin tức mới". Reuse `.repos-grid` + `.repo-card`
+  CSS sẵn có (đồng bộ với trang `/repos`).
+- DB error → `unwrap_or_default()` — không escalate, repo là bonus feature.
+- Template `{% if !featured_repos.is_empty() %}` — tự ẩn section khi
+  chưa có repo approved (chống trang trắng).
+
+#### 3. PERF: ETag + Cache-Control HTML (src/middleware.rs::cache_control_html)
+- Weak ETag từ body hash (DefaultHasher + length). Browser gửi
+  `If-None-Match` → server trả `304 Not Modified` body rỗng.
+- Cache-Control phân biệt anonymous vs authenticated (check `ls_session`
+  cookie): `public, max-age=60, stale-while-revalidate=600` vs
+  `private, no-cache, must-revalidate`.
+- Link preload header cho 4 assets (style.css, htmx.min.js, app.js, font).
+- Vary: Cookie, Accept, Accept-Encoding.
+- Bỏ qua API/HTMX/static/non-GET/non-2xx.
+- Nằm TRONG `security_headers` — 304 cũng có CSP/HSTS đầy đủ.
+- Bảo toàn original headers khi rebuild response (CSP/HSTS/X-Frame).
+- Wire vào `src/routes.rs` qua `.layer(middleware::from_fn(cache_control_html))`.
+
+#### 4. PERF: Preload hints + bump cache version (templates/layout.html)
+- Thêm 3 `<link rel="preload" as="style|script" href="...?v=2.3.0">`
+  cho style.css, htmx.min.js, app.js.
+- Bump cache version `?v=2.1.0` → `?v=2.3.0` ở layout.html, error.html,
+  index.html (chat.js). Invalidate browser cache cho tất cả users.
+
+#### 5. PERF: Service Worker (static/js/sw.js + register in app.js)
+- Cache-first cho `/static/*` + `/uploads/*` (immutable) — 0 round-trip
+  visit sau. SWR ngầm revalidate.
+- Network-first cho HTML routes — online fresh, offline fallback cache.
+- Network-only cho `/api/*`, `/chat/*`, `/ai/*`, RSS, sitemap.
+- Pre-cache 5 critical assets ở install event.
+- LRU eviction HTML cache (max 50 entries).
+- Version key `ls-sw-v2.3.0` + `skipWaiting` + `clients.claim`.
+- Chỉ đăng ký trên HTTPS (`isSecureContext`).
+- JS copy-button handler `initCopyCodeButtons` (event delegation,
+  `navigator.clipboard.writeText` + fallback `execCommand`).
+
+#### 6. PERF: DB pool default 15 → 25 (src/db.rs)
+- `DB_MAX_CONNECTIONS` 15 → 25 (giảm acquire contention).
+- `DB_MIN_CONNECTIONS` 1 → 2 (giữ 2 connection ấm).
+- Homepage chạy 10 queries song song — pool rộng cần thiết.
+
+### Verification
+
+- `cargo fmt --all` — clean.
+- `cargo clippy --all-targets -- -D warnings` — 0 warnings.
+- `cargo test --lib` — 236 tests pass (30 markdown + 9 edge + others).
+- `cargo build --release` — success (5m48s).
+
+### Cấu hình triển khai
+
+- Stack: Rust 1.98, Axum 0.8.9 + axum-extra 0.12, Askama 0.16, HTMX
+  2.0.10 (self-hosted), PostgreSQL 17, sqlx 0.9, reqwest 0.12, comrak
+  0.54, syntect 5.3, unicode-normalization 0.1.
+- Repo: https://github.com/mhieuhonda/khogame
+- Deploy: Coolify SUB VPS 10.187.247.3 qua API token.
+- Git config: user.name=mhieuhonda, email=mhieuhonda@users.noreply.github.com

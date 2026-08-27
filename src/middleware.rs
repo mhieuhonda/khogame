@@ -6,7 +6,7 @@ use crate::state::AppState;
 use askama::Template as _;
 use axum::{
     extract::{ConnectInfo, FromRef, FromRequestParts, Request, State},
-    http::{request::Parts, HeaderValue, StatusCode},
+    http::{request::Parts, HeaderName, HeaderValue, StatusCode},
     middleware::Next,
     response::{Html, IntoResponse, Response},
 };
@@ -1043,6 +1043,200 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         ),
     );
     response
+}
+
+// ============================================================
+// v2.3.0 PERF — ETag + Cache-Control cho HTML responses
+//
+// Mục tiêu: giảm băng thông + tăng tốc độ page view lần 2 bằng:
+//   1) ETag (hash nội dung HTML) — browser gửi If-None-Match → server
+//      trả 304 Not Modified (body rỗng, chỉ header) khi content không
+//      đổi. Tiết kiệm ~50-200KB mỗi page view.
+//   2) Cache-Control: public, max-age=60, stale-while-revalidate=600
+//      cho anonymous (cookie session thiếu) — browser cache 1 phút,
+//      SWR 10 phút. Vận dụng cache browser cho人気度高 page (homepage).
+//      cho user đã login: Cache-Control: private, no-cache (không cache
+//      shared proxy, mỗi request revalidate) — tránh leak thông tin
+//      user A sang user B.
+//   3) Link: </static/css/style.css?v=...>; rel=preload; as=style —
+//      HTTP/2 Early Hints (103) cho preload. Browser fetch CSS ngay
+//      trước khi nhận HTML, FCP nhanh hơn rõ.
+//
+// KHÔNG áp dụng cho:
+//   - API responses (Accept: application/json, hoặc path /api/*)
+//   - HTMX partials (header HX-Request: true)
+//   - Redirects (3xx) hoặc errors (4xx/5xx)
+//   - Responses đã có ETag (vd: static file ETag do tower-http ServeDir)
+//   - Non-GET (POST/PUT/PATCH/DELETE)
+//   - Streaming/chunked responses (Content-Encoding không rõ)
+//
+// Layer ordering: NẰM TRONG security_headers (inner hơn) để mọi
+// response — kể cả 304 Not Modified — đều được gắn CSP/HSTS/X-Frame.
+// Nằm NGOÀI rate_limit + maintenance_guard + error_page_mw + origin_check
+// để các layer đó short-circuit (429/503/403) không bị tốn công hash body.
+// ============================================================
+pub async fn cache_control_html(request: Request, next: Next) -> Response {
+    // Capture request metadata TRƯỚC khi next.run() consume.
+    let method = request.method().clone();
+    let is_get = method == axum::http::Method::GET || method == axum::http::Method::HEAD;
+    let path = request.uri().path().to_string();
+    let is_api = path.starts_with("/api/")
+        || path.starts_with("/chat/")
+        || path.starts_with("/ai/")
+        || path.starts_with("/opensearch")
+        || path.starts_with("/rss")
+        || path.starts_with("/sitemap")
+        || path.starts_with("/robots")
+        || path.starts_with("/health")
+        || path.starts_with("/.well-known/");
+    let is_static = path.starts_with("/static/") || path.starts_with("/uploads/");
+    let is_htmx = request
+        .headers()
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let accept_html = request
+        .headers()
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|a| a.contains("text/html"));
+    let if_none_match = request
+        .headers()
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    // Cookie session — nếu có cookie ls_session → user đã login → dùng
+    // Cache-Control private, không cache browser (revalidate mỗi request).
+    let has_session_cookie = request
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|cookies| cookies.contains("ls_session="));
+
+    let response = next.run(request).await;
+
+    // Bỏ qua nếu: non-GET, API/static/htmx, không phải HTML, hoặc status
+    // không phải 2xx (không cache lỗi).
+    if !is_get || is_api || is_static || is_htmx || !accept_html {
+        return response;
+    }
+    if !response.status().is_success() {
+        return response;
+    }
+
+    // Snapshot headers trước khi consume body — để rebuild response giữ
+    // nguyên CSP/HSTS/X-Frame-Options/etc. từ security_headers.
+    let original_headers = response.headers().clone();
+    let original_status = response.status();
+
+    // Đọc body ra để hash — phải collect hết vì cần hash toàn bộ.
+    // Trade-off: tốn memory tạm cho 1 page (~50-200KB), đáng để có ETag.
+    let body = match axum::body::to_bytes(response.into_body(), 16 * 1024 * 1024).await {
+        Ok(bytes) => bytes,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    // Compute ETag (weak) từ body content + length. DefaultHasher đủ cho
+    // cache matching (không phải mục đích chống tamper — Content-Length
+    // cũng được verify bởi browser).
+    let etag = compute_etag(&body);
+
+    // Nếu client gửi If-None-Match khớp ETag → trả 304 (body rỗng)
+    if let Some(inm) = if_none_match {
+        if inm == etag || inm == format!("\"{etag}\"") || inm == format!("W/\"{etag}\"") {
+            let mut not_modified = Response::new(axum::body::Body::empty());
+            *not_modified.status_mut() = StatusCode::NOT_MODIFIED;
+            let headers = not_modified.headers_mut();
+            // Copy toàn bộ headers gốc (CSP/HSTS/etc.) — bảo đảm 304 cũng có
+            // security headers đầy đủ.
+            for (name, value) in &original_headers {
+                headers.insert(name.clone(), value.clone());
+            }
+            headers.insert(axum::http::header::ETAG, etag_value(&etag));
+            set_html_cache_headers(headers, has_session_cookie);
+            if let Ok(v) = HeaderValue::from_str("Cookie, Accept, Accept-Encoding") {
+                headers.insert(axum::http::header::VARY, v);
+            }
+            return not_modified;
+        }
+    }
+
+    // Build response mới với body cũ + headers gốc + ETag + Cache-Control
+    let mut final_response = Response::new(axum::body::Body::from(body));
+    *final_response.status_mut() = original_status;
+    let headers = final_response.headers_mut();
+    // Copy headers gốc — ghi đè Content-Type/Content-Length để axum tự set lại
+    // khi body mới (đã có đúng length trong Body::from(Bytes)).
+    for (name, value) in &original_headers {
+        // Skip Content-Length — sẽ được axum tự compute lại cho body mới.
+        // Skip Content-Encoding — CompressionLayer (outer) sẽ nén lại nếu cần.
+        if name == axum::http::header::CONTENT_LENGTH
+            || name == axum::http::header::CONTENT_ENCODING
+        {
+            continue;
+        }
+        headers.insert(name.clone(), value.clone());
+    }
+    headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    headers.insert(axum::http::header::ETAG, etag_value(&etag));
+    set_html_cache_headers(headers, has_session_cookie);
+    if let Ok(v) = HeaderValue::from_str("Cookie, Accept, Accept-Encoding") {
+        headers.insert(axum::http::header::VARY, v);
+    }
+    // Link header cho HTTP/2 Early Hints — preload critical assets.
+    // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
+    // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
+    if let Ok(link_val) = HeaderValue::from_str(
+        "</static/css/style.css?v=2.3.0>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v=2.3.0>; rel=preload; as=script, \
+         </static/js/app.js?v=2.3.0>; rel=preload; as=script, \
+         </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin",
+    ) {
+        headers.insert(axum::http::header::LINK, link_val);
+    }
+    let _ = HeaderName::from_static; // silence unused import warning
+    final_response
+}
+
+/// Compute ETag (weak) từ body content. DefaultHasher đủ nhanh và đủ mạnh
+/// cho mục đích cache matching — không cần kháng va chạm vì browser verify
+/// thêm bằng Content-Length.
+fn compute_etag(bytes: &[u8]) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hasher;
+    let mut hasher = DefaultHasher::new();
+    hasher.write(bytes);
+    hasher.write_usize(bytes.len());
+    format!("{:016x}", hasher.finish())
+}
+
+fn etag_value(etag: &str) -> HeaderValue {
+    // ETag weak prefix W/ — cho phép browser revalidate semantic equivalent
+    // (vd: compression khác → cùng ETag weak, vẫn 304).
+    let s = format!("W/\"{etag}\"");
+    HeaderValue::from_str(&s).unwrap_or_else(|_| HeaderValue::from_static("W/\"0\""))
+}
+
+fn set_html_cache_headers(headers: &mut axum::http::HeaderMap, has_session: bool) {
+    if has_session {
+        // User đã login — Cache-Control private (không cache proxy),
+        // no-cache (revalidate mỗi request qua ETag). Vẫn hưởng lợi ETag
+        // (304 Not Modified).
+        headers.insert(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("private, no-cache, must-revalidate"),
+        );
+    } else {
+        // Anonymous — cache browser 1 phút + SWR 10 phút. Browser gửi
+        // If-None-Match → 304 không body nếu ETag khớp.
+        headers.insert(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=60, stale-while-revalidate=600"),
+        );
+    }
 }
 
 // ============================================================

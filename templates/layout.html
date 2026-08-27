@@ -16,9 +16,20 @@
        ngay first paint — không DNS/TLS handshake tới Google như trước đây. #}
     <link rel="preload" href="/static/fonts/inter-var-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/static/fonts/inter-var-vietnamese.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="/static/css/style.css?v=2.1.0">
-    <link rel="stylesheet" href="/static/css/fonts.css?v=2.1.0">
-    <script src="/static/js/htmx.min.js?v=2.1.0" defer></script>
+    {# v2.3.0 PERF — Preload 3 critical assets trước khi browser parse đến
+       thẻ <link>/<script> tương ứng. Trên production có HTTP/2 push hint
+       qua Link header (xem middleware cache_control_html) nhưng preload
+       trong HTML đảm bảo hoạt động cả khi không có HTTP/2.
+       - style.css: critical CSS, render-blocking
+       - htmx.min.js: lớn nhất (~52KB), defer nên parse không block nhưng
+         download song song sớm giúp page ready tương tác nhanh hơn
+       - app.js: bootstrap UI, defer — preload để khởi chạy sớm #}
+    <link rel="preload" href="/static/css/style.css?v=2.3.0" as="style">
+    <link rel="preload" href="/static/js/htmx.min.js?v=2.3.0" as="script">
+    <link rel="preload" href="/static/js/app.js?v=2.3.0" as="script">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.3.0">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=2.3.0">
+    <script src="/static/js/htmx.min.js?v=2.3.0" defer></script>
     {# Set theme trước khi paint để tránh FOUC (flash of unstyled content)
        khi user đã set light mode nhưng default HTML không có data-theme. #}
     <script>
@@ -258,7 +269,7 @@
         </div>
     </footer>
 
-    <script src="/static/js/app.js?v=2.1.0" defer></script>
+    <script src="/static/js/app.js?v=2.3.0" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
