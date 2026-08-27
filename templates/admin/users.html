@@ -13,7 +13,7 @@
     <div class="admin-filter-chips" role="group" aria-label="Lọc theo trạng thái">
         <a href="/admin/users{% if !search.is_empty() %}?q={{ search|esc }}{% endif %}" class="chip {% if status_filter.is_empty() %}chip-active{% endif %}">Tất cả ({{ total }})</a>
         {% for (key, label, count) in status_options %}
-        <a href="/admin/users?q={{ search|esc }}&amp;status={{ key }}" class="chip {% if status_filter == key %}chip-active{% endif %}">{{ label }} ({{ count }})</a>
+        <a href="/admin/users?q={{ search|esc }}&amp;status={{ key }}" class="chip {% if status_filter == *key %}chip-active{% endif %}">{{ label }} ({{ count }})</a>
         {% endfor %}
     </div>
     <div class="admin-table-wrap">

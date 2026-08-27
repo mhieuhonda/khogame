@@ -39,7 +39,7 @@
         <select id="category" name="category">
             <option value="">— Không phân loại —</option>
             {% for (k, v) in categories %}
-            <option value="{{ k }}" {% if news.category == *k %}selected{% endif %}>{{ v }}</option>
+            <option value="{{ k }}" {% if news.category == k.as_str() %}selected{% endif %}>{{ v }}</option>
             {% endfor %}
         </select>
 

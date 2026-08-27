@@ -22,7 +22,7 @@
         <select name="category" aria-label="Lọc theo thể loại">
             <option value="">Tất cả thể loại</option>
             {% for (k, v) in categories %}
-            <option value="{{ k }}" {% if category == *k %}selected{% endif %}>{{ v }}</option>
+            <option value="{{ k }}" {% if category == k.as_str() %}selected{% endif %}>{{ v }}</option>
             {% endfor %}
         </select>
         <button type="submit" class="btn btn-outline btn-sm">Lọc</button>

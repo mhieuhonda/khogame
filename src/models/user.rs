@@ -89,7 +89,7 @@ impl User {
 ///
 /// `last_seen_at` được update tối đa 1 lần/giờ/user qua `touch_last_seen`
 /// trong middleware — đủ granularity để phân biệt online vs active vs inactive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UserStatusBadge {
     Banned,
     New,

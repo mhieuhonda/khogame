@@ -214,10 +214,6 @@ pub async fn list(
         .find(|(k, _)| *k == category)
         .map(|(_, v)| v.clone())
         .unwrap_or_default();
-    let cats_ref: Vec<(&str, &str)> = cats
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
     Ok(NewsListTemplate {
         current_user,
         unread_notifications: unread,
@@ -229,7 +225,7 @@ pub async fn list(
         category: category.to_string(),
         category_label,
         query: q.to_string(),
-        categories: cats_ref,
+        categories: cats,
     })
 }
 
@@ -328,14 +324,10 @@ pub async fn new_form(
     }
     // v1.4.0: categories từ DB (fallback nếu bảng chưa migrate).
     let cats = dynamic_categories(&state).await;
-    let cats_ref: Vec<(&str, &str)> = cats
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
     Ok(NewsNewTemplate {
         current_user: Some(user),
         unread_notifications: 0,
-        categories: cats_ref,
+        categories: cats,
         errors: Vec::new(),
         form: NewsFormPartial::default(),
     })
@@ -457,14 +449,10 @@ pub async fn create(
     if !errors.is_empty() {
         // v1.4.0: categories từ DB khi re-render form có lỗi.
         let cats = dynamic_categories(&state).await;
-        let cats_ref: Vec<(&str, &str)> = cats
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
         let tmpl = NewsNewTemplate {
             current_user: Some(user),
             unread_notifications: 0,
-            categories: cats_ref,
+            categories: cats,
             errors,
             form: NewsFormPartial::from(&params),
         };
@@ -539,14 +527,10 @@ pub async fn edit_form(
 
     // v1.4.0: categories từ DB cho edit form.
     let cats = dynamic_categories(&state).await;
-    let cats_ref: Vec<(&str, &str)> = cats
-        .iter()
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
     Ok(NewsEditTemplate {
         current_user: Some(user),
         unread_notifications: 0,
-        categories: cats_ref,
+        categories: cats,
         news: full,
         errors: Vec::new(),
     })

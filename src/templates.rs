@@ -1053,7 +1053,7 @@ pub struct NewsListTemplate {
     pub category: String,
     pub category_label: String,
     pub query: String,
-    pub categories: Vec<(&'static str, &'static str)>,
+    pub categories: Vec<(String, String)>,
 }
 
 /// Trang chi tiết tin tức (public)
@@ -1074,7 +1074,7 @@ pub struct NewsShowTemplate {
 pub struct NewsNewTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
-    pub categories: Vec<(&'static str, &'static str)>,
+    pub categories: Vec<(String, String)>,
     pub errors: Vec<String>,
     pub form: crate::handlers::news::NewsFormPartial,
 }
@@ -1085,7 +1085,7 @@ pub struct NewsNewTemplate {
 pub struct NewsEditTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
-    pub categories: Vec<(&'static str, &'static str)>,
+    pub categories: Vec<(String, String)>,
     pub news: news::News,
     pub errors: Vec<String>,
 }
