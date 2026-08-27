@@ -5,7 +5,129 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] — 2026-08-27 — Markdown engine xịn hơn GitHub + Email notifications + News comments + Related news + Bug fixes marathon
+
+Bản feature lớn: thay toàn bộ markdown renderer cũ (inline-only, double-escape
+bug) bằng engine mới (comrak + syntect) vượt trội hơn GitHub; wire-up news
+comments CRUD (dead code → sống); thêm email notifications với lettre +
+email_queue + janitor flusher; thêm related news recommendations; fix 3 bug
+nghiêm trọng (transaction cho news edit, like_comment visual state, atomic
+repo create); tối ưu performance (N+1 batch mention, indexes, parallel queries).
+
+### ✨ Tính năng mới
+
+- **Markdown engine "xịn hơn GitHub"** (`src/services/markdown.rs`):
+  - Built on **comrak 0.54** (100% CommonMark + GFM superset) + **syntect**
+    (Sublime-quality syntax highlighting).
+  - Hỗ trợ: tables, tasklists (`[x]`), strikethrough (`~~`), autolinks,
+    footnotes (`[^1]`), math (`$...$`), superscript (`^text^`), spoiler
+    (`>!text!<`), multiline blockquotes (`>>>`), smart punctuation.
+  - **Vượt trội hơn GitHub**: callouts (`> [!NOTE/TIP/WARNING/CAUTION/IMPORTANT]`),
+    YouTube auto-embed (link YouTube đơn độc → iframe responsive +
+    youtube-nocookie.com), URL scheme allowlist (`http(s)/mailto/tel` —
+    `javascript:` bị chặn → `href="#"`), auto `rel="nofollow ugc noopener
+    noreferrer"` + `target="_blank"` trên mọi link.
+  - **Zero XSS surface**: `unsafe_=false` + `escape=true` — không bao giờ
+    render raw HTML, kể cả `<script>` hay `<details>` attacker-controlled.
+  - Singleton SyntaxSet (OnceLock) — khởi tạo 1 lần, không reparse mỗi request.
+  - 15 unit tests bao phủ nested formatting, code blocks, tables, callouts,
+    spoiler, footnotes, YouTube embed, javascript: link blocked, double-escape
+    regression.
+  - Xoá code inline cũ `safe_markdown_to_html` (200+ dòng), thay bằng shim
+    delegate sang engine mới (backward-compat cho template filter `|html`).
+
+- **Email notifications** (`src/services/email.rs` + migration 017):
+  - **lettre 0.11** SMTP client (rustls TLS) với 3 chế độ TLS: StartTLS
+    (default port 587), Implicit TLS (port 465), None (dev local).
+  - `email_queue` table + trigger `trg_enqueue_email_on_notification`
+    auto-INSERT row mỗi khi có notification (nếu user bật
+    `email_notifications` preference + user có email).
+  - **Janitor email flusher** (`run_email_flusher`) chạy song song với
+    cleanup janitor, chu kỳ 2 phút (env `EMAIL_FLUSH_INTERVAL_SECS`).
+  - `flush_pending()` dùng `SELECT ... FOR UPDATE SKIP LOCKED` để multi-worker
+    không double-send; exponential backoff retry (1m → 5m → 25m), max 3 lần
+    → status='failed' permanent.
+  - Nếu SMTP chưa cấu hình → noop mark all 'skipped' (không spam log).
+  - Subject localized theo notification type (mention/follow/like/comment/
+    news_approval/news_rejection).
+
+- **News comments full CRUD** (wire-up dead code):
+  - Routes: `POST /news_comments/{id}/like`, `DELETE /news_comments/{id}`,
+    `GET /news_comments/{id}/replies`.
+  - Template `news/show.html`: render comments với MD (filter `|html`),
+    nút like + delete (HTMX swap outerHTML), inline mention notifications
+    (batch INSERT `create_mentions_batch_news`).
+  - Repo: `find_comment_mentions`, `list_replies` (with current_user param
+    for future is_liked population), `delete_comment` (owner or admin).
+
+- **Related news recommendations** (`/news/{slug}`):
+  - `NewsRepo::list_related(current_id, category, 6)` — cùng category +
+    published, fallback tin mới nhất nếu category trống.
+  - Song song với unread/comments/has_liked queries (tokio::join!) — không
+    thêm latency.
+  - UI grid responsive (auto-fill minmax(240px, 1fr)) + hover lift effect +
+    image zoom transition.
+
+### 🐛 Bug fixes (3 nghiêm trọng + nhiều minor)
+
+- **FIX transaction cho news edit khi tin bị rejected**:
+  - Trước đây: `UPDATE status='pending'` rồi `UPDATE content` riêng lẻ.
+    Nếu UPDATE content fail (DB glitch), tin đã chuyển 'pending' với content
+    CŨ → admin duyệt content cũ với review_note rỗng.
+  - Giờ: wrap cả 2 UPDATE trong 1 transaction (`update_tx` mới). Nếu 1 fail,
+    rollback toàn bộ.
+- **FIX `like_comment` không update visual state**:
+  - Trước đây: chỉ trả `like_count` text → button HTMX swap outerHTML nhưng
+    `aria-pressed`/class `active` không đổi → UI không phản ánh state like.
+  - Giờ: re-render full `CommentItemPartial` (button + count + aria đồng bộ).
+- **FIX atomic repo create**:
+  - Trước đây: 3 sequential queries (create + set_image_url + set_status).
+    Nếu 1 fail → repo tồn tại inconsistent (không image / status sai).
+  - Giờ: 1 INSERT với tất cả fields (`create_full`) + ON CONFLICT DO NOTHING
+    (race-safe).
+- **FIX N+1 mention notifications**:
+  - Trước đây: 10 user @mention = 10 sequential INSERT.
+  - Giờ: 1 batch INSERT với `INSERT ... SELECT FROM unnest($1::uuid[])`.
+- **FIX double-escape MD trong nested formatting** (`**a < b**`):
+  - Trước đây: `html_escape` ở entry, recursive call escape tiếp → `&amp;lt;`.
+  - Giờ: comrak engine escape 1 lần ở leaves.
+
+### ⚡ Performance
+
+- **Migration 018 — Composite indexes**:
+  - `idx_news_list_published` partial WHERE status='published' cho ORDER BY
+    `is_featured DESC, published_at DESC NULLS LAST, created_at DESC`.
+  - `idx_news_comments_toplevel` partial WHERE parent_id IS NULL.
+  - `idx_news_comments_replies` partial WHERE parent_id IS NOT NULL.
+  - `idx_email_queue_status`, `idx_email_queue_recipient`.
+- **Admin users limit tăng từ 500 → 2000** (silent-truncate ở site lớn).
+- **Parallel queries** trong news::show (related + unread + comments +
+  has_liked) bằng `tokio::join!`.
+
+### 🛡️ Bảo mật
+
+- URL scheme allowlist trong markdown: chỉ `http(s)/mailto/tel` được render
+  link, các scheme nguy hiểm bị thay bằng `#`.
+- `target="_blank"` luôn kèm `rel="nofollow ugc noopener noreferrer"` (chống
+  tab-nabbing + giảm link-juice farming).
+- Comrak `unsafe_=false` + `escape=true` → zero XSS surface.
+- Code blocks được escape nội dung trước khi syntax-highlight (syntect).
+
+### 📦 Dependencies
+
+- `comrak = "0.54"` (default-features = false, features = ["shortcodes"])
+- `syntect = "5"` (default-features = false, features = ["default-fancy"])
+- `lettre = { version = "0.11", optional = true, default-features = false,
+  features = ["builder", "smtp-transport", "rustls-tls", "tokio1-rustls-tls"] }`
+- `mime = "0.3"` (optional, for email)
+- Feature `default = ["email"]` — bật email transport mặc định.
+
+### ✅ Tests
+
+- **221 unit tests** pass (từ 207): +15 tests markdown engine mới, -3 tests
+  MD cũ đã update cho behavior mới.
+- **0 clippy warnings** (default lints) sau khi remove dead code + thêm
+  `#[allow(clippy::too_many_arguments)]` cho `create_full` (14 args atomic).
 
 ---
 

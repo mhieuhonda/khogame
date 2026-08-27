@@ -2,7 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::news::{
     News, NewsComment, NewsCommentWithAuthor, NewsForAdmin, NewsStatus, NewsWithAuthor,
 };
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
 pub struct NewsRepo;
@@ -95,6 +95,36 @@ impl NewsRepo {
         Ok(())
     }
 
+    /// v2.2.0 — Transaction-aware variant. Cho phép caller wrap nhiều UPDATE
+    /// (vd: reset status + update content) trong 1 transaction để đảm bảo tính
+    /// nguyên vẹn dữ liệu — nếu 1 trong nhiều UPDATE fail, tất cả rollback.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn update_tx(
+        tx: &mut Transaction<'_, Postgres>,
+        id: Uuid,
+        form: &NewsForm,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"UPDATE news SET
+                title = $1, excerpt = $2, content = $3, cover_image = $4,
+                category = $5, source_url = $6, source_name = $7
+              WHERE id = $8",
+        )
+        .bind(&form.title)
+        .bind(&form.excerpt)
+        .bind(&form.content)
+        .bind(&form.cover_image)
+        .bind(&form.category)
+        .bind(&form.source_url)
+        .bind(&form.source_name)
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
+    }
+
     /// Lấy danh sách tin đã published, phân trang, mới nhất trước.
     /// # Errors
     ///
@@ -136,6 +166,61 @@ impl NewsRepo {
             .fetch_one(pool)
             .await?;
         Ok(count)
+    }
+
+    /// v2.2.0 — Lấy N tin liên quan cho 1 tin hiện tại.
+    /// Ưu tiên cùng category + published, fallback sang tin mới nhất nếu
+    /// category trống. Loại trừ tin hiện tại.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn list_related(
+        pool: &PgPool,
+        current_id: Uuid,
+        category: &str,
+        limit: i64,
+    ) -> AppResult<Vec<NewsWithAuthor>> {
+        let items = if category.is_empty() {
+            // Không có category → lấy tin mới nhất
+            sqlx::query_as::<_, NewsWithAuthor>(
+                r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                         n.cover_image, n.category, n.source_url, n.source_name,
+                         n.status, n.view_count, n.like_count,
+                         n.comment_count, n.is_featured, n.published_at, n.created_at,
+                         u.display_name AS author_name, u.username AS author_username,
+                         u.avatar_url AS author_avatar
+                  FROM news n
+                  JOIN users u ON u.id = n.user_id
+                  WHERE n.status = 'published' AND n.id != $1
+                  ORDER BY n.published_at DESC NULLS LAST, n.created_at DESC
+                  LIMIT $2",
+            )
+            .bind(current_id)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
+        } else {
+            // Cùng category + published + loại trừ current
+            sqlx::query_as::<_, NewsWithAuthor>(
+                r"SELECT n.id, n.user_id, n.title, n.slug, n.excerpt, n.content,
+                         n.cover_image, n.category, n.source_url, n.source_name,
+                         n.status, n.view_count, n.like_count,
+                         n.comment_count, n.is_featured, n.published_at, n.created_at,
+                         u.display_name AS author_name, u.username AS author_username,
+                         u.avatar_url AS author_avatar
+                  FROM news n
+                  JOIN users u ON u.id = n.user_id
+                  WHERE n.status = 'published' AND n.id != $1 AND n.category = $2
+                  ORDER BY n.is_featured DESC, n.published_at DESC NULLS LAST, n.created_at DESC
+                  LIMIT $3",
+            )
+            .bind(current_id)
+            .bind(category)
+            .bind(limit)
+            .fetch_all(pool)
+            .await?
+        };
+        Ok(items)
     }
 
     /// Lấy tin nổi bật (`is_featured=true`, status=published).
@@ -570,7 +655,10 @@ impl NewsRepo {
     pub async fn list_replies(
         pool: &PgPool,
         parent_id: Uuid,
+        _current_user: Option<Uuid>,
     ) -> AppResult<Vec<NewsCommentWithAuthor>> {
+        // _current_user param kept for API parity with CommentRepo::list_replies
+        // (sẽ dùng để optimistically populate is_liked khi thêm like tracking).
         let items = sqlx::query_as::<_, NewsCommentWithAuthor>(
             r"SELECT c.id, c.news_id, c.user_id, c.parent_id, c.content,
                      c.like_count, c.is_pinned, c.created_at,
@@ -585,6 +673,38 @@ impl NewsRepo {
         .fetch_all(pool)
         .await?;
         Ok(items)
+    }
+
+    /// v2.2.0 — Find @mentions trong news comment content (mirror CommentRepo).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn find_comment_mentions(
+        pool: &PgPool,
+        content: &str,
+        exclude_user: Uuid,
+    ) -> AppResult<Vec<Uuid>> {
+        let mut usernames: Vec<String> = Vec::new();
+        for w in content.split_whitespace() {
+            if let Some(username) = w.strip_prefix('@') {
+                let username =
+                    username.trim_end_matches(|c: char| !c.is_alphanumeric() && c != '_');
+                if !username.is_empty() && !usernames.iter().any(|u| u == username) {
+                    usernames.push(username.to_string());
+                }
+            }
+        }
+        if usernames.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT DISTINCT id FROM users WHERE username = ANY($1) AND id != $2 AND NOT is_banned",
+        )
+        .bind(&usernames)
+        .bind(exclude_user)
+        .fetch_all(pool)
+        .await?;
+        Ok(ids)
     }
 
     /// # Errors

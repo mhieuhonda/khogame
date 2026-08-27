@@ -13,6 +13,13 @@ const DAILY_STATS_RETENTION_DAYS: i64 = 90;
 /// `JANITOR_INTERVAL_SECS` (tối thiểu 60s để tránh spam DB khi test).
 const DEFAULT_INTERVAL_SECS: u64 = 6 * 3600;
 
+/// v2.2.0 — Chu kỳ gửi email queue (2 phút). Ngắn hơn janitor cleanup
+/// để email realtime cho user.
+const EMAIL_FLUSH_INTERVAL_SECS: u64 = 120;
+
+/// Số email gửi mỗi batch — giới hạn để không quá tải SMTP trong 1 lần.
+const EMAIL_BATCH_SIZE: i64 = 25;
+
 /// Task nền dọn dẹp dữ liệu tạm — chạy suốt vòng đời server.
 ///
 /// Trước đây session hết hạn chỉ được dọn opportunistic khi có người
@@ -63,6 +70,37 @@ pub async fn run_janitor(state: AppState) {
     }
 }
 
+/// v2.2.0 — Email queue flusher. Chạy song song với janitor cleanup,
+/// chu kỳ ngắn hơn (2 phút) để email đến user nhanh.
+/// Đọc `email_queue` WHERE status='pending' AND next_retry_at <= NOW(),
+/// gửi SMTP, đánh dấu 'sent' hoặc 'failed' (retry 3 lần).
+pub async fn run_email_flusher(state: AppState) {
+    let interval = Duration::from_secs(
+        std::env::var("EMAIL_FLUSH_INTERVAL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .filter(|v| *v >= 30)
+            .unwrap_or(EMAIL_FLUSH_INTERVAL_SECS),
+    );
+    tracing::info!("Email flusher khởi động: chu kỳ {} giây", interval.as_secs());
+    loop {
+        match crate::services::email::flush_pending(&state.db, EMAIL_BATCH_SIZE).await {
+            Ok((sent, failed, skipped)) => {
+                if sent > 0 || failed > 0 {
+                    tracing::info!(
+                        "Email flusher: đã gửi {}, thất bại {}, skip {}",
+                        sent, failed, skipped
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Email flusher lỗi: {}", e);
+            }
+        }
+        tokio::time::sleep(interval).await;
+    }
+}
+
 /// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`) đã xoá.
 async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
@@ -87,9 +125,13 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
     (sessions, notifications, daily_stats)
 }
 
+/// v2.2.0 — Test compile-time guards
 #[cfg(test)]
 mod tests {
-    use super::{DAILY_STATS_RETENTION_DAYS, DEFAULT_INTERVAL_SECS, NOTIFICATION_RETENTION_DAYS};
+    use super::{
+        DAILY_STATS_RETENTION_DAYS, DEFAULT_INTERVAL_SECS, EMAIL_BATCH_SIZE,
+        EMAIL_FLUSH_INTERVAL_SECS, NOTIFICATION_RETENTION_DAYS,
+    };
 
     /// Compile-time guards: nếu ai đổi hằng số janitor thành giá trị vô lý
     /// (retention âm, interval quá ngắn spam DB) thì build fail ngay.
@@ -98,5 +140,7 @@ mod tests {
         assert!(NOTIFICATION_RETENTION_DAYS < 3650);
         assert!(DAILY_STATS_RETENTION_DAYS >= 7); // phải >= cửa sổ chart 7 ngày
         assert!(DEFAULT_INTERVAL_SECS >= 3600);
+        assert!(EMAIL_FLUSH_INTERVAL_SECS >= 30);
+        assert!(EMAIL_BATCH_SIZE > 0 && EMAIL_BATCH_SIZE <= 100);
     };
 }

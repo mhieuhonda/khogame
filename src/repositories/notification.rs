@@ -187,6 +187,62 @@ impl NotificationRepo {
         Ok(())
     }
 
+    /// v2.2.0 — Batch mention tới nhiều user trong 1 query.
+    /// Trước đây comment mention 10 user = 10 sequential INSERT (N+1).
+    /// Giờ là 1 INSERT ... SELECT FROM unnest(...) — giảm round-trip DB.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_mentions_batch(
+        pool: &PgPool,
+        user_ids: &[Uuid],
+        actor_id: Uuid,
+        game_slug: &str,
+    ) -> AppResult<()> {
+        if user_ids.is_empty() {
+            return Ok(());
+        }
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              SELECT u, $2, 'mention'::notification_type, $3, $4
+              FROM unnest($1::uuid[]) AS u",
+        )
+        .bind(user_ids)
+        .bind(actor_id)
+        .bind("Có người nhắc đến bạn trong một bình luận")
+        .bind(format!("/games/{game_slug}"))
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// v2.2.0 — Batch mention cho news comments (link khác với game comments).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_mentions_batch_news(
+        pool: &PgPool,
+        user_ids: &[Uuid],
+        actor_id: Uuid,
+        link: &str,
+    ) -> AppResult<()> {
+        if user_ids.is_empty() {
+            return Ok(());
+        }
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              SELECT u, $2, 'mention'::notification_type, $3, $4
+              FROM unnest($1::uuid[]) AS u",
+        )
+        .bind(user_ids)
+        .bind(actor_id)
+        .bind("Có người nhắc đến bạn trong một bình luận tin tức")
+        .bind(link)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// Xoá notification ĐÃ ĐỌC cũ hơn `days` ngày. Notification chưa đọc
     /// được giữ nguyên toàn bộ. Trả về số dòng đã xoá.
     /// # Errors

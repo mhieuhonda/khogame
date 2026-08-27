@@ -12,8 +12,12 @@
 //!   (chuyển từ `handlers/games.rs`).
 
 pub mod audit;
+#[cfg(feature = "email")]
+pub mod email;
 pub mod json_ld;
+pub mod markdown;
 pub mod storage;
 
 pub use audit::audit;
 pub use json_ld::{build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld};
+pub use markdown::render as render_markdown;

@@ -79,8 +79,8 @@
                 <span class="char-counter" id="content-counter">0 / 50.000</span>
             </label>
             <textarea id="content" name="content" rows="12" required class="editor"
-                      placeholder="Nội dung chi tiết. Có thể dùng markdown cơ bản: **đậm**, *nghiêng*, [link](url), - bullet">{{ form.content }}</textarea>
-            <small class="hint">Tối đa 50.000 ký tự. Hỗ trợ Markdown cơ bản (đậm, nghiêng, link, bullet, code).</small>
+                      placeholder="Nội dung chi tiết. Hỗ trợ Markdown đầy đủ: ## Tiêu đề, **đậm**, *nghiêng*, [link](url), - bullet, ```code```, | bảng |, > [!NOTE] callout">{{ form.content }}</textarea>
+            <small class="hint">Tối đa 50.000 ký tự. Hỗ trợ Markdown siêu cấp (GFM + tables + tasklists + code blocks + callouts + spoiler + YouTube embed + footnotes + math).</small>
         </div>
 
         <div class="field-group">

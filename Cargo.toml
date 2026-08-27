@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -52,6 +52,24 @@ thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 dotenvy = "0.15"
+
+# v2.2.0 — Markdown engine: comrak (GFM superset) + syntect (syntax highlighting)
+# Comrak hỗ trợ 100% CommonMark + GitHub Flavored Markdown (tables, tasklists,
+# strikethrough, autolinks, footnotes, math) + tagfilter + raw HTML disable.
+# Syntect dùng Sublime syntax + theme để highlight code blocks.
+comrak = { version = "0.54", default-features = false, features = ["shortcodes"] }
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+once_cell = "1"
+
+# v2.2.0 — Email notifications: lettre (SMTP) + lettre_message?
+# Chỉ compile khi feature `email` được bật để tránh nặng build cho dev local.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "tokio1-rustls-tls"], optional = true }
+mime = { version = "0.3", optional = true }
+
+[features]
+default = ["email"]
+# Bật email transport (lettre + SMTP). Tắt để build không cần openssl/lettre.
+email = ["dep:lettre", "dep:mime"]
 
 [profile.release]
 opt-level = 3

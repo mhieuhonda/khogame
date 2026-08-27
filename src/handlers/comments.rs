@@ -76,14 +76,18 @@ pub async fn create_comment(
     }
     let _id = CommentRepo::create(&state.db, game.id, user.id, parent_id, content).await?;
 
-    // Mention @username -> thông báo
+    // Mention @username -> thông báo (v2.2.0: batch INSERT thay vì N+1 loop)
     let mentions = CommentRepo::find_mentions(&state.db, content, user.id)
         .await
         .unwrap_or_default();
-    for uid in mentions {
-        let _ =
-            crate::repositories::NotificationRepo::create_mention(&state.db, uid, user.id, &slug)
-                .await;
+    if !mentions.is_empty() {
+        let _ = crate::repositories::NotificationRepo::create_mentions_batch(
+            &state.db,
+            &mentions,
+            user.id,
+            &slug,
+        )
+        .await;
     }
 
     // Return the new comment HTML for HTMX prepend
@@ -179,12 +183,27 @@ pub async fn like_comment(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
-    let liked = CommentRepo::toggle_like(&state.db, id, user.id).await?;
+    let _liked = CommentRepo::toggle_like(&state.db, id, user.id).await?;
+    // v2.2.0 — re-render toàn bộ comment item partial thay vì chỉ count.
+    // Bug trước đây: chỉ trả like_count text → button HTMX swap outerHTML
+    // nhưng aria-pressed / class "active" không update → UI không phản ánh
+    // state like mới. Render lại full partial đảm bảo nút like, count, aria
+    // đều đồng bộ.
     let comment = CommentRepo::find_by_id(&state.db, id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
-    let _ = liked;
-    Ok(Html(format!("{}", comment.like_count)))
+    // Lấy game_slug để partial render nút reply/edit đúng endpoint
+    let game_slug = crate::repositories::GameRepo::find_by_id(&state.db, comment.game_id)
+        .await?
+        .map(|g| g.slug)
+        .unwrap_or_default();
+    let partial = CommentItemPartial {
+        comment: &comment,
+        game_slug: &game_slug,
+        current_user: Some(&user),
+        load_replies: false,
+    };
+    Ok(Html(partial.render()?))
 }
 
 /// # Errors

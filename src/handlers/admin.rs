@@ -574,11 +574,12 @@ pub async fn users(
     // Lấy tất cả users thoả mãn search (không có status filter trong SQL —
     // status badge tính từ last_seen_at + created_at + is_banned nên không
     // thể filter trực tiếp trong WHERE_clause mà không nhồi điều kiện).
-    // Cách tiếp cận: fetch tối đa 500 users, filter in-app theo badge,
-    // paginate thủ công. 500 là đủ cho hầu hết site; khi user many hơn
-    // sẽ cần đổ vào cột status badge trong DB (TODO v1.5).
+    // Cách tiếp cận: fetch tối đa 2000 users (v2.2.0 — tăng từ 500 lên 2000
+    // để không silent-truncate ở site lớn), filter in-app theo badge,
+    // paginate thủ công. Khi user >2000 sẽ cần đổ vào cột status badge
+    // trong DB (TODO v3.0 — generated column + index).
     let (all_users_res, total_search_res) = tokio::join!(
-        UserRepo::list_for_admin(&state.db, search, 500, 0),
+        UserRepo::list_for_admin(&state.db, search, 2000, 0),
         UserRepo::count_for_admin(&state.db, search),
     );
     let mut all_users = all_users_res?;

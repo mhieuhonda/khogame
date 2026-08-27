@@ -6088,3 +6088,451 @@ textarea:focus-visible,
         background: #fff;
     }
 }
+
+/* ============================================================
+   v2.2.0 — Markdown rendering styles
+   Hỗ trợ: code blocks (syntect), callouts, spoiler, video embed,
+   tables, tasklists, footnotes.
+   ============================================================ */
+
+/* Prose container — áp dụng cho mọi nơi render Markdown */
+.prose-md,
+.news-content,
+.game-content,
+.comment-body-md,
+.repo-description-md {
+    line-height: 1.7;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.prose-md > *:first-child,
+.news-content > *:first-child,
+.game-content > *:first-child {
+    margin-top: 0;
+}
+
+.prose-md > *:last-child,
+.news-content > *:last-child,
+.game-content > *:last-child {
+    margin-bottom: 0;
+}
+
+/* Headings */
+.prose-md h1, .news-content h1, .game-content h1 {
+    font-size: 1.8em;
+    font-weight: 700;
+    margin: 1.2em 0 0.6em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.3;
+}
+.prose-md h2, .news-content h2, .game-content h2 {
+    font-size: 1.5em;
+    font-weight: 700;
+    margin: 1.1em 0 0.5em;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.3;
+}
+.prose-md h3, .news-content h3, .game-content h3 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin: 1em 0 0.4em;
+    line-height: 1.3;
+}
+.prose-md h4, .prose-md h5, .prose-md h6,
+.news-content h4, .news-content h5, .news-content h6,
+.game-content h4, .game-content h5, .game-content h6 {
+    font-size: 1.05em;
+    font-weight: 600;
+    margin: 0.9em 0 0.4em;
+    line-height: 1.3;
+}
+
+/* Paragraphs */
+.prose-md p, .news-content p, .game-content p {
+    margin: 0 0 0.9em;
+}
+
+/* Links */
+.prose-md a, .news-content a, .game-content a {
+    color: var(--accent, #2563eb);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    text-decoration-thickness: 1px;
+    transition: color 0.15s ease, text-decoration-thickness 0.15s ease;
+}
+.prose-md a:hover, .news-content a:hover, .game-content a:hover {
+    color: var(--accent-strong, #1d4ed8);
+    text-decoration-thickness: 2px;
+}
+
+/* Lists */
+.prose-md ul, .prose-md ol,
+.news-content ul, .news-content ol,
+.game-content ul, .game-content ol {
+    margin: 0 0 0.9em;
+    padding-left: 1.8em;
+}
+.prose-md li, .news-content li, .game-content li {
+    margin: 0.2em 0;
+}
+.prose-md li > p, .news-content li > p, .game-content li > p {
+    margin: 0;
+}
+
+/* Task lists (GFM) */
+.prose-md li:has(> input[type="checkbox"]),
+.news-content li:has(> input[type="checkbox"]),
+.game-content li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: -1.3em;
+}
+.prose-md input[type="checkbox"],
+.news-content input[type="checkbox"],
+.game-content input[type="checkbox"] {
+    margin-right: 0.4em;
+    vertical-align: middle;
+    accent-color: var(--accent, #2563eb);
+    width: 1em;
+    height: 1em;
+    cursor: default;
+}
+
+/* Blockquote */
+.prose-md blockquote, .news-content blockquote, .game-content blockquote {
+    margin: 0 0 1em;
+    padding: 0.5em 1em;
+    border-left: 4px solid var(--accent, #2563eb);
+    background: var(--bg-subtle, rgba(0,0,0,0.03));
+    color: var(--fg-muted, #666);
+    border-radius: 0 4px 4px 0;
+}
+.prose-md blockquote > p, .news-content blockquote > p, .game-content blockquote > p {
+    margin: 0.3em 0;
+}
+
+/* Callouts (GFM-style [!NOTE] [!TIP] [!WARNING] [!CAUTION] [!IMPORTANT]) */
+.prose-md blockquote.callout, .news-content blockquote.callout, .game-content blockquote.callout {
+    border-left-width: 4px;
+    border-radius: 6px;
+    padding: 0.8em 1em;
+    margin: 1em 0;
+}
+.prose-md blockquote.callout-note, .news-content blockquote.callout-note, .game-content blockquote.callout-note {
+    border-left-color: #2563eb;
+    background: rgba(37, 99, 235, 0.08);
+}
+.prose-md blockquote.callout-tip, .news-content blockquote.callout-tip, .game-content blockquote.callout-tip {
+    border-left-color: #16a34a;
+    background: rgba(22, 163, 74, 0.08);
+}
+.prose-md blockquote.callout-info, .news-content blockquote.callout-info, .game-content blockquote.callout-info {
+    border-left-color: #0891b2;
+    background: rgba(8, 145, 178, 0.08);
+}
+.prose-md blockquote.callout-warning, .news-content blockquote.callout-warning, .game-content blockquote.callout-warning {
+    border-left-color: #d97706;
+    background: rgba(217, 119, 6, 0.08);
+}
+.prose-md blockquote.callout-danger, .news-content blockquote.callout-danger, .game-content blockquote.callout-danger {
+    border-left-color: #dc2626;
+    background: rgba(220, 38, 38, 0.08);
+}
+.prose-md blockquote.callout-important, .news-content blockquote.callout-important, .game-content blockquote.callout-important {
+    border-left-color: #7c3aed;
+    background: rgba(124, 58, 237, 0.08);
+}
+.prose-md blockquote.callout > p:first-child strong,
+.news-content blockquote.callout > p:first-child strong,
+.game-content blockquote.callout > p:first-child strong {
+    display: inline-block;
+    padding: 0.15em 0.5em;
+    border-radius: 4px;
+    background: currentColor;
+    color: white !important;
+    font-size: 0.85em;
+    margin-bottom: 0.4em;
+}
+
+/* Code blocks (syntect classed output + .hljs marker) */
+.prose-md pre.code-block, .news-content pre.code-block, .game-content pre.code-block {
+    background: var(--bg-code, #0d1117);
+    color: var(--fg-code, #c9d1d9);
+    padding: 1em 1.2em;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1em 0;
+    font-family: var(--font-mono, 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace);
+    font-size: 0.9em;
+    line-height: 1.55;
+    border: 1px solid var(--border-code, #30363d);
+    position: relative;
+}
+.prose-md pre.code-block code, .news-content pre.code-block code, .game-content pre.code-block code {
+    font-family: inherit;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+}
+/* Inline code */
+.prose-md code, .news-content code, .game-content code {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    background: var(--bg-code-inline, rgba(175, 184, 193, 0.2));
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+    color: var(--fg-code-inline, #d6336c);
+}
+.prose-md pre.code-block code, .news-content pre.code-block code, .game-content pre.code-block code {
+    /* Override inline code style when inside pre */
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+}
+
+/* Syntect span colors (GitHub-dark-inspired) */
+.prose-md .hljs, .news-content .hljs, .game-content .hljs {
+    color: #c9d1d9;
+}
+.prose-md .hljs-comment, .prose-md .hljs-quote,
+.news-content .hljs-comment, .news-content .hljs-quote { color: #8b949e; font-style: italic; }
+.prose-md .hljs-keyword, .prose-md .hljs-selector-tag, .prose-md .hljs-deletion,
+.news-content .hljs-keyword, .news-content .hljs-selector-tag, .news-content .hljs-deletion { color: #ff7b72; }
+.prose-md .hljs-string, .prose-md .hljs-attr, .prose-md .hljs-addition,
+.news-content .hljs-string, .news-content .hljs-attr, .news-content .hljs-addition { color: #a5d6ff; }
+.prose-md .hljs-number, .prose-md .hljs-literal,
+.news-content .hljs-number, .news-content .hljs-literal { color: #79c0ff; }
+.prose-md .hljs-title, .prose-md .hljs-section, .prose-md .hljs-function .hljs-title,
+.news-content .hljs-title, .news-content .hljs-section, .news-content .hljs-function .hljs-title { color: #d2a8ff; }
+.prose-md .hljs-type, .prose-md .hljs-class .hljs-title,
+.news-content .hljs-type, .news-content .hljs-class .hljs-title { color: #ffa657; }
+.prose-md .hljs-variable, .prose-md .hljs-template-variable,
+.news-content .hljs-variable, .news-content .hljs-template-variable { color: #ffd866; }
+.prose-md .hljs-built_in, .prose-md .hljs-builtin-name,
+.news-content .hljs-built_in, .news-content .hljs-builtin-name { color: #79c0ff; }
+.prose-md .hljs-meta,
+.news-content .hljs-meta { color: #8b949e; }
+.prose-md .hljs-tag,
+.news-content .hljs-tag { color: #7ee787; }
+
+/* Tables (GFM) */
+.prose-md table, .news-content table, .game-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 0.92em;
+    display: block;
+    overflow-x: auto;
+}
+.prose-md table thead, .news-content table thead, .game-content table thead {
+    background: var(--bg-subtle, rgba(0,0,0,0.03));
+}
+.prose-md table th, .prose-md table td,
+.news-content table th, .news-content table td,
+.game-content table th, .game-content table td {
+    border: 1px solid var(--border, #d0d7de);
+    padding: 0.5em 0.8em;
+    text-align: left;
+}
+.prose-md table th,
+.news-content table th,
+.game-content table th {
+    font-weight: 600;
+}
+
+/* Horizontal rule */
+.prose-md hr, .news-content hr, .game-content hr {
+    border: none;
+    border-top: 2px solid var(--border, #d0d7de);
+    margin: 1.5em 0;
+    height: 0;
+}
+
+/* Images */
+.prose-md img, .news-content img, .game-content img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    margin: 0.5em 0;
+}
+
+/* Spoiler (comrak extension) */
+.prose-md .spoiler, .news-content .spoiler, .game-content .spoiler {
+    background: var(--fg-subtle, #888);
+    color: transparent;
+    border-radius: 3px;
+    padding: 0 0.2em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+}
+.prose-md .spoiler:hover, .news-content .spoiler:hover, .game-content .spoiler:hover {
+    background: var(--fg-muted, #666);
+}
+.prose-md .spoiler:focus, .prose-md .spoiler:active,
+.news-content .spoiler:focus, .news-content .spoiler:active,
+.game-content .spoiler:focus, .game-content .spoiler:active {
+    background: transparent;
+    color: inherit;
+    outline: 1px dashed var(--accent, #2563eb);
+}
+
+/* Video embed (YouTube auto-embed) */
+.prose-md .video-embed, .news-content .video-embed, .game-content .video-embed {
+    position: relative;
+    padding-bottom: 56.25%;
+    height: 0;
+    overflow: hidden;
+    max-width: 100%;
+    margin: 1em 0;
+    border-radius: 8px;
+    background: #000;
+}
+.prose-md .video-embed iframe, .news-content .video-embed iframe, .game-content .video-embed iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* Footnotes */
+.prose-md .footnotes, .news-content .footnotes, .game-content .footnotes {
+    margin-top: 2em;
+    padding-top: 1em;
+    border-top: 1px solid var(--border, #d0d7de);
+    font-size: 0.88em;
+    color: var(--fg-muted, #666);
+}
+.prose-md sup, .news-content sup, .game-content sup {
+    font-size: 0.75em;
+    line-height: 0;
+    vertical-align: super;
+}
+.prose-md .footnote-ref a,
+.news-content .footnote-ref a,
+.game-content .footnote-ref a {
+    text-decoration: none;
+}
+
+/* Math (KaTeX-style — rendered as code for now, future: load KaTeX) */
+.prose-md .math-inline, .news-content .math-inline, .game-content .math-inline {
+    font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
+    font-style: italic;
+    background: var(--bg-code-inline, rgba(175,184,193,0.2));
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+}
+.prose-md .math-display, .news-content .math-display, .game-content .math-display {
+    font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
+    font-style: italic;
+    background: var(--bg-code-inline, rgba(175,184,193,0.2));
+    padding: 0.6em 1em;
+    border-radius: 6px;
+    text-align: center;
+    margin: 1em 0;
+    overflow-x: auto;
+}
+
+/* Strikethrough */
+.prose-md del, .news-content del, .game-content del {
+    color: var(--fg-muted, #999);
+}
+
+/* Dark mode: code blocks remain dark, but tweak inline code */
+[data-theme="dark"] .prose-md code,
+[data-theme="dark"] .news-content code,
+[data-theme="dark"] .game-content code {
+    background: rgba(110, 118, 129, 0.4);
+    color: #f0883e;
+}
+[data-theme="dark"] .prose-md blockquote,
+[data-theme="dark"] .news-content blockquote,
+[data-theme="dark"] .game-content blockquote {
+    background: rgba(255, 255, 255, 0.04);
+    color: #b1bac4;
+}
+
+/* v2.2.0 — News related section */
+.news-related {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border, #e5e7eb);
+}
+.news-related-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+.news-related-card {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card, #fff);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 8px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.news-related-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    border-color: var(--accent, #2563eb);
+}
+.news-related-thumb {
+    aspect-ratio: 16 / 9;
+    background: var(--bg-subtle, #f3f4f6);
+    overflow: hidden;
+}
+.news-related-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+.news-related-card:hover .news-related-thumb img {
+    transform: scale(1.05);
+}
+.news-related-body {
+    padding: 0.75rem 1rem 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+.news-related-body h3 {
+    font-size: 0.95em;
+    font-weight: 600;
+    margin: 0;
+    line-height: 1.35;
+    color: var(--fg-strong, #1a1a1a);
+}
+.news-related-body .muted {
+    font-size: 0.85em;
+    margin: 0;
+    color: var(--fg-muted, #666);
+    line-height: 1.5;
+}
+.news-related-meta {
+    font-size: 0.78em;
+    color: var(--fg-muted, #888);
+    margin-top: auto;
+}
+.news-related-meta strong {
+    color: var(--accent, #2563eb);
+    font-weight: 500;
+}
+[data-theme="dark"] .news-related-card {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .news-related-thumb {
+    background: rgba(0, 0, 0, 0.3);
+}

@@ -285,7 +285,10 @@ pub async fn show(
         let _ = NewsRepo::increment_views(&db_clone, news_id).await;
     });
 
-    // Các query song song (tokio::join!) — trước đây chạy tuần tự gây chậm.
+    // v2.2.0 — Related news (cùng category, fallback tin mới nhất).
+    // Song song với unread/comments/has_liked để không thêm latency.
+    let category_for_related = news.category.clone();
+    let related_fut = NewsRepo::list_related(&state.db, news.id, &category_for_related, 6);
     let unread_fut = unread_for(&state, current_user.as_ref());
     let comments_fut = NewsRepo::list_comments(&state.db, news.id, 50, 0);
     let has_liked_fut = async {
@@ -296,8 +299,10 @@ pub async fn show(
             None => false,
         }
     };
-    let (unread, comments, has_liked) = tokio::join!(unread_fut, comments_fut, has_liked_fut);
+    let (unread, comments, has_liked, related) =
+        tokio::join!(unread_fut, comments_fut, has_liked_fut, related_fut);
     let comments = comments.unwrap_or_default();
+    let related = related.unwrap_or_default();
 
     Ok(NewsShowTemplate {
         current_user,
@@ -305,6 +310,7 @@ pub async fn show(
         news: news.clone(),
         comments,
         has_liked,
+        related,
         base_url: state.config.base_url.clone(),
     })
 }
@@ -608,14 +614,19 @@ pub async fn update(
     if form.excerpt.chars().count() > 500 {
         return Err(AppError::BadRequest("Tóm tắt tối đa 500 ký tự".into()));
     }
-    // Nếu edit lại tin rejected → reset status về pending để admin duyệt lại
+    // Nếu edit lại tin rejected → reset status về pending để admin duyệt lại.
+    // v2.2.0: wrap cả 2 UPDATE trong 1 transaction để nếu update content fail,
+    // status/review_note không bị thiếu đồng bộ (bug trước đây: status đã reset
+    // nhưng content vẫn cũ → admin duyệt content cũ với review_note rỗng).
+    let mut tx = state.db.begin().await?;
     if full.status == NewsStatus::Rejected {
         sqlx::query("UPDATE news SET status = 'pending', review_note = '' WHERE id = $1")
             .bind(full.id)
-            .execute(&state.db)
+            .execute(&mut *tx)
             .await?;
     }
-    NewsRepo::update(&state.db, full.id, &form).await?;
+    NewsRepo::update_tx(&mut tx, full.id, &form).await?;
+    tx.commit().await?;
     Ok(Redirect::to(&format!("/news/{}", full.slug)).into_response())
 }
 
@@ -727,8 +738,98 @@ pub async fn create_comment(
 
     let _id = NewsRepo::create_comment(&state.db, news.id, user.id, parent_id, content).await?;
 
+    // v2.2.0 — Mention notifications (batch INSERT).
+    let mentions = NewsRepo::find_comment_mentions(&state.db, content, user.id)
+        .await
+        .unwrap_or_default();
+    if !mentions.is_empty() {
+        let link = format!("/news/{}#comments", news.slug);
+        let _ = crate::repositories::NotificationRepo::create_mentions_batch_news(
+            &state.db,
+            &mentions,
+            user.id,
+            &link,
+        )
+        .await;
+    }
+
     // Redirect về trang + anchor comment mới
     Ok(Redirect::to(&format!("/news/{}#comments", news.slug)).into_response())
+}
+
+// ============= v2.2.0 — News comments: like / delete / replies =============
+
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn like_comment(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    let _liked = NewsRepo::toggle_comment_like(&state.db, id, user.id).await?;
+    // Trả về count mới để HTMX swap
+    let count: i64 = sqlx::query_scalar("SELECT like_count FROM news_comments WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+    Ok(Html(format!("{count}")).into_response())
+}
+
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn delete_comment(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    let comment = NewsRepo::find_comment_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+    if comment.user_id != user.id && !user.role.is_staff() {
+        return Err(AppError::Forbidden(
+            "Bạn không có quyền xóa bình luận này".into(),
+        ));
+    }
+    NewsRepo::delete_comment(&state.db, id, user.id, user.role.is_staff()).await?;
+    // Trả 200 với empty body — HTMX sẽ xóa element khỏi DOM
+    Ok(Html(String::new()).into_response())
+}
+
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn list_replies(
+    State(state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+    Path(id): Path<Uuid>,
+) -> AppResult<Response> {
+    let replies = NewsRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id))
+        .await?;
+    // Render plain HTML — mỗi reply là 1 div.comment-item
+    let mut html = String::new();
+    for r in &replies {
+        html.push_str(&format!(
+            r#"<div class="comment-item comment-reply" id="comment-{id}">
+                <div class="comment-meta">
+                    <a href="/u/{username}">{username}</a>
+                    <span class="comment-time">{time_ago}</span>
+                </div>
+                <div class="comment-body comment-body-md">{content_md}</div>
+                <div class="comment-actions">
+                    <button class="btn btn-ghost btn-xs" hx-post="/news_comments/{id}/like" hx-target="next" hx-swap="innerHTML">{like_count} ❤</button>
+                </div>
+            </div>"#,
+            id = r.id,
+            username = r.author_username,
+            time_ago = crate::utils::time_ago(r.created_at),
+            content_md = crate::services::markdown::render(&r.content),
+            like_count = r.like_count,
+        ));
+    }
+    Ok(Html(html).into_response())
 }
 
 // ============= My News =============

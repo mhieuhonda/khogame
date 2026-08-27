@@ -671,6 +671,15 @@ pub mod filters {
         Ok(u::time_ago(dt.with_timezone(&chrono::Utc)))
     }
 
+    /// v2.2.0 — time_ago cho DateTime<Utc> trực tiếp (cho Option<DateTime>).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[askama::filter_fn]
+    pub fn time_ago_dt(dt: &chrono::DateTime<chrono::Utc>, _: &dyn Values) -> ::askama::Result<String> {
+        Ok(u::time_ago(*dt))
+    }
+
     /// Định dạng số lớn: 1200 -> 1.2K, 3400000 -> 3.4M
     /// # Errors
     ///
@@ -1066,6 +1075,8 @@ pub struct NewsShowTemplate {
     pub comments: Vec<news::NewsCommentWithAuthor>,
     pub has_liked: bool,
     pub base_url: String,
+    /// v2.2.0 — tin liên quan (cùng category, fallback tin mới nhất).
+    pub related: Vec<news::NewsWithAuthor>,
 }
 
 /// Form đăng tin mới

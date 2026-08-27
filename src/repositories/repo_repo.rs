@@ -91,6 +91,66 @@ impl RepoRepo {
         Ok(id)
     }
 
+    /// v2.2.0 — Atomic create với tất cả fields (image_url + status).
+    /// Trước đây handler gọi 3 query (create + set_image_url + set_status)
+    /// → 3 round-trip DB + inconsistent state nếu 1 trong 3 fail.
+    #[allow(clippy::too_many_arguments)]
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_full(
+        pool: &PgPool,
+        user_id: Uuid,
+        game_id: Option<Uuid>,
+        owner: &str,
+        repo_name: &str,
+        description: &str,
+        homepage: &str,
+        language: &str,
+        stars: i32,
+        forks: i32,
+        open_issues: i32,
+        pushed_at: Option<chrono::DateTime<chrono::Utc>>,
+        image_url: Option<&str>,
+        status: &str,
+    ) -> AppResult<Uuid> {
+        let result = sqlx::query(
+            r"INSERT INTO github_repos
+                (user_id, game_id, owner, repo_name, description, homepage,
+                 primary_language, stars, forks, open_issues, pushed_at,
+                 image_url, status)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+               ON CONFLICT (owner, repo_name) DO NOTHING",
+        )
+        .bind(user_id)
+        .bind(game_id)
+        .bind(owner)
+        .bind(repo_name)
+        .bind(if description.is_empty() { None } else { Some(description) })
+        .bind(if homepage.is_empty() { None } else { Some(homepage) })
+        .bind(if language.is_empty() { None } else { Some(language) })
+        .bind(stars)
+        .bind(forks)
+        .bind(open_issues)
+        .bind(pushed_at)
+        .bind(image_url)
+        .bind(status)
+        .execute(pool)
+        .await?;
+        if result.rows_affected() == 0 {
+            return Err(crate::error::AppError::Conflict(
+                "Repo đã tồn tại (có thể vừa được người khác đăng ký cùng lúc)".into(),
+            ));
+        }
+        let id: Uuid =
+            sqlx::query_scalar("SELECT id FROM github_repos WHERE owner = $1 AND repo_name = $2")
+                .bind(owner)
+                .bind(repo_name)
+                .fetch_one(pool)
+                .await?;
+        Ok(id)
+    }
+
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).

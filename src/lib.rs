@@ -41,6 +41,10 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     // cùng process khi shutdown.
     tokio::spawn(janitor::run_janitor((*state).clone()));
 
+    // v2.2.0 — Email flusher nền: gửi email queue mỗi 2 phút.
+    // Detached task. Bỏ qua nếu SMTP chưa cấu hình (flush_pending sẽ noop).
+    tokio::spawn(janitor::run_email_flusher((*state).clone()));
+
     let app = routes::build_router(state);
 
     let addr = format!("{}:{}", config.host, config.port);

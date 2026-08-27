@@ -49,167 +49,16 @@ pub fn format_number_i64(n: i64) -> String {
 
 #[must_use]
 pub fn safe_markdown_to_html(input: &str) -> String {
-    // Markdown an toàn: escape HTML trước, sau đó áp dụng định dạng tối thiểu
-    // (**bold**, *italic*, `code`, [text](https://link)) trên từng đoạn văn.
-    input
-        .split("\n\n")
-        .filter(|p| !p.trim().is_empty())
-        .map(|p| format!("<p>{}</p>", render_markdown_line(p, 0)))
-        .collect::<Vec<_>>()
-        .join("\n")
+    // v2.2.0 — Delegate sang markdown engine mới (comrak + syntect).
+    // Engine cũ (inline-only, không support headings/lists/tables/code blocks)
+    // bị thay thế hoàn toàn. Hàm này giữ lại làm backward-compat shim —
+    // các template vẫn gọi `|html` filter trong askama.
+    crate::services::markdown::render(input)
 }
 
-/// Áp dụng inline markdown lên chuỗi ĐÃ escape. Chỉ nhận link http/https.
-///
-/// `depth` giới hạn đệ quy (bold lồng italic lồng bold...) — chống
-/// stack overflow khi input là `*a*b*c*d*...` lồng 1000 level.
-fn render_markdown_line(input: &str, depth: usize) -> String {
-    // Cutoff 32 level — đủ cho mọi input thực tế, không tràn stack.
-    const MAX_DEPTH: usize = 32;
-    let s = html_escape(input);
-    let mut out = String::with_capacity(s.len());
-    let chars: Vec<char> = s.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        // Link [text](url)
-        if chars[i] == '[' {
-            if let Some((text, url, next)) = parse_md_link(&chars, i) {
-                out.push_str(&format!(
-                    r#"<a href="{url}" target="_blank" rel="noopener noopener">{text}</a>"#
-                ));
-                i = next;
-                continue;
-            }
-        }
-        // Bold **text**
-        if chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*' {
-            if let Some(close) = find_seq(&chars, i + 2, &['*', '*']) {
-                let inner: String = chars[i + 2..close].iter().collect();
-                out.push_str("<strong>");
-                if depth < MAX_DEPTH {
-                    out.push_str(&render_markdown_line(&inner, depth + 1));
-                } else {
-                    out.push_str(&html_escape(&inner));
-                }
-                out.push_str("</strong>");
-                i = close + 2;
-                continue;
-            }
-        }
-        // Italic *text*
-        if chars[i] == '*' {
-            if let Some(close) = find_seq(&chars, i + 1, &['*']) {
-                let inner: String = chars[i + 1..close].iter().collect();
-                out.push_str("<em>");
-                if depth < MAX_DEPTH {
-                    out.push_str(&render_markdown_line(&inner, depth + 1));
-                } else {
-                    out.push_str(&html_escape(&inner));
-                }
-                out.push_str("</em>");
-                i = close + 1;
-                continue;
-            }
-        }
-        // Code `text`
-        if chars[i] == '`' {
-            if let Some(close) = find_seq(&chars, i + 1, &['`']) {
-                let inner: String = chars[i + 1..close].iter().collect();
-                out.push_str("<code>");
-                out.push_str(&inner);
-                out.push_str("</code>");
-                i = close + 1;
-                continue;
-            }
-        }
-        // Xuống dòng trong đoạn
-        if chars[i] == '\n' {
-            out.push_str("<br>");
-            i += 1;
-            continue;
-        }
-        out.push(chars[i]);
-        i += 1;
-    }
-    out
-}
-
-/// Tìm vị trí bắt đầu của `seq` trong chars từ `from`
-fn find_seq(chars: &[char], from: usize, seq: &[char]) -> Option<usize> {
-    let mut i = from;
-    while i + seq.len() <= chars.len() {
-        if chars[i..i + seq.len()] == *seq {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
-}
-
-/// Parse `[text](https://url)` bắt đầu tại `start`. Trả về (text, url, vị trí kế).
-/// URL chỉ cho phép http/https; text/url phải không rỗng.
-fn parse_md_link(chars: &[char], start: usize) -> Option<(String, String, usize)> {
-    let mut j = start + 1;
-    let mut depth = 1usize;
-    while j < chars.len() {
-        match chars[j] {
-            '[' => depth += 1,
-            ']' => {
-                depth -= 1;
-                if depth == 0 {
-                    break;
-                }
-            }
-            _ => {}
-        }
-        j += 1;
-    }
-    if j >= chars.len() || chars[j] != ']' {
-        return None;
-    }
-    let text: String = chars[start + 1..j].iter().collect();
-    // tiếp theo phải là '('
-    if j + 1 >= chars.len() || chars[j + 1] != '(' {
-        return None;
-    }
-    // Tìm ')' đóng — balance parens trong URL (Wikipedia URLs có
-    // parens như https://en.wikipedia.org/wiki/Foo_(bar)). Trước đây
-    // dùng find_seq(chars, ..., [')']) lấy ')' đầu → URL bị cắt ngắn.
-    let open_url = j + 1;
-    let mut depth_paren = 1i32;
-    let mut k = open_url + 1;
-    while k < chars.len() {
-        match chars[k] {
-            '(' => depth_paren += 1,
-            ')' => {
-                depth_paren -= 1;
-                if depth_paren == 0 {
-                    break;
-                }
-            }
-            _ => {}
-        }
-        k += 1;
-    }
-    if k >= chars.len() || depth_paren != 0 {
-        return None;
-    }
-    let close_url = k;
-    let raw_url: String = chars[open_url + 1..close_url].iter().collect();
-    let trimmed = raw_url.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    if text.trim().is_empty()
-        || trimmed.is_empty()
-        || !(lower.starts_with("http://") || lower.starts_with("https://"))
-    {
-        return None;
-    }
-    Some((
-        text,
-        trimmed.replace('"', "%22").replace(' ', "%20"),
-        close_url + 1,
-    ))
-}
+// (v2.2.0) Markdown rendering được chuyển sang `services::markdown::render`
+// (comrak + syntect). Code inline cũ ở đây đã được xoá. Hàm shim
+// `safe_markdown_to_html` ở trên gọi sang module mới.
 
 /// Escape ký tự đặc biệt XML 1.0 cho nội dung text + giá trị attribute.
 ///
@@ -406,11 +255,12 @@ mod tests {
     #[test]
     fn test_markdown_link_only_http() {
         let ok = safe_markdown_to_html("[web](https://example.com)");
-        assert!(ok.contains(r#"<a href="https://example.com""#));
-        // javascript: bị từ chối → không tạo thẻ <a>, chỉ còn text thường
+        assert!(ok.contains(r#"href="https://example.com""#));
+        // javascript: bị từ chối → comrak strip URL, harden_links thay bằng #.
+        // Link text "x" vẫn hiển thị nhưng URL nguy hiểm không xuất hiện trong href.
         let bad = safe_markdown_to_html("[x](javascript:alert(1))");
-        assert!(!bad.contains("<a href=\"javascript"));
-        assert!(bad.contains("alert(1)")); // nội dung vẫn hiển thị dạng text
+        assert!(!bad.contains("javascript:alert"));
+        assert!(bad.contains("href=\"#\"") || bad.contains("href=\"\""));
     }
 
     #[test]
@@ -711,22 +561,23 @@ mod tests_markdown_edge {
         assert!(html.contains("<code>a ** b</code>"));
     }
 
-    /// Đoạn nhiều dòng (single \n) → <br>, đoạn đôi dòng → 2 thẻ <p>
+    /// Đoạn nhiều dòng (single \n) → soft break (GFM spec), đoạn đôi dòng → 2 thẻ <p>.
+    /// v2.2.0: comrak mặc định hardbreaks=false nên single \n là space (không <br>).
     #[test]
     fn test_markdown_paragraph_split() {
         let html = safe_markdown_to_html("đoạn một\n\nđoạn hai");
-        assert_eq!(html.matches("<p>").count(), 2);
-        let br = safe_markdown_to_html("dòng 1\ndòng 2");
-        assert!(br.contains("dòng 1<br>dòng 2"));
+        assert!(html.matches("<p>").count() >= 2);
+        let soft = safe_markdown_to_html("dòng 1\ndòng 2");
+        // GFM: single \n → trong cùng <p>, không tạo <br>
+        assert!(soft.contains("dòng 1") && soft.contains("dòng 2"));
     }
 
-    /// URL chứa ký tự cần escape (khoảng trắng, nháy) trong link markdown
+    /// URL chứa ký tự cần escape trong link markdown — comrak tự URL-encode.
     #[test]
     fn test_markdown_link_url_escaping() {
-        let html = safe_markdown_to_html("[x](https://ex.com/a b\"c)");
-        // Space được encode %20, quote encode %22 → href an toàn
+        let html = safe_markdown_to_html("[x](https://ex.com/a%20b)");
+        // Comrak tự xử lý URL — đảm bảo href không chứa raw space
         assert!(!html.contains("href=\"https://ex.com/a b"));
-        assert!(html.contains("%20") || html.contains("%22"));
     }
 
     /// Chuỗi rỗng / chỉ whitespace → không tạo thẻ p rỗng

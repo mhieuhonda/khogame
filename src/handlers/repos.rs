@@ -176,7 +176,30 @@ pub async fn create(
         description_user.to_string()
     };
 
-    let repo_id = RepoRepo::create(
+    // Lưu ảnh thumbnail custom nếu user upload/điền URL.
+    // Validate: chỉ chấp nhận http(s):// hoặc `/uploads/repos/...` URL nội bộ.
+    let image_url = form.repo_image_url.trim();
+    let safe_image_url: Option<&str> = if !image_url.is_empty() {
+        if !crate::utils::is_safe_image_url(image_url) {
+            return Err(AppError::BadRequest(
+                "Ảnh thumbnail URL phải là http(s):// hoặc /uploads/repos/...".into(),
+            ));
+        }
+        if image_url.len() > 2048 {
+            return Err(AppError::BadRequest(
+                "Ảnh thumbnail URL quá dài (tối đa 2048 ký tự)".into(),
+            ));
+        }
+        Some(image_url)
+    } else {
+        None
+    };
+
+    // v2.2.0 — Atomic create: 1 INSERT với tất cả fields (image_url + status)
+    // Trước đây là 3 round-trip DB (create + set_image_url + set_status),
+    // nếu 1 trong 3 fail thì repo tồn tại trong trạng thái inconsistent.
+    let final_status = if auto_approve { "approved" } else { "pending" };
+    let repo_id = RepoRepo::create_full(
         &state.db,
         user.id,
         game_id,
@@ -189,30 +212,10 @@ pub async fn create(
         meta.forks_count.unwrap_or(0),
         meta.open_issues_count.unwrap_or(0),
         meta.pushed_at,
+        safe_image_url,
+        final_status,
     )
     .await?;
-
-    // Lưu ảnh thumbnail custom nếu user upload/điền URL.
-    // Validate: chỉ chấp nhận http(s):// hoặc `/uploads/repos/...` URL nội bộ.
-    let image_url = form.repo_image_url.trim();
-    if !image_url.is_empty() {
-        if !crate::utils::is_safe_image_url(image_url) {
-            return Err(AppError::BadRequest(
-                "Ảnh thumbnail URL phải là http(s):// hoặc /uploads/repos/...".into(),
-            ));
-        }
-        if image_url.len() > 2048 {
-            return Err(AppError::BadRequest(
-                "Ảnh thumbnail URL quá dài (tối đa 2048 ký tự)".into(),
-            ));
-        }
-        RepoRepo::set_image_url(&state.db, repo_id, image_url).await?;
-    }
-
-    // Nếu có auto_approve = false -> chuyển sang pending ngay với id vừa insert.
-    if !auto_approve {
-        let _ = RepoRepo::set_status(&state.db, repo_id, "pending").await;
-    }
 
     tracing::info!(
         "Repo registered: {}/{} by {} (id={})",

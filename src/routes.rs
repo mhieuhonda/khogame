@@ -155,6 +155,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/news/{slug}/comments",
             post(handlers::news::create_comment),
         )
+        // v2.2.0 — News comments full CRUD (trước đây chỉ có POST create,
+        // dead code trong NewsRepo giờ được wire-up)
+        .route(
+            "/news_comments/{id}/like",
+            post(handlers::news::like_comment),
+        )
+        .route(
+            "/news_comments/{id}",
+            post(handlers::news::delete_comment).delete(handlers::news::delete_comment),
+        )
+        .route(
+            "/news_comments/{id}/replies",
+            get(handlers::news::list_replies),
+        )
         .route("/my-news", get(handlers::news::my_news))
         // === Live Chat ===
         // WebSocket realtime chat — auth qua cookie HTTP trước khi upgrade.
