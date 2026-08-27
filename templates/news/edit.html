@@ -1,22 +1,27 @@
 {% extends "layout.html" %}
 {% block title %}Sửa tin: {{ news.title }}{% endblock %}
-
 {% block content %}
-<section class="news-form-page">
+<section class="compact-form-page news-form-page">
     <div class="page-header">
-        <h1>✏️ Sửa tin tức</h1>
-        <p>Trạng thái hiện tại: <span class="badge {{ news.status.badge_class() }}">{{ news.status.label() }}</span></p>
-        {% if news.status == NewsStatus::Rejected %}
-        <p class="warning">Tin bị từ chối. Sau khi sửa, tin sẽ được đưa vào hàng đợi duyệt lại.</p>
-        {% if !news.review_note.is_empty() %}
-        <blockquote>Ghi chú admin: {{ news.review_note }}</blockquote>
-        {% endif %}
-        {% endif %}
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Sửa tin tức</h1>
+            <p>Trạng thái hiện tại: <span class="badge {{ news.status.badge_class() }}">{{ news.status.label() }}</span></p>
+        </div>
     </div>
+
+    {% if news.status == NewsStatus::Rejected %}
+    <div class="warning" role="alert">Tin bị từ chối. Sau khi sửa, tin sẽ được đưa vào hàng đợi duyệt lại.</div>
+    {% if !news.review_note.is_empty() %}
+    <blockquote>Ghi chú admin: {{ news.review_note }}</blockquote>
+    {% endif %}
+    {% endif %}
 
     {% if !errors.is_empty() %}
     <div class="form-errors">
-        <h3>⚠️ Có lỗi cần sửa:</h3>
+        <h3>Có lỗi cần sửa:</h3>
         <ul>
             {% for e in errors %}
             <li>{{ e }}</li>
@@ -25,36 +30,49 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/news/{{ news.slug }}" class="form-section">
-        <label for="title">Tiêu đề <span class="req">*</span></label>
-        <input type="text" id="title" name="title" value="{{ news.title }}" maxlength="200" required>
+    <form method="post" action="/news/{{ news.slug }}" class="compact-form-card">
+        <div class="field-group">
+            <label for="title"><span>Tiêu đề <span class="req">*</span></span></label>
+            <input type="text" id="title" name="title" value="{{ news.title }}" maxlength="200" required>
+        </div>
 
-        <label for="excerpt">Tóm tắt</label>
-        <textarea id="excerpt" name="excerpt" rows="2" maxlength="500">{{ news.excerpt }}</textarea>
+        <div class="field-group">
+            <label for="excerpt"><span>Tóm tắt</span></label>
+            <textarea id="excerpt" name="excerpt" rows="2" maxlength="500">{{ news.excerpt }}</textarea>
+        </div>
 
-        <label for="content">Nội dung <span class="req">*</span></label>
-        <textarea id="content" name="content" rows="12" required>{{ news.content }}</textarea>
+        <div class="field-group">
+            <label for="content"><span>Nội dung <span class="req">*</span></span></label>
+            <textarea id="content" name="content" rows="12" required class="editor">{{ news.content }}</textarea>
+        </div>
 
-        <label for="category">Thể loại</label>
-        <select id="category" name="category">
-            <option value="">— Không phân loại —</option>
-            {% for (k, v) in categories %}
-            <option value="{{ k }}" {% if news.category == k.as_str() %}selected{% endif %}>{{ v }}</option>
-            {% endfor %}
-        </select>
+        <div class="field-group">
+            <label for="category"><span>Thể loại</span></label>
+            <select id="category" name="category">
+                <option value="">— Không phân loại —</option>
+                {% for (k, v) in categories %}
+                <option value="{{ k }}" {% if news.category == k.as_str() %}selected{% endif %}>{{ v }}</option>
+                {% endfor %}
+            </select>
+        </div>
 
-        <label for="cover_image">Ảnh bìa (URL hoặc upload)</label>
-        <input type="text" id="cover_image" name="cover_image" value="{% match news.cover_image %}{% when Option::Some with (url) %}{{ url }}{% when Option::None %}{% endmatch %}"
-               inputmode="url" autocomplete="off" spellcheck="false">
-        <div class="upload-zone" id="news-cover-upload-zone" style="margin-top:8px">
-            <div class="upload-preview-row">
-                <img id="news-cover-preview" alt="Cover preview" class="upload-preview-cover"
-                     {% match news.cover_image %}{% when Option::Some with (url) %}src="{{ url }}"{% when Option::None %}{% endmatch %} />
-                <div class="upload-actions">
-                    <label for="news-cover-file-input" class="btn btn-ghost btn-sm">📂 Chọn ảnh</label>
-                    <input type="file" id="news-cover-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
-                    <small class="hint">JPG, PNG, WebP hoặc GIF. Tối đa 10 MB. Tỷ lệ 16:9.</small>
-                    <div id="news-cover-upload-status" class="upload-status" role="status" aria-live="polite"></div>
+        <div class="field-group">
+            <label for="cover_image"><span>Ảnh bìa (URL hoặc upload)</span></label>
+            <input type="text" id="cover_image" name="cover_image" value="{% match news.cover_image %}{% when Option::Some with (url) %}{{ url }}{% when Option::None %}{% endmatch %}"
+                   inputmode="url" autocomplete="off" spellcheck="false">
+            <div class="upload-zone" id="news-cover-upload-zone" data-upload-endpoint="/uploads/news/cover" data-max-size="10" data-url-target="#cover_image" style="margin-top:8px">
+                <div class="upload-preview-row">
+                    <img id="news-cover-preview" alt="Cover preview" class="upload-preview-cover"
+                         {% match news.cover_image %}{% when Option::Some with (url) %}src="{{ url }}"{% when Option::None %}{% endmatch %} />
+                    <div class="upload-actions">
+                        <label for="news-cover-file-input" class="btn btn-outline btn-sm">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Chọn ảnh
+                        </label>
+                        <input type="file" id="news-cover-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+                        <small class="hint">JPG, PNG, WebP hoặc GIF. Tối đa 10 MB. Tỷ lệ 16:9.</small>
+                        <div id="news-cover-upload-status" class="upload-status" role="status" aria-live="polite"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -67,64 +85,16 @@
             <input type="url" id="source_url" name="source_url" value="{{ news.source_url }}">
         </fieldset>
 
-        <div class="form-actions">
-            <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
-            <a href="/news/{{ news.slug }}" class="btn btn-ghost">Xem tin</a>
-            <button type="button" class="btn btn-danger btn-sm"
-                    hx-delete="/news/{{ news.slug }}"
-                    hx-confirm="Xóa vĩnh viễn tin này?">Xóa</button>
+        <div class="compact-form-actions">
+            <div class="form-actions-left"></div>
+            <div class="form-actions-right">
+                <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+                <a href="/news/{{ news.slug }}" class="btn btn-outline">Xem tin</a>
+                <button type="button" class="btn btn-danger btn-sm"
+                        hx-delete="/news/{{ news.slug }}"
+                        hx-confirm="Xóa vĩnh viễn tin này?">Xóa</button>
+            </div>
         </div>
     </form>
 </section>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// News cover upload (edit form) — fetch POST /uploads/news/cover,
-// fill URL field + preview <img>. Cùng logic với new.html form.
-(function() {
-    var input = document.getElementById('news-cover-file-input');
-    var urlField = document.getElementById('cover_image');
-    var preview = document.getElementById('news-cover-preview');
-    var status = document.getElementById('news-cover-upload-status');
-    if (!input || !urlField || !preview || !status) return;
-    if (urlField.value) preview.src = urlField.value;
-    input.addEventListener('change', function() {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            status.textContent = '❌ Ảnh quá lớn (tối đa 10 MB).';
-            status.className = 'upload-status error';
-            return;
-        }
-        var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-        if (allowed.indexOf(file.type) === -1) {
-            status.textContent = '❌ Định dạng không hỗ trợ. Dùng JPG/PNG/WebP/GIF.';
-            status.className = 'upload-status error';
-            return;
-        }
-        status.textContent = '⏳ Đang tải lên...';
-        status.className = 'upload-status progress';
-        var fd = new FormData();
-        fd.append('file', file);
-        fetch('/uploads/news/cover', { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    status.textContent = '❌ ' + data.error;
-                    status.className = 'upload-status error';
-                    return;
-                }
-                urlField.value = data.url;
-                preview.src = data.url;
-                status.textContent = '✅ Đã tải lên (' + Math.round(data.size / 1024) + ' KB)';
-                status.className = 'upload-status success';
-            })
-            .catch(function(err) {
-                status.textContent = '❌ Lỗi mạng: ' + err.message;
-                status.className = 'upload-status error';
-            });
-    });
-})();
-</script>
 {% endblock %}

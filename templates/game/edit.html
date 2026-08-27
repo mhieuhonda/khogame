@@ -4,14 +4,22 @@
 
 {% block content %}
 <section class="page-header">
-    <h1>✏️ Chỉnh sửa game</h1>
-    <p><a href="/games/{{ game.slug }}">← Quay lại trang game</a></p>
+    <div>
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            Chỉnh sửa game
+        </h1>
+        <p><a href="/games/{{ game.slug }}" class="back-link">← Quay lại trang game</a></p>
+    </div>
 </section>
 
 <form class="game-form" method="post" action="/games/{{ game.slug }}">
     <div class="form-grid">
         <div class="form-section">
-            <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Thông tin cơ bản
+            </h2>
 
             <div class="form-group">
                 <label class="form-label" for="f-title">Tiêu đề game <span class="required">*</span></label>
@@ -26,7 +34,7 @@
 
             <div class="form-group">
                 <label class="form-label" for="f-content">Nội dung chi tiết <span class="required">*</span></label>
-                <textarea name="content" id="f-content" class="form-control" required rows="10">{{ game.content_or() }}</textarea>
+                <textarea name="content" id="f-content" class="form-control form-control-editor" required rows="10">{{ game.content_or() }}</textarea>
             </div>
 
             <div class="form-row">
@@ -60,41 +68,47 @@
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">📱 Link tải về</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Link tải về
+            </h2>
             <p class="form-section-desc">Để trống nền tảng nào nếu không muốn cung cấp link cho nền tảng đó.</p>
 
             {# Mỗi nền tảng CHỈ MỘT input duy nhất — trước đây form render cả
                input đã điền lẫn input trống cho cùng tên field, serde báo
                "duplicate field" → mọi lần lưu game có link đều thất bại. #}
             <div class="form-group">
-                <label class="form-label" for="f-android_link"><span class="platform-icon">🤖</span> Link tải Android</label>
+                <label class="form-label" for="f-android_link"><span class="platform-icon">AND</span> Link tải Android</label>
                 <input type="url" name="android_link" id="f-android_link" class="form-control" maxlength="2048" placeholder="https://play.google.com/store/apps/..."
                        value="{% for link in links %}{% if link.platform.label() == "Android" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="f-ios_link"><span class="platform-icon">🍎</span> Link tải iOS</label>
+                <label class="form-label" for="f-ios_link"><span class="platform-icon">iOS</span> Link tải iOS</label>
                 <input type="url" name="ios_link" id="f-ios_link" class="form-control" maxlength="2048" placeholder="https://apps.apple.com/..."
                        value="{% for link in links %}{% if link.platform.label() == "iOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="f-windows_link"><span class="platform-icon">🪟</span> Link tải Windows</label>
+                <label class="form-label" for="f-windows_link"><span class="platform-icon">WIN</span> Link tải Windows</label>
                 <input type="url" name="windows_link" id="f-windows_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Windows" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="f-linux_link"><span class="platform-icon">🐧</span> Link tải Linux</label>
+                <label class="form-label" for="f-linux_link"><span class="platform-icon">LIN</span> Link tải Linux</label>
                 <input type="url" name="linux_link" id="f-linux_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "Linux" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
             <div class="form-group">
-                <label class="form-label" for="f-macos_link"><span class="platform-icon">💻</span> Link tải macOS</label>
+                <label class="form-label" for="f-macos_link"><span class="platform-icon">MAC</span> Link tải macOS</label>
                 <input type="url" name="macos_link" id="f-macos_link" class="form-control" maxlength="2048" placeholder="https://..."
                        value="{% for link in links %}{% if link.platform.label() == "macOS" %}{{ link.url }}{% endif %}{% endfor %}">
             </div>
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">🎨 Hình ảnh</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Hình ảnh
+            </h2>
 
             <div class="form-group">
                 <label class="form-label" for="f-cover_image">URL ảnh bìa</label>
@@ -105,12 +119,15 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Thay ảnh bìa bằng file mới</label>
-                <div class="upload-zone" id="game-cover-upload-zone">
+                <div class="upload-zone" id="game-cover-upload-zone" data-upload-endpoint="/uploads/game/cover" data-max-size="10" data-url-target="#f-cover_image">
                     <div class="upload-preview-row">
                         <img id="game-cover-preview" alt="Cover preview" class="upload-preview-cover"
                              {% if !game.cover_image.clone().unwrap_or_default().is_empty() %}src="{{ game.cover_image.clone().unwrap_or_default() }}"{% endif %} />
                         <div class="upload-actions">
-                            <label for="game-cover-file-input" class="btn btn-ghost btn-sm">📂 Chọn ảnh</label>
+                            <label for="game-cover-file-input" class="btn btn-outline btn-sm">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Chọn ảnh
+                            </label>
                             <input type="file" id="game-cover-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
                             <small class="form-hint">JPG, PNG, WebP hoặc GIF. Tối đa 10 MB. Tỷ lệ 16:9.</small>
                             <div id="game-cover-upload-status" class="upload-status" role="status" aria-live="polite"></div>
@@ -133,7 +150,10 @@
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">ℹ️ Thông tin bổ sung</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Thông tin bổ sung
+            </h2>
 
             <div class="form-row">
                 <div class="form-group">
@@ -193,55 +213,4 @@
         <button type="submit" class="btn btn-primary btn-lg">Lưu thay đổi</button>
     </div>
 </form>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Game cover upload (edit form) — fetch POST /uploads/game/cover,
-// fill URL field + preview <img>. Cùng logic với new.html form.
-(function() {
-    var input = document.getElementById('game-cover-file-input');
-    var urlField = document.getElementById('f-cover_image');
-    var preview = document.getElementById('game-cover-preview');
-    var status = document.getElementById('game-cover-upload-status');
-    if (!input || !urlField || !preview || !status) return;
-    if (urlField.value) preview.src = urlField.value;
-    input.addEventListener('change', function() {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            status.textContent = '❌ Ảnh quá lớn (tối đa 10 MB).';
-            status.className = 'upload-status error';
-            return;
-        }
-        var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-        if (allowed.indexOf(file.type) === -1) {
-            status.textContent = '❌ Định dạng không hỗ trợ. Dùng JPG/PNG/WebP/GIF.';
-            status.className = 'upload-status error';
-            return;
-        }
-        status.textContent = '⏳ Đang tải lên...';
-        status.className = 'upload-status progress';
-        var fd = new FormData();
-        fd.append('file', file);
-        fetch('/uploads/game/cover', { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    status.textContent = '❌ ' + data.error;
-                    status.className = 'upload-status error';
-                    return;
-                }
-                urlField.value = data.url;
-                preview.src = data.url;
-                status.textContent = '✅ Đã tải lên (' + Math.round(data.size / 1024) + ' KB)';
-                status.className = 'upload-status success';
-            })
-            .catch(function(err) {
-                status.textContent = '❌ Lỗi mạng: ' + err.message;
-                status.className = 'upload-status error';
-            });
-    });
-})();
-</script>
 {% endblock %}

@@ -3,8 +3,15 @@
 
 {% block content %}
 <section class="admin-page">
-    <h1>🛡️ Tất cả tin tức ({{ total }})</h1>
-    <p>Bao gồm cả tin đã published, archived, rejected. Admin có thể archive (ẩn khỏi list chính) hoặc đặt nổi bật.</p>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+                Tất cả tin tức ({{ total }})
+            </h1>
+            <p>Bao gồm cả tin đã published, archived, rejected. Admin có thể archive (ẩn khỏi list chính) hoặc đặt nổi bật.</p>
+        </div>
+    </div>
 
     <nav class="admin-tabs">
         <a href="/admin/news/pending" class="tab">Chờ duyệt</a>
@@ -16,6 +23,7 @@
         <p>Chưa có tin nào.</p>
     </div>
     {% else %}
+    <div class="admin-table-wrap">
     <table class="admin-table">
         <thead>
             <tr>
@@ -37,35 +45,31 @@
                     <br><small>{{ n.author_email }}</small>
                 </td>
                 <td><span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span></td>
-                <td>
-                    <small>
-                    👁️ {{ n.view_count }} · ❤️ {{ n.like_count }} · 💬 {{ n.comment_count }}
-                    </small>
-                </td>
+                <td class="game-meta">{{ n.view_count }} view · {{ n.like_count }} thích · {{ n.comment_count }} bl</td>
                 <td><code><small>{% match n.author_ip %}{% when Option::Some with (ip) %}{{ ip }}{% when Option::None %}—{% endmatch %}</small></code></td>
                 <td><small>{{ n.created_at|format_datetime_vn }}</small></td>
                 <td class="admin-actions">
                     {% if n.status == NewsStatus::Pending %}
-                    <form method="post" action="/admin/news/{{ n.id }}/approve" style="display:inline">
+                    <form method="post" action="/admin/news/{{ n.id }}/approve">
                         <button type="submit" class="btn btn-success btn-sm">Duyệt</button>
                     </form>
                     {% endif %}
                     {% if n.status == NewsStatus::Published %}
-                    <form method="post" action="/admin/news/{{ n.id }}/archive" style="display:inline"
+                    <form method="post" action="/admin/news/{{ n.id }}/archive"
                           onsubmit="return confirm('Lưu trữ tin này?')">
                         <button type="submit" class="btn btn-outline btn-sm">Archive</button>
                     </form>
                     {% if n.is_featured %}
-                    <form method="post" action="/admin/news/{{ n.id }}/unfeature" style="display:inline">
+                    <form method="post" action="/admin/news/{{ n.id }}/unfeature">
                         <button type="submit" class="btn btn-outline btn-sm">Bỏ nổi bật</button>
                     </form>
                     {% else %}
-                    <form method="post" action="/admin/news/{{ n.id }}/feature" style="display:inline">
+                    <form method="post" action="/admin/news/{{ n.id }}/feature">
                         <button type="submit" class="btn btn-outline btn-sm">Nổi bật</button>
                     </form>
                     {% endif %}
                     {% endif %}
-                    <form method="post" action="/admin/news/{{ n.id }}/delete" style="display:inline"
+                    <form method="post" action="/admin/news/{{ n.id }}/delete"
                           onsubmit="return confirm('Xóa vĩnh viễn tin này?')">
                         <button type="submit" class="btn btn-danger btn-sm">Xóa</button>
                     </form>
@@ -74,11 +78,12 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 
     {% if total_pages > 1 %}
     <nav class="pagination">
         {% if page > 1 %}<a href="?page={{ page - 1 }}" class="pagination-link" rel="prev">←</a>{% endif %}
-        <span>Trang {{ page }} / {{ total_pages }}</span>
+        <span class="pagination-info">Trang {{ page }} / {{ total_pages }}</span>
         {% if page < total_pages %}<a href="?page={{ page + 1 }}" class="pagination-link" rel="next">→</a>{% endif %}
     </nav>
     {% endif %}

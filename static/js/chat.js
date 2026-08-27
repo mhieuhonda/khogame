@@ -1,5 +1,5 @@
 // ============================================
-// Louis Space - Live Chat frontend
+// Louis Space v2.0 — Live Chat frontend
 // ============================================
 // WebSocket realtime chat. Falls back gracefully:
 //   - User not logged in → input disabled, "Đăng nhập" button shown
@@ -8,21 +8,24 @@
 //   - History fetch fail → show error message + retry button
 //
 // Security notes:
-//   - All user content rendered via textContent (no innerHTML for msg body)
-//     → XSS-safe even if attacker sends <script> tags
-//   - URL/email/etc in message body NOT auto-linked (avoid phishing)
-//   - Admin delete: hidden from UI, server keeps record
+//   - All user content rendered via textContent (no innerHTML cho msg body)
+//     → XSS-safe kể cả khi attacker gửi <script> tags
+//   - URL/email trong message body KHÔNG auto-link (tránh phishing)
+//   - Admin delete: ẩn khỏi UI, server giữ record
+//
+// v2.0 FIX: selector phát hiện user dùng `a.avatar-link[href^="/u/"]`
+// (bản cũ `a.avatar-linkref^="/u/"` là CSS syntax error → querySelector
+// throw → toàn bộ init() sập → chat không load history được).
 // ============================================
 
 (function() {
     'use strict';
 
-    var MAX_MSG = 200;            // Keep at most N messages in DOM
-    var SCROLL_THRESHOLD = 80;    // px from bottom — auto-scroll if user near bottom
+    var MAX_MSG = 200;            // Giữ tối đa N message trong DOM
+    var SCROLL_THRESHOLD = 80;    // px từ đáy — auto-scroll nếu user ở gần đáy
 
     var ws = null;
-    var wsRetryDelay = 1000;       // ms, doubled each failure (cap 30s)
-    var historyLoaded = false;
+    var wsRetryDelay = 1000;       // ms, nhân đôi mỗi lần fail (cap 30s)
     var currentUser = null;
     var isNearBottom = true;
 
@@ -66,9 +69,20 @@
         }
     }
 
-    function avatarHtml(msg) {
+    // Avatar node — dùng DOM API an toàn thay vì innerHTML
+    function avatarNode(msg) {
+        var wrap = el('span', 'chat-msg-avatar');
         if (msg.avatar_url) {
-            return '<img src="' + escapeHtml(msg.avatar_url) + '" alt="" class="avatar avatar-sm chat-avatar" loading="lazy" decoding="async">';
+            var img = document.createElement('img');
+            img.src = msg.avatar_url;
+            img.alt = '';
+            img.className = 'avatar avatar-sm';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.width = 32;
+            img.height = 32;
+            wrap.appendChild(img);
+            return wrap;
         }
         var initials = '?';
         var name = msg.display_name || msg.username || '';
@@ -81,41 +95,54 @@
             }
             initials = initials.toUpperCase();
         }
-        return '<div class="avatar avatar-sm avatar-fallback chat-avatar">' + escapeHtml(initials) + '</div>';
+        var fb = el('span', 'avatar avatar-sm avatar-fallback');
+        fb.textContent = initials;
+        wrap.appendChild(fb);
+        return wrap;
     }
 
     function renderMessage(msg) {
         var node = el('div', 'chat-msg');
         node.setAttribute('data-id', msg.id);
         if (msg.user_id && currentUser && msg.user_id === currentUser.id) {
-            node.classList.add('chat-msg-self');
+            node.classList.add('chat-msg-own');
         }
         var isStaff = msg.role === 'Admin' || msg.role === 'Moderator';
 
+        node.appendChild(avatarNode(msg));
+
+        var bubble = el('div', 'chat-msg-bubble');
         var header = el('div', 'chat-msg-header');
-        header.innerHTML = avatarHtml(msg) +
-            '<span class="chat-msg-author' + (isStaff ? ' chat-msg-author-staff' : '') + '">' +
-            escapeHtml(msg.display_name || msg.username) +
-            (isStaff ? '<span class="chat-msg-badge">' + escapeHtml(msg.role === 'Admin' ? 'Admin' : 'Mod') + '</span>' : '') +
-            '</span>' +
-            '<span class="chat-msg-time" title="' + escapeHtml(msg.created_at) + '">' +
-            escapeHtml(timeAgo(msg.created_at)) + '</span>';
-        node.appendChild(header);
+        var author = el('span', 'chat-msg-author');
+        author.textContent = msg.display_name || msg.username;
+        header.appendChild(author);
+        if (isStaff) {
+            var badge = el('span', 'chat-msg-badge');
+            badge.textContent = msg.role === 'Admin' ? 'Admin' : 'Mod';
+            header.appendChild(badge);
+        }
+        var time = el('span', 'chat-msg-time');
+        time.title = msg.created_at;
+        time.textContent = timeAgo(msg.created_at);
+        header.appendChild(time);
+        bubble.appendChild(header);
 
-        var body = el('div', 'chat-msg-body');
+        var body = el('div', 'chat-msg-content');
         body.textContent = msg.content;  // textContent = XSS-safe
-        node.appendChild(body);
+        bubble.appendChild(body);
 
+        node.appendChild(bubble);
         return node;
     }
 
     function renderDeletedMessage(msg) {
         var node = el('div', 'chat-msg chat-msg-deleted');
         node.setAttribute('data-id', msg.id);
-        var body = el('div', 'chat-msg-body');
-        body.textContent = '⊘ Tin nhắn đã bị ẩn bởi quản trị viên';
-        body.classList.add('chat-msg-deleted-text');
-        node.appendChild(body);
+        var bubble = el('div', 'chat-msg-bubble');
+        var body = el('div', 'chat-msg-content chat-msg-deleted-text');
+        body.textContent = 'Tin nhắn đã bị ẩn bởi quản trị viên';
+        bubble.appendChild(body);
+        node.appendChild(bubble);
         return node;
     }
 
@@ -123,14 +150,13 @@
         var node = document.querySelector('.chat-msg[data-id="' + id + '"]');
         if (!node) return;
         node.classList.add('chat-msg-deleted');
-        var body = node.querySelector('.chat-msg-body');
+        var header = node.querySelector('.chat-msg-header');
+        if (header) header.remove();
+        var body = node.querySelector('.chat-msg-content');
         if (body) {
-            body.textContent = '⊘ Tin nhắn đã bị ẩn bởi quản trị viên';
+            body.textContent = 'Tin nhắn đã bị ẩn bởi quản trị viên';
             body.classList.add('chat-msg-deleted-text');
         }
-        // Hide avatar/header for cleanliness
-        var header = node.querySelector('.chat-msg-header');
-        if (header) header.style.display = 'none';
     }
 
     function shouldAutoScroll() {
@@ -152,17 +178,12 @@
     function appendMessage(msg) {
         var box = $('chat-messages');
         if (!box) return;
-        // Remove loading placeholder if present
-        var loading = box.querySelector('.chat-loading');
-        if (loading) loading.remove();
-        // Remove "no messages" placeholder
-        var empty = box.querySelector('.chat-empty');
-        if (empty) empty.remove();
+        removePlaceholders(box);
 
         var node = msg.is_deleted ? renderDeletedMessage(msg) : renderMessage(msg);
         box.appendChild(node);
 
-        // Trim DOM — keep last MAX_MSG nodes
+        // Trim DOM — giữ N node cuối
         while (box.children.length > MAX_MSG) {
             box.removeChild(box.firstChild);
         }
@@ -172,20 +193,11 @@
         }
     }
 
-    function prependMessage(msg) {
-        var box = $('chat-messages');
-        if (!box) return;
+    function removePlaceholders(box) {
         var loading = box.querySelector('.chat-loading');
         if (loading) loading.remove();
         var empty = box.querySelector('.chat-empty');
         if (empty) empty.remove();
-
-        var node = msg.is_deleted ? renderDeletedMessage(msg) : renderMessage(msg);
-        box.insertBefore(node, box.firstChild);
-
-        while (box.children.length > MAX_MSG) {
-            box.removeChild(box.lastChild);
-        }
     }
 
     function renderEmptyState() {
@@ -193,8 +205,9 @@
         if (!box) return;
         box.innerHTML = '';
         var empty = el('div', 'chat-empty');
-        empty.innerHTML = '<div class="chat-empty-icon">💬</div>' +
-            '<p>Chưa có tin nhắn nào. Hãy là người đầu tiên!</p>';
+        var p = document.createElement('p');
+        p.textContent = 'Chưa có tin nhắn nào. Hãy là người đầu tiên!';
+        empty.appendChild(p);
         box.appendChild(empty);
     }
 
@@ -205,14 +218,13 @@
                 return r.json();
             })
             .then(function(data) {
-                historyLoaded = true;
                 if (data.online != null) {
                     var count = $('chat-online-count');
                     if (count) count.textContent = data.online;
                 }
                 if (data.today_count != null) {
                     var today = $('chat-today-count');
-                    if (today) today.textContent = '💬 ' + data.today_count + ' tin hôm nay';
+                    if (today) today.textContent = data.today_count + ' tin hôm nay';
                 }
                 var box = $('chat-messages');
                 if (!box) return;
@@ -221,7 +233,7 @@
                     renderEmptyState();
                     return;
                 }
-                // data.messages is old→new (server reversed). Render sequentially.
+                // data.messages old→new (server đã đảo). Render tuần tự.
                 data.messages.forEach(function(msg) {
                     var node = msg.is_deleted ? renderDeletedMessage(msg) : renderMessage(msg);
                     box.appendChild(node);
@@ -229,19 +241,21 @@
                 isNearBottom = true;
                 scrollToBottom(false);
             })
-            .catch(function(err) {
-                console.error('loadHistory error:', err);
+            .catch(function() {
                 var box = $('chat-messages');
-                if (box) {
-                    box.innerHTML = '';
-                    var errNode = el('div', 'chat-empty chat-empty-error');
-                    errNode.innerHTML = '<div class="chat-empty-icon">⚠️</div>' +
-                        '<p>Không tải được tin nhắn.</p>' +
-                        '<button class="btn btn-outline btn-sm" id="chat-retry">Thử lại</button>';
-                    box.appendChild(errNode);
-                    var btn = $('chat-retry');
-                    if (btn) btn.addEventListener('click', loadHistory);
-                }
+                if (!box) return;
+                box.innerHTML = '';
+                var errNode = el('div', 'chat-empty chat-empty-error');
+                var p = document.createElement('p');
+                p.textContent = 'Không tải được tin nhắn.';
+                errNode.appendChild(p);
+                var btn = el('button', 'btn btn-outline btn-sm');
+                btn.id = 'chat-retry';
+                btn.type = 'button';
+                btn.textContent = 'Thử lại';
+                errNode.appendChild(btn);
+                box.appendChild(errNode);
+                btn.addEventListener('click', loadHistory);
             });
     }
 
@@ -259,7 +273,7 @@
         }
         ws.onopen = function() {
             wsRetryDelay = 1000;  // reset backoff
-            setStatus('Đã kết nối • realtime');
+            setStatus('Đã kết nối · realtime');
         };
         ws.onmessage = function(ev) {
             var event;
@@ -280,7 +294,7 @@
         ws.onclose = function(ev) {
             ws = null;
             if (ev.code === 1008 || ev.code === 4001) {
-                // 1008: policy violation (auth failure). 4001: our custom auth-fail code.
+                // 1008: policy violation (auth fail). 4001: custom auth-fail code.
                 setStatus('Cần đăng nhập để chat', true);
                 return;
             }
@@ -303,26 +317,31 @@
         }
         if (!text || !text.trim()) return false;
         var truncated = text.length > 500 ? text.slice(0, 500) : text;
-        // Plain text frame — backend treats non-JSON as chat message
+        // Plain text frame — backend treat non-JSON là chat message
         ws.send(truncated);
         return true;
     }
 
     function init() {
-        // Detect current user from page (avatar-link if logged in)
-        var avatarLink = document.querySelector('a.avatar-link[href^="/u/"]');
-        if (avatarLink) {
-            var username = (avatarLink.getAttribute('href') || '').replace('/u/', '');
-            var img = avatarLink.querySelector('img.avatar-sm');
-            currentUser = {
-                username: username,
-                id: null,
-                avatar_url: img ? img.getAttribute('src') : null,
-                display_name: img ? img.getAttribute('alt') : username
-            };
+        // Detect current user từ header (avatar-link nếu đã login)
+        try {
+            var avatarLink = document.querySelector('a.avatar-link[href^="/u/"]');
+            if (avatarLink) {
+                var username = (avatarLink.getAttribute('href') || '').replace('/u/', '');
+                var img = avatarLink.querySelector('img.avatar-sm');
+                currentUser = {
+                    username: username,
+                    id: null,
+                    avatar_url: img ? img.getAttribute('src') : null,
+                    display_name: img ? img.getAttribute('alt') : username
+                };
+            }
+        } catch (e) {
+            // Selector fail-safe — không làm sập init
+            currentUser = null;
         }
 
-        // Scroll tracking — stop auto-scroll if user scrolled up to read history
+        // Scroll tracking — ngừng auto-scroll nếu user scroll lên đọc history
         var box = $('chat-messages');
         if (box) {
             box.addEventListener('scroll', function() {
@@ -342,13 +361,13 @@
                 if (!content.trim()) return;
                 if (sendMessage(content)) {
                     input.value = '';
-                    // Refocus for rapid typing
+                    // Refocus để gõ tiếp nhanh
                     setTimeout(function() { input.focus(); }, 0);
                 }
             });
         }
 
-        // Enter to send (no shift — single line input)
+        // Enter để gửi (input 1 dòng — không cần shift)
         var input = $('chat-input');
         if (input) {
             input.addEventListener('keydown', function(e) {
@@ -359,11 +378,11 @@
             });
         }
 
-        // Load history first, then connect WS for live updates
+        // Load history trước, rồi connect WS nhận live updates
         loadHistory();
         connectWs();
 
-        // Tab visibility — reconnect if was hidden for >5min (WS may have dropped)
+        // Tab visibility — reconnect nếu ẩn tab >5 phút (WS có thể đã drop)
         var lastHidden = null;
         document.addEventListener('visibilitychange', function() {
             if (document.hidden) {

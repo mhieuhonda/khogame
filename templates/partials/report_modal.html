@@ -2,7 +2,10 @@
 <div class="modal-overlay" id="report-modal-{{ slug }}" onclick="if(event.target===this) this.remove()">
     <div class="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title-{{ slug }}">
         <div class="modal-header">
-            <h3 id="report-modal-title-{{ slug }}">🚩 Báo cáo game</h3>
+            <h3 id="report-modal-title-{{ slug }}">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                Báo cáo game
+            </h3>
             <button class="modal-close" onclick="document.getElementById('report-modal-{{ slug }}').remove()" aria-label="Đóng hộp thoại báo cáo">×</button>
         </div>
         <div class="modal-body">

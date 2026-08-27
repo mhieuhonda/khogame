@@ -23,7 +23,10 @@
 {% block content %}
 <article class="news-show">
     <header class="news-show-header">
-        <a href="/news" class="back-link">← Tin tức</a>
+        <a href="/news" class="back-link">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Tin tức
+        </a>
         <span class="news-card-category">{{ news.category }}</span>
         <h1>{{ news.title }}</h1>
         <div class="news-show-meta">
@@ -36,10 +39,10 @@
                 {% endmatch %}
                 <span>{{ news.author_name }}</span>
             </a>
-            <span class="meta-divider">·</span>
-            <span class="meta-item">👁️ {{ news.view_count|fmt_num }}</span>
-            <span class="meta-item">❤️ {{ news.like_count|fmt_num }}</span>
-            <span class="meta-item">💬 {{ news.comment_count|fmt_num }}</span>
+            <span class="meta-divider" aria-hidden="true">·</span>
+            <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> {{ news.view_count|fmt_num }}</span>
+            <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ news.like_count|fmt_num }}</span>
+            <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> {{ news.comment_count|fmt_num }}</span>
         </div>
     </header>
 
@@ -48,7 +51,7 @@
     {% if !url.is_empty() %}
     {# XSS-safe <img> thay cho inline style background-image:url('{{ url }}')
        — chống CSS injection qua URL có ký tự ');body{...}. #}
-    <div class="news-show-cover"><img src="{{ url }}" alt="{{ news.title }}" loading="lazy" decoding="async" width="1200" height="675" style="width:100%;height:100%;object-fit:cover;display:block"></div>
+    <div class="news-show-cover"><img src="{{ url }}" alt="{{ news.title }}" loading="lazy" decoding="async" width="1200" height="675"></div>
     {% endif %}
     {% when Option::None %}
     {% endmatch %}
@@ -63,6 +66,7 @@
 
     {% if !news.source_name.is_empty() || !news.source_url.is_empty() %}
     <div class="news-source">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <strong>Nguồn:</strong>
         {% if !news.source_url.is_empty() %}
         <a href="{{ news.source_url }}" rel="noopener nofollow" target="_blank">{{ news.source_name }}</a>
@@ -79,7 +83,8 @@
                 hx-post="/news/{{ news.slug }}/like" hx-target="this" hx-swap="outerHTML"
                 hx-disabled-elt="this"
                 aria-pressed="{% if has_liked %}true{% else %}false{% endif %}">
-            ❤️ {{ news.like_count }}
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="{% if has_liked %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {{ news.like_count }}
         </button>
         {% when Option::None %}
         <a href="/login" class="btn btn-outline btn-sm">Đăng nhập để thích</a>
@@ -88,17 +93,24 @@
                 data-share-url="{{ base_url }}/news/{{ news.slug }}"
                 data-share-title="{{ news.title }}"
                 aria-label="Chia sẻ tin tức này">
-            🔗 Chia sẻ
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Chia sẻ
         </button>
     </div>
 
     <section class="news-comments" id="comments">
-        <h2>💬 Bình luận ({{ news.comment_count }})</h2>
+        <h2>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Bình luận ({{ news.comment_count }})
+        </h2>
         {% match current_user %}
         {% when Option::Some with (_) %}
         <form method="post" action="/news/{{ news.slug }}/comments" class="comment-form">
             <textarea name="content" rows="3" maxlength="2000" placeholder="Viết bình luận..." aria-label="Nội dung bình luận" required></textarea>
-            <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
+            <div class="comment-form-actions">
+                <span></span>
+                <button type="submit" class="btn btn-primary btn-sm">Gửi bình luận</button>
+            </div>
         </form>
         {% when Option::None %}
         <p class="muted"><a href="/login">Đăng nhập</a> để bình luận.</p>
@@ -121,7 +133,7 @@
                 </a>
                 <div class="comment-body">{{ c.content|nl2br }}</div>
                 <div class="comment-meta">
-                    <span>{{ c.created_at|format_datetime_vn }}</span>
+                    <span class="comment-time">{{ c.created_at|format_datetime_vn }}</span>
                 </div>
             </div>
             {% endfor %}

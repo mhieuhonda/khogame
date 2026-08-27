@@ -2,7 +2,15 @@
 {% block title %}Audit log{% endblock %}
 {% block content %}
 <section class="admin-page">
-    <div class="page-header"><h1>📜 Audit log</h1><p>Lịch sử 200 hành động quản trị gần nhất.</p></div>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Audit log
+            </h1>
+            <p>Lịch sử 200 hành động quản trị gần nhất.</p>
+        </div>
+    </div>
     {% include "admin/_nav.html" %}
     <div class="admin-table-wrap">
         <table class="admin-table">
@@ -15,7 +23,7 @@
                 <td><span class="admin-chip">{{ l.action }}</span></td>
                 <td>{{ l.target_type.as_deref().unwrap_or("") }} {{ l.target_id.as_deref().unwrap_or("")|truncate(12) }}</td>
                 <td>{{ l.detail.as_deref().unwrap_or("")|truncate(60) }}</td>
-                <td>{{ l.ip.as_deref().unwrap_or("-") }}</td>
+                <td class="mono">{{ l.ip.as_deref().unwrap_or("-") }}</td>
             </tr>
             {% endfor %}
             </tbody>

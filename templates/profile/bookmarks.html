@@ -3,64 +3,73 @@
 {% block title %}Đã lưu{% endblock %}
 
 {% block content %}
-<section class="page-header">
-    <h1>🔖 Game đã lưu</h1>
-    <p>Danh sách game bạn đã bookmark ({{ total }} game).</p>
-</section>
+<section class="compact-form-page">
+    <div class="page-header">
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Game đã lưu</h1>
+            <p>Danh sách game bạn đã bookmark ({{ total }} game).</p>
+        </div>
+    </div>
 
-{% if games.is_empty() %}
-<div class="empty-state">
-    <div class="empty-icon">🔖</div>
-    <h3>Chưa lưu game nào</h3>
-    <p>Khi bạn lưu một game, nó sẽ xuất hiện tại đây.</p>
-</div>
-{% else %}
-<div class="game-grid">
-    {% for game in games %}
-    <article class="game-card">
-        <a href="/games/{{ game.slug }}" class="game-card-link">
-            <div class="game-card-cover">
-                {% match game.cover_image %}
-                {% when Option::Some with (url) %}
-                    {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy" decoding="async" width="320" height="180">
-                    {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
-                {% when Option::None %}
-                <div class="cover-fallback">{{ game.title|initials }}</div>
-                {% endmatch %}
-            </div>
-            <div class="game-card-body">
-                <h3 class="game-card-title">{{ game.title }}</h3>
-                <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
-                <div class="game-card-meta">
-                    <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
-                    <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+    {% if games.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Chưa lưu game nào</h3>
+        <p>Khi bạn lưu một game, nó sẽ xuất hiện tại đây.</p>
+    </div>
+    {% else %}
+    <div class="game-grid">
+        {% for game in games %}
+        <article class="game-card">
+            <a href="/games/{{ game.slug }}" class="game-card-link">
+                <div class="game-card-cover">
+                    {% match game.cover_image %}
+                    {% when Option::Some with (url) %}
+                        {% if !url.is_empty() %}<img src="{{ url }}" alt="{{ game.title }}" loading="lazy" decoding="async" width="320" height="180">
+                        {% else %}<div class="cover-fallback">{{ game.title|initials }}</div>{% endif %}
+                    {% when Option::None %}
+                    <div class="cover-fallback">{{ game.title|initials }}</div>
+                    {% endmatch %}
                 </div>
-            </div>
-        </a>
-    </article>
-    {% endfor %}
-</div>
-{% let total_pages = (total + per_page - 1) / per_page %}
-{% if total_pages > 1 %}
-<nav class="pagination" aria-label="Phân trang bookmark">
-    {% if page > 1 %}
-    <a href="/bookmarks?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>
-    {% endif %}
-    {% for p in 1..=total_pages %}
-        {% if p == page %}
-        <span class="page-link current" aria-current="page">{{ p }}</span>
-        {% else if p == 1 || p == total_pages || p == page - 1 || p == page + 1 %}
-        <a href="/bookmarks?page={{ p }}" class="page-link">{{ p }}</a>
-        {% else if p == 2 && page > 4 %}
-        <span class="page-ellipsis">…</span>
-        {% else if p == total_pages - 1 && page < total_pages - 3 %}
-        <span class="page-ellipsis">…</span>
+                <div class="game-card-body">
+                    <h3 class="game-card-title">{{ game.title }}</h3>
+                    <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
+                    <div class="game-card-meta">
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ game.like_count|fmt_num }}</span>
+                    </div>
+                </div>
+            </a>
+        </article>
+        {% endfor %}
+    </div>
+    {% let total_pages = (total + per_page - 1) / per_page %}
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang bookmark">
+        {% if page > 1 %}
+        <a href="/bookmarks?page={{ page - 1 }}" class="page-link" rel="prev">← Trước</a>
         {% endif %}
-    {% endfor %}
-    {% if page < total_pages %}
-    <a href="/bookmarks?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>
+        {% for p in 1..=total_pages %}
+            {% if p == page %}
+            <span class="page-link current" aria-current="page">{{ p }}</span>
+            {% else if p == 1 || p == total_pages || p == page - 1 || p == page + 1 %}
+            <a href="/bookmarks?page={{ p }}" class="page-link">{{ p }}</a>
+            {% else if p == 2 && page > 4 %}
+            <span class="page-ellipsis">…</span>
+            {% else if p == total_pages - 1 && page < total_pages - 3 %}
+            <span class="page-ellipsis">…</span>
+            {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+        <a href="/bookmarks?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>
+        {% endif %}
+    </nav>
     {% endif %}
-</nav>
-{% endif %}
-{% endif %}
+    {% endif %}
+</section>
 {% endblock %}

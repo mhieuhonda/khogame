@@ -26,11 +26,13 @@
 
 {% block content %}
 <article class="game-detail">
-    <nav class="breadcrumb">
-        <a href="/">Trang chủ</a> ›
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/">Trang chủ</a>
+        <span aria-hidden="true">/</span>
         {% match category %}
         {% when Option::Some with (cat) %}
-        <a href="/c/{{ cat.slug }}">{{ cat.name }}</a> ›
+        <a href="/c/{{ cat.slug }}">{{ cat.name }}</a>
+        <span aria-hidden="true">/</span>
         {% when Option::None %}
         {% endmatch %}
         <span>{{ game.title }}</span>
@@ -56,7 +58,7 @@
                 <a href="/c/{{ cat.slug }}" class="game-category">{{ cat.name }}</a>
                 {% when Option::None %}
                 {% endmatch %}
-                {% if game.is_featured %}<span class="featured-badge">⭐ Nổi bật</span>{% endif %}
+                {% if game.is_featured %}<span class="featured-badge">★ Nổi bật</span>{% endif %}
             </div>
             <h1 class="game-title">{{ game.title }}</h1>
             {% if !game.excerpt_or().is_empty() %}
@@ -89,28 +91,23 @@
 
             <div class="game-stats-row">
                 <div class="game-stat">
-                    <span class="stat-icon">👁️</span>
                     <span class="stat-value">{{ game.view_count|fmt_num }}</span>
                     <span class="stat-name">Lượt xem</span>
                 </div>
                 <div class="game-stat">
-                    <span class="stat-icon">⬇️</span>
                     <span class="stat-value">{{ game.download_count|fmt_num }}</span>
                     <span class="stat-name">Lượt tải</span>
                 </div>
                 <div class="game-stat">
-                    <span class="stat-icon">❤️</span>
                     <span class="stat-value">{{ game.like_count|fmt_num }}</span>
                     <span class="stat-name">Lượt thích</span>
                 </div>
                 <div class="game-stat">
-                    <span class="stat-icon">💬</span>
                     <span class="stat-value">{{ game.comment_count|fmt_num }}</span>
                     <span class="stat-name">Bình luận</span>
                 </div>
                 <div class="game-stat">
-                    <span class="stat-icon">⭐</span>
-                    <span class="stat-value">{{ game.rating_avg_f64()|fmt_f64 }}</span>
+                    <span class="stat-value">★ {{ game.rating_avg_f64()|fmt_f64 }}</span>
                     <span class="stat-name">{{ game.rating_count }} đánh giá</span>
                 </div>
             </div>
@@ -120,13 +117,19 @@
     <div class="game-detail-layout">
         <div class="game-main">
             <section class="detail-section">
-                <h2 class="section-heading">📋 Giới thiệu</h2>
-                <div class="game-content">{{ game.content_or()|html }}</div>
+                <h2 class="section-heading">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Giới thiệu
+                </h2>
+                <div class="game-content prose">{{ game.content_or()|html }}</div>
             </section>
 
             {% if !screenshots.is_empty() %}
             <section class="detail-section">
-                <h2 class="section-heading">🖼️ Ảnh chụp màn hình</h2>
+                <h2 class="section-heading">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    Ảnh chụp màn hình
+                </h2>
                 <div class="screenshots-grid">
                     {% for shot in screenshots %}
                     <a href="{{ shot.url }}" class="screenshot-item" target="_blank" rel="noopener">
@@ -139,11 +142,14 @@
 
             {% if !game.trailer_url.clone().unwrap_or_default().is_empty() %}
             <section class="detail-section">
-                <h2 class="section-heading">🎬 Trailer</h2>
+                <h2 class="section-heading">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    Trailer
+                </h2>
                 <div class="trailer-container">
                     {% let embed = game.trailer_url.clone().unwrap_or_default()|youtube_embed %}
                     {% if !embed.is_empty() %}
-                    <iframe width="100%" height="450" src="{{ embed }}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen title="Trailer {{ game.title }}"></iframe>
+                    <iframe src="{{ embed }}" title="Trailer {{ game.title }}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                     {% else %}
                     <p><a href="{{ game.trailer_url.clone().unwrap_or_default() }}" target="_blank" rel="noopener">▶ Xem trailer tại nguồn ngoài</a> (trailer không phải YouTube nên không nhúng được)</p>
                     {% endif %}
@@ -152,7 +158,10 @@
             {% endif %}
 
             <section class="detail-section">
-                <h2 class="section-heading">📊 Đánh giá</h2>
+                <h2 class="section-heading">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    Đánh giá
+                </h2>
                 <div class="rating-stars" id="rating-stars-{{ game.slug }}">
                     <div class="stars-input">
                         {% for i in 1..=5 %}
@@ -173,7 +182,10 @@
             </section>
 
             <section class="detail-section" id="comments-section">
-                <h2 class="section-heading">💬 Bình luận ({{ game.comment_count }})</h2>
+                <h2 class="section-heading">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Bình luận ({{ game.comment_count }})
+                </h2>
                 {% match current_user %}
                 {% when Option::Some with (_) %}
                 <form class="comment-form"
@@ -201,7 +213,7 @@
                 </div>
                 {% if game.comment_count > 50 %}
                 <div class="comments-load-more">
-                    <button class="btn btn-ghost btn-sm"
+                    <button class="btn btn-outline btn-sm"
                             hx-get="/games/{{ game.slug }}/comments?page=2"
                             hx-target="closest .comments-load-more"
                             hx-swap="outerHTML">Tải thêm bình luận (còn {{ game.comment_count - 50 }})</button>
@@ -212,23 +224,26 @@
 
         <aside class="game-sidebar">
             <div class="sidebar-card download-card">
-                <h3>⬇️ Tải game</h3>
+                <h3>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Tải game
+                </h3>
                 <div id="download-buttons-{{ game.slug }}">
                     {% if links.is_empty() %}
-                    <div class="no-downloads"><p>⚠️ Chưa có link tải cho game này.</p></div>
+                    <div class="no-downloads"><p>Chưa có link tải cho game này.</p></div>
                     {% else %}
                     {% match current_user %}
                     {% when Option::None %}
-                    <p class="download-note">⚠️ Bạn cần <a href="/login">đăng nhập</a> để tải game và lưu lịch sử tải về.</p>
+                    <p class="download-note">Bạn cần <a href="/login">đăng nhập</a> để tải game và lưu lịch sử tải về.</p>
                     {% when Option::Some with (_) %}
                     {% endmatch %}
                     <div class="download-grid">
                         {% for link in links %}
                         <form method="post" action="/games/{{ game.slug }}/download" hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on::after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
                             <input type="hidden" name="platform" value="{{ link.platform.label()|lower }}">
-                            <button type="submit" class="btn btn-download platform-{{ link.platform.label()|lower }}">
+                            <button type="submit" class="btn-download platform-{{ link.platform.label()|lower }}">
                                 <span class="platform-icon">
-                                    {% if link.platform.label() == "Android" %}🤖{% else if link.platform.label() == "iOS" %}🍎{% else if link.platform.label() == "Windows" %}🪟{% else if link.platform.label() == "Linux" %}🐧{% else if link.platform.label() == "macOS" %}💻{% endif %}
+                                    {% if link.platform.label() == "Android" %}AND{% else if link.platform.label() == "iOS" %}iOS{% else if link.platform.label() == "Windows" %}WIN{% else if link.platform.label() == "Linux" %}LIN{% else if link.platform.label() == "macOS" %}MAC{% endif %}
                                 </span>
                                 <div class="platform-text">
                                     <span class="platform-label">Tải về cho</span>
@@ -244,7 +259,10 @@
             </div>
 
             <div class="sidebar-card actions-card">
-                <h3>⚡ Hành động</h3>
+                <h3>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Hành động
+                </h3>
                 <div class="actions-list">
                     {% match current_user %}
                     {% when Option::Some with (_) %}
@@ -258,16 +276,24 @@
                          data-slug="{{ game.slug }}"
                          data-title="{{ game.title }}"
                          data-share-url="{{ base_url }}/games/{{ game.slug }}">
-                        <a href="https://www.facebook.com/sharer/sharer.php?u={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-facebook" data-share-platform="facebook">f</a>
-                        <a href="https://twitter.com/intent/tweet?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-twitter" data-share-platform="twitter">𝕏</a>
-                        <a href="https://t.me/share/url?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-telegram" data-share-platform="telegram">✈</a>
-                        <a href="https://wa.me/?text={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-whatsapp" data-share-platform="whatsapp">W</a>
-                        <button type="button" class="share-btn share-copy" data-share-platform="copy" title="Sao chép link">📋</button>
-                        <button type="button" class="share-btn share-native" data-share-platform="native" title="Chia sẻ qua ứng dụng">📤</button>
+                        <a href="https://www.facebook.com/sharer/sharer.php?u={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-facebook" data-share-platform="facebook" aria-label="Chia sẻ qua Facebook">f</a>
+                        <a href="https://twitter.com/intent/tweet?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-twitter" data-share-platform="twitter" aria-label="Chia sẻ qua X">𝕏</a>
+                        <a href="https://t.me/share/url?url={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-telegram" data-share-platform="telegram" aria-label="Chia sẻ qua Telegram">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.94 3.05a1.5 1.5 0 0 0-1.53-.26L2.7 9.7a1.5 1.5 0 0 0 .1 2.82l4.7 1.55 1.85 5.9a1.5 1.5 0 0 0 2.5.6l2.7-2.65 4.9 3.6a1.5 1.5 0 0 0 2.36-.86l3.1-15.5a1.5 1.5 0 0 0-.87-1.11zM9.5 13.6l-.5 3.9-1.2-3.85 9.3-6.35L9.5 13.6z"/></svg>
+                        </a>
+                        <a href="https://wa.me/?text={{ base_url }}/games/{{ game.slug }}" target="_blank" rel="noopener" class="share-btn share-whatsapp" data-share-platform="whatsapp" aria-label="Chia sẻ qua WhatsApp">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.4-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.44-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.5 0 1.47 1.07 2.9 1.22 3.1.15.2 2.1 3.2 5.1 4.49.71.3 1.27.49 1.7.63.72.23 1.37.2 1.88.12.58-.09 1.76-.72 2-1.42.25-.7.25-1.3.18-1.42-.07-.12-.27-.2-.57-.34zM12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z"/></svg>
+                        </a>
+                        <button type="button" class="share-btn share-copy" data-share-platform="copy" title="Sao chép link" aria-label="Sao chép link">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button type="button" class="share-btn share-native" data-share-platform="native" title="Chia sẻ qua ứng dụng" aria-label="Chia sẻ qua ứng dụng">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                        </button>
                     </div>
                     {% if !is_owner %}
                     <button type="button" class="action-btn report-btn" onclick="openReportModal('{{ game.slug }}')">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         <span>Báo cáo</span>
                     </button>
                     {% endif %}
@@ -276,18 +302,30 @@
 
             {% if is_owner %}
             <div class="sidebar-card owner-card">
-                <h3>🛠️ Quản lý</h3>
+                <h3>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                    Quản lý
+                </h3>
                 <div class="owner-actions">
-                    <a href="/games/{{ game.slug }}/edit" class="btn btn-outline btn-sm btn-block">✏️ Chỉnh sửa</a>
+                    <a href="/games/{{ game.slug }}/edit" class="btn btn-outline btn-sm btn-block">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        Chỉnh sửa
+                    </a>
                     <form action="/games/{{ game.slug }}/delete" method="post">
-                        <button type="submit" class="btn btn-danger btn-sm btn-block">🗑️ Xóa game</button>
+                        <button type="submit" class="btn btn-danger btn-sm btn-block">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Xóa game
+                        </button>
                     </form>
                 </div>
             </div>
             {% endif %}
 
             <div class="sidebar-card info-card">
-                <h3>ℹ️ Thông tin</h3>
+                <h3>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    Thông tin
+                </h3>
                 <dl class="info-list">
                     {% if !game.version.clone().unwrap_or_default().is_empty() %}
                     <dt>Phiên bản</dt><dd>{{ game.version.clone().unwrap_or_default() }}</dd>
@@ -323,7 +361,10 @@
 
     {% if !related_games.is_empty() %}
     <section class="related-games">
-        <h2 class="section-heading">🎮 Game liên quan</h2>
+        <h2 class="section-heading">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Game liên quan
+        </h2>
         <div class="game-grid">
             {% for game in related_games %}
             <article class="game-card">
@@ -341,8 +382,8 @@
                         <h3 class="game-card-title">{{ game.title }}</h3>
                         <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(80) }}</p>
                         <div class="game-card-meta">
-                            <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
-                            <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
+                            <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> {{ game.download_count|fmt_num }}</span>
+                            <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ game.like_count|fmt_num }}</span>
                         </div>
                     </div>
                 </a>
@@ -374,11 +415,11 @@ document.addEventListener('keydown', function(e) {
 });
 function toggleReplyForm(id) {
     const el = document.getElementById('reply-form-' + id);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el) el.hidden = !el.hidden;
 }
 function toggleEditForm(id) {
     const el = document.getElementById('edit-form-' + id);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el) el.hidden = !el.hidden;
 }
 </script>
 {% endblock %}

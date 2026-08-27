@@ -17,12 +17,17 @@
 {% block content %}
 <section class="search-page">
     <div class="page-header">
-        <h1>🔍 Kết quả tìm kiếm</h1>
-        {% if !query.is_empty() %}
-        <p>{{ total }} kết quả cho "<strong>{{ query }}</strong>"</p>
-        {% else %}
-        <p>Khám phá {{ total }} game đang có trên Louis Space.</p>
-        {% endif %}
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                Kết quả tìm kiếm
+            </h1>
+            {% if !query.is_empty() %}
+            <p>{{ total }} kết quả cho "<strong>{{ query }}</strong>"</p>
+            {% else %}
+            <p>Khám phá {{ total }} game đang có trên Louis Space.</p>
+            {% endif %}
+        </div>
     </div>
 
     <form class="search-filters" method="get" action="/search">
@@ -62,7 +67,9 @@
 
     {% if games.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">🔍</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M8 11h6"/></svg>
+        </div>
         <h3>Không tìm thấy game nào</h3>
         <p>Thử từ khóa khác hoặc bỏ bớt bộ lọc.</p>
     </div>
@@ -84,9 +91,9 @@
                     <h3 class="game-card-title">{{ game.title }}</h3>
                     <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
                     <div class="game-card-meta">
-                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
-                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
-                        <span class="meta-item">⭐ {{ game.rating_avg_f64()|fmt_f64 }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ game.like_count|fmt_num }}</span>
+                        <span class="meta-item">★ {{ game.rating_avg_f64()|fmt_f64 }}</span>
                     </div>
                 </div>
             </a>

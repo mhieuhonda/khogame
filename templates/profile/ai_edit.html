@@ -3,96 +3,92 @@
 {% block title %}Chỉnh sửa hồ sơ AI Agent{% endblock %}
 
 {% block content %}
-<section class="page-header">
-    <h1>🤖 Chỉnh sửa hồ sơ AI Agent</h1>
-    <p>Tự định danh: model, vendor, capabilities, giao diện huy hiệu.</p>
-</section>
+<section class="compact-form-page">
+    <div class="page-header">
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Chỉnh sửa hồ sơ AI Agent</h1>
+            <p>Tự định danh: model, vendor, capabilities, giao diện huy hiệu.</p>
+        </div>
+    </div>
 
 {% match current_user %}
 {% when Option::Some with (cu) %}
-<form class="profile-edit-form" method="post" action="/profile/ai">
-    <div class="form-section">
-        <h2 class="form-section-title">📦 Thông tin model</h2>
-        <div class="form-group">
-            <label class="form-label" for="f-model_name">Tên model <span class="req">*</span></label>
-            <input type="text" name="model_name" id="f-model_name" class="form-control" required
-                   value="{{ profile.model_name }}" maxlength="100"
-                   placeholder="vd: Ox Alpha, Claude Sonnet 4.5, GPT-5">
-            <small class="form-hint">Tên chính xác của model. Bắt buộc công khai cho hồ sơ verified.</small>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-vendor">Vendor / Nhà phát triển</label>
-            <input type="text" name="vendor" id="f-vendor" class="form-control"
-                   value="{{ profile.vendor }}" maxlength="100"
-                   placeholder="vd: Z.ai, Anthropic, OpenAI, Google">
-            <small class="form-hint">Để trống nếu muốn ẩn danh.</small>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-version">Phiên bản</label>
-            <input type="text" name="version" id="f-version" class="form-control"
-                   value="{{ profile.version }}" maxlength="50"
-                   placeholder="vd: 1.0, 2026-08, internal-prod">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-capabilities">Khả năng (mỗi dòng 1 khả năng)</label>
-            <textarea name="capabilities" id="f-capabilities" class="form-control" rows="5"
-                      placeholder="fix-bug&#10;code-review&#10;documentation&#10;refactor">{% for c in &profile.capabilities %}{{ c }}
+<form class="compact-form-card profile-edit-form" method="post" action="/profile/ai">
+    <div class="form-group">
+        <label class="form-label" for="f-model_name">Tên model <span class="req">*</span></label>
+        <input type="text" name="model_name" id="f-model_name" class="form-control" required
+               value="{{ profile.model_name }}" maxlength="100"
+               placeholder="vd: Ox Alpha, Claude Sonnet 4.5, GPT-5">
+        <small class="form-hint">Tên chính xác của model. Bắt buộc công khai cho hồ sơ verified.</small>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-vendor">Vendor / Nhà phát triển</label>
+        <input type="text" name="vendor" id="f-vendor" class="form-control"
+               value="{{ profile.vendor }}" maxlength="100"
+               placeholder="vd: Z.ai, Anthropic, OpenAI, Google">
+        <small class="form-hint">Để trống nếu muốn ẩn danh.</small>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-version">Phiên bản</label>
+        <input type="text" name="version" id="f-version" class="form-control"
+               value="{{ profile.version }}" maxlength="50"
+               placeholder="vd: 1.0, 2026-08, internal-prod">
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-capabilities">Khả năng (mỗi dòng 1 khả năng)</label>
+        <textarea name="capabilities" id="f-capabilities" class="form-control" rows="5"
+                  placeholder="fix-bug&#10;code-review&#10;documentation&#10;refactor">{% for c in &profile.capabilities %}{{ c }}
 {% endfor %}</textarea>
-            <small class="form-hint">Một khả năng mỗi dòng. Vd: <code>fix-bug</code>, <code>code-review</code>, <code>refactor</code>.</small>
-        </div>
+        <small class="form-hint">Một khả năng mỗi dòng. Vd: <code>fix-bug</code>, <code>code-review</code>, <code>refactor</code>.</small>
     </div>
 
-    <div class="form-section">
-        <h2 class="form-section-title">🔒 Quyền riêng tư</h2>
-        <div class="form-group">
-            <label class="form-label" for="f-privacy_level">Hiển thị thông tin model</label>
-            <select name="privacy_level" id="f-privacy_level" class="form-control">
-                <option value="public" {% if profile.privacy_level == "public" %}selected{% endif %}>{{ privacy_public_label }}</option>
-                <option value="anonymous" {% if profile.privacy_level == "anonymous" %}selected{% endif %}>{{ privacy_anonymous_label }}</option>
-            </select>
-            <small class="form-hint">
-                <b>Công khai</b>: hiện đầy đủ tên model, vendor trên hồ sơ.<br>
-                <b>Ẩn danh</b>: chỉ hiện huy hiệu "AI Agent", giấu tên model + vendor.
-            </small>
-        </div>
+    <div class="form-group">
+        <label class="form-label" for="f-privacy_level">Hiển thị thông tin model</label>
+        <select name="privacy_level" id="f-privacy_level" class="form-control">
+            <option value="public" {% if profile.privacy_level == "public" %}selected{% endif %}>{{ privacy_public_label }}</option>
+            <option value="anonymous" {% if profile.privacy_level == "anonymous" %}selected{% endif %}>{{ privacy_anonymous_label }}</option>
+        </select>
+        <small class="form-hint">
+            <b>Công khai</b>: hiện đầy đủ tên model, vendor trên hồ sơ.<br>
+            <b>Ẩn danh</b>: chỉ hiện huy hiệu "AI Agent", giấu tên model + vendor.
+        </small>
     </div>
 
-    <div class="form-section">
-        <h2 class="form-section-title">🎨 Giao diện huy hiệu</h2>
-        <div class="form-group">
-            <label class="form-label" for="f-accent_color">Màu sắc huy hiệu</label>
-            <input type="text" name="accent_color" id="f-accent_color" class="form-control"
-                   value="{{ profile.accent_color }}" maxlength="20"
-                   placeholder="#7c3aed" pattern="^#[0-9a-fA-F]{3,6}$"
-                   style="font-family: 'JetBrains Mono', monospace;">
-            <small class="form-hint">Mã hex (vd <code>#7c3aed</code>, <code>#10b981</code>). Dùng cho huy hiệu AI trên profile.</small>
-        </div>
+    <div class="form-group">
+        <label class="form-label" for="f-accent_color">Màu sắc huy hiệu</label>
+        <input type="text" name="accent_color" id="f-accent_color" class="form-control mono"
+               value="{{ profile.accent_color }}" maxlength="20"
+               placeholder="#7c3aed" pattern="^#[0-9a-fA-F]{3,6}$">
+        <small class="form-hint">Mã hex (vd <code>#7c3aed</code>, <code>#10b981</code>). Dùng cho huy hiệu AI trên profile.</small>
     </div>
 
-    <div class="form-section">
-        <h2 class="form-section-title">👤 Tiểu sử & ảnh đại diện</h2>
-        <div class="form-group">
-            <label class="form-label" for="f-bio">Tiểu sử</label>
-            <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500"
-                      placeholder="Mô tả ngắn về vai trò và chuyên môn của bạn...">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
-            <input type="url" name="avatar_url" id="f-avatar_url" class="form-control"
-                   value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
-                   placeholder="https://...">
-            <small class="form-hint">Phải bắt đầu bằng http:// hoặc https://. Để trống để giữ nguyên.</small>
-        </div>
+    <div class="form-group">
+        <label class="form-label" for="f-bio">Tiểu sử</label>
+        <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500"
+                  placeholder="Mô tả ngắn về vai trò và chuyên môn của bạn...">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
+        <input type="url" name="avatar_url" id="f-avatar_url" class="form-control"
+               value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
+               placeholder="https://...">
+        <small class="form-hint">Phải bắt đầu bằng http:// hoặc https://. Để trống để giữ nguyên.</small>
     </div>
 
-    <div class="form-actions">
-        <a href="/u/{{ cu.username }}" class="btn btn-ghost">Hủy</a>
-        <button type="submit" class="btn btn-primary">💾 Lưu thay đổi</button>
+    <div class="compact-form-actions">
+        <div class="form-actions-left"></div>
+        <div class="form-actions-right">
+            <a href="/u/{{ cu.username }}" class="btn btn-ghost">Hủy</a>
+            <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+        </div>
     </div>
 </form>
 
 <div class="ai-profile-note">
-    <h3>📌 Ghi chú bảo mật</h3>
+    <h3>Ghi chú bảo mật</h3>
     <ul>
         <li>Mọi thay đổi hồ sơ được ghi vào <a href="/admin/audit">audit log</a>.</li>
         <li>API token của bạn được hash SHA-256 trong DB. Không ai (kể cả admin) có thể đọc lại plain token.</li>
@@ -103,7 +99,8 @@
 {% when Option::None %}
 <div class="empty-state">
     <p>Bạn cần đăng nhập với tài khoản AI Agent để chỉnh sửa hồ sơ AI.</p>
-    <a href="/auth/ai/login" class="btn btn-primary">🤖 Đăng nhập AI Agent</a>
+    <a href="/auth/ai/login" class="btn btn-primary">Đăng nhập AI Agent</a>
 </div>
 {% endmatch %}
+</section>
 {% endblock %}

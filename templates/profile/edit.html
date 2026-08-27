@@ -3,80 +3,91 @@
 {% block title %}Chỉnh sửa hồ sơ{% endblock %}
 
 {% block content %}
-<section class="page-header">
-    <h1>✏️ Chỉnh sửa hồ sơ</h1>
-</section>
+<section class="compact-form-page">
+    <div class="page-header">
+        <div class="page-header-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </div>
+        <div class="page-header-text">
+            <h1>Chỉnh sửa hồ sơ</h1>
+            <p>Cập nhật thông tin cá nhân và tùy chọn giao diện.</p>
+        </div>
+    </div>
 
 {% match current_user %}
 {% when Option::Some with (cu) %}
-<form class="profile-edit-form" method="post" action="/profile">
-    <div class="form-section">
-        <div class="form-group">
-            <label class="form-label" for="f-display_name">Tên hiển thị</label>
-            <input type="text" name="display_name" id="f-display_name" class="form-control" required value="{{ cu.display_name }}">
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-bio">Tiểu sử</label>
-            <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
-            <input type="text" name="avatar_url" id="f-avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
-                   inputmode="url" autocomplete="off" spellcheck="false">
-            <small class="form-hint">Có thể là URL <code>http(s)://</code> hoặc <code>/uploads/...</code> (ảnh đã upload). Để trống để giữ nguyên ảnh từ Google. Hoặc tải ảnh lên bên dưới.</small>
-        </div>
-        <div class="form-group">
-            <label class="form-label">Tải ảnh đại diện lên</label>
-            <div class="upload-zone" id="avatar-upload-zone">
-                <div class="upload-preview-row">
-                    <img id="avatar-preview"
-                         src="{% if !cu.avatar_url.clone().unwrap_or_default().is_empty() %}{{ cu.avatar_url.clone().unwrap_or_default() }}{% else %}/static/img/avatar-placeholder.svg{% endif %}"
-                         alt="Avatar preview" class="upload-preview-avatar" />
-                    <div class="upload-actions">
-                        <label for="avatar-file-input" class="btn btn-ghost btn-sm">📂 Chọn ảnh</label>
-                        <input type="file" id="avatar-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
-                        <small class="form-hint">JPG, PNG, WebP hoặc GIF. Tối đa 5 MB.</small>
-                        <div id="avatar-upload-status" class="upload-status" role="status" aria-live="polite"></div>
-                    </div>
+<form class="compact-form-card profile-edit-form" method="post" action="/profile">
+    <div class="form-group">
+        <label class="form-label" for="f-display_name">Tên hiển thị</label>
+        <input type="text" name="display_name" id="f-display_name" class="form-control" required value="{{ cu.display_name }}">
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-bio">Tiểu sử</label>
+        <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
+        <input type="text" name="avatar_url" id="f-avatar_url" class="form-control" value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
+               inputmode="url" autocomplete="off" spellcheck="false">
+        <small class="form-hint">Có thể là URL <code>http(s)://</code> hoặc <code>/uploads/...</code> (ảnh đã upload). Để trống để giữ nguyên ảnh từ Google. Hoặc tải ảnh lên bên dưới.</small>
+    </div>
+    <div class="form-group">
+        <label class="form-label">Tải ảnh đại diện lên</label>
+        <div class="upload-zone" id="avatar-upload-zone" data-upload-endpoint="/uploads/avatar" data-max-size="5" data-url-target="#f-avatar_url">
+            <div class="upload-preview-row">
+                <img id="avatar-preview"
+                     src="{% if !cu.avatar_url.clone().unwrap_or_default().is_empty() %}{{ cu.avatar_url.clone().unwrap_or_default() }}{% else %}/static/img/avatar-placeholder.svg{% endif %}"
+                     alt="Avatar preview" class="upload-preview-avatar" />
+                <div class="upload-actions">
+                    <label for="avatar-file-input" class="btn btn-outline btn-sm">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Chọn ảnh
+                    </label>
+                    <input type="file" id="avatar-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+                    <small class="form-hint">JPG, PNG, WebP hoặc GIF. Tối đa 5 MB.</small>
+                    <div id="avatar-upload-status" class="upload-status" role="status" aria-live="polite"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="form-section">
-        <h2 class="form-section-title">⚙️ Tùy chọn</h2>
-        <div class="form-group">
-            <label class="form-label" for="f-theme">Giao diện</label>
-            <select name="theme" id="f-theme" class="form-control">
-                <option value="dark" {% if preferences.theme == "dark" %}selected{% endif %}>Tối</option>
-                <option value="light" {% if preferences.theme == "light" %}selected{% endif %}>Sáng</option>
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label" for="f-language">Ngôn ngữ</label>
-            <select name="language" id="f-language" class="form-control">
-                <option value="vi" {% if preferences.language == "vi" %}selected{% endif %}>Tiếng Việt</option>
-                <option value="en" {% if preferences.language == "en" %}selected{% endif %}>English</option>
-            </select>
-        </div>
-        <div class="form-check">
-            <input type="checkbox" name="email_notifications" id="email_notif" {% if preferences.email_notifications %}checked{% endif %}>
-            <label for="email_notif">Nhận thông báo qua email</label>
-        </div>
-        <div class="form-check">
-            <input type="checkbox" name="show_online" id="show_online" {% if preferences.show_online %}checked{% endif %}>
-            <label for="show_online">Hiển thị trạng thái online</label>
-        </div>
+    <div class="form-group">
+        <label class="form-label" for="f-theme">Giao diện</label>
+        <select name="theme" id="f-theme" class="form-control">
+            <option value="dark" {% if preferences.theme == "dark" %}selected{% endif %}>Tối</option>
+            <option value="light" {% if preferences.theme == "light" %}selected{% endif %}>Sáng</option>
+        </select>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-language">Ngôn ngữ</label>
+        <select name="language" id="f-language" class="form-control">
+            <option value="vi" {% if preferences.language == "vi" %}selected{% endif %}>Tiếng Việt</option>
+            <option value="en" {% if preferences.language == "en" %}selected{% endif %}>English</option>
+        </select>
+    </div>
+    <div class="form-check">
+        <input type="checkbox" name="email_notifications" id="email_notif" {% if preferences.email_notifications %}checked{% endif %}>
+        <label for="email_notif">Nhận thông báo qua email</label>
+    </div>
+    <div class="form-check">
+        <input type="checkbox" name="show_online" id="show_online" {% if preferences.show_online %}checked{% endif %}>
+        <label for="show_online">Hiển thị trạng thái online</label>
     </div>
 
-    <div class="form-actions">
-        <a href="/u/{{ cu.username }}" class="btn btn-ghost">Hủy</a>
-        <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+    <div class="compact-form-actions">
+        <div class="form-actions-left"></div>
+        <div class="form-actions-right">
+            <a href="/u/{{ cu.username }}" class="btn btn-ghost">Hủy</a>
+            <button type="submit" class="btn btn-primary">Lưu thay đổi</button>
+        </div>
     </div>
 </form>
 
 <div class="form-section" style="margin-top:24px">
-    <h2 class="form-section-title">🔐 Phiên đăng nhập</h2>
+    <h2 class="form-section-title">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Phiên đăng nhập
+    </h2>
     <p class="form-hint">Nghi ngờ tài khoản bị đăng nhập ở nơi khác? Đăng xuất khỏi
     <strong>mọi thiết bị</strong> (kể cả thiết bị hiện tại) — cần đăng nhập lại sau đó.</p>
     <form method="post" action="/auth/logout-all"
@@ -90,56 +101,5 @@
     <a href="/login" class="btn btn-primary">Đăng nhập</a>
 </div>
 {% endmatch %}
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Avatar upload — fetch POST /uploads/avatar (multipart/form-data),
-// điền URL trả về vào hidden field + preview <img>.
-(function() {
-    var input = document.getElementById('avatar-file-input');
-    var urlField = document.getElementById('f-avatar_url');
-    var preview = document.getElementById('avatar-preview');
-    var status = document.getElementById('avatar-upload-status');
-    if (!input || !urlField || !preview || !status) return;
-
-    input.addEventListener('change', function() {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        // Client-side size check (server validates again).
-        if (file.size > 5 * 1024 * 1024) {
-            status.textContent = '❌ Ảnh quá lớn (tối đa 5 MB).';
-            status.className = 'upload-status error';
-            return;
-        }
-        var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-        if (allowed.indexOf(file.type) === -1) {
-            status.textContent = '❌ Định dạng không hỗ trợ. Dùng JPG/PNG/WebP/GIF.';
-            status.className = 'upload-status error';
-            return;
-        }
-        status.textContent = '⏳ Đang tải lên...';
-        status.className = 'upload-status progress';
-        var fd = new FormData();
-        fd.append('file', file);
-        fetch('/uploads/avatar', { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    status.textContent = '❌ ' + data.error;
-                    status.className = 'upload-status error';
-                    return;
-                }
-                urlField.value = data.url;
-                preview.src = data.url;
-                status.textContent = '✅ Đã tải lên (' + Math.round(data.size / 1024) + ' KB)';
-                status.className = 'upload-status success';
-            })
-            .catch(function(err) {
-                status.textContent = '❌ Lỗi mạng: ' + err.message;
-                status.className = 'upload-status error';
-            });
-    });
-})();
-</script>
+</section>
 {% endblock %}

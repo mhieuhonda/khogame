@@ -3,8 +3,15 @@
 
 {% block content %}
 <section class="admin-page">
-    <h1>🛡️ Tin chờ duyệt ({{ total }})</h1>
-    <p>Các tin do người dùng đăng, đang chờ admin phê duyệt trước khi xuất bản công khai. Xem IP và user-agent để truy vết nếu có spam/abuse.</p>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Tin chờ duyệt ({{ total }})
+            </h1>
+            <p>Các tin do người dùng đăng, đang chờ admin phê duyệt trước khi xuất bản công khai. Xem IP và user-agent để truy vết nếu có spam/abuse.</p>
+        </div>
+    </div>
 
     <nav class="admin-tabs">
         <a href="/admin/news/pending" class="tab active">Chờ duyệt ({{ total }})</a>
@@ -13,7 +20,10 @@
 
     {% if items.is_empty() %}
     <div class="empty-state">
-        <p>✅ Không có tin nào đang chờ duyệt.</p>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Không có tin nào đang chờ duyệt</h3>
     </div>
     {% else %}
     <div class="admin-news-queue">
@@ -54,11 +64,11 @@
                 {% endif %}
             </div>
             <form method="post" action="/admin/news/{{ n.id }}/approve" class="admin-news-action">
-                <button type="submit" class="btn btn-success btn-sm">✅ Duyệt</button>
+                <button type="submit" class="btn btn-success btn-sm">Duyệt</button>
             </form>
             <form method="post" action="/admin/news/{{ n.id }}/reject" class="admin-news-action">
                 <input type="text" name="note" placeholder="Lý do từ chối (tùy chọn)" maxlength="500">
-                <button type="submit" class="btn btn-danger btn-sm">❌ Từ chối</button>
+                <button type="submit" class="btn btn-danger btn-sm">Từ chối</button>
             </form>
         </article>
         {% endfor %}
@@ -67,7 +77,7 @@
     {% if total_pages > 1 %}
     <nav class="pagination">
         {% if page > 1 %}<a href="?page={{ page - 1 }}" class="pagination-link" rel="prev">←</a>{% endif %}
-        <span>Trang {{ page }} / {{ total_pages }}</span>
+        <span class="pagination-info">Trang {{ page }} / {{ total_pages }}</span>
         {% if page < total_pages %}<a href="?page={{ page + 1 }}" class="pagination-link" rel="next">→</a>{% endif %}
     </nav>
     {% endif %}

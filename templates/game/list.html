@@ -13,17 +13,19 @@
 {% block content %}
 <section class="list-page">
     <div class="page-header">
-        <h1>{{ title }}</h1>
-        {% match category %}
-        {% when Option::Some with (cat) %}
-        <p>{{ cat.description.clone().unwrap_or_default() }}</p>
-        {% when Option::None %}
-        {% endmatch %}
-        {% match tag %}
-        {% when Option::Some with (t) %}
-        <p>Tag: <strong>{{ t.name }}</strong></p>
-        {% when Option::None %}
-        {% endmatch %}
+        <div>
+            <h1>{{ title }}</h1>
+            {% match category %}
+            {% when Option::Some with (cat) %}
+            <p>{{ cat.description.clone().unwrap_or_default() }}</p>
+            {% when Option::None %}
+            {% endmatch %}
+            {% match tag %}
+            {% when Option::Some with (t) %}
+            <p>Tag: <strong>{{ t.name }}</strong></p>
+            {% when Option::None %}
+            {% endmatch %}
+        </div>
     </div>
 
     {% if list_type != "featured" %}
@@ -42,7 +44,9 @@
 
     {% if games.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">🎮</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </div>
         <h3>Chưa có game nào</h3>
         <p>Hãy là người đầu tiên <a href="/games/new">đăng game</a>!</p>
     </div>
@@ -63,7 +67,7 @@
                     <div class="game-platforms">
                         {% for p in game.platforms %}
                         <span class="platform-icon platform-{{ p }}">
-                            {% if p == "android" %}🤖{% else if p == "ios" %}🍎{% else if p == "windows" %}🪟{% else if p == "linux" %}🐧{% else if p == "macos" %}💻{% endif %}
+                            {% if p == "android" %}AND{% else if p == "ios" %}iOS{% else if p == "windows" %}WIN{% else if p == "linux" %}LIN{% else if p == "macos" %}MAC{% endif %}
                         </span>
                         {% endfor %}
                     </div>
@@ -73,10 +77,10 @@
                     <h3 class="game-card-title">{{ game.title }}</h3>
                     <p class="game-card-excerpt">{{ game.excerpt.clone().unwrap_or_default()|truncate(100) }}</p>
                     <div class="game-card-meta">
-                        <span class="meta-item">👁️ {{ game.view_count|fmt_num }}</span>
-                        <span class="meta-item">⬇️ {{ game.download_count|fmt_num }}</span>
-                        <span class="meta-item">❤️ {{ game.like_count|fmt_num }}</span>
-                        <span class="meta-item">💬 {{ game.comment_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> {{ game.view_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> {{ game.download_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ game.like_count|fmt_num }}</span>
+                        <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> {{ game.comment_count|fmt_num }}</span>
                     </div>
                     <div class="game-card-author">
                         <span>{{ game.author_name }}</span>

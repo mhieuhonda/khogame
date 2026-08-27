@@ -1,15 +1,19 @@
 {% extends "layout.html" %}
 {% block title %}Chi tiết user: {{ user.display_name }}{% endblock %}
-
 {% block content %}
 <section class="admin-page">
     <div class="page-header">
-        <h1>👤 Chi tiết người dùng</h1>
-        <p><a href="/admin/users">← Quay lại danh sách</a></p>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                Chi tiết người dùng
+            </h1>
+            <p><a href="/admin/users" class="back-link">← Quay lại danh sách</a></p>
+        </div>
     </div>
 
     {% if is_self %}
-    <p class="warning">⚠️ Đây là tài khoản của chính bạn. Một số hành động (đổi role, cấm) bị hạn chế.</p>
+    <div class="warning" role="alert">Đây là tài khoản của chính bạn. Một số hành động (đổi role, cấm) bị hạn chế.</div>
     {% endif %}
 
     <div class="user-detail-grid">
@@ -62,7 +66,7 @@
         </div>
 
         <div class="user-detail-card">
-            <h2>🔒 Thông tin nhạy cảm <small>(chỉ admin xem được)</small></h2>
+            <h2>Thông tin nhạy cảm <small class="muted">(chỉ admin xem được)</small></h2>
             <p class="hint">IP và User-Agent dùng để truy vết spam/abuse. Moderator không thấy được mục này.</p>
 
             <h3>Đăng ký</h3>
@@ -102,10 +106,11 @@
     </div>
 
     <section class="admin-section">
-        <h2>🔑 Phiên đăng nhập ({{ sessions.len() }})</h2>
+        <h2>Phiên đăng nhập ({{ sessions.len() }})</h2>
         {% if sessions.is_empty() %}
         <p class="muted">Không có phiên nào.</p>
         {% else %}
+        <div class="admin-table-wrap">
         <table class="admin-table">
             <thead>
                 <tr><th>IP</th><th>User-Agent</th><th>Tạo lúc</th><th>Hết hạn</th><th>Trạng thái</th><th>Hành động</th></tr>
@@ -121,7 +126,7 @@
                         {% if s.expires_at > now %}<span class="badge badge-success">Còn hạn</span>{% else %}<span class="badge badge-muted">Hết hạn</span>{% endif %}
                     </td>
                     <td>
-                        <form method="post" action="/admin/sessions/{{ s.id }}/revoke" style="display:inline"
+                        <form method="post" action="/admin/sessions/{{ s.id }}/revoke"
                               onsubmit="return confirm('Thu hồi phiên này?')">
                             <button type="submit" class="btn btn-danger btn-sm">Thu hồi</button>
                         </form>
@@ -130,22 +135,25 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         {% endif %}
     </section>
 
     <section class="admin-section">
-        <h2>🛠️ Hành động quản trị</h2>
+        <h2>Hành động quản trị</h2>
         {% if !is_self %}
-        <form method="post" action="/admin/users/{{ user.id }}/role" style="display:inline-block;margin-right:8px">
-            <label>Đổi vai trò:</label>
-            <select name="role">
-                <option value="user" {% if user.role.label() == "Thành viên" %}selected{% endif %}>Thành viên</option>
-                <option value="moderator" {% if user.role.label() == "Điều hành viên" %}selected{% endif %}>Điều hành viên</option>
-                <option value="admin" {% if user.role.label() == "Quản trị viên" %}selected{% endif %}>Quản trị viên</option>
-            </select>
+        <form method="post" action="/admin/users/{{ user.id }}/role" class="admin-form-row" style="align-items:end">
+            <div style="flex:1">
+                <label>Đổi vai trò:</label>
+                <select name="role" class="form-control" style="margin-top:6px">
+                    <option value="user" {% if user.role.label() == "Thành viên" %}selected{% endif %}>Thành viên</option>
+                    <option value="moderator" {% if user.role.label() == "Điều hành viên" %}selected{% endif %}>Điều hành viên</option>
+                    <option value="admin" {% if user.role.label() == "Quản trị viên" %}selected{% endif %}>Quản trị viên</option>
+                </select>
+            </div>
             <button type="submit" class="btn btn-primary btn-sm">Cập nhật</button>
         </form>
-        <form method="post" action="/admin/users/{{ user.id }}/ban" style="display:inline-block"
+        <form method="post" action="/admin/users/{{ user.id }}/ban" style="margin-top:12px"
               onsubmit="return confirm({% if user.is_banned %}'Bỏ cấm user này?'{% else %}'Cấm user này?'{% endif %})">
             {% if user.is_banned %}
             <button type="submit" class="btn btn-outline btn-sm">Bỏ cấm</button>

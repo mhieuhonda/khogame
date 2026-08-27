@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "background_color": "#ffffff",
-  "theme_color": "#0f172a",
+  "theme_color": "#0d1117",
   "lang": "vi",
   "dir": "ltr",
   "orientation": "portrait-primary",

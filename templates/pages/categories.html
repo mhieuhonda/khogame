@@ -5,13 +5,20 @@
 {% block content %}
 <section class="categories-page">
     <div class="page-header">
-        <h1>📁 Tất cả thể loại</h1>
-        <p>{{ categories.len() }} thể loại đang có game trên Louis Space.</p>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Tất cả thể loại
+            </h1>
+            <p>{{ categories.len() }} thể loại đang có game trên Louis Space.</p>
+        </div>
     </div>
 
     {% if categories.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">📁</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </div>
         <h3>Chưa có thể loại nào</h3>
         <p>Quản trị viên chưa tạo thể loại nào. Hãy quay lại sau!</p>
     </div>

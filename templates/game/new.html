@@ -4,14 +4,22 @@
 
 {% block content %}
 <section class="page-header">
-    <h1>🎮 Đăng game mới</h1>
-    <p>Điền thông tin chi tiết về game của bạn. Link tải sẽ được ẩn, người dùng chỉ thấy nút tải cho từng nền tảng.</p>
+    <div>
+        <h1>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Đăng game mới
+        </h1>
+        <p>Điền thông tin chi tiết về game của bạn. Link tải sẽ được ẩn, người dùng chỉ thấy nút tải cho từng nền tảng.</p>
+    </div>
 </section>
 
 <form class="game-form" method="post" action="/games">
     <div class="form-grid">
         <div class="form-section">
-            <h2 class="form-section-title">📝 Thông tin cơ bản</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Thông tin cơ bản
+            </h2>
 
             <div class="form-group">
                 <label class="form-label" for="f-title">Tiêu đề game <span class="required">*</span></label>
@@ -29,7 +37,7 @@
                 <label class="form-label" for="f-content">Nội dung chi tiết <span class="required">*</span></label>
                 <textarea name="content" id="f-content" class="form-control form-control-editor" required rows="10" maxlength="50000"
                           placeholder="Mô tả chi tiết về gameplay, cốt truyện, đồ họa, âm thanh..."></textarea>
-                <small class="form-hint">Hỗ trợ Markdown cơ bản: **bold**, *italic*, [link](url)</small>
+                <small class="form-hint">Hỗ trợ Markdown cơ bản: <code>**bold**</code>, <code>*italic*</code>, <code>[link](url)</code></small>
             </div>
 
             <div class="form-row">
@@ -61,54 +69,50 @@
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">📱 Link tải về (Ẩn)</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Link tải về (Ẩn)
+            </h2>
             <p class="form-section-desc">
                 Link tải sẽ được ẩn khỏi người xem. Họ chỉ thấy nút "Tải về cho [nền tảng]" và khi bấm vào sẽ được chuyển đến link.
             </p>
 
             <div class="form-group">
-                <label class="form-label">
-                    <span class="platform-icon">🤖</span> Link tải Android
-                </label>
-                <input type="url" name="android_link" class="form-control" maxlength="2048"
+                <label class="form-label" for="f-android_link"><span class="platform-icon">AND</span> Link tải Android</label>
+                <input type="url" name="android_link" id="f-android_link" class="form-control" maxlength="2048"
                        placeholder="https://play.google.com/store/apps/details?id=...">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="f-ios_link">
-                    <span class="platform-icon">🍎</span> Link tải iOS
-                </label>
+                <label class="form-label" for="f-ios_link"><span class="platform-icon">iOS</span> Link tải iOS</label>
                 <input type="url" name="ios_link" id="f-ios_link" class="form-control" maxlength="2048"
                        placeholder="https://apps.apple.com/.../id...">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="f-windows_link">
-                    <span class="platform-icon">🪟</span> Link tải Windows
-                </label>
+                <label class="form-label" for="f-windows_link"><span class="platform-icon">WIN</span> Link tải Windows</label>
                 <input type="url" name="windows_link" id="f-windows_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="f-linux_link">
-                    <span class="platform-icon">🐧</span> Link tải Linux
-                </label>
+                <label class="form-label" for="f-linux_link"><span class="platform-icon">LIN</span> Link tải Linux</label>
                 <input type="url" name="linux_link" id="f-linux_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="f-macos_link">
-                    <span class="platform-icon">💻</span> Link tải macOS
-                </label>
+                <label class="form-label" for="f-macos_link"><span class="platform-icon">MAC</span> Link tải macOS</label>
                 <input type="url" name="macos_link" id="f-macos_link" class="form-control" maxlength="2048"
                        placeholder="https://...">
             </div>
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">🎨 Hình ảnh</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Hình ảnh
+            </h2>
 
             <div class="form-group">
                 <label class="form-label" for="f-cover_image">URL ảnh bìa</label>
@@ -119,11 +123,14 @@
             </div>
             <div class="form-group">
                 <label class="form-label">Tải ảnh bìa lên</label>
-                <div class="upload-zone" id="game-cover-upload-zone">
+                <div class="upload-zone" id="game-cover-upload-zone" data-upload-endpoint="/uploads/game/cover" data-max-size="10" data-url-target="#f-cover_image">
                     <div class="upload-preview-row">
                         <img id="game-cover-preview" alt="Cover preview" class="upload-preview-cover" />
                         <div class="upload-actions">
-                            <label for="game-cover-file-input" class="btn btn-ghost btn-sm">📂 Chọn ảnh</label>
+                            <label for="game-cover-file-input" class="btn btn-outline btn-sm">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Chọn ảnh
+                            </label>
                             <input type="file" id="game-cover-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
                             <small class="form-hint">JPG, PNG, WebP hoặc GIF. Tối đa 10 MB. Tỷ lệ 16:9.</small>
                             <div id="game-cover-upload-status" class="upload-status" role="status" aria-live="polite"></div>
@@ -146,7 +153,10 @@
         </div>
 
         <div class="form-section">
-            <h2 class="form-section-title">ℹ️ Thông tin bổ sung</h2>
+            <h2 class="form-section-title">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Thông tin bổ sung
+            </h2>
 
             <div class="form-row">
                 <div class="form-group">
@@ -207,58 +217,4 @@
         </button>
     </div>
 </form>
-{% endblock %}
-
-{% block scripts %}
-<script>
-// Game cover upload — fetch POST /uploads/game/cover, fill hidden URL
-// field + preview <img>.
-(function() {
-    var input = document.getElementById('game-cover-file-input');
-    var urlField = document.getElementById('f-cover_image');
-    var preview = document.getElementById('game-cover-preview');
-    var status = document.getElementById('game-cover-upload-status');
-    if (!input || !urlField || !preview || !status) return;
-
-    // Nếu URL field đã có giá trị (edit form), preview ngay.
-    if (urlField.value) preview.src = urlField.value;
-
-    input.addEventListener('change', function() {
-        var file = input.files && input.files[0];
-        if (!file) return;
-        if (file.size > 10 * 1024 * 1024) {
-            status.textContent = '❌ Ảnh quá lớn (tối đa 10 MB).';
-            status.className = 'upload-status error';
-            return;
-        }
-        var allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-        if (allowed.indexOf(file.type) === -1) {
-            status.textContent = '❌ Định dạng không hỗ trợ. Dùng JPG/PNG/WebP/GIF.';
-            status.className = 'upload-status error';
-            return;
-        }
-        status.textContent = '⏳ Đang tải lên...';
-        status.className = 'upload-status progress';
-        var fd = new FormData();
-        fd.append('file', file);
-        fetch('/uploads/game/cover', { method: 'POST', body: fd, credentials: 'same-origin' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.error) {
-                    status.textContent = '❌ ' + data.error;
-                    status.className = 'upload-status error';
-                    return;
-                }
-                urlField.value = data.url;
-                preview.src = data.url;
-                status.textContent = '✅ Đã tải lên (' + Math.round(data.size / 1024) + ' KB)';
-                status.className = 'upload-status success';
-            })
-            .catch(function(err) {
-                status.textContent = '❌ Lỗi mạng: ' + err.message;
-                status.className = 'upload-status error';
-            });
-    });
-})();
-</script>
 {% endblock %}

@@ -1,17 +1,28 @@
 {% extends "layout.html" %}
 {% block title %}Tin của tôi{% endblock %}
-
 {% block content %}
-<section class="my-news-page">
+<section class="compact-form-page my-news-page">
     <div class="page-header">
-        <h1>📰 Tin của tôi</h1>
-        <p>{{ items.len() }} bài viết. <a href="/news/new" class="btn btn-primary btn-sm">+ Đăng tin mới</a></p>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+                Tin của tôi
+            </h1>
+            <p>{{ items.len() }} bài viết.</p>
+        </div>
+        <a href="/news/new" class="btn btn-primary btn-sm">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Đăng tin mới
+        </a>
     </div>
 
     {% if items.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">📭</div>
-        <p>Bạn chưa đăng tin nào.</p>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+        </div>
+        <h3>Bạn chưa đăng tin nào</h3>
+        <p>Hãy chia sẻ tin tức game & công nghệ đầu tiên với cộng đồng.</p>
         <a href="/news/new" class="btn btn-primary">Đăng tin đầu tiên</a>
     </div>
     {% else %}
@@ -24,13 +35,13 @@
                 </h3>
                 <div class="my-news-meta">
                     <span class="badge {{ n.status.badge_class() }}">{{ n.status.label() }}</span>
-                    <span class="meta-item">👁️ {{ n.view_count|fmt_num }}</span>
-                    <span class="meta-item">❤️ {{ n.like_count|fmt_num }}</span>
-                    <span class="meta-item">💬 {{ n.comment_count|fmt_num }}</span>
-                    <span class="meta-item">📅 {{ n.created_at|format_datetime_vn }}</span>
+                    <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> {{ n.view_count|fmt_num }}</span>
+                    <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg> {{ n.like_count|fmt_num }}</span>
+                    <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> {{ n.comment_count|fmt_num }}</span>
+                    <span class="meta-item"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> {{ n.created_at|format_datetime_vn }}</span>
                 </div>
                 {% if n.status == NewsStatus::Rejected && !n.review_note.is_empty() %}
-                <p class="warning">Lý do từ chối: {{ n.review_note }}</p>
+                <p class="warning" style="margin-top:8px">Lý do từ chối: {{ n.review_note }}</p>
                 {% endif %}
             </div>
             <div class="my-news-actions">

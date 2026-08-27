@@ -3,9 +3,17 @@
 {% block content %}
 <section class="admin-page">
     <div class="page-header">
-        <h1>🎮 Game của tôi</h1>
-        <p>Quản lý tất cả game bạn đã đăng, kể cả bản nháp.</p>
-        <a href="/games/new" class="btn btn-primary">+ Đăng game mới</a>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                Game của tôi
+            </h1>
+            <p>Quản lý tất cả game bạn đã đăng, kể cả bản nháp.</p>
+        </div>
+        <a href="/games/new" class="btn btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            Đăng game mới
+        </a>
     </div>
 
     {% if !games.is_empty() %}
@@ -16,12 +24,15 @@
             {% for g in games %}
             <tr>
                 <td><a href="/games/{{ g.slug }}">{{ g.title }}</a>
-                    {% if g.is_featured %}<span class="status-badge" style="color:#f59e0b">⭐</span>{% endif %}</td>
+                    {% if g.is_featured %}<span class="status-badge" style="color:#d29922">★ Nổi bật</span>{% endif %}</td>
                 <td><span class="status-badge">{{ g.status.label() }}</span></td>
-                <td>👁️ {{ g.view_count|fmt_num }} · ⬇️ {{ g.download_count|fmt_num }} · ❤️ {{ g.like_count|fmt_num }} · 💬 {{ g.comment_count|fmt_num }}</td>
+                <td class="game-meta">{{ g.view_count|fmt_num }} view · {{ g.download_count|fmt_num }} tải · {{ g.like_count|fmt_num }} thích · {{ g.comment_count|fmt_num }} bl</td>
                 <td>{{ g.created_at.to_rfc3339()|time_ago }}</td>
                 <td class="admin-actions">
-                    <a href="/games/{{ g.slug }}/edit" class="btn btn-outline btn-sm">Sửa</a>
+                    <a href="/games/{{ g.slug }}/edit" class="btn btn-outline btn-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                        Sửa
+                    </a>
                     {% if g.status.label() != "Đã xuất bản" %}
                     <form hx-post="/games/{{ g.slug }}/publish" hx-target="find .alert-zone" hx-swap="innerHTML">
                         <button class="btn btn-primary btn-sm" type="submit">Xuất bản</button>
@@ -29,7 +40,10 @@
                     </form>
                     {% endif %}
                     <form hx-post="/games/{{ g.slug }}/delete" hx-confirm="Xóa game này?" hx-target="closest tr" hx-swap="outerHTML">
-                        <button class="btn btn-danger btn-sm" type="submit">Xóa</button>
+                        <button class="btn btn-danger btn-sm" type="submit">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Xóa
+                        </button>
                     </form>
                 </td>
             </tr>
@@ -50,7 +64,9 @@
     <div class="empty-state"><p>Không có game nào ở trang này.</p></div>
     {% else %}
     <div class="empty-state">
-        <div style="font-size:48px">🎮</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </div>
         <h3>Bạn chưa đăng game nào</h3>
         <p>Chia sẻ game đầu tiên của bạn với cộng đồng!</p>
         <a href="/games/new" class="btn btn-primary">Đăng game ngay</a>

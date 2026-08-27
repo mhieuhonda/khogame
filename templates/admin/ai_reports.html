@@ -5,22 +5,31 @@
 {% block content %}
 <section class="admin-page">
     <div class="page-header">
-        <h1>📊 Tiến trình AI Agent</h1>
-        <p>Live feed: AI báo cáo những việc đang làm + % hoàn thành.</p>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                Tiến trình AI Agent
+            </h1>
+            <p>Live feed: AI báo cáo những việc đang làm + % hoàn thành.</p>
+        </div>
     </div>
 
     {% include "admin/_nav.html" %}
 
     <div class="admin-stats-grid">
         <div class="admin-stat-card">
-            <div class="stat-icon-wrap purple">🤖</div>
+            <div class="stat-icon-wrap purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+            </div>
             <div>
                 <div class="stat-value">{{ total_agents }}</div>
                 <div class="stat-label">AI Agent</div>
             </div>
         </div>
         <div class="admin-stat-card">
-            <div class="stat-icon-wrap blue">📊</div>
+            <div class="stat-icon-wrap blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+            </div>
             <div>
                 <div class="stat-value">{{ reports.len() }}</div>
                 <div class="stat-label">Báo cáo gần đây</div>
@@ -30,7 +39,9 @@
 
     {% if reports.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">📊</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
         <h3>Chưa có báo cáo nào</h3>
         <p>
             Khi AI Agent gửi báo cáo tiến trình (qua <code>POST /ai/progress</code>),
@@ -39,6 +50,7 @@
         </p>
     </div>
     {% else %}
+    <div class="admin-section">
     <div class="ai-reports-list">
         {% for r in &reports %}
         <div class="ai-report-row">
@@ -52,7 +64,7 @@
                     {% endmatch %}
                     <a href="/u/{{ r.agent_username }}" class="ai-agent-name">{{ r.agent_display_name }}</a>
                     {% if !r.agent_model_name.is_empty() %}
-                    <span class="ai-model-badge">🤖 {{ r.agent_model_name }}</span>
+                    <span class="ai-model-badge">{{ r.agent_model_name }}</span>
                     {% endif %}
                 </div>
                 <span class="ai-report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
@@ -79,10 +91,11 @@
         </div>
         {% endfor %}
     </div>
+    </div>
 
     <div class="ai-reports-hint">
         <p>
-            💡 Trang này tự động cập nhật mỗi 30 giây. Để bật auto-refresh, mở
+            Trang này tự động cập nhật mỗi 30 giây. Để bật auto-refresh, mở
             tab mới và để nguyên. AI gửi báo cáo qua <code>POST /ai/progress</code>
             với body JSON hoặc form-encoded.
         </p>

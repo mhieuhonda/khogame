@@ -3,9 +3,14 @@
 {% block title %}Quản trị báo cáo{% endblock %}
 
 {% block content %}
-<section class="admin-reports-page">
+<section class="admin-page admin-reports-page">
     <div class="page-header">
-        <h1>🚩 Báo cáo</h1>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                Báo cáo
+            </h1>
+        </div>
         <div class="filter-tabs">
             <a href="/admin/reports" class="filter-tab {% if status_filter.is_none() %}active{% endif %}" {% if status_filter.is_none() %}aria-current="true"{% endif %}>Tất cả</a>
             <a href="/admin/reports?status=pending" class="filter-tab {% if status_filter.as_deref() == Some("pending") %}active{% endif %}" {% if status_filter.as_deref() == Some("pending") %}aria-current="true"{% endif %}>Chờ xử lý</a>
@@ -17,11 +22,14 @@
 
     {% if reports.is_empty() %}
     <div class="empty-state">
-        <div class="empty-icon">✅</div>
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
         <h3>Không có báo cáo nào</h3>
         <p>Tuyệt vời! Không có báo cáo nào cần xử lý lúc này.</p>
     </div>
     {% else %}
+    <div class="admin-section">
     <div class="reports-list">
         {% for r in reports %}
         <div class="report-row admin-report-row" id="report-{{ r.id }}">
@@ -58,6 +66,7 @@
         </div>
         {% endfor %}
     </div>
+    </div>
     {% set total_pages = (total + per_page - 1) / per_page %}
     {% if total_pages > 1 %}
     <nav class="pagination" aria-label="Phân trang báo cáo">
@@ -72,7 +81,7 @@
         {% if page < total_pages %}<a href="/admin/reports?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
         {% endmatch %}
     </nav>
-    <p style="color:var(--text-muted);font-size:13px">{{ total }} báo cáo · {{ per_page }}/trang</p>
+    <p class="muted" style="font-size:13px;text-align:center">{{ total }} báo cáo · {{ per_page }}/trang</p>
     {% endif %}
     {% endif %}
 </section>

@@ -2,7 +2,15 @@
 {% block title %}Quản lý repo GitHub{% endblock %}
 {% block content %}
 <section class="admin-page">
-    <div class="page-header"><h1>📦 Quản lý repo GitHub</h1><p>Kiểm duyệt các repo do người dùng đăng.</p></div>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                Quản lý repo GitHub
+            </h1>
+            <p>Kiểm duyệt các repo do người dùng đăng.</p>
+        </div>
+    </div>
     {% include "admin/_nav.html" %}
     <div class="admin-chip-row">
         <a href="/admin/repos" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}">Tất cả</a>
@@ -10,13 +18,14 @@
         <a href="/admin/repos?status=pending" class="admin-chip {% if status_filter.as_deref() == Some("pending") %}chip-active{% endif %}">Chờ duyệt</a>
         <a href="/admin/repos?status=hidden" class="admin-chip {% if status_filter.as_deref() == Some("hidden") %}chip-active{% endif %}">Đã ẩn</a>
     </div>
+    <div class="admin-section">
     <div class="reports-list">
         {% for r in repos %}
         <div class="report-row" id="repo-row-{{ r.id }}">
             <div class="report-info">
-                <a href="{{ r.html_url() }}" class="report-game-title" target="_blank" rel="noopener">📦 {{ r.full_name() }}</a>
+                <a href="{{ r.html_url() }}" class="report-game-title" target="_blank" rel="noopener">{{ r.full_name() }}</a>
                 <div class="report-meta">
-                    <span class="report-reason">⭐ {{ r.stars|fmt_num }} · 🍴 {{ r.forks|fmt_num }} · 🐛 {{ r.open_issues|fmt_num }}</span>
+                    <span class="report-reason">★ {{ r.stars|fmt_num }} · {{ r.forks|fmt_num }} fork · {{ r.open_issues|fmt_num }} issue</span>
                     {% if !r.language_or().is_empty() %}<span class="report-reporter">{{ r.language_or() }}</span>{% endif %}
                     <span class="report-reporter">bởi <a href="/u/{{ r.author_username }}">{{ r.author_name }}</a></span>
                     <span class="report-time">{{ r.created_at.to_rfc3339()|time_ago }}</span>
@@ -37,6 +46,7 @@
             </div>
         </div>
         {% endfor %}
+    </div>
     </div>
     {% if repos.is_empty() %}
     <div class="empty-state"><p>Chưa có repo nào.</p></div>

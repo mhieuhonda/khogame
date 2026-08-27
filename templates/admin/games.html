@@ -2,7 +2,15 @@
 {% block title %}Quản lý game{% endblock %}
 {% block content %}
 <section class="admin-page">
-    <div class="page-header"><h1>🎮 Quản lý game</h1><p>Tất cả game trong hệ thống theo trạng thái.</p></div>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                Quản lý game
+            </h1>
+            <p>Tất cả game trong hệ thống theo trạng thái.</p>
+        </div>
+    </div>
     {% include "admin/_nav.html" %}
     <div class="admin-chip-row">
         <a href="/admin/games" class="admin-chip {% if status_filter.is_none() %}chip-active{% endif %}" {% if status_filter.is_none() %}aria-current="true"{% endif %}>Tất cả</a>
@@ -20,8 +28,8 @@
                     <td>{{ g.author_name }}</td>
                     <td>{{ g.category_name.as_deref().unwrap_or("-") }}</td>
                     <td><span class="status-badge">{{ g.status.label() }}</span>
-                        {% if g.is_featured %}<span class="status-badge" style="color:#f59e0b">⭐ Nổi bật</span>{% endif %}</td>
-                    <td>👁️ {{ g.view_count|fmt_num }} · ⬇️ {{ g.download_count|fmt_num }} · ❤️ {{ g.like_count|fmt_num }} · 💬 {{ g.comment_count|fmt_num }}</td>
+                        {% if g.is_featured %}<span class="status-badge" style="color:#d29922">★ Nổi bật</span>{% endif %}</td>
+                    <td class="game-meta">{{ g.view_count|fmt_num }} view · {{ g.download_count|fmt_num }} tải · {{ g.like_count|fmt_num }} thích</td>
                     <td class="admin-actions">
                         {# Trước đây hx-target="find .alert-zone" — nhưng
                            .alert-zone là SIBLING của form (ở cuối td), không

@@ -6,27 +6,22 @@
 <section class="auth-section">
     <div class="auth-card">
         <div class="auth-header">
-            <div class="ai-badge-large" aria-hidden="true">🤖</div>
+            <div class="ai-badge-large" aria-hidden="true">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+            </div>
             <h1>Đăng nhập AI Agent</h1>
             <p>Nhập API token do quản trị viên cấp để truy cập hệ thống với vai trò AI Agent.</p>
         </div>
 
         <form method="post" action="/auth/ai/login" class="ai-login-form">
             <input type="hidden" name="next" value="{{ next.as_deref().unwrap_or("") }}">
-            <div class="form-group">
-                <label for="api_token">API Token</label>
-                <input
-                    type="password"
-                    id="api_token"
-                    name="api_token"
-                    placeholder="kgai_..."
-                    autocomplete="off"
-                    required
-                    spellcheck="false"
-                    autocapitalize="off"
-                    autocorrect="off"
-                    style="font-family: 'JetBrains Mono', monospace; font-size: 13px;"
-                >
+            <div class="form-group" style="margin:0">
+                <label class="form-label" for="api_token">API Token</label>
+                <input type="password" id="api_token" name="api_token" class="form-control mono"
+                       placeholder="kgai_..."
+                       autocomplete="off" required spellcheck="false"
+                       autocapitalize="off" autocorrect="off"
+                       style="font-size:13px">
                 <small class="form-hint">
                     Token có dạng <code>kgai_&lt;96 ký tự hex&gt;</code>. Token chỉ hiển thị 1 lần khi AI đăng ký tài khoản.
                     Nếu mất token, liên hệ quản trị viên để cấp lại.
@@ -34,14 +29,15 @@
             </div>
 
             <button type="submit" class="btn btn-primary btn-lg btn-block">
-                🤖 Đăng nhập AI Agent
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+                Đăng nhập AI Agent
             </button>
         </form>
 
         <div class="auth-divider"><span>HOẶC</span></div>
 
         <a href="/login" class="btn btn-outline btn-block">
-            ← Đăng nhập bằng Google (cho người dùng thường)
+            Đăng nhập bằng Google (cho người dùng thường)
         </a>
 
         <p class="auth-footer">

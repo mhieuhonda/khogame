@@ -3,19 +3,27 @@
 {% block content %}
 <section class="admin-page">
     <div class="page-header">
-        <h1>🗂️ Thể loại tin tức</h1>
-        <p>Thêm, sửa, xóa thể loại cho tin tức. Người dùng sẽ chọn từ danh sách này khi đăng tin mới.</p>
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Thể loại tin tức
+            </h1>
+            <p>Thêm, sửa, xóa thể loại cho tin tức. Người dùng sẽ chọn từ danh sách này khi đăng tin mới.</p>
+        </div>
     </div>
     {% include "admin/_nav.html" %}
 
     {# Section 1: form thêm category mới #}
     <section class="admin-section">
-        <div class="section-header"><h2>➕ Thêm thể loại mới</h2></div>
+        <div class="section-header"><h2>Thêm thể loại mới</h2></div>
         <form action="/admin/news-categories/save" method="post" class="admin-form-row">
             <input type="text" name="name" placeholder="Tên thể loại (vd: Sự kiện)" maxlength="50" required>
             <input type="text" name="icon" placeholder="Icon emoji (vd: 🎉)" maxlength="50">
             <input type="text" name="description" placeholder="Mô tả ngắn" maxlength="500">
-            <button class="btn btn-primary" type="submit">Thêm</button>
+            <button class="btn btn-primary" type="submit">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                Thêm
+            </button>
         </form>
         <p class="hint" style="margin-top:8px">
             <small>Slug tự sinh từ tên (vd "Sự kiện" → "su-kien"). Nếu 2 tên khác ra cùng slug, system sẽ báo trùng.</small>
@@ -42,18 +50,18 @@
             <tr>
                 {# Dùng `form=` HTML5 cho 1 form duy nhất / hàng #}
                 <td>
-                    <input type="text" name="name" value="{{ c.name }}" form="ncat-edit-{{ c.id }}" maxlength="50" required>
+                    <input type="text" name="name" value="{{ c.name }}" form="ncat-edit-{{ c.id }}" maxlength="50" required class="input-wide">
                 </td>
                 <td><code>{{ c.slug }}</code></td>
-                <td>{{ c.news_count }}</td>
+                <td class="mono">{{ c.news_count }}</td>
                 <td>
                     <input type="text" name="description" value="{{ c.description }}" class="input-wide" form="ncat-edit-{{ c.id }}" maxlength="500">
                 </td>
                 <td>
-                    <input type="text" name="icon" value="{{ c.icon }}" form="ncat-edit-{{ c.id }}" maxlength="50" placeholder="vd 🎮">
+                    <input type="text" name="icon" value="{{ c.icon }}" form="ncat-edit-{{ c.id }}" maxlength="50" placeholder="vd 🎮" class="input-wide" style="width:80px">
                 </td>
                 <td>
-                    <input type="number" name="sort_order" value="{{ c.sort_order }}" form="ncat-edit-{{ c.id }}" min="0" max="9999" style="width:64px">
+                    <input type="number" name="sort_order" value="{{ c.sort_order }}" form="ncat-edit-{{ c.id }}" min="0" max="9999" style="width:64px" class="input-wide">
                 </td>
                 <td>
                     <label class="admin-checkbox">

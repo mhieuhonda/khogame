@@ -2,34 +2,41 @@
 {% block title %}Quản lý bình luận{% endblock %}
 {% block content %}
 <section class="admin-page">
-    <div class="page-header"><h1>💬 Quản lý bình luận</h1><p>100 bình luận gần nhất.</p></div>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Quản lý bình luận
+            </h1>
+            <p>100 bình luận gần nhất.</p>
+        </div>
+    </div>
     {% include "admin/_nav.html" %}
+    <div class="admin-section">
     <div class="reports-list">
         {% for c in comments %}
         <div class="report-row" id="comment-row-{{ c.id }}">
             <div class="report-info">
                 {# Link đúng loại nội dung: /games/{slug} cho game,
-                   /news/{slug} cho tin tức — trước đây chỉ hard-code
-                   /games/ nên news comment không hiện/không truy cập được. #}
+                   /news/{slug} cho tin tức. #}
                 <a href="{{ c.item_url() }}" class="report-game-title">{{ c.user_name }} @ {{ c.item_title }}</a>
                 <div class="report-meta">
                     <span class="report-reason">{{ c.kind_label() }} · {{ c.content|truncate(120) }}</span>
                     <span class="report-time">{{ c.created_at.to_rfc3339()|time_ago }}</span>
-                    {% if c.is_pinned %}<span class="status-badge" style="color:#f59e0b">📌 Ghim</span>{% endif %}
+                    {% if c.is_pinned %}<span class="status-badge" style="color:#d29922">Ghim</span>{% endif %}
                 </div>
             </div>
             <div class="report-actions admin-actions">
                 {# hx-target="#pin-result-{id}" + hx-swap="outerHTML" sẽ
                    thay span này bằng partial comment_item.html trả về từ
-                   handler. Trước đây "find .pin-zone" không match vì
-                   .pin-zone là SIBLING của form, không phải descendant
-                   trong cùng form subtree. Đổi sang id tường minh. #}
+                   handler. #}
                 <form hx-post="/admin/comments/{{ c.id }}/pin" hx-target="#pin-result-{{ c.id }}" hx-swap="outerHTML"><button class="btn btn-outline btn-sm" type="submit">{% if c.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}</button></form>
                 <form hx-post="/admin/comments/{{ c.id }}/delete" hx-confirm="Xóa bình luận này?" hx-target="closest .report-row" hx-swap="outerHTML"><button class="btn btn-danger btn-sm" type="submit">Xóa</button></form>
                 <span class="pin-zone" id="pin-result-{{ c.id }}"></span>
             </div>
         </div>
         {% endfor %}
+    </div>
     </div>
     {% if comments.is_empty() %}
     <div class="empty-state"><p>Chưa có bình luận nào.</p></div>

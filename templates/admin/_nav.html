@@ -1,9 +1,5 @@
 {# v1.4.0 SECURITY: ẩn các mục admin-only khỏi moderator.
-   Trước đây nav hiển thị TẤT CẢ link cho mọi staff — moderator nhìn thấy
-   menu "Người dùng", "Cài đặt", "Audit log", "Phiên đăng nhập"… và chỉ
-   khi click mới nhận 403. Việc lộ cấu trúc admin với moderator là rủi ro
-   bảo mật (điểm attack surface lộ, lộ workflow admin, lộ tên endpoint).
-   Giờ: nav check `current_user.role.is_admin()` để ẩn các mục chỉ admin
+   Nav check `current_user.role.is_admin()` để ẩn các mục chỉ admin
    được phép. Moderator chỉ thấy mục phục vụ duyệt tin / comment / báo cáo
    — đúng thẩm quyền.
    Mapping permission → handler:
@@ -11,25 +7,73 @@
    - is_admin() (admin only): users, settings, sessions, audit, news/pending, news/all
    #}
 <nav class="admin-nav" aria-label="Menu quản trị">
-    <a href="/admin" class="admin-nav-link">📊 Tổng quan</a>
-    <a href="/admin/games" class="admin-nav-link">🎮 Game</a>
+    <a href="/admin" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg>
+        Tổng quan
+    </a>
+    <a href="/admin/games" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        Game
+    </a>
     {% match current_user %}
     {% when Option::Some with (u) %}{% if u.role.is_admin() %}
-    <a href="/admin/news/all" class="admin-nav-link admin-only">📰 Tin tức</a>
-    <a href="/admin/news/pending" class="admin-nav-link admin-only">📨 Duyệt tin</a>
-    <a href="/admin/users" class="admin-nav-link admin-only">👥 Người dùng</a>
-    <a href="/admin/news-categories" class="admin-nav-link admin-only">🗂️ Thể loại tin</a>
-    <a href="/admin/settings" class="admin-nav-link admin-only">⚙️ Cài đặt</a>
-    <a href="/admin/sessions" class="admin-nav-link admin-only">🔐 Phiên đăng nhập</a>
-    <a href="/admin/audit" class="admin-nav-link admin-only">📜 Audit log</a>
+    <a href="/admin/news/all" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v1m2 13a2 2 0 0 1-2-2V7m2 13a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/></svg>
+        Tin tức
+    </a>
+    <a href="/admin/news/pending" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Duyệt tin
+    </a>
+    <a href="/admin/users" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Người dùng
+    </a>
+    <a href="/admin/news-categories" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Thể loại tin
+    </a>
+    <a href="/admin/settings" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Cài đặt
+    </a>
+    <a href="/admin/sessions" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Phiên đăng nhập
+    </a>
+    <a href="/admin/audit" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Audit log
+    </a>
     {% endif %}
     {% when Option::None %}
     {% endmatch %}
-    <a href="/admin/comments" class="admin-nav-link">💬 Bình luận</a>
-    <a href="/admin/repos" class="admin-nav-link">📦 Repo GitHub</a>
-    <a href="/admin/reports" class="admin-nav-link">🚩 Báo cáo</a>
-    <a href="/admin/categories" class="admin-nav-link">📁 Thể loại game</a>
-    <a href="/admin/ai-agents" class="admin-nav-link">🤖 AI Agents</a>
-    <a href="/admin/ai-reports" class="admin-nav-link">📊 Tiến trình AI</a>
-    <a href="/" class="admin-nav-link">🌐 Xem site</a>
+    <a href="/admin/comments" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Bình luận
+    </a>
+    <a href="/admin/repos" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        Repo GitHub
+    </a>
+    <a href="/admin/reports" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        Báo cáo
+    </a>
+    <a href="/admin/categories" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Thể loại game
+    </a>
+    <a href="/admin/ai-agents" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+        AI Agents
+    </a>
+    <a href="/admin/ai-reports" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        Tiến trình AI
+    </a>
+    <a href="/" class="admin-nav-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        Xem site
+    </a>
 </nav>

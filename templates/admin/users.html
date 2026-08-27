@@ -2,14 +2,24 @@
 {% block title %}Quản lý người dùng{% endblock %}
 {% block content %}
 <section class="admin-page">
-    <div class="page-header"><h1>👥 Quản lý người dùng</h1><p>Tổng cộng {{ total }} người dùng.</p></div>
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Quản lý người dùng
+            </h1>
+            <p>Tổng cộng {{ total }} người dùng.</p>
+        </div>
+    </div>
     {% include "admin/_nav.html" %}
     <form action="/admin/users" method="get" class="admin-search-form" role="search">
         <input type="search" name="q" id="admin-user-search" value="{{ search }}" placeholder="Tìm theo tên, email, username..." aria-label="Tìm người dùng theo tên, email hoặc username">
-        <button class="btn btn-primary btn-sm" type="submit">Tìm</button>
+        <button class="btn btn-primary btn-sm" type="submit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            Tìm
+        </button>
     </form>
-    {# v1.4.0: filter chip theo trạng thái thật — Banned/New/Online/Active/Inactive/Dormant.
-       Trước đây badge chỉ phân biệt Banned/Hoạt động nên filter không có ý nghĩa. #}
+    {# v1.4.0: filter chip theo trạng thái thật — Banned/New/Online/Active/Inactive/Dormant. #}
     <div class="admin-filter-chips" role="group" aria-label="Lọc theo trạng thái">
         <a href="/admin/users{% if !search.is_empty() %}?q={{ search|esc }}{% endif %}" class="chip {% if status_filter.is_empty() %}chip-active{% endif %}">Tất cả ({{ total }})</a>
         {% for (key, label, count) in status_options %}
@@ -41,16 +51,15 @@
                             </select>
                         </form>
                     </td>
-                    <td>{{ u.games_count }}</td>
+                    <td class="mono">{{ u.games_count }}</td>
                     <td id="ban-{{ u.id }}">
-                        {# v1.4.0: badge tính theo is_banned + created_at + last_seen_at
-                           Admin rà soát thấy đúng trạng thái thật. #}
+                        {# v1.4.0: badge tính theo is_banned + created_at + last_seen_at #}
                         <span class="status-badge" style="color:{{ u.status_badge_color() }}">{{ u.status_badge_label() }}</span>
                     </td>
                     <td>
                         {% match u.last_seen_at %}
                         {% when Option::Some with (t) %}<small>{{ t.to_rfc3339()|time_ago }}</small>
-                        {% when Option::None %}<small style="color:#94a3b8">chưa đăng nhập</small>
+                        {% when Option::None %}<small class="muted">chưa đăng nhập</small>
                         {% endmatch %}
                     </td>
                     <td>{{ u.created_at.to_rfc3339()|time_ago }}</td>

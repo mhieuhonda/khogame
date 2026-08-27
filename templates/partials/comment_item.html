@@ -11,7 +11,7 @@
     <div class="comment-body">
         <div class="comment-header">
             <span class="comment-author">{{ comment.user_name }}</span>
-            {% if comment.is_pinned %}<span class="pin-badge">📌 Ghim</span>{% endif %}
+            {% if comment.is_pinned %}<span class="pin-badge">Ghim</span>{% endif %}
             <span class="comment-time" title="{{ comment.created_at.to_rfc3339() }}">
                 {{ comment.created_at.to_rfc3339()|time_ago }}
             </span>
@@ -26,20 +26,28 @@
                     hx-disabled-elt="this"
                     aria-pressed="{% if comment.is_liked %}true{% else %}false{% endif %}"
                     aria-label="Thích bình luận — {{ comment.like_count }} lượt thích">
-                ❤️ <span class="like-count" aria-hidden="true">{{ comment.like_count }}</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="{% if comment.is_liked %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                <span class="like-count" aria-hidden="true">{{ comment.like_count }}</span>
             </button>
             {% match current_user %}
             {% when Option::Some with (cu) %}
-            <button class="comment-action reply-btn" onclick="toggleReplyForm('{{ comment.id }}')">💬 Trả lời</button>
+            <button class="comment-action reply-btn" onclick="toggleReplyForm('{{ comment.id }}')">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Trả lời
+            </button>
                 {% if cu.id == comment.user_id %}
-                <button class="comment-action" onclick="toggleEditForm('{{ comment.id }}')">✏️ Sửa</button>
+                <button class="comment-action" onclick="toggleEditForm('{{ comment.id }}')">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    Sửa
+                </button>
                 <button class="comment-action delete-comment danger"
                         hx-delete="/comments/{{ comment.id }}"
                         hx-target="closest .comment-item"
                         hx-swap="outerHTML"
                         hx-disabled-elt="this"
                         hx-confirm="Bạn chắc chắn muốn xóa bình luận này?">
-                    🗑️ Xóa
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    Xóa
                 </button>
                 {% endif %}
                 {% if cu.role.is_staff() %}
@@ -48,7 +56,8 @@
                         hx-target="closest .comment-item"
                         hx-swap="outerHTML"
                         hx-disabled-elt="this">
-                    📌 {% if comment.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/></svg>
+                    {% if comment.is_pinned %}Bỏ ghim{% else %}Ghim{% endif %}
                 </button>
                 {% endif %}
             {% when Option::None %}
@@ -58,29 +67,29 @@
         {% match current_user %}
         {% when Option::Some with (cu) %}
             {% if cu.id == comment.user_id %}
-            <div class="reply-form-container edit-form-container" id="edit-form-{{ comment.id }}" style="display:none;">
+            <div class="reply-form-container edit-form-container" id="edit-form-{{ comment.id }}" hidden>
                 <form hx-post="/comments/{{ comment.id }}/edit" hx-target="closest .comment-item" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
                     <textarea name="content" required rows="2" maxlength="1000">{{ comment.content }}</textarea>
                     <div>
                         <button type="submit" class="btn btn-primary btn-sm">Lưu</button>
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('edit-form-{{ comment.id }}').style.display='none'">Hủy</button>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('edit-form-{{ comment.id }}').hidden = true">Hủy</button>
                     </div>
                 </form>
             </div>
             {% endif %}
         {% when Option::None %}
         {% endmatch %}
-        <div class="reply-form-container" id="reply-form-{{ comment.id }}" style="display:none;">
+        <div class="reply-form-container" id="reply-form-{{ comment.id }}" hidden>
             <form hx-post="/games/{{ game_slug }}/comments"
                   hx-target="#replies-{{ comment.id }}"
                   hx-swap="beforeend"
                   hx-disabled-elt="find button[type=submit]"
-                  hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').style.display='none';}">
+                  hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').hidden = true;}">
                 <input type="hidden" name="parent_id" value="{{ comment.id }}">
                 <textarea name="content" placeholder="Trả lời bình luận..." required rows="2" maxlength="1000"></textarea>
                 <div>
                     <button type="submit" class="btn btn-primary btn-sm">Gửi trả lời</button>
-                    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reply-form-{{ comment.id }}').style.display='none'">Hủy</button>
+                    <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reply-form-{{ comment.id }}').hidden = true">Hủy</button>
                 </div>
             </form>
         </div>

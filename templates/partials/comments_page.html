@@ -2,7 +2,7 @@
 {% include "partials/comment_list_loop.html" %}
 {% if has_more %}
 <div class="comments-load-more">
-    <button class="btn btn-ghost btn-sm"
+    <button class="btn btn-outline btn-sm"
             hx-get="/games/{{ game_slug }}/comments?page={{ page + 1 }}"
             hx-target="closest .comments-load-more"
             hx-swap="outerHTML">Tải thêm bình luận ({% if remaining > 0 %}còn {{ remaining }}{% endif %})</button>
