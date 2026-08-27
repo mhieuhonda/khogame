@@ -50,14 +50,23 @@ pub struct GoogleTokenResponse {
 
 #[must_use]
 pub fn build_auth_url(state: &AppState, csrf_token: &str) -> String {
+    // v2.1.0 FIX "Google hỏi lại consent mỗi lần đăng nhập":
+    // TRƯỚC ĐÂY gửi `prompt=consent` + `access_type=offline` → Google buộc
+    // hiển thị màn hình đồng ý (bấm "Tiếp tục") MỖI LẦN đăng nhập, kể cả
+    // khi user đã đồng ý trước đó — ngược với hành vi chuẩn của các website
+    // khác. refresh_token trả về cũng KHÔNG bao giờ được dùng (dead code).
+    //
+    // SAU FIX: bỏ cả 2 param. Google giờ nhớ lần đồng ý đầu tiên:
+    //   - User đang đăng nhập Google (1 tài khoản) + đã consent →
+    //     redirect thẳng về callback KHÔNG hỏi gì thêm (1 cú click).
+    //   - User có nhiều tài khoản Google → Google hiện bảng chọn tài khoản
+    //     (chuẩn mọi website), vẫn không hỏi lại consent.
     let params = [
         ("client_id", state.config.google_client_id.as_str()),
         ("redirect_uri", state.config.google_redirect_uri.as_str()),
         ("response_type", "code"),
         ("scope", "openid email profile"),
         ("state", csrf_token),
-        ("access_type", "offline"),
-        ("prompt", "consent"),
     ];
     let query = serde_urlencoded::to_string(params).unwrap_or_default();
     format!("https://accounts.google.com/o/oauth2/v2/auth?{query}")

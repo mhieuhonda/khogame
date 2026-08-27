@@ -33,7 +33,26 @@
                     {% endmatch %}
                 </h1>
                 <p class="profile-username">@{{ user.username }}</p>
+                {# === Khung chức vụ (v2.1.0) ===
+                   Admin bật hiệu ứng: chữ rainbow + khung lửa rực cháy.
+                   Mod bật hiệu ứng: glitch. Member/AI: badge thường.
+                   Tắt hiệu ứng (trong /profile/edit) → badge thường. #}
+                {% if preferences.role_badge_effects && user.role.is_admin() %}
+                <p class="profile-role-wrap">
+                    <span class="role-badge role-badge-admin">
+                        <svg class="role-badge-flame" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.94 2.76-1.44 4.02-1.94 6.54-.27 1.36.28 2.68 1.6 2.9 1.2.2 2.34-.66 2.34-2.02 2.1 1.55 3.5 3.6 3.5 5.88a5.5 5.5 0 1 1-11 0C6.5 10.4 10.35 6.98 12 2z"/></svg>
+                        <span class="role-badge-text">{{ user.role.label() }}</span>
+                    </span>
+                </p>
+                {% else if preferences.role_badge_effects && user.role.is_moderator() %}
+                <p class="profile-role-wrap">
+                    <span class="role-badge role-badge-mod">
+                        <span class="role-badge-text" data-text="{{ user.role.label() }}">{{ user.role.label() }}</span>
+                    </span>
+                </p>
+                {% else %}
                 <p class="profile-role">{{ user.role.label() }}</p>
+                {% endif %}
 
                 {% match ai_profile %}
                 {% when Option::Some with (p) %}

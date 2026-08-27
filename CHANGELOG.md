@@ -9,6 +9,96 @@ tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [2.1.0] — 2026-08-27 — Fix 3 lỗi nghiêm trọng + khung chức vụ hiệu ứng + bảo mật + tốc độ
+
+Bản patch lớn hướng production: sửa 3 bug người dùng báo cáo (menu
+desktop, trang lỗi HTML thuần, Google OAuth hỏi lại consent), thêm điểm
+nhấn khung chức vụ Admin/Mod, tăng bảo mật (CSRF Origin check toàn site)
+và tối ưu tốc độ không đổi giao diện.
+
+### 🐛 Bug fixes (3 lỗi nghiêm trọng)
+
+- **FIX thanh ba gạch (hamburger) biến mất trên desktop**: `.menu-toggle`
+  mặc định `display:none`, chỉ hiện ở màn hình ≤900px — trong khi mega
+  menu là navigation CHÍNH của site → người dùng máy tính không vào được
+  Đăng game / Đăng tin / Game của tôi / Quản trị... Giờ hamburger hiển
+  thị ở mọi kích thước màn hình (mobile giữ nguyên).
+- **FIX trang lỗi hiện HTML thuần**: mọi lỗi 404/403/500/OAuth render
+  `partials/error.html` — fragment không có stylesheet → bấm link hỏng
+  là thấy chữ trơn trụi. Middleware `error_page_mw` mới đọc marker
+  `ErrorPageInfo` từ response: request browser (Accept: text/html) được
+  render lại bằng trang lỗi đầy đủ giao diện (sync theme + nút về trang
+  chủ + mã sự cố), request HTMX giữ nguyên partial để swap, client
+  không-browser (curl/API) không đổi hành vi.
+- **FIX Google OAuth hỏi lại "Tiếp tục" mỗi lần đăng nhập**:
+  `build_auth_url` gửi `prompt=consent` + `access_type=offline` → Google
+  buộc hiện màn đồng ý MỖI LẦN login dù user đã đồng ý trước đó (ngược
+  với mọi website khác); refresh_token trả về cũng không bao giờ dùng.
+  Bỏ cả 2 param → đăng nhập lần sau Google redirect thẳng về web
+  (nhiều tài khoản thì hiện bảng chọn, không hỏi lại consent).
+
+### ✨ Khung chức vụ hiệu ứng (điểm nhấn mới)
+
+- **Quản trị viên**: khung chức vụ chữ **rainbow chạy màu** + **khung lửa
+  rực cháy** (border gradient động 2 lớp flame liếm quanh viền, glow
+  nhấp nháy, icon lửa flicker) — mượt 60fps, thuần CSS không JS.
+- **Người Điều Hành**: khung chức vụ hiệu ứng **Glitch** (RGB-split
+  burst ngắn chu kỳ 2.4s, tinh tế không chói mắt).
+- **Thành viên**: badge thường, không hiệu ứng.
+- **Bật/tắt trong Chỉnh sửa hồ sơ** (`/profile/edit`, checkbox chỉ hiện
+  với staff): lưu vào preference `role_badge_effects` (migration 016,
+  mặc định BẬT). Member đổi hồ sơ không ghi đè giá trị này — được thăng
+  chức sau này vẫn hưởng hiệu ứng mặc định.
+- Tôn trọng `prefers-reduced-motion`: người dùng nhạy cảm chuyển động
+  thấy badge tĩnh (admin vẫn giữ rainbow gradient + viền lửa đứng yên).
+
+### 🔒 Bảo mật
+
+- **CSRF Origin check toàn site** (middleware `origin_check`): mọi
+  POST/PUT/PATCH/DELETE verify Origin (fallback Referer) khớp Host
+  hoặc BASE_URL — cross-site form auto-submit bị 403 ngay trước khi
+  handler chạy. `Origin: null` (sandboxed iframe/data: URI) bị chặn.
+  Client không-browser (curl, AI Agent Bearer token) không gửi Origin
+  → không bị ảnh hưởng. 10 unit test mới phủ mọi nhánh.
+- **CSP chặt hơn**: thêm `manifest-src 'self'`, `worker-src 'self'`.
+  (Không dùng `upgrade-insecure-requests` — sẽ phá dev http://localhost
+  vì subresource bị upgrade sang https.)
+- **Session cache có invalidation chủ động**: logout / logout-all /
+  admin thu hồi phiên / admin đổi role / admin ban → xoá cache NGAY,
+  không có cửa sổ "vẫn còn đăng nhập" như các cache TTL thông thường.
+
+### ⚡ Tốc độ (không đổi giao diện)
+
+- **Session cache TTL 10s**: mỗi request của user đã đăng nhập tốn 2
+  query DB (session→user) chỉ để xác thực — 1 trang web bắn 5-15 request
+  HTMX song song giờ dùng chung 1 lần lookup. Smoke test: 5 request
+  trang hồ sơ liên tiếp trong ~49ms.
+- **Font cache 1 năm immutable** (`/static/fonts/*`): variable font
+  self-hosted tên file ổn định — returning visitor bỏ hẳn ~100KB tải
+  font mỗi lần, FCP/FCI nhanh rõ rệt.
+- **Static cache 7 ngày → 30 ngày** + stale-while-revalidate 1 ngày:
+  CSS/JS đổi qua cache-bust `?v=2.1.0` nên kéo dài an toàn tuyệt đối.
+- Bump cache-bust toàn template `?v=2.0.0` → `?v=2.1.0`.
+
+### 🧪 Kiểm định
+
+- 203 unit test pass (thêm 10 test CSRF Origin check + test
+  is_moderator/preference default).
+- Smoke test end-to-end với PostgreSQL 17 thật: 17 kịch bản (home,
+  404 full page browser vs partial HTMX vs curl, CSRF chặn/cho qua,
+  cache headers font/css, OAuth URL không còn prompt=consent, badge
+  admin rainbow/lửa bật/tắt qua form POST thật, badge mod glitch,
+  logout invalidate session tức thì).
+
+### 📦 Upgrade
+
+- Migration 016 tự chạy lúc khởi động (thêm cột `role_badge_effects`
+  vào `user_preferences`, DEFAULT TRUE, không lock bảng).
+- Không đổi env bắt buộc. Không đổi API. Không đổi template HTMX
+  contract.
+
+---
+
 ## [2.0.0] — 2026-08-27 — Major: redesign toàn bộ giao diện "Prism" (GitHub Primer + Vercel Geist + X)
 
 🚀 **Major release** — viết lại hoàn toàn frontend (CSS + HTML + JS) với

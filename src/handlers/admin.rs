@@ -680,6 +680,9 @@ pub async fn set_role(
         ));
     }
     UserRepo::set_role(&state.db, id, &form.role).await?;
+    // v2.1.0 — xoá session cache của user này để quyền mới lan truyền ngay
+    // (SESSION_CACHE có thể đang giữ bản User với role cũ trong 10s).
+    crate::middleware::invalidate_session_cache_for_user(id);
     audit(
         &state,
         admin.id,
@@ -722,6 +725,9 @@ pub async fn set_banned(
     }
     let banned = form.ban.is_some();
     UserRepo::set_banned(&state.db, id, banned).await?;
+    // v2.1.0 — ban/unban phải có hiệu lực NGAY với session cache (user bị
+    // ban không được tiếp tục lướt web trong cửa sổ TTL 10s).
+    crate::middleware::invalidate_session_cache_for_user(id);
     audit(
         &state,
         admin.id,
@@ -1500,10 +1506,13 @@ pub async fn revoke_session(
     // Chặn self-revoke: admin không thể thu hồi chính phiên đang dùng.
     // Trước đây doc hứa nhưng code không check → admin vô tình click
     // "Thu hồi" trên session của mình → bị đá ra /login giữa task.
+    // Lấy target_hash TRƯỚC khi delete (sau khi delete row đã mất, hash
+    // không còn để xoá session cache).
+    let target_hash = SessionRepo::find_token_hash_by_id(&state.db, id).await?;
     if let Some(my_cookie) = jar.get(crate::auth::SESSION_COOKIE) {
         let my_token_hash = crate::auth::hash_token(my_cookie.value());
-        if let Some(target_hash) = SessionRepo::find_token_hash_by_id(&state.db, id).await? {
-            if target_hash == my_token_hash {
+        if let Some(hash) = &target_hash {
+            if *hash == my_token_hash {
                 return Err(AppError::BadRequest(
                     "Không thể thu hồi phiên đang dùng — dùng /auth/logout hoặc /auth/logout-all"
                         .into(),
@@ -1512,6 +1521,12 @@ pub async fn revoke_session(
         }
     }
     let deleted = SessionRepo::delete_by_id(&state.db, id).await?;
+    // v2.1.0 — thu hồi phiên phải đá user ra NGAY, không đợi TTL cache 10s.
+    if deleted {
+        if let Some(hash) = &target_hash {
+            crate::middleware::invalidate_session_cache(hash);
+        }
+    }
     audit(
         &state,
         user.id,

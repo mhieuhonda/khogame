@@ -1,6 +1,7 @@
 use crate::handlers;
 use crate::middleware::{
-    maintenance_guard, rate_limit, require_admin, require_ai_agent, security_headers,
+    error_page_mw, maintenance_guard, origin_check, rate_limit, require_admin, require_ai_agent,
+    security_headers,
 };
 use crate::state::AppState;
 use axum::middleware;
@@ -340,16 +341,30 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api", internal_routes)
         .nest("/ai", ai_internal_routes)
         .merge(admin_routes)
-        // Static assets: cache 7 ngày (immutable) để browser tái dụng,
-        // giảm tải server & tăng tốc trang. CSS/JS/ảnh ít khi đổi; nếu đổi
-        // thì sẽ bump version qua URL query (?v=0.6.0) hoặc đổi tên file.
+        // Static assets (v2.1.0 PERF — 2 tầng cache):
+        //   /static/fonts/* — cache 1 NĂM immutable: font là variable font
+        //     self-hosted, tên file ổn định (inter-var-latin.woff2...), không
+        //     bao giờ sửa in-place (muốn đổi font thì đổi tên file). Returning
+        //     visitor bỏ hẳn 1 round-trip tải font (~100KB) — FCP nhanh hơn rõ.
+        //   /static/* (css/js/img) — cache 30 ngày + stale-while-revalidate
+        //     1 ngày (tăng từ 7 ngày v2.0.0): CSS/JS đổi qua cache-bust
+        //     ?v=x.y.z trong URL nên kéo dài cache an toàn tuyệt đối.
+        .nest_service(
+            "/static/fonts",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),
+                ))
+                .service(ServeDir::new("static/fonts")),
+        )
         .nest_service(
             "/static",
             tower::ServiceBuilder::new()
                 .layer(SetResponseHeaderLayer::if_not_present(
                     axum::http::header::CACHE_CONTROL,
                     axum::http::HeaderValue::from_static(
-                        "public, max-age=604800, stale-while-revalidate=86400",
+                        "public, max-age=2592000, stale-while-revalidate=86400",
                     ),
                 ))
                 .service(ServeDir::new("static")),
@@ -391,12 +406,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .fallback(handlers::pages::not_found)
         // Layer ordering (outermost LAST):
         //   1. rate_limit          (innermost — quyết định per-path/IP, có thể 429)
-        //   2. maintenance_guard    (có thể 503 khi bảo trì)
-        //   3. security_headers     (áp dụng cho MỌI response, kể cả 429/503)
-        //   4. PropagateRequestIdLayer
-        //   5. TraceLayer
-        //   6. SetRequestIdLayer    (set x-request-id đầu tiên cho các layer khác log)
-        //   7. CompressionLayer    (outermost — nén body cuối cùng)
+        //   2. origin_check        (v2.1.0 — CSRF: verify Origin cho unsafe method)
+        //   3. error_page_mw       (v2.1.0 — render trang lỗi full UI cho browser)
+        //   4. maintenance_guard    (có thể 503 khi bảo trì)
+        //   5. security_headers     (áp dụng cho MỌI response, kể cả 429/503)
+        //   6. PropagateRequestIdLayer
+        //   7. TraceLayer
+        //   8. SetRequestIdLayer    (set x-request-id đầu tiên cho các layer khác log)
+        //   9. CompressionLayer    (outermost — nén body cuối cùng)
         //
         // TRƯỚC ĐÂY (bug): security_headers được `.layer()` đầu tiên → thành
         // INNERMOST. Khi rate_limit short-circuit trả 429, response KHÔNG
@@ -408,6 +425,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // headers. Comment cũ "đặt ngoài cùng" đã nói đúng ý nhưng code sai
         // thứ tự `.layer()` (layer gọi sau sẽ là outer).
         .layer(middleware::from_fn_with_state(state.clone(), rate_limit))
+        // v2.1.0 — CSRF defense-in-depth: verify Origin/Referer cho mọi
+        // POST/PUT/PATCH/DELETE. Đặt NGOÀI rate_limit để request bị chặn
+        // CSRF không tốn quota rate-limit; đặt TRONG error_page_mw để
+        // lỗi 403 từ check này được render thành trang đầy đủ cho browser.
+        .layer(middleware::from_fn_with_state(state.clone(), origin_check))
+        // v2.1.0 — render trang lỗi đầy đủ giao diện cho browser navigation
+        // (fix bug "HTML thuần" khi bấm link 404/403). Xem middleware.rs.
+        .layer(middleware::from_fn_with_state(state.clone(), error_page_mw))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             maintenance_guard,

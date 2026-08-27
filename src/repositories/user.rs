@@ -231,7 +231,7 @@ impl UserRepo {
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn get_preferences(pool: &PgPool, user_id: Uuid) -> AppResult<UserPreference> {
         let pref = sqlx::query_as::<_, UserPreference>(
-            r"SELECT theme, email_notifications, show_online, language
+            r"SELECT theme, email_notifications, show_online, language, role_badge_effects
               FROM user_preferences WHERE user_id = $1",
         )
         .bind(user_id)
@@ -250,21 +250,24 @@ impl UserRepo {
         email_notif: bool,
         show_online: bool,
         language: &str,
+        role_badge_effects: bool,
     ) -> AppResult<()> {
         sqlx::query(
-            r"INSERT INTO user_preferences (user_id, theme, email_notifications, show_online, language)
-              VALUES ($1, $2, $3, $4, $5)
+            r"INSERT INTO user_preferences (user_id, theme, email_notifications, show_online, language, role_badge_effects)
+              VALUES ($1, $2, $3, $4, $5, $6)
               ON CONFLICT (user_id) DO UPDATE SET
                 theme = EXCLUDED.theme,
                 email_notifications = EXCLUDED.email_notifications,
                 show_online = EXCLUDED.show_online,
-                language = EXCLUDED.language",
+                language = EXCLUDED.language,
+                role_badge_effects = EXCLUDED.role_badge_effects",
         )
         .bind(user_id)
         .bind(theme)
         .bind(email_notif)
         .bind(show_online)
         .bind(language)
+        .bind(role_badge_effects)
         .execute(pool)
         .await?;
         Ok(())

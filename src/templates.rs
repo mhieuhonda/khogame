@@ -530,6 +530,8 @@ pub struct ErrorTemplate {
     pub status: u16,
     pub message: String,
     pub current_user: Option<user::User>,
+    /// Mã sự cố cho lỗi 5xx — user báo admin kèm mã này để tra log nhanh.
+    pub request_id: Option<String>,
 }
 
 /// Trang danh sách tất cả thể loại

@@ -5,6 +5,23 @@ use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;
 
+/// Marker gắn vào response sinh ra từ `AppError::into_response()` để
+/// middleware `error_page_mw` (middleware.rs) biết mà thay body bằng trang
+/// lỗi đầy đủ giao diện khi request đến từ browser (không phải HTMX).
+///
+/// TRƯỚC ĐÂY (bug v2.0.0): mọi lỗi (404/403/500/OAuth...) render
+/// `partials/error.html` — một fragment KHÔNG có cặp thẻ html/head/stylesheet.
+/// Người dùng bấm link hỏng hoặc vào trang bị cấm sẽ thấy chữ trơn trụi
+/// không giao diện ("html thuần"). Middleware đọc marker này để render lại
+/// trang lỗi chuẩn (templates/error.html) cho browser navigation, giữ
+/// nguyên partial cho HTMX swap.
+#[derive(Debug, Clone)]
+pub struct ErrorPageInfo {
+    pub status: u16,
+    pub message: String,
+    pub request_id: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("Không tìm thấy trang: {0}")]
@@ -133,6 +150,12 @@ impl IntoResponse for AppError {
             .then(uuid::Uuid::new_v4)
             .map(|u| u.to_string());
 
+        let error_info = ErrorPageInfo {
+            status: status.as_u16(),
+            message: msg.clone(),
+            request_id: request_id.clone(),
+        };
+
         ErrorPartial {
             message: msg,
             status: status.as_u16(),
@@ -150,6 +173,9 @@ impl IntoResponse for AppError {
                         resp.headers_mut().insert("x-request-id", v);
                     }
                 }
+                // Marker cho error_page_mw: browser navigation sẽ được thay
+                // body bằng trang lỗi đầy đủ giao diện (xem ErrorPageInfo).
+                resp.extensions_mut().insert(error_info);
                 resp
             },
         )

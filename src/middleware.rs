@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::models::user::User;
 use crate::repositories::{AiAgentRepo, SessionRepo, UserRepo};
 use crate::state::AppState;
+use askama::Template as _;
 use axum::{
     extract::{ConnectInfo, FromRef, FromRequestParts, Request, State},
     http::{request::Parts, HeaderValue, StatusCode},
@@ -21,16 +22,95 @@ impl FromRef<Arc<Self>> for AppState {
     }
 }
 
+/// Cache session user ngắn hạn (v2.1.0 PERF): `token_hash` → `(User, khi cache)`.
+///
+/// Mỗi request của user đã đăng nhập tốn 2 query DB (session→user_id,
+/// user_id→user) chỉ để xác thực — trước đây lặp lại cho MỌI request
+/// (trang + HTMX partials + API). Cache 10 giây cắt 2 query này khỏi
+/// hot path: các request liên tiếp trong 10s (điển hình: 1 trang web
+/// bắn 5-15 request song song) dùng chung 1 lần lookup.
+///
+/// Đánh đổi: thay đổi quyền/ban có thể trễ tối đa 10s. ĐỀU bị invalidation
+/// chủ động phủ kín: logout, logout-all, admin revoke session, admin set
+/// role/ban (gọi `invalidate_session_cache_for_user`).
+/// Kiểu map cache session — tách alias để tránh clippy::type_complexity.
+type SessionCacheMap = std::collections::HashMap<String, (Arc<User>, std::time::Instant)>;
+
+static SESSION_CACHE: std::sync::OnceLock<std::sync::Mutex<SessionCacheMap>> =
+    std::sync::OnceLock::new();
+
+/// TTL cache session — đủ dài để phục vụ burst request của 1 page load,
+/// đủ ngắn để thay đổi quyền lan truyền gần như tức thời.
+const SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Xoá 1 session khỏi cache (key = token hash). Gọi khi logout /
+/// revoke — user bị đá ra NGAY LẬP TỨC, không đợi TTL.
+pub fn invalidate_session_cache(token_hash: &str) {
+    if let Some(map) = SESSION_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.remove(token_hash);
+    }
+}
+
+/// Xoá MỌI session của 1 user khỏi cache (logout-all, admin đổi role/ban).
+pub fn invalidate_session_cache_for_user(user_id: Uuid) {
+    if let Some(map) = SESSION_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.retain(|_, (u, _)| u.id != user_id);
+    }
+}
+
 /// Extracts the current user from the request, if any.
+///
+/// DB path: session token (hash) → user_id → user. Cache path: hit trong
+/// 10s thì trả thẳng không đụng DB (xem SESSION_CACHE).
 pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<User> {
     let token = jar.get(SESSION_COOKIE)?.value().to_string();
     let token_hash = hash_token(&token);
+
+    // === Fast path: cache hit (không chạm DB) ===
+    if let Some(map) = SESSION_CACHE.get() {
+        let map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((user, cached_at)) = map.get(&token_hash) {
+            if cached_at.elapsed() < SESSION_CACHE_TTL {
+                if user.is_banned {
+                    return None;
+                }
+                let user = (**user).clone();
+                drop(map);
+                touch_last_seen(state, &user);
+                return Some(user);
+            }
+        }
+    }
+
+    // === Slow path: query DB như cũ ===
     let user_id = SessionRepo::find_user_by_token(&state.db, &token_hash)
         .await
         .ok()??;
     let user = UserRepo::find_by_id(&state.db, user_id).await.ok()??;
     if user.is_banned {
         return None;
+    }
+    // Lưu vào cache cho các request kế tiếp trong cửa sổ TTL.
+    // Cleanup khi map phình (nhiều user ghé trong 10s) — retain entry còn hạn.
+    if let Some(map) = SESSION_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if map.len() > 5_000 {
+            map.retain(|_, (_, at)| at.elapsed() < SESSION_CACHE_TTL);
+        }
+        map.insert(
+            token_hash,
+            (Arc::new(user.clone()), std::time::Instant::now()),
+        );
     }
     // Cập nhật last_seen_at tối đa 1 lần/giờ/user (throttle in-memory):
     // trước đây chỉ cập nhật lúc đăng nhập → hồ sơ 'hoạt động lần cuối'
@@ -950,13 +1030,261 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     //   frame-ancestors 'none' (chống nhúng iframe)
     //   base-uri 'self'
     //   form-action 'self' (form chỉ submit về chính site)
+    //   + manifest-src 'self', worker-src 'self' (v2.1.0 — chặn tighter
+    //     fallback default-src cho manifest/worker future)
+    //   LƯU Ý: KHÔNG dùng upgrade-insecure-requests — directive này upgrade
+    //   cả subresource http://localhost trong môi trường dev (localhost là
+    //   "potentially trustworthy" nên browser vẫn áp dụng) → CSS/JS bị request
+    //   qua https://localhost → chết toàn bộ dev environment.
     headers.insert(
         "content-security-policy",
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'"
         ),
     );
     response
+}
+
+// ============================================================
+// Error page middleware (v2.1.0)
+//
+// FIX bug "trang lỗi hiện HTML thuần": AppError::into_response render
+// partials/error.html (fragment KHÔNG có <html>/CSS) cho MỌI request.
+// Khi browser điều hướng trực tiếp tới URL lỗi (bấm link hỏng, vào trang
+// bị cấm, OAuth callback fail...) người dùng thấy chữ trơn không giao diện.
+//
+// Middleware này đọc marker `ErrorPageInfo` từ response extension:
+//   - Request HTMX (header HX-Request: true) → giữ nguyên partial
+//     (HTMX swap fragment vào DOM hiện tại — đúng thiết kế).
+//   - Request browser (Accept chứa text/html) → render lại body bằng
+//     templates/error.html — trang lỗi standalone có đầy đủ stylesheet,
+//     sync theme, nút về trang chủ. Giữ nguyên status + headers gốc.
+//   - Request khác (curl, API client với Accept: application/json...)
+//     → giữ nguyên như cũ (không đoán mò content-type).
+// ============================================================
+pub async fn error_page_mw(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    // Capture thông tin cần từ request TRƯỚC khi next.run() consume nó.
+    let is_htmx = request
+        .headers()
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    let accepts_html = request
+        .headers()
+        .get(axum::http::header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|a| a.contains("text/html"));
+    let jar = CookieJar::from_headers(request.headers());
+
+    let response = next.run(request).await;
+
+    // Chỉ can thiệp khi response là lỗi từ AppError (có marker) VÀ
+    // request đến từ browser navigation (không phải HTMX, chấp nhận HTML).
+    if is_htmx || !accepts_html {
+        return response;
+    }
+    let Some(info) = response
+        .extensions()
+        .get::<crate::error::ErrorPageInfo>()
+        .cloned()
+    else {
+        return response;
+    };
+
+    // Lấy user hiện hành (best-effort — lỗi DB thì render trang lỗi
+    // không có user, vẫn đẹp hơn fragment trơn).
+    let current_user = current_user_from_jar(&state, &jar).await;
+
+    // Render trang lỗi đầy đủ giao diện.
+    let full_page = crate::templates::ErrorTemplate {
+        status: info.status,
+        message: info.message.clone(),
+        current_user,
+        request_id: info.request_id.clone(),
+    }
+    .render()
+    .unwrap_or_default();
+
+    // Giữ nguyên status + headers của response gốc (security headers,
+    // x-request-id, retry-after...), chỉ thay body.
+    let (parts, _old_body) = response.into_parts();
+    let mut new_resp = axum::response::Html(full_page).into_response();
+    // Copy status
+    if let Ok(st) = StatusCode::from_u16(info.status) {
+        *new_resp.status_mut() = st;
+    }
+    // Copy headers gốc đè lên headers mới (trừ Content-Length sẽ được
+    // axum tính lại — into_parts đã set Content-Length của body cũ).
+    let new_headers = new_resp.headers_mut();
+    let keys: Vec<axum::http::HeaderName> = parts.headers.keys().cloned().collect();
+    for key in keys {
+        if key == axum::http::header::CONTENT_LENGTH {
+            continue;
+        }
+        let values: Vec<HeaderValue> = parts.headers.get_all(&key).iter().cloned().collect();
+        new_headers.remove(&key);
+        for v in values {
+            new_headers.append(&key, v);
+        }
+    }
+    // Extensions của response cũ KHÔNG copy được type-erased sang response
+    // mới — nhưng không sao: các layer bên ngoài (security_headers,
+    // PropagateRequestId, Compression) đã/không cần đọc extension này;
+    // marker ErrorPageInfo chỉ cần cho middleware này (đã tiêu thụ).
+    let _ = parts.extensions;
+    new_resp
+}
+
+// ============================================================
+// Origin check middleware (v2.1.0 — CSRF defense-in-depth)
+//
+// SameSite=Lax cookie đã chặn phần lớn CSRF, nhưng defense-in-depth
+// yêu cầu thêm xác thực Origin cho mọi request đổi-trạng-thái
+// (POST/PUT/PATCH/DELETE): cross-site form auto-submit sẽ có Origin
+// của site tấn công → mismatch → 403 ngay tại middleware, handler
+// không bao giờ được gọi.
+//
+// Quy tắc (OWASP Origin Verification):
+//   - Origin có          → host phải khớp Host header HOẶC base_url host.
+//   - Origin vắng, Referer có → Referer host phải khớp (tương tự).
+//   - Cả hai vắng        → cho qua (curl, AI agent Bearer token, client
+//     không phải browser — không thể là browser hiện đại vì mọi browser
+//     đều gửi Origin cho cross-origin POST & form POST).
+//   - Origin: null (sandboxed iframe / data: URI) → chặn (vector tấn công).
+//
+// So sánh với CHÍNH Host header của request (không chỉ base_url) để
+// không vỡ khi site phục vụ nhiều domain (apex + www) hoặc BASE_URL
+// cấu hình lệch. Host spoof bị reverse proxy (Traefik) chặn sẵn — chỉ
+// route request tới host đã đăng ký.
+// ============================================================
+pub async fn origin_check(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    let method = request.method().clone();
+    let is_unsafe = matches!(
+        method,
+        axum::http::Method::POST
+            | axum::http::Method::PUT
+            | axum::http::Method::PATCH
+            | axum::http::Method::DELETE
+    );
+    if !is_unsafe {
+        return Ok(next.run(request).await);
+    }
+
+    let host = request
+        .headers()
+        .get(axum::http::header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .map(|h| h.split(':').next().unwrap_or("").to_lowercase())
+        .unwrap_or_default();
+    let origin = request
+        .headers()
+        .get(axum::http::header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string());
+    let referer = request
+        .headers()
+        .get(axum::http::header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim().to_string());
+
+    if let Some(err) = check_origin_headers(
+        origin.as_deref(),
+        referer.as_deref(),
+        &host,
+        &state.config.base_url,
+    ) {
+        tracing::warn!(
+            "CSRF Origin check FAIL: method={} host={host} origin={origin:?} referer={referer:?}",
+            method
+        );
+        return Err(err);
+    }
+
+    Ok(next.run(request).await)
+}
+
+/// So sánh Origin/Referer với Host + base_url. Trả `Some(AppError)` nếu
+/// từ chối, `None` nếu cho qua.
+fn check_origin_headers(
+    origin: Option<&str>,
+    referer: Option<&str>,
+    host: &str,
+    base_url: &str,
+) -> Option<AppError> {
+    let base_host = base_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+
+    /// Lấy hostname từ Origin/Referer value: bỏ scheme, port, path.
+    fn hostname_of(url: &str) -> &str {
+        url.trim()
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap_or("")
+            .split(':')
+            .next()
+            .unwrap_or("")
+    }
+
+    let host_match = |url: &str| -> bool {
+        let h = hostname_of(url).to_lowercase();
+        if h.is_empty() {
+            return false;
+        }
+        // Khớp Host của request NÀY (đa domain vẫn ổn) hoặc base_url.
+        (!host.is_empty() && h == host) || (!base_host.is_empty() && h == base_host)
+    };
+
+    match (
+        origin.filter(|o| !o.is_empty()),
+        referer.filter(|r| !r.is_empty()),
+    ) {
+        (Some(o), _) => {
+            // Origin: null → luôn chặn (sandboxed iframe / data: URI attack).
+            if o.eq_ignore_ascii_case("null") {
+                return Some(AppError::Forbidden(
+                    "Yêu cầu không hợp lệ (origin null)".into(),
+                ));
+            }
+            if host_match(o) {
+                None
+            } else {
+                Some(AppError::Forbidden(
+                    "Yêu cầu không đến từ domain hợp lệ".into(),
+                ))
+            }
+        }
+        // Origin vắng (client không-browser hoặc browser rất cũ) → xét Referer.
+        (None, Some(r)) => {
+            if host_match(r) {
+                None
+            } else {
+                Some(AppError::Forbidden(
+                    "Yêu cầu không đến từ domain hợp lệ".into(),
+                ))
+            }
+        }
+        // Không có cả hai → client không phải browser (curl, AI agent) →
+        // cho qua; rate limit + auth vẫn bảo vệ endpoint.
+        (None, None) => None,
+    }
 }
 
 // ============================================================
@@ -1037,6 +1365,101 @@ where
             .filter(|u| u.role.is_ai_agent())
             .map(|u| Self(u.clone()))
             .ok_or(StatusCode::UNAUTHORIZED)
+    }
+}
+
+#[cfg(test)]
+mod origin_check_tests {
+    use super::check_origin_headers;
+
+    const HOST: &str = "louis.vangioitutien.com";
+    const BASE: &str = "https://louis.vangioitutien.com";
+
+    #[test]
+    fn same_origin_passes() {
+        // Form POST từ chính site: Origin khớp Host → cho qua.
+        assert!(
+            check_origin_headers(Some("https://louis.vangioitutien.com"), None, HOST, BASE)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn cross_site_origin_blocked() {
+        // Cross-site form auto-submit: Origin của attacker → 403.
+        assert!(check_origin_headers(Some("https://evil.example"), None, HOST, BASE).is_some());
+    }
+
+    #[test]
+    fn origin_null_blocked() {
+        // Sandbox iframe / data: URI → Origin: null → chặn.
+        assert!(check_origin_headers(Some("null"), None, HOST, BASE).is_some());
+    }
+
+    #[test]
+    fn referer_fallback_passes() {
+        // Browser cũ không gửi Origin nhưng gửi Referer khớp host → qua.
+        assert!(check_origin_headers(
+            None,
+            Some("https://louis.vangioitutien.com/games/abc"),
+            HOST,
+            BASE
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn referer_fallback_blocked() {
+        assert!(
+            check_origin_headers(None, Some("https://evil.example/phish"), HOST, BASE).is_some()
+        );
+    }
+
+    #[test]
+    fn no_headers_passes_for_non_browser() {
+        // curl / AI agent không gửi Origin lẫn Referer → cho qua
+        // (rate limit + auth vẫn bảo vệ).
+        assert!(check_origin_headers(None, None, HOST, BASE).is_none());
+    }
+
+    #[test]
+    fn port_suffix_matched() {
+        // Dev localhost:3000 — Origin có port, Host có port → strip port
+        // rồi so hostname (cả 2 đều "localhost").
+        assert!(check_origin_headers(
+            Some("http://localhost:3000"),
+            None,
+            "localhost:3000",
+            "http://localhost:3000"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn base_url_match_passes_when_host_differs() {
+        // Host header thiếu/lệch nhưng Origin khớp BASE_URL → vẫn qua
+        // (đề phòng proxy không forward Host).
+        assert!(
+            check_origin_headers(Some("https://louis.vangioitutien.com"), None, "", BASE).is_none()
+        );
+    }
+
+    #[test]
+    fn empty_origin_ignored_falls_to_referer() {
+        // Origin rỗng ("" — header lỗi) → coi như vắng, xét Referer.
+        assert!(check_origin_headers(None, Some("https://evil.example"), HOST, BASE).is_some());
+    }
+
+    #[test]
+    fn subdomain_not_accepted() {
+        // Subdomain lạ KHÔNG được tự động chấp nhận (evil.louis... khác host).
+        assert!(check_origin_headers(
+            Some("https://evil-louis.vangioitutien.com"),
+            None,
+            HOST,
+            BASE
+        )
+        .is_some());
     }
 }
 

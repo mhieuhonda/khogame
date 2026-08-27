@@ -111,6 +111,9 @@ pub struct ProfileForm {
     pub language: Option<String>,
     pub email_notifications: Option<String>,
     pub show_online: Option<String>,
+    /// v2.1.0 — bật/tắt hiệu ứng khung chức vụ (rainbow+lửa cho Admin,
+    /// glitch cho Mod). Checkbox có name này = bật, vắng = tắt.
+    pub role_effects: Option<String>,
 }
 
 /// # Errors
@@ -174,6 +177,19 @@ pub async fn update_profile(
     };
     let email_notif = form.email_notifications.is_some();
     let show_online = form.show_online.is_some();
+    // Hiệu ứng khung chức vụ: form chỉ render checkbox `role_effects` cho
+    // staff (Admin/Mod). Với member, checkbox vắng mặt → nếu ghi thẳng
+    // `false` thì khi member được thăng chức sau này, hiệu ứng bị TẮT oan
+    // (trái với mặc định bật). Giải pháp: staff đọc từ form, member giữ
+    // nguyên giá trị cũ (hoặc default true nếu chưa từng lưu).
+    let role_badge_effects = if user.role.is_staff() {
+        form.role_effects.is_some()
+    } else {
+        UserRepo::get_preferences(&state.db, user.id)
+            .await
+            .map(|p| p.role_badge_effects)
+            .unwrap_or(true)
+    };
     UserRepo::update_preferences(
         &state.db,
         user.id,
@@ -181,6 +197,7 @@ pub async fn update_profile(
         email_notif,
         show_online,
         language,
+        role_badge_effects,
     )
     .await?;
 

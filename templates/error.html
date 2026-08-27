@@ -6,7 +6,7 @@
     <title>Lỗi {{ status }} - Louis Space</title>
     <meta name="robots" content="noindex">
     <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
-    <link rel="stylesheet" href="/static/css/style.css?v=2.0.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.1.0">
     <script>
     // Đồng bộ theme user đã chọn (localStorage) thay vì cứng dark —
     // user light mode không bị chói tối đột ngột khi gặp lỗi.
@@ -37,6 +37,11 @@
             <div class="error-code">{{ status }}</div>
             <h1>Oops!</h1>
             <p>{{ message }}</p>
+            {% match request_id %}
+            {% when Option::Some with (rid) %}
+            <p class="muted" style="margin-bottom:8px"><small>Mã sự cố: <code>{{ rid }}</code> — báo cho admin kèm mã này để được hỗ trợ nhanh hơn.</small></p>
+            {% when Option::None %}
+            {% endmatch %}
             {% if status == 404 %}
             <form action="/search" method="get" class="error-search" role="search" style="max-width:420px;margin:0 auto 16px;display:flex;gap:8px">
                 <input type="text" name="q" placeholder="Tìm game khác..." aria-label="Tìm game" class="form-control" style="flex:1">

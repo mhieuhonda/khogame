@@ -22,6 +22,11 @@ impl UserRole {
     pub const fn is_admin(&self) -> bool {
         matches!(self, Self::Admin)
     }
+    /// True nếu đây là moderator (không phải admin).
+    #[must_use]
+    pub const fn is_moderator(&self) -> bool {
+        matches!(self, Self::Moderator)
+    }
     #[must_use]
     pub const fn is_staff(&self) -> bool {
         matches!(self, Self::Admin | Self::Moderator)
@@ -249,12 +254,32 @@ pub struct UserForModerator {
     pub games_count: i64,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize, FromRow)]
+/// Preference của user (bảng user_preferences).
+///
+/// `Default` thủ công (không derive) để `role_badge_effects` mặc định
+/// `true` — khớp DEFAULT TRUE của cột trong DB (migration 016): user
+/// chưa từng lưu preference nào vẫn thấy hiệu ứng khung chức vụ.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct UserPreference {
     pub theme: String,
     pub email_notifications: bool,
     pub show_online: bool,
     pub language: String,
+    /// Hiệu ứng khung chức vụ trên hồ sơ (rainbow+lửa cho Admin,
+    /// glitch cho Mod) — chỉ có tác dụng với staff. Migration 016.
+    pub role_badge_effects: bool,
+}
+
+impl Default for UserPreference {
+    fn default() -> Self {
+        Self {
+            theme: String::from("dark"),
+            email_notifications: true,
+            show_online: true,
+            language: String::from("vi"),
+            role_badge_effects: true,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -290,6 +315,25 @@ mod tests {
         assert_eq!(UserRole::Moderator.label(), "Điều hành viên");
         assert_eq!(UserRole::Admin.label(), "Quản trị viên");
         assert_eq!(UserRole::AiAgent.label(), "Tác nhân AI");
+    }
+
+    #[test]
+    fn test_is_moderator_exact() {
+        // is_moderator phải CHÍNH XÁC Moderator — admin không tính là mod
+        // (dùng để chọn hiệu ứng glitch thay vì rainbow+lửa).
+        assert!(UserRole::Moderator.is_moderator());
+        assert!(!UserRole::Admin.is_moderator());
+        assert!(!UserRole::User.is_moderator());
+        assert!(!UserRole::AiAgent.is_moderator());
+    }
+
+    #[test]
+    fn test_user_preference_default_role_badge_effects_on() {
+        // Default phải bật hiệu ứng — khớp DEFAULT TRUE trong DB (016).
+        let p = UserPreference::default();
+        assert!(p.role_badge_effects);
+        assert_eq!(p.theme, "dark");
+        assert_eq!(p.language, "vi");
     }
 
     #[test]

@@ -236,6 +236,9 @@ pub async fn logout(
     if let Some(token) = jar.get(auth::SESSION_COOKIE) {
         let token_hash = auth::hash_token(token.value());
         SessionRepo::delete(&state.db, &token_hash).await?;
+        // v2.1.0 — xoá session cache để user bị đá ra NGAY (không đợi TTL 10s
+        // của SESSION_CACHE — logout mà 10s sau vẫn còn đăng nhập là bug).
+        crate::middleware::invalidate_session_cache(&token_hash);
     }
     let mut new_jar = jar;
     auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
@@ -255,6 +258,8 @@ pub async fn logout_all(
     jar: CookieJar,
 ) -> AppResult<(CookieJar, Redirect)> {
     SessionRepo::delete_all_for_user(&state.db, user.id).await?;
+    // v2.1.0 — xoá toàn bộ session cache của user khỏi mọi thiết bị.
+    crate::middleware::invalidate_session_cache_for_user(user.id);
     tracing::info!(
         user = %user.username,
         "User đăng xuất khỏi tất cả thiết bị (xoá toàn bộ session)"

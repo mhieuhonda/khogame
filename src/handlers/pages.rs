@@ -43,6 +43,7 @@ pub async fn not_found(CurrentUser(current_user): CurrentUser) -> Response {
         status: 404,
         message: "Trang bạn tìm không tồn tại hoặc đã bị di chuyển.".into(),
         current_user,
+        request_id: None,
     }
     .render()
     .unwrap_or_else(|_| "404 Not Found".into());
