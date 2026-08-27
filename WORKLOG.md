@@ -393,3 +393,47 @@ Stage Summary:
 - Repo: https://github.com/mhieuhonda/khogame
 - Deploy: Coolify SUB VPS 10.187.247.3 qua API token.
 - Git config: user.name=mhieuhonda, email=mhieuhonda@users.noreply.github.com
+
+---
+
+## Deploy Process v2.3.0 — SUB VPS 10.187.247.3
+
+### Bước 1: Commit & push (✓ done)
+- Commit 0b94e31 (feat v2.3.0): markdown engine, repo đề xuất, ETag,
+  Cache-Control, Service Worker, DB pool.
+- Commit 693e9f6 (fix rustdoc): escape `<Vec>` trong doc comment.
+- Push lên main thành công (cả 2 commits).
+- User mhieuhonda, email mhieuhonda@users.noreply.github.com.
+
+### Bước 2: Tạo GitHub release (✓ done)
+- POST https://api.github.com/repos/mhieuhonda/khogame/releases
+- HTTP 201 Created
+- Release id 377863507
+- Tag v2.3.0, target main, make_latest=true
+- URL: https://github.com/mhieuhonda/khogame/releases/tag/v2.3.0
+
+### Bước 3: GitHub Actions CD workflow tự động chạy
+- Workflow `CD` (.github/workflows/deploy.yml) trigger khi push main.
+- Job ci-gate (Rust 1.98): cargo check + clippy + test + rustdoc.
+- Job build-push: build Docker image, push to ghcr.io/mhieuhonda/khogame.
+- Job trigger-coolify-deploy: PATCH compose với SHA mới, POST
+  /api/v1/deploy?uuid=dwa5tq871zxdxgaysjdw7gge&force=true, chờ
+  running:healthy, verify version qua /health endpoint.
+
+### Bước 4: Coolify SUB VPS deployment
+- VPS: 10.187.247.3 (vangioi-vps), Ubuntu 24.04, 6 CPU, 8GB RAM.
+- Coolify 4.3.11, Traefik v3.7.11 proxy.
+- Compose đã có:
+  - khogame container (image ghcr.io/mhieuhonda/khogame@sha256:...)
+  - khogame-db (postgres:17-alpine, volume khogame-pgdata)
+  - Volume khogame-storage mount /app/storage (persist uploads)
+- Traefik router Host(`louis.vangioitutien.com`) → port 3000.
+- Wildcard: HostRegexp(`[a-z0-9-]+\.louis\.vangioitutien\.com`).
+- Auto-redirect http→https qua middleware kgx-rdr@docker.
+- Healthcheck: curl -fsS http://127.0.0.1:3000/api/v1/health (15s start_period,
+  30s interval, 3 retries).
+
+### Bước 5: Verify production
+- Web healthcheck: GET https://louis.vangioitutien.com/health
+  → JSON {status: ok, version: "2.3.0"} (workflow verify tự động).
+- Coolify service status: running:healthy.
