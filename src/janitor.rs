@@ -82,14 +82,19 @@ pub async fn run_email_flusher(state: AppState) {
             .filter(|v| *v >= 30)
             .unwrap_or(EMAIL_FLUSH_INTERVAL_SECS),
     );
-    tracing::info!("Email flusher khởi động: chu kỳ {} giây", interval.as_secs());
+    tracing::info!(
+        "Email flusher khởi động: chu kỳ {} giây",
+        interval.as_secs()
+    );
     loop {
         match crate::services::email::flush_pending(&state.db, EMAIL_BATCH_SIZE).await {
             Ok((sent, failed, skipped)) => {
                 if sent > 0 || failed > 0 {
                     tracing::info!(
                         "Email flusher: đã gửi {}, thất bại {}, skip {}",
-                        sent, failed, skipped
+                        sent,
+                        failed,
+                        skipped
                     );
                 }
             }

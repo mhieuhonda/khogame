@@ -676,7 +676,10 @@ pub mod filters {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
-    pub fn time_ago_dt(dt: &chrono::DateTime<chrono::Utc>, _: &dyn Values) -> ::askama::Result<String> {
+    pub fn time_ago_dt(
+        dt: &chrono::DateTime<chrono::Utc>,
+        _: &dyn Values,
+    ) -> ::askama::Result<String> {
         Ok(u::time_ago(*dt))
     }
 

@@ -80,12 +80,19 @@ impl SmtpConfig {
             Some("none") => SmtpTls::None,
             _ => SmtpTls::StartTls,
         };
-        Some(Self { host, port, username, password, from, tls })
+        Some(Self {
+            host,
+            port,
+            username,
+            password,
+            from,
+            tls,
+        })
     }
 }
 
 /// Lấy N email pending, đánh dấu `status='sending'` (transactional select-for-update).
-/// Trả về Vec<EmailQueueRow> để caller gửi SMTP.
+/// Trả về `Vec<EmailQueueRow>` để caller gửi SMTP.
 async fn claim_pending(pool: &PgPool, batch_size: i64) -> AppResult<Vec<EmailQueueRow>> {
     let rows = sqlx::query_as::<_, EmailQueueRow>(
         r"UPDATE email_queue SET status = 'sending', attempts = attempts + 1
@@ -106,10 +113,12 @@ async fn claim_pending(pool: &PgPool, batch_size: i64) -> AppResult<Vec<EmailQue
 
 /// Đánh dấu 1 email là đã gửi thành công.
 async fn mark_sent(pool: &PgPool, id: Uuid) -> AppResult<()> {
-    sqlx::query("UPDATE email_queue SET status = 'sent', sent_at = NOW(), last_error = NULL WHERE id = $1")
-        .bind(id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        "UPDATE email_queue SET status = 'sent', sent_at = NOW(), last_error = NULL WHERE id = $1",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -174,7 +183,16 @@ pub async fn flush_pending(pool: &PgPool, batch_size: i64) -> AppResult<(u64, u6
             row.body_text.clone()
         };
 
-        match send_one(&smtp, &row.recipient, &row.recipient_name, &row.subject, &body_html, &body_text).await {
+        match send_one(
+            &smtp,
+            &row.recipient,
+            &row.recipient_name,
+            &row.subject,
+            &body_html,
+            &body_text,
+        )
+        .await
+        {
             Ok(()) => {
                 mark_sent(pool, row.id).await?;
                 sent += 1;
@@ -227,12 +245,8 @@ async fn send_one(
         ))?;
 
     let mut transport_builder = match smtp.tls {
-        SmtpTls::StartTls => {
-            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)?
-        }
-        SmtpTls::Implicit => {
-            AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.host)?
-        }
+        SmtpTls::StartTls => AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp.host)?,
+        SmtpTls::Implicit => AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp.host)?,
         SmtpTls::None => {
             // Plain không TLS — chỉ dùng dev/test local
             AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&smtp.host).port(smtp.port)

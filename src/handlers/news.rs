@@ -745,10 +745,7 @@ pub async fn create_comment(
     if !mentions.is_empty() {
         let link = format!("/news/{}#comments", news.slug);
         let _ = crate::repositories::NotificationRepo::create_mentions_batch_news(
-            &state.db,
-            &mentions,
-            user.id,
-            &link,
+            &state.db, &mentions, user.id, &link,
         )
         .await;
     }
@@ -806,8 +803,8 @@ pub async fn list_replies(
     CurrentUser(current_user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Response> {
-    let replies = NewsRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id))
-        .await?;
+    let replies =
+        NewsRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
     // Render plain HTML — mỗi reply là 1 div.comment-item
     let mut html = String::new();
     for r in &replies {

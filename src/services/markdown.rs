@@ -44,12 +44,12 @@
 //!   tuyến tính trên HTML output.
 
 use comrak::adapters::SyntaxHighlighterAdapter;
-use comrak::options::{Plugins, RenderPlugins, Options};
 use comrak::markdown_to_html_with_plugins;
-use std::sync::OnceLock;
+use comrak::options::{Options, Plugins, RenderPlugins};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::borrow::Cow;
+use std::sync::OnceLock;
 use syntect::html::ClassedHTMLGenerator;
 use syntect::parsing::{SyntaxReference, SyntaxSet};
 
@@ -63,26 +63,26 @@ fn syntax_set() -> &'static SyntaxSet {
 fn comrak_options() -> Options<'static> {
     let mut opts = Options::default();
     // GFM extensions
-    opts.extension.strikethrough = true;          // ~~text~~
-    opts.extension.tagfilter = true;               // block dangerous HTML tags
-    opts.extension.table = true;                   // GFM tables
-    opts.extension.autolink = true;                // bare URLs → links
-    opts.extension.tasklist = true;                // - [ ] / - [x]
-    opts.extension.superscript = true;             // ^text^
-    opts.extension.footnotes = true;               // [^1]
-    opts.extension.multiline_block_quotes = true;  // >>>
-    opts.extension.math_dollars = true;            // $...$ / $$...$$
-    opts.extension.spoiler = true;                 // >! spoiler !<
-    // Parse-time
-    opts.parse.smart = true;                       // "quotes" → "quotes", -- → –
+    opts.extension.strikethrough = true; // ~~text~~
+    opts.extension.tagfilter = true; // block dangerous HTML tags
+    opts.extension.table = true; // GFM tables
+    opts.extension.autolink = true; // bare URLs → links
+    opts.extension.tasklist = true; // - [ ] / - [x]
+    opts.extension.superscript = true; // ^text^
+    opts.extension.footnotes = true; // [^1]
+    opts.extension.multiline_block_quotes = true; // >>>
+    opts.extension.math_dollars = true; // $...$ / $$...$$
+    opts.extension.spoiler = true; // >! spoiler !<
+                                   // Parse-time
+    opts.parse.smart = true; // "quotes" → "quotes", -- → –
     opts.parse.default_info_string = Some("text".to_string());
     opts.parse.relaxed_tasklist_matching = true;
     // relaxed_autolinks = false (default) — strict, chỉ accept scheme hợp lệ
     // Render
-    opts.render.hardbreaks = false;                 // single \n stays as space (GFM spec)
-    opts.render.github_pre_lang = false;            // we post-process syntect ourselves
-    opts.render.escape = true;                      // escape HTML special chars in text
-    opts.render.r#unsafe = false;                   // NO raw HTML — defense-in-depth
+    opts.render.hardbreaks = false; // single \n stays as space (GFM spec)
+    opts.render.github_pre_lang = false; // we post-process syntect ourselves
+    opts.render.escape = true; // escape HTML special chars in text
+    opts.render.r#unsafe = false; // NO raw HTML — defense-in-depth
     opts
 }
 
@@ -195,7 +195,7 @@ fn post_process(html: &str) -> String {
     out
 }
 
-/// Đảm bảo mọi thẻ <a> có rel="nofollow ugc noopener noreferrer" + target=_blank.
+/// Đảm bảo mọi thẻ `<a>` có `rel="nofollow ugc noopener noreferrer"` + `target=_blank`.
 /// Lọc URL nguy hiểm: nếu href là `javascript:`, `data:` v.v → thay bằng `#`.
 fn harden_links(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
@@ -221,7 +221,9 @@ fn harden_links(html: &str) -> String {
                         };
                         out.push_str(r#"<a href=""#);
                         out.push_str(safe_href);
-                        out.push_str(r#"" rel="nofollow ugc noopener noreferrer" target="_blank">"#);
+                        out.push_str(
+                            r#"" rel="nofollow ugc noopener noreferrer" target="_blank">"#,
+                        );
                         i = end + 1;
                         continue;
                     }
@@ -277,7 +279,10 @@ fn convert_callouts(html: &str) -> String {
     let mut rest = html;
     while let Some(start) = rest.find("<blockquote>") {
         let end_marker = "</blockquote>";
-        let end = rest[start..].find(end_marker).map(|p| start + p + end_marker.len()).unwrap_or(rest.len());
+        let end = rest[start..]
+            .find(end_marker)
+            .map(|p| start + p + end_marker.len())
+            .unwrap_or(rest.len());
         let block = &rest[start..end];
         let inner = block
             .strip_prefix("<blockquote>")
@@ -320,7 +325,10 @@ fn embed_youtube(html: &str) -> String {
     let mut rest = html;
     while let Some(start) = rest.find("<p><a href=\"") {
         let close_marker = "</a></p>";
-        let end_p = rest[start..].find(close_marker).map(|p| start + p + close_marker.len()).unwrap_or(rest.len());
+        let end_p = rest[start..]
+            .find(close_marker)
+            .map(|p| start + p + close_marker.len())
+            .unwrap_or(rest.len());
         let paragraph = &rest[start..end_p];
         if let Some(href_start) = paragraph.find("href=\"") {
             let href_start = href_start + 6;
@@ -456,4 +464,3 @@ mod tests {
         assert_eq!(render("   "), "");
     }
 }
-

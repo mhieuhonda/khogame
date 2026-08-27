@@ -126,9 +126,21 @@ impl RepoRepo {
         .bind(game_id)
         .bind(owner)
         .bind(repo_name)
-        .bind(if description.is_empty() { None } else { Some(description) })
-        .bind(if homepage.is_empty() { None } else { Some(homepage) })
-        .bind(if language.is_empty() { None } else { Some(language) })
+        .bind(if description.is_empty() {
+            None
+        } else {
+            Some(description)
+        })
+        .bind(if homepage.is_empty() {
+            None
+        } else {
+            Some(homepage)
+        })
+        .bind(if language.is_empty() {
+            None
+        } else {
+            Some(language)
+        })
         .bind(stars)
         .bind(forks)
         .bind(open_issues)

@@ -82,10 +82,7 @@ pub async fn create_comment(
         .unwrap_or_default();
     if !mentions.is_empty() {
         let _ = crate::repositories::NotificationRepo::create_mentions_batch(
-            &state.db,
-            &mentions,
-            user.id,
-            &slug,
+            &state.db, &mentions, user.id, &slug,
         )
         .await;
     }
