@@ -90,8 +90,12 @@ pub async fn google_callback(
         // Clamp log message: tránh attacker dùng error= rất dài để bloat log.
         let err_short: String = err.chars().take(500).collect();
         tracing::warn!("OAuth error: {}", err_short);
-        return Err(AppError::OAuth(format!(
-            "Google từ chối đăng nhập: {err_short}"
+        // v2.7.0 — BadRequest (400) thay vì OAuth (500): user chủ động
+        // từ chối consent (access_denied) là luồng BÌNH THƯỜNG, trả 500
+        // "Lỗi hệ thống" là sai sự thật + làm nhiễu error monitor. Trả
+        // 400 với message rõ để user hiểu chỉ cần thử đăng nhập lại.
+        return Err(AppError::BadRequest(format!(
+            "Đăng nhập Google không thành công ({err_short}). Vui lòng thử lại và cho phép truy cập khi Google hỏi."
         )));
     }
 

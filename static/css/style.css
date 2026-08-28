@@ -74,7 +74,7 @@
     /* --- Màu nhấn — X blue cho CTA, GitHub blue cho link--- */
     --accent: #0969da;             /* link, focus, selected (AA trên trắng) */
     --accent-hover: #0860ca;
-    --accent-subtle: #ddf4ff;      /* nền选中, hover选中 */
+    --accent-subtle: #ddf4ff;      /* nền selected, hover selected */
     --accent-fg: #ffffff;
     --btn-primary-bg: #1d9bf0;     /* X blue — nút CTA chính */
     --btn-primary-hover: #1a8cd8;
@@ -7411,4 +7411,81 @@ textarea:focus-visible,
     color: #d8b4fe;
     background: rgba(162, 28, 175, 0.18);
     border-color: rgba(216, 180, 254, 0.3);
+}
+
+/* ============================================================
+   v2.7.0 — Social links trên hồ sơ (10 nền tảng)
+   Icon brand: simple-icons (CC0). Hover đổi màu brand.
+   ============================================================ */
+.profile-social {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.social-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    color: var(--fg-muted);
+    background: var(--bg-subtle);
+    border: 1px solid var(--border-default);
+    transition: transform 0.15s ease, color 0.15s ease,
+        border-color 0.15s ease, background 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.social-link:hover,
+.social-link:focus-visible {
+    transform: translateY(-2px);
+    background: var(--bg-canvas);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.social-link svg {
+    width: 17px;
+    height: 17px;
+}
+
+/* Màu thương hiệu khi hover (chỉ đổi icon + viền, nền vẫn neutral
+   để hoạt động trên cả light + dark theme) */
+.social-github:hover { color: #24292f; border-color: #24292f; }
+.social-facebook:hover { color: #1877f2; border-color: #1877f2; }
+.social-zalo:hover { color: #0068ff; border-color: #0068ff; }
+.social-discord:hover { color: #5865f2; border-color: #5865f2; }
+.social-youtube:hover { color: #ff0000; border-color: #ff0000; }
+.social-tiktok:hover { color: #ee1d52; border-color: #ee1d52; }
+.social-instagram:hover { color: #e4405f; border-color: #e4405f; }
+.social-twitter:hover { color: #1d9bf0; border-color: #1d9bf0; }
+.social-telegram:hover { color: #26a5e4; border-color: #26a5e4; }
+.social-website:hover { color: #10b981; border-color: #10b981; }
+
+[data-theme="dark"] .social-link {
+    background: rgba(177, 186, 196, 0.08);
+    color: var(--fg-muted);
+}
+[data-theme="dark"] .social-github:hover { color: #f0f6fc; }
+
+/* --- Form edit: grid 10 input mạng xã hội --- */
+.social-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+    margin-top: 6px;
+}
+
+.social-edit-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.social-edit-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--fg-muted);
 }

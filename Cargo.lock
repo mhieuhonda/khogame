@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "khogame"
-version = "2.6.0"
+version = "2.7.0"
 dependencies = [
  "anyhow",
  "askama",
@@ -1325,6 +1325,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "unicode-normalization",
+ "url",
  "uuid",
 ]
 

@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "2.6.0"
+version = "2.7.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -47,6 +47,10 @@ hex = "0.4"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 slug = "0.1"
+# v2.7.0 — parse/validate URL mạng xã hội trên hồ sơ (allowlist hostname
+# từng nền tảng). Đã là dependency bậc trong của reqwest, thêm trực tiếp
+# để app dùng được API chuẩn (Url::parse + host_str).
+url = "2"
 anyhow = "1.0"
 thiserror = "2.0"
 tracing = "0.1"

@@ -276,3 +276,73 @@ Stage Summary:
   chỉ thêm hiệu ứng khi staff bật.
 - ✅ 281 tests pass, clippy default clean, rustfmt pass, release build OK.
 - ⏭️ Commit + push + tạo GitHub release v2.6.0.
+
+---
+Task ID: v2.7.0-upgrade
+Agent: Super Z (main)
+Task: Thêm mạng xã hội vào hồ sơ người dùng (github, facebook, zalo, discord + 5 nền
+tảng khác). Quét codebase + VPS/site prod để fix hoàn toàn lỗi 500. Fix lỗi logic,
+chính tả, lỗi khác trên toàn codebase. Rust 1.98. Tạo bản phát hành v2.7.0.
+
+Work Log:
+- Clone repo, quét codebase 26K LOC (Rust 1.98 + Axum 0.8.9 + Askama 0.16 + sqlx 0.9).
+- Quét VPS qua Coolify API: service `khogame` (uuid dwa5tq871zxdxgaysjdw7gge)
+  status running:healthy, image pin digest GHCR, VPS 10.187.247.3 reachable.
+- Quét site prod louis.vangioitutien.com: 28 endpoint + edge-case (page=abc,
+  -5, 999999, slug lạ, invalid UTF-8 %FF%FE, XSS payload trong search,
+  .well-known, sitemap, rss...) — 0 lỗi 500, mọi lỗi trả 4xx đúng.
+- Quét codebase: unwrap/expect ngoài test = 0; repos.rs/uploads.rs/middleware.rs
+  đã harden tốt từ v2.4.x; phát hiện 2 bug thật (chi tiết ở CHANGELOG v2.7.0).
+
+Implemented changes:
+1. **Migration 019_social_links.sql** — bảng `user_social_links` (user_id PK,
+   links JSONB, updated_at trigger). Bảng riêng thay vì cột trên `users`
+   để zero-rủi-regression với ~15 SELECT tường minh của FromRow<User>.
+2. **`src/models/social.rs`** — `SocialLinks` + `SocialPlatform` + PLATFORMS
+   (10 nền tảng: github, facebook, zalo, discord, youtube, tiktok, instagram,
+   twitter, telegram, website). Validation: allowlist hostname từng platform
+   (chỉ www. prefix, chặn gist.github.com), chặn control byte TRƯỚC trim
+   (trim() ăn tab cuối), chặn scheme lạ có :// (ftp://x trước đây ghép
+   prefix thành https://ftp://x parse host "ftp"), auto https://, max 300
+   chars, rỗng = xóa. 13 unit test.
+3. **`src/repositories/user.rs`** — `social_links()` (fail-open rỗng) +
+   `save_social_links()` UPSERT.
+4. **`src/handlers/profile.rs`** — show_profile query socials SONG SONG
+   (wave tokio::join!, 7 queries); edit_profile_form 3 queries song song;
+   ProfileForm thêm 10 field social_*; update_profile validate-form →
+   BadRequest rõ ràng trước khi ghi DB.
+5. **`src/handlers/api.rs`** — `/api/v1/users/{username}` thêm
+   `social_links: [{platform,label,url}]`.
+6. **`src/templates.rs`** — ProfileTemplate.socials; EditProfileTemplate
+   socials + platforms (&'static [SocialPlatform]).
+7. **Templates** — show.html: hàng icon SVG simple-icons (CC0) dưới bio,
+   rel="noopener noreferrer nofollow ugc"; edit.html: grid 10 input +
+   placeholder theo platform.
+8. **CSS** — 77 dòng mới: .profile-social, .social-link + hover màu brand
+   10 nền tảng, dark theme, .social-edit-grid.
+9. **FIX cache-bust nợ v2.5.1/v2.6.0**: `?v=2.5.0` → `?v=2.7.0` toàn bộ
+   (layout.html 7, error.html 1, app.js 1, sw.js 6, middleware.rs 3).
+   Trước đây v2.6.0 thêm CSS/JS mới mà không bump → cache cũ không cập nhật.
+10. **FIX OAuth 500 sai sự thật** (`handlers/auth.rs`): access_denied →
+    BadRequest (400) + message hướng dẫn, thay vì OAuth → 500.
+11. **FIX artifact tiếng Trung** trong comment: style.css ("nền选中"),
+    state.rs ("cùng到这里"), middleware.rs ("人气度高"), json_ld.rs
+    ("bị破") → tiếng Việt chuẩn.
+12. Bump version 2.6.0 → 2.7.0 + CHANGELOG.md chi tiết.
+
+- VERIFY (cục bộ, khớp CI pipeline):
+  * `cargo fmt --all -- --check` — pass.
+  * `cargo check --locked --all-targets` — pass.
+  * `cargo clippy --all-targets --locked -- -D warnings` — pass (fix 1
+    warning manual_contains mới).
+  * `cargo test --locked --all` — 293 tests passed, 0 failed (+13 mới).
+  * `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` — pass.
+
+Stage Summary:
+- ✅ Social links 10 nền tảng: DB → model → repo → handler → template →
+  CSS → API, validation allowlist chặt (anti-XSS/anti-header-injection),
+  fail-open không chết trang hồ sơ.
+- ✅ Quét prod + codebase: không còn 500 thật nào trên public routes;
+  fix 500 sai sự thật (OAuth access_denied) + nợ cache-bust 2 bản.
+- ✅ 293 tests pass, clippy -D warnings clean, rustfmt clean, rustdoc clean.
+- ⏭️ Commit author mhieuhonda + push main + tag v2.7.0 → GitHub Release.

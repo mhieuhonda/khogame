@@ -1317,6 +1317,11 @@ pub async fn user_profile(
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
     let stats = UserRepo::stats(&state.db, user.id).await?;
+    // v2.7.0 — social links công khai (chỉ URL đã validate, không field
+    // nhạy cảm). Fail-open rỗng — thiếu socials không được chết API.
+    let socials = UserRepo::social_links(&state.db, user.id)
+        .await
+        .unwrap_or_default();
     let body = serde_json::json!({
         "username": user.username,
         "display_name": user.display_name,
@@ -1330,6 +1335,11 @@ pub async fn user_profile(
             "followers_count": stats.followers_count,
             "following_count": stats.following_count,
         },
+        "social_links": socials.ordered().iter().map(|s| serde_json::json!({
+            "platform": s.id,
+            "label": s.label,
+            "url": s.url,
+        })).collect::<Vec<_>>(),
     });
     Ok(([(header::CACHE_CONTROL, "public, max-age=120")], Json(body)).into_response())
 }

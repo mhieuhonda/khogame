@@ -53,6 +53,22 @@
     </div>
 
     <div class="form-group">
+        <label class="form-label">Mạng xã hội</label>
+        <div class="social-edit-grid">
+            {% for p in platforms %}
+            <div class="social-edit-item">
+                <label class="social-edit-label" for="f-social-{{ p.id }}">{{ p.label }}</label>
+                <input type="text" name="social_{{ p.id }}" id="f-social-{{ p.id }}"
+                       class="form-control" value="{{ socials.display_value(p.id) }}"
+                       placeholder="{% if p.id == "github" %}https://github.com/username{% else if p.id == "zalo" %}https://zalo.me/username{% else if p.id == "telegram" %}https://t.me/username{% else if p.id == "discord" %}https://discord.gg/invite{% else if p.id == "twitter" %}https://x.com/username{% else if p.id == "website" %}https://website-cua-ban.com{% else %}https://{{ p.id }}.com/username{% endif %}"
+                       inputmode="url" autocomplete="off" spellcheck="false" maxlength="300">
+            </div>
+            {% endfor %}
+        </div>
+        <small class="form-hint">Dán link hồ sơ mạng xã hội của bạn (GitHub, Facebook, Zalo, Discord và 6 nền tảng khác). Có thể gõ không cần <code>https://</code> — hệ thống tự thêm. Để trống để xóa link. Link phải thuộc đúng nền tảng tương ứng.</small>
+    </div>
+
+    <div class="form-group">
         <label class="form-label" for="f-theme">Giao diện</label>
         <select name="theme" id="f-theme" class="form-control">
             <option value="dark" {% if preferences.theme == "dark" %}selected{% endif %}>Tối</option>

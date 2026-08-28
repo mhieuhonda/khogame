@@ -1,6 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
+use crate::models::{SocialLinks, PLATFORMS};
 use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::{BookmarksTemplate, EditProfileTemplate, ProfileTemplate};
@@ -28,10 +29,9 @@ pub async fn show_profile(
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
     let is_self = current_user.as_ref().is_some_and(|u| u.id == user.id);
-    // v2.6.0 — 6 queries (stats/games/follow-check/preferences/ai_profile/
-    // unread) chạy SONG SONG — trước đây 5 song song rồi unread await
-    // tuần tự sau đó → cộng thêm 1 round-trip. Giờ tất cả 1 wave.
-    let (stats_res, games_res, following_res, prefs_res, ai_profile_res, unread_res) = tokio::join!(
+    // v2.7.0 — social_links là query thứ 7 chạy SONG SONG trong cùng
+    // wave (không tăng round-trip tuần tự).
+    let (stats_res, games_res, following_res, prefs_res, ai_profile_res, socials_res, unread_res) = tokio::join!(
         UserRepo::stats(&state.db, user.id),
         GameRepo::by_user(&state.db, user.id, 24, 0),
         async {
@@ -54,6 +54,14 @@ pub async fn show_profile(
             }
         },
         async {
+            // Lỗi social links KHÔNG được làm chết cả trang hồ sơ —
+            // fail-open thành rỗng (link chỉ là tính năng phụ, mất
+            // tooltip/icon vẫn tốt hơn 500 cả trang).
+            UserRepo::social_links(&state.db, user.id)
+                .await
+                .unwrap_or_default()
+        },
+        async {
             match &current_user {
                 Some(u) => unread_count(&state, u.id).await,
                 None => 0,
@@ -66,6 +74,7 @@ pub async fn show_profile(
     let preferences = prefs_res.unwrap_or_default();
     // Lấy hồ sơ AI Agent nếu user là AI Agent
     let ai_profile = ai_profile_res;
+    let socials = socials_res;
     let unread = unread_res;
     Ok(ProfileTemplate {
         current_user,
@@ -77,6 +86,7 @@ pub async fn show_profile(
         is_self,
         preferences,
         ai_profile,
+        socials,
     })
 }
 
@@ -93,14 +103,20 @@ pub async fn edit_profile_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<EditProfileTemplate> {
-    let preferences = UserRepo::get_preferences(&state.db, user.id)
-        .await
-        .unwrap_or_default();
-    let unread = unread_count(&state, user.id).await;
+    // preferences + socials + unread độc lập — chạy song song
+    let (prefs_res, socials_res, unread) = tokio::join!(
+        UserRepo::get_preferences(&state.db, user.id),
+        UserRepo::social_links(&state.db, user.id),
+        unread_count(&state, user.id),
+    );
+    let preferences = prefs_res.unwrap_or_default();
+    let socials = socials_res.unwrap_or_default();
     Ok(EditProfileTemplate {
         current_user: Some(user),
         unread_notifications: unread,
         preferences,
+        socials,
+        platforms: PLATFORMS,
     })
 }
 
@@ -117,6 +133,20 @@ pub struct ProfileForm {
     /// v2.1.0 — bật/tắt hiệu ứng khung chức vụ (rainbow+lửa cho Admin,
     /// glitch cho Mod). Checkbox có name này = bật, vắng = tắt.
     pub role_effects: Option<String>,
+    /// v2.7.0 — mạng xã hội: 10 field `social_<platform_id>` (github,
+    /// facebook, zalo, discord, youtube, tiktok, instagram, twitter,
+    /// telegram, website). Rỗng/vắng = xóa link — hành vi chuẩn HTML
+    /// form (input trống nghĩa là user chủ động xóa).
+    pub social_github: Option<String>,
+    pub social_facebook: Option<String>,
+    pub social_zalo: Option<String>,
+    pub social_discord: Option<String>,
+    pub social_youtube: Option<String>,
+    pub social_tiktok: Option<String>,
+    pub social_instagram: Option<String>,
+    pub social_twitter: Option<String>,
+    pub social_telegram: Option<String>,
+    pub social_website: Option<String>,
 }
 
 /// # Errors
@@ -169,7 +199,28 @@ pub async fn update_profile(
     }
     let avatar_url = form.avatar_url.as_deref().filter(|s| !s.is_empty());
 
+    // v2.7.0 — Validate 10 link mạng xã hội (allowlist hostname từng
+    // nền tảng — xem models::social). Lỗi validation → BadRequest với
+    // thông báo rõ ràng, KHÔNG lưu nửa chừng (validate xong mới ghi DB).
+    let social_input = [
+        ("github", form.social_github.as_deref()),
+        ("facebook", form.social_facebook.as_deref()),
+        ("zalo", form.social_zalo.as_deref()),
+        ("discord", form.social_discord.as_deref()),
+        ("youtube", form.social_youtube.as_deref()),
+        ("tiktok", form.social_tiktok.as_deref()),
+        ("instagram", form.social_instagram.as_deref()),
+        ("twitter", form.social_twitter.as_deref()),
+        ("telegram", form.social_telegram.as_deref()),
+        ("website", form.social_website.as_deref()),
+    ];
+    let socials = SocialLinks::validate_form(&social_input).map_err(AppError::BadRequest)?;
+
     UserRepo::update_profile(&state.db, user.id, display_name, bio, avatar_url).await?;
+    // v2.7.0 — Lưu socials SAU khi profile + preferences update thành
+    // công. Lỗi save socials → 500 (đáng lẽ tránh:validate đã pass trước
+    // nên lỗi chỉ còn DB-level — hiếm, user sửa lại được).
+    UserRepo::save_social_links(&state.db, user.id, &socials).await?;
 
     // Update preferences — whitelist giá trị hợp lệ, giá trị lạ quay về
     // mặc định (trước đây lưu thẳng chuỗi tuỳ ý vào DB, render vào

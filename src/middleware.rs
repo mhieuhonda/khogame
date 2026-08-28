@@ -1055,7 +1055,7 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
 //      đổi. Tiết kiệm ~50-200KB mỗi page view.
 //   2) Cache-Control: public, max-age=60, stale-while-revalidate=600
 //      cho anonymous (cookie session thiếu) — browser cache 1 phút,
-//      SWR 10 phút. Vận dụng cache browser cho人気度高 page (homepage).
+//      SWR 10 phút. Vận dụng cache browser cho các page phổ biến (homepage).
 //      cho user đã login: Cache-Control: private, no-cache (không cache
 //      shared proxy, mỗi request revalidate) — tránh leak thông tin
 //      user A sang user B.
@@ -1201,9 +1201,9 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
     // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
     if let Ok(link_val) = HeaderValue::from_str(
-        "</static/css/style.css?v=2.5.0>; rel=preload; as=style, \
-         </static/js/htmx.min.js?v=2.5.0>; rel=preload; as=script, \
-         </static/js/app.js?v=2.5.0>; rel=preload; as=script, \
+        "</static/css/style.css?v=2.7.0>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v=2.7.0>; rel=preload; as=script, \
+         </static/js/app.js?v=2.7.0>; rel=preload; as=script, \
          </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin",
     ) {
         headers.insert(axum::http::header::LINK, link_val);

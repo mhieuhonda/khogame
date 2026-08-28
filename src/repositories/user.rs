@@ -1,6 +1,5 @@
 use crate::error::AppResult;
-use crate::models::UserWithGameCount;
-use crate::models::{User, UserPreference, UserStats};
+use crate::models::{SocialLinks, User, UserPreference, UserStats, UserWithGameCount};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -455,6 +454,52 @@ impl UserRepo {
             .bind(user_id)
             .execute(pool)
             .await?;
+        Ok(())
+    }
+
+    /// Đọc mạng xã hội của user (v2.7.0, migration 019 — bảng
+    /// `user_social_links`).
+    ///
+    /// User chưa từng lưu link (chưa có row) → trả `SocialLinks` rỗng
+    /// thay vì lỗi — hồ sơ vẫn phải load được. JSONB rác (sai kiểu) cũng
+    /// fail-open thành struct rỗng qua `SocialLinks::from_json_value`.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn social_links(pool: &PgPool, user_id: Uuid) -> AppResult<SocialLinks> {
+        let json: Option<serde_json::Value> =
+            sqlx::query_scalar("SELECT links FROM user_social_links WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+        Ok(json
+            .as_ref()
+            .map(SocialLinks::from_json_value)
+            .unwrap_or_default())
+    }
+
+    /// Lưu mạng xã hội của user — UPSERT 1 row (INSERT mới hoặc UPDATE
+    /// `links`). Xóa hết link không xóa row (row rỗng `{}` vô hại, tránh
+    /// thêm logic DELETE cho case hiếm).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn save_social_links(
+        pool: &PgPool,
+        user_id: Uuid,
+        links: &SocialLinks,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO user_social_links (user_id, links, updated_at)
+              VALUES ($1, $2, NOW())
+              ON CONFLICT (user_id) DO UPDATE SET
+                links = EXCLUDED.links,
+                updated_at = NOW()",
+        )
+        .bind(user_id)
+        .bind(links.to_json_value())
+        .execute(pool)
+        .await?;
         Ok(())
     }
 

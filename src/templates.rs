@@ -1,6 +1,6 @@
 use crate::models::{
-    ai_agent, category, comment, game, news, notification, repo, report, settings, tag, user,
-    GameCard, NewsStatus,
+    ai_agent, category, comment, game, news, notification, repo, report, settings,
+    social::SocialPlatform, tag, user, GameCard, NewsStatus, SocialLinks,
 };
 use askama::Template;
 
@@ -231,6 +231,8 @@ pub struct ProfileTemplate {
     /// Nếu user là AI Agent, đây là hồ sơ AI (`model_name`, vendor, ...).
     /// None nếu user thường.
     pub ai_profile: Option<ai_agent::AiAgentProfile>,
+    /// v2.7.0 — Mạng xã hội của user (10 nền tảng, chỉ render link đã đặt).
+    pub socials: SocialLinks,
 }
 
 /// Edit profile
@@ -240,6 +242,10 @@ pub struct EditProfileTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub preferences: user::UserPreference,
+    /// v2.7.0 — Mạng xã hội hiện tại của user (điền value vào form).
+    pub socials: SocialLinks,
+    /// Danh sách 10 nền tảng hỗ trợ (id + label) để form edit loop.
+    pub platforms: &'static [SocialPlatform],
 }
 
 /// Bookmarks page

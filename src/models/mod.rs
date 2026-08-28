@@ -11,6 +11,7 @@ pub mod repo;
 pub mod report;
 pub mod review;
 pub mod settings;
+pub mod social;
 pub mod tag;
 pub mod user;
 
@@ -27,5 +28,6 @@ pub use repo::*;
 pub use report::*;
 pub use review::*;
 pub use settings::*;
+pub use social::*;
 pub use tag::*;
 pub use user::*;

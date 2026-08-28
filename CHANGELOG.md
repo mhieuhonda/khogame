@@ -5,6 +5,72 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] — 2026-08-28 — Mạng xã hội trên hồ sơ + FIX cache-bust + FIX OAuth 500
+
+Bản phát hành bổ sung tính năng mạng xã hội 10 nền tảng cho hồ sơ người
+dùng, kèm các bản fix chất lượng: nợ cache-bust của v2.5.1/v2.6.0, lỗi
+500 sai sự thật khi user từ chối consent Google, và dọn artifact ký tự
+Trung Quốc lẫn trong comment.
+
+### ✨ Features — Mạng xã hội trên hồ sơ (10 nền tảng)
+
+- **Bảng `user_social_links` mới** (migration 019): 1 row/user, cột
+  JSONB `links` dạng `{"github": "https://github.com/user", ...}`.
+  Thiết kế bảng RIÊNG thay vì thêm cột vào `users` để zero rủi ro
+  regression với ~15 query SELECT hiện có của FromRow<User> (bug
+  ColumnNotFound khi sót 1 query từng xảy ra ở v1.4.0 với cột tracking).
+  Trigger `update_updated_at` chuẩn như các bảng khác.
+- **10 nền tảng hỗ trợ** (thứ tự hiển thị cố định phía server):
+  GitHub, Facebook, Zalo, Discord, YouTube, TikTok, Instagram,
+  Twitter (X), Telegram, Website cá nhân — model
+  `SocialLinks` + `SocialPlatform` tại `src/models/social.rs`.
+- **Validation allowlist hostname từng nền tảng**:
+  - Chỉ nhận `http(s)://` (chặn `javascript:`/`data:`/`ftp:` — XSS
+    vector) + chặn control byte (CR/LF/TAB — header injection) TRƯỚC
+    khi trim (trim() ăn mất tab cuối → lọt qua check).
+  - Host phải khớp allowlist (vd GitHub chỉ nhận `github.com` + `www.`;
+    `gist.github.com` bị từ chối). `website` là ngoại lệ duy nhất nhận
+    mọi host — bản chất là trang cá nhân.
+  - Auto-thêm `https://` khi user gõ `github.com/user` quên scheme;
+    scheme lạ có `://` không phải http(s) → từ chối ngay (không ghép
+    prefix gây parse sai host).
+  - Giới hạn 300 ký tự, chuỗi rỗng = xóa link.
+- **Hiển thị hồ sơ** (`templates/profile/show.html`): hàng icon dưới
+  bio — SVG inline từ simple-icons (CC0), không thêm request bên ngoài,
+  `target="_blank"` + `rel="noopener noreferrer nofollow ugc"`; hover
+  đổi màu thương hiệu từng nền tảng (CSS mới 77 dòng).
+- **Form chỉnh sửa** (`templates/profile/edit.html`): grid 10 input với
+  placeholder theo từng nền tảng, value điền sẵn, maxlength 300.
+- **Hồ sơ load socials song song**: query thứ 7 trong cùng wave
+  `tokio::join!` của `show_profile` (không tăng round-trip tuần tự);
+  fail-open thành rỗng nếu DB lỗi — trang hồ sơ không bao giờ chết vì
+  social links.
+- **API công khai** `GET /api/v1/users/{username}` thêm field
+  `social_links: [{platform, label, url}]` cho client bên ngoài.
+- 13 unit test mới cho validation + JSON roundtrip + thứ tự hiển thị.
+
+### 🐛 Bug Fixes
+
+- **FIX nợ cache-bust v2.5.1/v2.6.0**: 2 bản phát hành trước quên bump
+  `?v=` của CSS/JS (vẫn `?v=2.5.0`) dù v2.6.0 thêm CSS hiệu ứng hồ sơ
+  admin/mod + JS — returning visitor có cache cũ KHÔNG thấy style mới.
+  Nay đồng bộ `?v=2.7.0` trên layout.html (7 chỗ), error.html, app.js,
+  sw.js (CACHE_VERSION + precache), middleware.rs (Link preload).
+- **FIX 500 sai sự thật khi từ chối consent Google**
+  (`src/handlers/auth.rs`): trước đây `error=access_denied` từ Google
+  callback → `AppError::OAuth` → 500 "Lỗi hệ thống" — sai sự thật vì
+  user từ chối consent là luồng bình thường. Fix: `AppError::BadRequest`
+  (400) với message hướng dẫn rõ.
+- **FIX artifact ký tự Trung Quốc lẫn trong comment** (dọn chất lượng):
+  `style.css` ("nền选中"), `state.rs` ("cùng到这里"), `middleware.rs`
+  ("人气度高"), `json_ld.rs` ("invariant bị破") — sửa thành tiếng Việt
+  chuẩn. Test data CJK có chủ đích trong `models/game.rs` giữ nguyên.
+
+### 🔧 Internal
+
+- Thêm dependency `url = "2"` (đã là bậc trong của reqwest — không tăng
+  cây dependency) cho parse/validate URL chuẩn RFC 3986.
+
 ## [2.6.0] — 2026-08-28 — FIX hang forever + PERF + Admin profile effects
 
 Bản phát hành LỚN tập trung 3 trụ cột: fix triệt để lỗi "hang forever"

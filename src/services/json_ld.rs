@@ -111,7 +111,7 @@ pub fn build_game_json_ld(
         obj
     } else {
         // Defense-in-depth: root được build bằng json!({...}) phía trên nên
-        // luôn là object. Nếu invariant bị破, trả string rỗng thay vì panic.
+        // luôn là object. Nếu invariant bị phá vỡ, trả string rỗng thay vì panic.
         tracing::error!("build_game_json_ld: root không phải JSON object");
         return String::new();
     };

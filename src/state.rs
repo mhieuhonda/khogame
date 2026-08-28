@@ -98,7 +98,7 @@ impl AppState {
                 return cache.0;
             }
         }
-        // Cache stale — query DB. Nếu nhiều task cùng到这里, mỗi task sẽ
+        // Cache stale — query DB. Nếu nhiều task cùng đến đây cùng lúc, mỗi task sẽ
         // query DB (TOCTOU giữa read và write lock). Đây là perf hit nhỏ,
         // không phải correctness bug (mỗi query cho cùng kết quả trong
         // cửa sổ này). Tránh double-check lock để giữ code đơn giản.
