@@ -5,6 +5,95 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] — 2026-08-28 — Markdown v2.5 "mạnh hơn nữa" + Bio Markdown + FIX syntax highlighting
+
+Bản nâng cấp lớn markdown engine theo yêu cầu "xịn hơn nữa mạnh hơn nữa":
+**9 tính năng markdown mới** (emoji shortcodes, underline, subscript,
+highlight, insert, inline footnote, tasklist-in-table, @mention, #hashtag),
+**diff block coloring**, **code line numbers**, **FIX syntax highlighting
+không có màu từ v2.2** (dead CSS), và **Markdown cho bio hồ sơ**.
+
+### ✨ Tính năng mới (Markdown engine v2.5)
+
+- **Emoji shortcodes** (`opts.extension.shortcodes`): `:tada:` → 🎉,
+  `:rocket:` → 🚀, `:smile:` → 😄... dùng bảng shortcode của comrak
+  (~1800 emoji). Tên không có trong bảng giữ nguyên text (vd `:khongco:`).
+- **Underline** `__text__` → `<u>text</u>` (GitHub không có). Lưu ý: đổi
+  nghĩa `__x__` từ strong → underline (bold chuẩn vẫn là `**x**`).
+- **Subscript** `H~2~O` → H<sub>2</sub>O (xung đột strikethrough không —
+  strikethrough cần `~~` đôi).
+- **Highlight** `==text==` → `<mark>text</mark>` — nền vàng (dark mode:
+  nền vàng đậm chữ trắng), `box-decoration-break: clone` khi wrap dòng.
+- **Insert** `++text++` → `<ins>text</ins>` — gạch chân xanh lá (đánh dấu
+  văn bản thêm vào, cặp với `<del>` của strikethrough).
+- **Inline footnote** `^[chú thích ngay]` — không cần định nghĩa riêng.
+- **Tasklist trong bảng** (`opts.parse.tasklist_in_table`): `- [x]` render
+  checkbox cả trong cell bảng.
+- **@mention → link hồ sơ**: `@username` (ASCII [a-zA-Z0-9_]{2,30}) trong
+  text node → `<a href="/u/username" class="md-mention">` (pill nền xanh
+  dương). KHÔNG link hoá khi: nằm trong `<code>`/`<pre>` (mã nguồn), nằm
+  trong text của `<a>` sẵn (chặn lồng `<a>` trong `<a>`), là email
+  (`user@domain` — ký tự trước `@` phải không phải word char).
+- **#hashtag → link tìm kiếm**: `#Tag` (chữ cái đầu, hỗ trợ unicode
+  #TiếngViệt, dài 2-48) → `<a href="/search?q=Tag" class="md-hashtag">`.
+  An toàn entity: `&#39;`/`&#x27;` không bị nhầm hashtag (chặn `#` sau
+  `&` + yêu cầu ký tự đầu là chữ). Không link trong code/link sẵn.
+
+### ✨ Tính năng mới (Code blocks)
+
+- **Diff block coloring** (```diff / ```patch): từng dòng `+`/`-`/`@@`
+  wrap span `.diff-add` (nền xanh lá)/`.diff-del` (nền đỏ)/`.diff-meta`
+  (nền xanh dương) — chuẩn GitHub diff view. Escape HTML đầy đủ. Xử lý
+  TRỰC TIẾP trong syntect adapter (bỏ qua syntect cho lang diff để kiểm
+  soát markup hoàn toàn).
+- **Code line numbers**: mỗi dòng code wrap `<span class="code-line">`,
+  CSS counter hiển thị số dòng mờ bên trái (`user-select: none` — copy
+  không dính số). Thuật toán xử lý ĐÚNG cấu trúc syntect: span mở xuyên
+  dòng được `finalize()` đóng dồn về cuối (closer run `</span>...`) —
+  tách closer run trước khi wrap, không sinh số dòng ảo cho dòng trống
+  cuối.
+- **FIX syntax highlighting KHÔNG CÓ MÀU từ v2.2** (bug có sẵn): syntect
+  phát class theo scope (`keyword`, `string`, `comment`, `entity`...) nhưng
+  CSS cũ chỉ target `.hljs-*` (highlight.js scheme — KHÔNG BAO GIỜ xuất
+  hiện, dead code) → toàn bộ code block hiển thị 1 màu phẳng #c9d1d9 từ
+  v2.2 đến nay. Thêm CSS palette GitHub-dark cho scope-class thật của
+  syntect: keyword đỏ #ff7b72, string xanh nhạt #a5d6ff, comment xám
+  nghiêng, constant xanh #79c0ff, entity (tên hàm) tím #d2a8ff, variable
+  cam #ffa657.
+- **FIX code tag trùng thuộc tính class** (bug có sẵn từ v2.2): adapter
+  phát `<code class="language-rust" class="hljs">` — invalid HTML, browser
+  chỉ nhận attr đầu → class `hljs` bị bỏ. Giờ merge đúng:
+  `<code class="language-rust hljs">`.
+
+### ✨ Tính năng mới (Bio Markdown — hồ sơ cá nhân)
+
+- **Bio hỗ trợ Markdown** (`services::markdown::render_bio` + filter
+  askama `|bio`): pipeline rút gọn cho ngữ cảnh bio (~1000 ký tự):
+  - CÓ: bold/italic/strike/highlight/underline/subscript/`code`, link
+    (harden đầy đủ rel/target/scheme allowlist), ảnh (lazy + safe URL),
+    @mention, #hashtag, emoji shortcodes, spoiler, danh sách.
+  - KHÔNG: heading anchor + ToC, YouTube embed, callout, figure caption,
+    copy button, lang label, line numbers — giữ bio gọn không lấn layout.
+- **Nâng limit bio 500 → 1000 ký tự** (cú pháp markdown chiếm chỗ; DB
+  column TEXT không giới hạn). Cập nhật cả 3 form: profile/edit,
+  profile/ai_edit (AI Agent), maxlength + hint chi tiết cú pháp + badge
+  "Hỗ trợ Markdown".
+- Render bio Markdown trên: trang hồ sơ `/u/{username}` (`.bio-md`
+  compact CSS — code nhỏ, heading tiết chế, blockquote gọn) và admin
+  user detail.
+- Không cache (bio ngắn, render sub-ms) — tránh phức tạp cache key
+  riêng cho pipeline khác.
+
+### 🔧 Nội bộ
+
+- `CACHE_VERSION` 2 → 3 — invalidate toàn bộ render cache cũ vì output
+  engine thay đổi (class mới, mark/u/sub/ins, mention/hashtag, line
+  numbers, merge class attr).
+- 31 unit test mới cho markdown v2.5 + bio (tổng 82 test markdown).
+- Cache-bust `?v=2.4.0` → `?v=2.5.0` (layout.html ×7, error.html,
+  index.html, app.js, sw.js CACHE_VERSION + precache, middleware Link
+  preload header).
+
 ## [2.4.1] — 2026-08-28 — HOTFIX: trang lỗi hiện HTML thô + không thể đăng repo GitHub
 
 Bản hotfix khẩn cấp 2 lỗi nghiêm trọng phát hiện trên production:

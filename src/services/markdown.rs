@@ -1,18 +1,18 @@
-//! Markdown rendering engine — "xịn hơn GitHub" — v2.4.0 PERF + UX upgrade.
+//! Markdown rendering engine — "xịn hơn GitHub" — v2.5.0 + bio Markdown.
 //!
 //! Built on top of [`comrak`] (100% CommonMark + GFM superset) with
 //! a custom [`syntect`] adapter for code block highlighting.
 //!
 //! # Vượt trội hơn GitHub Flavored Markdown
 //!
-//! | Tính năng | GitHub | Khogame v2.4 |
+//! | Tính năng | GitHub | Khogame v2.5 |
 //! |-----------|:------:|:------------:|
 //! | CommonMark | ✅ | ✅ |
 //! | Tables (GFM) | ✅ | ✅ |
-//! | Task lists `[x]` | ✅ | ✅ |
+//! | Task lists `[x]` | ✅ | ✅ (+ cả trong bảng) |
 //! | Strikethrough `~~` | ✅ | ✅ |
 //! | Autolinks | ✅ | ✅ |
-//! | Footnotes `[^1]` | ✅ | ✅ |
+//! | Footnotes `[^1]` | ✅ | ✅ (+ inline `^[...]`) |
 //! | Math `$...$` (KaTeX-style) | ✅ | ✅ |
 //! | Syntax highlighting | ✅ linguist | ✅ syntect (default theme) |
 //! | Spoiler `>!` | ❌ | ✅ |
@@ -29,6 +29,16 @@
 //! | **Collapsible callouts** `> [!NOTE]+` / `-` | partial | ✅ (v2.4) |
 //! | **Footnote backref hover** | partial | ✅ (v2.4 — `↩` with title) |
 //! | **Render cache** (avoid re-parse) | n/a | ✅ (v2.4 — SHA256 keyed LRU) |
+//! | **Emoji shortcodes** `:tada:` | ✅ | ✅ (v2.5) |
+//! | **Underline** `__text__` | ❌ | ✅ (v2.5) |
+//! | **Subscript** `H~2~O` | ❌ | ✅ (v2.5) |
+//! | **Highlight** `==text==` | ❌ | ✅ (v2.5 — `<mark>`) |
+//! | **Insert** `++text++` | ❌ | ✅ (v2.5 — `<ins>`) |
+//! | **@mention → link hồ sơ** | ✅ (user) | ✅ (v2.5 — `/u/{username}`) |
+//! | **#hashtag → link tìm kiếm** | ✅ (issue) | ✅ (v2.5 — `/search?q=`) |
+//! | **Diff block coloring** | ✅ | ✅ (v2.5 — `+`/`-`/`@@` classes) |
+//! | **Code line numbers** | ✅ | ✅ (v2.5 — CSS counter) |
+//! | **Bio Markdown (hồ sơ)** | ✅ (profile README) | ✅ (v2.5 — `render_bio`) |
 //! | Raw HTML | ✅ (filtered) | ❌ (always escaped, zero XSS surface) |
 //! | URL scheme allowlist | ✅ | ✅ |
 //! | Link `rel="nofollow ugc noopener noreferrer"` | partial | ✅ |
@@ -99,11 +109,19 @@ fn comrak_options() -> Options<'static> {
     opts.extension.spoiler = true; // >! spoiler !<
     opts.extension.description_lists = true; // v2.4 — Term\n: Definition
                                              // Parse-time
+                                             // === v2.5.0 — Markdown engine "mạnh hơn nữa" ===
+    opts.extension.shortcodes = true; // :tada: → 🎉 (emoji_shortcode)
+    opts.extension.underline = true; // __text__ → <u>text</u>
+    opts.extension.subscript = true; // H~2~O → H<sub>2</sub>O
+    opts.extension.highlight = true; // ==text== → <mark>text</mark>
+    opts.extension.insert = true; // ++text++ → <ins>text</ins>
+    opts.extension.inline_footnotes = true; // ^[chú thích inline]
     opts.parse.smart = true; // "quotes" → "quotes", -- → –
     opts.parse.default_info_string = Some("text".to_string());
     opts.parse.relaxed_tasklist_matching = true;
-    // relaxed_autolinks = false (default) — strict, chỉ accept scheme hợp lệ
-    // Render
+    opts.parse.tasklist_in_table = true; // [x] trong bảng
+                                         // relaxed_autolinks = false (default) — strict, chỉ accept scheme hợp lệ
+                                         // Render
     opts.render.hardbreaks = false; // single \n stays as space (GFM spec)
     opts.render.github_pre_lang = false; // we post-process syntect ourselves
     opts.render.escape = true; // escape HTML special chars in text
@@ -125,6 +143,13 @@ impl SyntaxHighlighterAdapter for SyntectHighlighter {
         code: &str,
     ) -> fmt::Result {
         let lang_str = lang.unwrap_or("").trim();
+        // v2.5.0 — Diff/patch blocks: highlight theo prefix dòng (+/-/@@)
+        // bằng class CSS riêng thay vì syntect (syntax Diff của syntect
+        // không phân màu rõ + muốn kiểm soát markup hoàn toàn để CSS
+        // .diff-add/.diff-del/.diff-meta style chuẩn GitHub diff view).
+        if lang_str == "diff" || lang_str == "patch" {
+            return write_diff_highlighted(output, code);
+        }
         let syntax: &SyntaxReference = if lang_str.is_empty() {
             self.syntax_set.find_syntax_plain_text()
         } else {
@@ -175,13 +200,58 @@ impl SyntaxHighlighterAdapter for SyntectHighlighter {
         attributes: HashMap<&'static str, Cow<'_, str>>,
     ) -> fmt::Result {
         output.write_str("<code")?;
+        // FIX v2.5.0 (bug có sẵn từ v2.2): trước đây luôn append
+        // ` class="hljs"` SAU attribute loop → sinh `<code class="language-rust"
+        // class="hljs">` — TRÙNG thuộc tính class (invalid HTML, browser chỉ
+        // nhận attr đầu tiên → class "hljs" bị bỏ). Giờ merge "hljs" vào
+        // attribute class có sẵn: `class="language-rust hljs"`.
+        let mut had_class = false;
         for (k, v) in &attributes {
-            write!(output, " {k}=\"{v}\"")?;
+            if *k == "class" {
+                had_class = true;
+                write!(output, " class=\"{v} hljs\"")?;
+            } else {
+                write!(output, " {k}=\"{v}\"")?;
+            }
         }
-        // Luôn có class `hljs` để CSS highlight.js theme hoạt động
-        output.write_str(" class=\"hljs\">")?;
+        if !had_class {
+            output.write_str(" class=\"hljs\"")?;
+        }
+        output.write_str(">")?;
         Ok(())
     }
+}
+
+/// v2.5.0 — Highlight diff/patch code block theo prefix từng dòng:
+///   `+ ...` → `<span class="diff-add">` (xanh — dòng thêm)
+///   `- ...` → `<span class="diff-del">` (đỏ — dòng xoá)
+///   `@@ ...` → `<span class="diff-meta">` (xanh dương — hunk header)
+/// Dòng khác giữ nguyên. Giữ `\n` giữa các dòng để pass line-number
+/// (add_code_line_numbers) vẫn tách dòng được.
+fn write_diff_highlighted(output: &mut dyn fmt::Write, code: &str) -> fmt::Result {
+    for line in code.split_inclusive('\n') {
+        // Tách newline ra ngoài span để layout <pre> giữ nguyên và pass
+        // line-number vẫn tách dòng được.
+        let (content, newline) = match line.strip_suffix('\n') {
+            Some(body) => (body, "\n"),
+            None => (line, ""),
+        };
+        let escaped = html_escape(content);
+        let trimmed = content.trim_start();
+        if trimmed.starts_with('+') {
+            write!(output, "<span class=\"diff-add\">{escaped}</span>{newline}")?;
+        } else if trimmed.starts_with('-') {
+            write!(output, "<span class=\"diff-del\">{escaped}</span>{newline}")?;
+        } else if trimmed.starts_with("@@") {
+            write!(
+                output,
+                "<span class=\"diff-meta\">{escaped}</span>{newline}"
+            )?;
+        } else {
+            write!(output, "{escaped}{newline}")?;
+        }
+    }
+    Ok(())
 }
 
 /// v2.3.0 — Heading adapter: thêm `id` attribute + anchor link.
@@ -324,7 +394,9 @@ fn slugify_heading(text: &str) -> String {
 
 /// Cache version — bump khi markdown engine thay đổi output để invalidate
 /// toàn bộ cache cũ (vd: thay đổi post-process logic, thêm class CSS mới).
-const CACHE_VERSION: u8 = 2;
+/// v2.5.0: 2 → 3 (emoji shortcodes, underline/sub/highlight/insert, mention,
+/// hashtag, diff highlight, line numbers).
+const CACHE_VERSION: u8 = 3;
 
 /// Cache entry: rendered HTML + size (bytes) + last access (cho LRU).
 struct CacheEntry {
@@ -475,6 +547,48 @@ fn render_uncached(input: &str) -> String {
     post_process(&html, &toc_entries)
 }
 
+/// v2.5.0 — Render Markdown cho BIO / hồ sơ cá nhân.
+///
+/// Khác `render()` (full article): profile pipeline GIẢM bớt cho phù hợp
+/// ngữ cảnh khối giới thiệu ngắn (~1000 ký tự):
+///   - KHÔNG heading anchor + ToC (bio không cần mục lục / link neo).
+///   - KHÔNG YouTube embed, callout, figure, copy button, lang label,
+///     line number — giữ bio gọn, không lấn chiếm layout trang hồ sơ.
+///   - GIỮ: harden_links (rel/target/scheme allowlist — bắt buộc bảo
+///     mật), spoiler, lazy image, external-link marker, mention
+///     (@user → /u/user), hashtag (#tag → /search), emoji shortcodes
+///     và mọi inline formatting (bold/italic/`code`/==mark==/~~strike~~
+///     /__underline__/H~2~O/:tada:).
+///
+/// Không cache — bio ngắn (≤1000 ký tự), render ~sub-ms, không đáng
+/// tốn memory cache entry.
+#[must_use]
+pub fn render_bio(input: &str) -> String {
+    if input.trim().is_empty() {
+        return String::new();
+    }
+    let opts = comrak_options();
+    let highlighter = SyntectHighlighter {
+        syntax_set: syntax_set(),
+    };
+    // Không dùng heading adapter → heading (nếu user gõ) render <hN> thường,
+    // không sinh anchor/ToC entries cho bio.
+    let plugins = Plugins {
+        render: RenderPlugins {
+            codefence_syntax_highlighter: Some(&highlighter),
+            codefence_renderers: HashMap::new(),
+            heading_adapter: None,
+        },
+    };
+    let html = markdown_to_html_with_plugins(input, &opts, &plugins);
+    let mut out = harden_links(&html);
+    out = convert_spoiler_inline(&out);
+    out = lazy_images(&out);
+    out = mark_external_links(&out);
+    out = linkify_mentions_hashtags(&out);
+    out
+}
+
 /// Post-process HTML output: thêm rel/target cho link, mở rộng spoiler,
 /// callout, YouTube embed, lazy `<img>`, external link marker, copy
 /// button cho code block, thay thế `[toc]` marker, figure caption,
@@ -488,10 +602,16 @@ fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
     out = lazy_images(&out);
     out = wrap_image_figures(&out);
     out = mark_external_links(&out);
+    // v2.5.0 — line numbers PHẢI chạy trước khi wrap copy-button (pass
+    // này thao tác trên `<pre class="code-block">` "trần").
+    out = add_code_line_numbers(&out);
     out = wrap_code_blocks_with_copy_button(&out);
     out = add_code_lang_label(&out);
     out = improve_footnote_backrefs(&out);
     out = inject_toc(&out, toc_entries);
+    // v2.5.0 — mention/hashtag chạy CUỐI: mọi text node đã ổn định, các
+    // pass phía trước không sinh text @/# mới (chỉ markup).
+    out = linkify_mentions_hashtags(&out);
     out
 }
 
@@ -969,6 +1089,296 @@ fn improve_footnote_backrefs(html: &str) -> String {
     html.to_string()
 }
 
+/// v2.5.0 — Thêm số dòng cho code block: wrap từng dòng trong
+/// `<span class="code-line">...</span>`; CSS counter hiển thị số dòng
+/// (xem .code-line::before trong style.css).
+///
+/// Syntect để span MỞ XUYÊN DÒNG (vd `<span class="source rust">` mở ở
+/// dòng 1) và đóng các span chưa đóng dồn về cuối — KỂ CẢ closer đứng
+/// ĐẦU dòng giữa chừng (vd `}` của block: `</span><span...>}`) — nên
+/// wrap trực tiếp từng dòng làm browser đóng code-line span sớm, nội
+/// dung dòng tràn ra ngoài (mất số dòng). Fix 2 bước:
+///   1. `rebalance_spans_per_line`: biến đổi HTML sao cho MỖI DÒNG tự
+///      cân bằng (span mở từ dòng trước được "mở lại" ở đầu dòng và
+///      "đóng tạm" ở cuối dòng) — kỹ thuật chuẩn của syntax highlighter.
+///   2. Wrap từng dòng (đã cân bằng) trong span code-line.
+///
+/// Closer run thuần (`</span>...`) ở cuối bị drop (rebalance đã đóng
+/// hết ở cuối dòng cuối). Dòng trống cuối (từ `\n` kết thúc) giữ `\n`
+/// ngoài span. textContent (copy button) không đổi.
+fn add_code_line_numbers(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find("<pre class=\"code-block\">") {
+        let pre_open_len = "<pre class=\"code-block\">".len();
+        // Tìm thẻ <code ...> mở bên trong pre (adapter luôn phát <code>).
+        // Tìm '<' SAU thẻ pre mở (không tính '<' của chính thẻ pre).
+        let code_open = match rest[start + pre_open_len..].find('<') {
+            Some(p) if rest[start + pre_open_len + p..].starts_with("<code") => rest
+                [start + pre_open_len + p..]
+                .find('>')
+                .map(|q| start + pre_open_len + p + q + 1),
+            _ => None,
+        };
+        let end_marker = "</pre>";
+        let pre_end = rest[start..]
+            .find(end_marker)
+            .map(|p| start + p + end_marker.len())
+            .unwrap_or(rest.len());
+        match code_open {
+            Some(code_body_start) if code_body_start < pre_end => {
+                let code_close = rest[code_body_start..]
+                    .find("</code>")
+                    .map(|p| code_body_start + p)
+                    .unwrap_or(pre_end);
+                out.push_str(&rest[..code_body_start]);
+                let content = &rest[code_body_start..code_close];
+                if content.contains("code-line") || content.is_empty() {
+                    // Idempotent — không double-wrap.
+                    out.push_str(content);
+                } else {
+                    // Bước 0: tách closer run thuần cuối + dòng trống cuối.
+                    let mut body = content;
+                    if let Some(nl_pos) = body.rfind('\n') {
+                        let last_part = &body[nl_pos + 1..];
+                        let non_empty =
+                            last_part.split("</span>").filter(|s| !s.is_empty()).count();
+                        if !last_part.is_empty() && non_empty == 0 {
+                            body = &body[..nl_pos]; // drop closer run (+ \n trước nó)
+                        }
+                    }
+                    let mut trailing_nl = false;
+                    if let Some(stripped) = body.strip_suffix('\n') {
+                        body = stripped;
+                        trailing_nl = true;
+                    }
+                    // Bước 1: rebalance span theo dòng.
+                    let rebalanced = rebalance_spans_per_line(body);
+                    // Bước 2: wrap từng dòng.
+                    for (n, line) in rebalanced.split('\n').enumerate() {
+                        out.push_str("<span class=\"code-line\">");
+                        out.push_str(line);
+                        out.push_str("</span>");
+                        if n + 1 < rebalanced.split('\n').count() {
+                            out.push('\n');
+                        }
+                    }
+                    if trailing_nl {
+                        out.push('\n');
+                    }
+                }
+                out.push_str(&rest[code_close..pre_end]);
+                rest = &rest[pre_end..];
+            }
+            // Structure lạ (không có <code>) — giữ nguyên cả block.
+            _ => {
+                out.push_str(&rest[..pre_end]);
+                rest = &rest[pre_end..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// v2.5.0 — Rebalance các span syntect theo DÒNG: biến HTML (nhiều span
+/// mở xuyên dòng, closer dồn cuối) thành HTML mà MỖI DÒNG tự cân bằng.
+///
+/// Cơ chế: duyệt token (thẻ + text) từng dòng, giữ `stack` span mở:
+///   - Đầu dòng: phát lại (synthesized) mọi tag trong `stack`.
+///   - Gặp `</span>` gốc: pop stack (closer dư khi stack rỗng → bỏ).
+///   - Cuối dòng: phát (synthesized) `</span>` × len(stack).
+///
+/// `stack` được GIỮ NGUYÊN qua các dòng (chỉ output đóng tạm) — dòng sau
+/// mở lại y hệt. Bảo toàn: mỗi dòng opens == closes → wrap ngoài an toàn.
+///
+/// Input phải là nội dung code đã escape (mọi `<` đều là thẻ thật do
+/// syntect/diff-highlighter escape `&lt;` sẵn) — không có `>` trong attr
+/// class của syntect output.
+fn rebalance_spans_per_line(content: &str) -> String {
+    let mut out = String::with_capacity(content.len() + 256);
+    let mut stack: Vec<&str> = Vec::new();
+    for line in content.split_inclusive('\n') {
+        let (body, newline) = match line.strip_suffix('\n') {
+            Some(b) => (b, "\n"),
+            None => (line, ""),
+        };
+        // Mở lại span từ dòng trước.
+        for open in &stack {
+            out.push_str(open);
+        }
+        // Duyệt token trong dòng.
+        let bytes = body.as_bytes();
+        let mut i = 0usize;
+        while i < bytes.len() {
+            if bytes[i] == b'<' {
+                let end = body[i..].find('>').map(|p| i + p + 1).unwrap_or(body.len());
+                let tag = &body[i..end];
+                if tag.starts_with("</span") {
+                    // Closer gốc — pop stack. Closer dư (stack rỗng) → bỏ.
+                    if stack.pop().is_some() {
+                        out.push_str("</span>");
+                    }
+                } else if tag.starts_with("<span") {
+                    stack.push(tag);
+                    out.push_str(tag);
+                } else {
+                    // Thẻ khác (hiếm) — passthrough.
+                    out.push_str(tag);
+                }
+                i = end;
+            } else {
+                let next = body[i..].find('<').map(|p| i + p).unwrap_or(body.len());
+                out.push_str(&body[i..next]);
+                i = next;
+            }
+        }
+        // Đóng tạm mọi span còn mở cuối dòng (stack giữ cho dòng sau).
+        for _ in 0..stack.len() {
+            out.push_str("</span>");
+        }
+        out.push_str(newline);
+    }
+    out
+}
+
+/// v2.5.0 — Link hoá mention + hashtag trong TEXT NODE của HTML đã render:
+///   - `@username`  → `<a href="/u/username" class="md-mention">@username</a>`
+///   - `#từ-khoá`   → `<a href="/search?q=..." class="md-hashtag">#từ-khoá</a>`
+///
+/// Bỏ qua (không link) khi nằm trong:
+///   - `<pre>` / `<code>` (đó là mã nguồn)
+///   - `<a>` (đã là link — tránh lồng <a> trong <a>, HTML không hợp lệ)
+///   - attribute của tag (chỉ xử lý text node)
+///
+/// An toàn entity: `&#39;` / `&#x27;` chứa `#` nhưng # đứng sau `&` và
+/// theo sau là CHỮ SỐ → bị chặn bởi (1) quy tắc "ký tự trước # phải
+/// không phải `&`" và (2) quy tắc "ký tự đầu tag phải là CHỮ".
+/// Mention chỉ nhận [a-zA-Z0-9_] (username site là ASCII), hashtag nhận
+/// chữ cái unicode (hỗ trợ #TiếngViệt) + số.
+fn linkify_mentions_hashtags(html: &str) -> String {
+    let bytes = html.as_bytes();
+    let mut out = String::with_capacity(html.len() + 64);
+    let mut i = 0usize;
+    // Depth counter cho vùng "không link hoá": code/pre/anchor
+    let mut code_depth: usize = 0; // <pre> hoặc <code> lồng nhau
+    let mut anchor_depth: usize = 0; // <a> lồng nhau (HTMX partial có thể lồng)
+
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            // Copy toàn bộ tag (từ '<' tới '>')
+            let tag_end = match html[i..].find('>') {
+                Some(p) => i + p + 1,
+                None => html.len(),
+            };
+            let tag = &html[i..tag_end];
+            let lower = tag.to_ascii_lowercase();
+            if lower.starts_with("<pre") || lower.starts_with("<code") {
+                code_depth = code_depth.saturating_add(1);
+            } else if lower.starts_with("</pre") || lower.starts_with("</code") {
+                code_depth = code_depth.saturating_sub(1);
+            } else if lower.starts_with("<a ") || lower.starts_with("<a>") {
+                anchor_depth = anchor_depth.saturating_add(1);
+            } else if lower.starts_with("</a") {
+                anchor_depth = anchor_depth.saturating_sub(1);
+            }
+            out.push_str(tag);
+            i = tag_end;
+            continue;
+        }
+        // Text node — tìm tag tiếp theo để biết ranh giới text
+        let next_tag = html[i..].find('<').map(|p| i + p).unwrap_or(html.len());
+        let text = &html[i..next_tag];
+        if code_depth > 0 || anchor_depth > 0 {
+            out.push_str(text);
+        } else {
+            linkify_text(text, &mut out);
+        }
+        i = next_tag;
+    }
+    out
+}
+
+/// Link hoá 1 text node (đã escape HTML — text thuần + entity).
+fn linkify_text(text: &str, out: &mut String) {
+    let chars: Vec<char> = text.chars().collect();
+    let mut idx = 0usize;
+    while idx < chars.len() {
+        let c = chars[idx];
+        if c == '@' {
+            // @mention: ký tự trước @ phải không phải chữ/số/_/& (chặn
+            // email user@domain và entity) — sau @ là [a-zA-Z0-9_]{2,30}
+            let prev_ok = idx == 0
+                || !chars[idx - 1].is_alphanumeric()
+                    && chars[idx - 1] != '_'
+                    && chars[idx - 1] != '&';
+            if prev_ok {
+                let mut j = idx + 1;
+                while j < chars.len() && (chars[j].is_ascii_alphanumeric() || chars[j] == '_') {
+                    j += 1;
+                }
+                let len = j - (idx + 1);
+                if (2..=30).contains(&len) {
+                    let username: String = chars[idx + 1..j].iter().collect();
+                    out.push_str("<a href=\"/u/");
+                    out.push_str(&username);
+                    out.push_str("\" class=\"md-mention\">@");
+                    out.push_str(&username);
+                    out.push_str("</a>");
+                    idx = j;
+                    continue;
+                }
+            }
+            out.push(c);
+            idx += 1;
+        } else if c == '#' {
+            // #hashtag: ký tự trước # phải không phải chữ/số/_/& (chặn
+            // entity &#39;/&#x27;), ký tự đầu tag phải là CHỮ (chặn #39),
+            // theo sau là chữ unicode/số/_ , dài 2..=48.
+            let prev_ok = idx == 0
+                || !chars[idx - 1].is_alphanumeric()
+                    && chars[idx - 1] != '_'
+                    && chars[idx - 1] != '&';
+            if prev_ok {
+                let mut j = idx + 1;
+                if j < chars.len() && chars[j].is_alphabetic() {
+                    j += 1;
+                    while j < chars.len()
+                        && (chars[j].is_alphanumeric() || chars[j] == '_')
+                        && j - idx <= 48
+                    {
+                        j += 1;
+                    }
+                    let len = j - (idx + 1);
+                    if (1..=47).contains(&len) {
+                        let tag: String = chars[idx + 1..j].iter().collect();
+                        out.push_str("<a href=\"/search?q=");
+                        // URL-encode tag cho query param an toàn
+                        for b in tag.bytes() {
+                            match b {
+                                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' => {
+                                    out.push(b as char)
+                                }
+                                _ => out.push_str(&format!("%{b:02X}")),
+                            }
+                        }
+                        out.push_str("\" class=\"md-hashtag\">#");
+                        out.push_str(&tag);
+                        out.push_str("</a>");
+                        idx = j;
+                        continue;
+                    }
+                }
+            }
+            out.push(c);
+            idx += 1;
+        } else {
+            out.push(c);
+            idx += 1;
+        }
+    }
+}
+
 /// v2.3.0 — Thay thế marker `[toc]` (rendered là `<p>[toc]</p>`) bằng
 /// danh sách mục lục dựng từ `toc_entries` (gom được trong phase render).
 ///
@@ -1395,5 +1805,271 @@ mod tests {
         assert!(!out1.contains("href=\"#b\""));
         assert!(out2.contains("href=\"#b\""));
         assert!(!out2.contains("href=\"#a\""));
+    }
+
+    // ============ v2.5.0 — Markdown engine "mạnh hơn nữa" ============
+
+    #[test]
+    fn test_emoji_shortcode_v25() {
+        let out = render("Chúc mừng :tada: và :smile:");
+        assert!(out.contains('🎉'), "shortcode :tada: phải thành 🎉: {out}");
+        assert!(out.contains('😄'), "shortcode :smile: phải thành 😄: {out}");
+    }
+
+    #[test]
+    fn test_shortcode_unknown_name_stays_literal() {
+        // Tên không có trong bảng shortcode → giữ nguyên text
+        let out = render("giờ :khongtontrongbang: 8:00");
+        assert!(out.contains(":khongtontrongbang:"));
+        assert!(out.contains("8:00"));
+    }
+
+    #[test]
+    fn test_underline_v25() {
+        let out = render("__văn bản gạch chân__");
+        assert!(out.contains("<u>văn bản gạch chân</u>"), "got: {out}");
+    }
+
+    #[test]
+    fn test_subscript_v25() {
+        let out = render("H~2~O và CO~2~");
+        assert!(out.contains("<sub>2</sub>"), "got: {out}");
+    }
+
+    #[test]
+    fn test_highlight_mark_v25() {
+        let out = render("đây là ==điểm quan trọng== nè");
+        assert!(out.contains("<mark>điểm quan trọng</mark>"), "got: {out}");
+    }
+
+    #[test]
+    fn test_insert_ins_v25() {
+        let out = render("++đoạn thêm mới++");
+        assert!(out.contains("<ins>đoạn thêm mới</ins>"), "got: {out}");
+    }
+
+    #[test]
+    fn test_inline_footnote_v25() {
+        let out = render("văn bản^[chú thích inline] ở đây");
+        assert!(
+            out.contains("chú thích inline"),
+            "inline footnote content phải xuất hiện: {out}"
+        );
+    }
+
+    #[test]
+    fn test_mention_linkified_v25() {
+        let out = render("chào @mhieuhonda nhé!");
+        assert!(
+            out.contains("<a href=\"/u/mhieuhonda\" class=\"md-mention\">@mhieuhonda</a>"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn test_mention_in_code_not_linkified() {
+        let out = render("`@khong_phai_user` và:\n\n```\n@git_handle\n```\n");
+        assert!(
+            !out.contains("md-mention"),
+            "code không được link hoá: {out}"
+        );
+    }
+
+    #[test]
+    fn test_mention_email_not_linkified() {
+        let out = render("gửi mail cho user@domain.com nhé");
+        assert!(
+            !out.contains("md-mention"),
+            "email không được link hoá: {out}"
+        );
+    }
+
+    #[test]
+    fn test_hashtag_linkified_v25() {
+        let out = render("bài này về #GameNhay nhiều lắm");
+        assert!(out.contains("class=\"md-hashtag\">#GameNhay"), "got: {out}");
+        assert!(out.contains("href=\"/search?q=GameNhay\""));
+    }
+
+    #[test]
+    fn test_hashtag_vietnamese_linkified() {
+        let out = render("hãy chơi #TiếngViệt nào");
+        assert!(
+            out.contains("md-hashtag"),
+            "hashtag tiếng Việt phải link: {out}"
+        );
+        // Ký tự có dấu phải được URL-encode trong query param
+        assert!(out.contains("/search?q=Ti%"), "got: {out}");
+    }
+
+    #[test]
+    fn test_hashtag_entity_not_linkified() {
+        // `&#39;` (apostrophe escaped) chứa # nhưng KHÔNG được thành hashtag
+        let out = render("don't stop me now");
+        assert!(
+            !out.contains("md-hashtag"),
+            "entity &#39; không được link: {out}"
+        );
+    }
+
+    #[test]
+    fn test_hashtag_in_code_not_linkified() {
+        let out = render("chạy lệnh `#include <stdio.h>` nhé");
+        assert!(!out.contains("md-hashtag"), "got: {out}");
+    }
+
+    #[test]
+    fn test_diff_block_colored_v25() {
+        let input = "```diff\n@@ -1,2 +1,2 @@\n-old line\n+new line\n context\n```";
+        let out = render(input);
+        assert!(out.contains("diff-add"), "missing diff-add: {out}");
+        assert!(out.contains("diff-del"), "missing diff-del: {out}");
+        assert!(out.contains("diff-meta"), "missing diff-meta: {out}");
+    }
+
+    #[test]
+    fn test_diff_block_escapes_html() {
+        let input = "```diff\n+<script>alert(1)</script>\n```";
+        let out = render(input);
+        assert!(
+            !out.contains("<script>alert"),
+            "diff phải escape HTML: {out}"
+        );
+        assert!(out.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn test_code_line_numbers_v25() {
+        let out = render("```rust\nfn a() {}\nfn b() {}\n```");
+        assert!(
+            out.contains("<span class=\"code-line\">"),
+            "phải có span code-line: {out}"
+        );
+        // 2 dòng code → 2 span code-line (không tính dòng trống cuối)
+        assert_eq!(
+            out.matches("<span class=\"code-line\">").count(),
+            2,
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn test_code_line_numbers_multiline_block_v25() {
+        // Block đa dòng có span mở xuyên dòng (meta block của `{`...`}`) —
+        // syntect phát closer `</span>` ĐẦU dòng cuối. Rebalance phải giữ
+        // `}` BÊN TRONG span code-line cuối (browser không đóng sớm).
+        let out = render("```rust\nfn main() {\n    println!(\"x\");\n}\n```");
+        assert_eq!(
+            out.matches("<span class=\"code-line\">").count(),
+            3,
+            "3 dòng → 3 span: {out}"
+        );
+        // `}` phải nằm trong code-line span cuối cùng: tìm đoạn từ code-line
+        // mở CUỐI tới </code> phải chứa block-end span với `}`.
+        let last_open = out.rfind("<span class=\"code-line\">").unwrap();
+        let tail = &out[last_open..];
+        assert!(
+            tail.contains("block end rust\">}</span>"),
+            "`}}` phải trong span cuối: {tail}"
+        );
+        // Mỗi dòng tự cân bằng: tổng mở == tổng đóng span trong pre
+        let pre_start = out.find("<pre class=\"code-block\">").unwrap();
+        let pre_end = out.find("</pre>").unwrap();
+        let pre = &out[pre_start..pre_end];
+        let opens = pre.matches("<span").count();
+        let closes = pre.matches("</span>").count();
+        assert_eq!(opens, closes, "span phải cân bằng trong pre: {pre}");
+    }
+
+    #[test]
+    fn test_code_line_numbers_empty_line_v25() {
+        // Dòng trống giữa code — vẫn được đánh số (span rỗng)
+        let out = render("```rust\nlet a = 1;\n\nlet b = 2;\n```");
+        assert_eq!(out.matches("<span class=\"code-line\">").count(), 3);
+    }
+
+    #[test]
+    fn test_code_tag_single_class_attribute_v25() {
+        // FIX bug trùng thuộc tính class có sẵn từ v2.2:
+        // `<code class="language-rust" class="hljs">` (invalid HTML) →
+        // `<code class="language-rust hljs">`
+        let out = render("```rust\nfn main() {}\n```");
+        assert!(
+            out.contains("class=\"language-rust hljs\""),
+            "code tag phải merge class: {out}"
+        );
+    }
+
+    #[test]
+    fn test_mention_inside_link_text_not_nested() {
+        // @user trong text của <a> sẵn → KHÔNG lồng <a> trong <a>
+        let out = render("[xem @mhieuhonda profile](https://example.com)");
+        assert!(
+            !out.contains("<a href=\"/u/"),
+            "không lồng <a> trong <a>: {out}"
+        );
+    }
+
+    // ============ v2.5.0 — Bio Markdown (render_bio) ============
+
+    #[test]
+    fn test_bio_renders_markdown() {
+        let out = render_bio("Xin chào, tôi là **Louis** — dev *Rust* :rocket:");
+        assert!(out.contains("<strong>Louis</strong>"), "got: {out}");
+        assert!(out.contains("<em>Rust</em>"));
+        assert!(out.contains('🚀'));
+    }
+
+    #[test]
+    fn test_bio_mention_and_hashtag() {
+        let out = render_bio("follow @mhieuhonda — chơi #GameHay mỗi ngày");
+        assert!(out.contains("md-mention"), "got: {out}");
+        assert!(out.contains("md-hashtag"));
+    }
+
+    #[test]
+    fn test_bio_link_hardened() {
+        let out = render_bio("[web](https://example.com) và [x](javascript:alert(1))");
+        assert!(out.contains("rel=\"nofollow ugc noopener noreferrer\""));
+        assert!(!out.contains("javascript:alert"));
+    }
+
+    #[test]
+    fn test_bio_no_toc_no_youtube() {
+        let out = render_bio("[toc]\n\nhttps://www.youtube.com/watch?v=dQw4w9WgXcQ");
+        // Bio pipeline không inject ToC, không embed YouTube
+        assert!(!out.contains("toc-list"), "bio không có ToC: {out}");
+        assert!(
+            !out.contains("youtube-nocookie.com"),
+            "bio không embed YouTube: {out}"
+        );
+    }
+
+    #[test]
+    fn test_bio_heading_no_anchor() {
+        let out = render_bio("# Tiêu đề lớn trong bio");
+        assert!(!out.contains("heading-anchor"), "bio không anchor: {out}");
+        assert!(out.contains("Tiêu đề lớn trong bio"));
+    }
+
+    #[test]
+    fn test_bio_empty_input() {
+        assert_eq!(render_bio(""), "");
+        assert_eq!(render_bio("   \n  "), "");
+    }
+
+    #[test]
+    fn test_bio_escapes_raw_html() {
+        let out = render_bio("<img src=x onerror=alert(1)>");
+        assert!(!out.contains("<img src=x"), "bio phải escape HTML: {out}");
+    }
+
+    #[test]
+    fn test_bio_code_block_still_highlighted_but_simple() {
+        let out = render_bio("```\nlet x = 1;\n```");
+        // Code block vẫn render (syntax màu) nhưng KHÔNG copy button/label
+        assert!(out.contains("code-block"));
+        assert!(!out.contains("code-copy-btn"), "bio không copy btn: {out}");
+        assert!(!out.contains("code-lang-label"));
     }
 }

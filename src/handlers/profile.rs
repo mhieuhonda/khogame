@@ -137,9 +137,13 @@ pub async fn update_profile(
     }
     let bio = form.bio.unwrap_or_default();
     let bio = bio.trim();
-    if bio.chars().count() > 500 {
+    // v2.5.0 — bio hỗ trợ Markdown: nâng limit 500 → 1000 ký tự (cú pháp
+    // markdown **bold**, [link](url), :emoji:... chiếm chỗ; DB column là
+    // TEXT không giới hạn). Render qua services::markdown::render_bio —
+    // escape toàn bộ raw HTML, URL allowlist, không ToC/YouTube/callout.
+    if bio.chars().count() > 1000 {
         return Err(AppError::BadRequest(
-            "Giới thiệu bản thân tối đa 500 ký tự".into(),
+            "Giới thiệu bản thân tối đa 1000 ký tự".into(),
         ));
     }
     // Avatar URL: chấp nhận (1) http(s):// URL bên ngoài (Google avatar

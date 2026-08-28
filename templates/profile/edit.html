@@ -22,8 +22,9 @@
         <input type="text" name="display_name" id="f-display_name" class="form-control" required value="{{ cu.display_name }}">
     </div>
     <div class="form-group">
-        <label class="form-label" for="f-bio">Tiểu sử</label>
-        <textarea name="bio" id="f-bio" class="form-control" rows="4" maxlength="500">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+        <label class="form-label" for="f-bio">Tiểu sử <span class="md-support-badge">Hỗ trợ Markdown</span></label>
+        <textarea name="bio" id="f-bio" class="form-control" rows="5" maxlength="1000">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+        <small class="form-hint">Hỗ trợ Markdown: <code>**đậm**</code>, <code>*nghiêng*</code>, <code>~~gạch ngang~~</code>, <code>==đánh dấu==</code>, <code>`code`</code>, <code>[link](https://...)</code>, <code>@username</code> (liên kết hồ sơ), <code>#hashtag</code> (tìm kiếm), emoji <code>:tada:</code> <code>:rocket:</code>. Tối đa 1000 ký tự.</small>
     </div>
     <div class="form-group">
         <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>

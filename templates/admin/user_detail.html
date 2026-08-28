@@ -40,7 +40,7 @@
             <div class="user-detail-row">
                 <strong>Bio:</strong>
                 {% match user.bio.clone() %}
-                {% when Option::Some with (b) %}{{ b }}
+                {% when Option::Some with (b) %}<div class="bio-md">{{ b|bio }}</div>
                 {% when Option::None %}<em>—</em>
                 {% endmatch %}
             </div>

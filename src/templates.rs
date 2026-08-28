@@ -719,6 +719,17 @@ pub mod filters {
         Ok(Safe(u::safe_markdown_to_html(s.as_ref())))
     }
 
+    /// v2.5.0 — Markdown an toàn cho BIO hồ sơ cá nhân (pipeline rút gọn:
+    /// không ToC/YouTube/callout/copy-btn — xem services::markdown::render_bio).
+    /// Dùng trong templates/profile/show.html + admin/user_detail.html.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[askama::filter_fn]
+    pub fn bio(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
+        Ok(Safe(crate::services::markdown::render_bio(s.as_ref())))
+    }
+
     /// v2.4.0 — Ước lượng thời gian đọc (phút) từ markdown source.
     /// Dùng cho badge "X phút đọc" ở đầu bài tin / game detail. Tính 200
     /// từ/phút (conservative cho tiếng Việt có dấu).

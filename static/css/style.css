@@ -6972,3 +6972,263 @@ textarea:focus-visible,
     opacity: 0.85;
 }
 
+
+/* ============================================================
+   v2.5.0 — Markdown engine "mạnh hơn nữa" + Bio Markdown
+   - Syntect token colors (GitHub-dark-inspired) — lần ĐẦU có màu thật
+     (trước đây class syntect không có CSS nào → code 1 màu phẳng)
+   - Code line numbers (CSS counter trên .code-line)
+   - Diff block coloring (+ xanh / - đỏ / @@ xanh dương)
+   - mark/ins/u/sub (==highlight==, ++insert++, __underline__, H~2~O)
+   - @mention + #hashtag links
+   - .bio-md — bio hồ sơ render Markdown (compact)
+   ============================================================ */
+
+/* --- 1) Syntect token colors — bổ sung selector cho class syntect.
+   Syntect ClassStyle::Spaced phát class theo scope: "keyword control rust",
+   "string quoted double python"... CSS cũ chỉ target .hljs-* (dead code —
+   syntect không bao giờ phát class đó). Giờ target scope-class thật. --- */
+.prose-md .code-block .keyword,
+.news-content .code-block .keyword,
+.game-content .code-block .keyword,
+.prose-md pre.code-block .keyword,
+.news-content pre.code-block .keyword,
+.game-content pre.code-block .keyword,
+.prose-md .storage,
+.news-content .storage,
+.game-content .storage { color: #ff7b72; } /* keyword / storage.type */
+
+.prose-md .code-block .string,
+.news-content .code-block .string,
+.game-content .code-block .string,
+.prose-md pre.code-block .string,
+.news-content pre.code-block .string,
+.game-content pre.code-block .string { color: #a5d6ff; } /* string */
+
+.prose-md .code-block .comment,
+.news-content .code-block .comment,
+.game-content .code-block .comment,
+.prose-md pre.code-block .comment,
+.news-content pre.code-block .comment,
+.game-content pre.code-block .comment {
+    color: #8b949e;
+    font-style: italic;
+}
+
+.prose-md .code-block .constant,
+.news-content .code-block .constant,
+.game-content .code-block .constant,
+.prose-md pre.code-block .constant,
+.news-content pre.code-block .constant,
+.game-content pre.code-block .constant,
+.prose-md .code-block .numeric,
+.news-content .code-block .numeric,
+.game-content .code-block .numeric { color: #79c0ff; } /* số / constant */
+
+.prose-md .code-block .entity,
+.news-content .code-block .entity,
+.game-content .code-block .entity,
+.prose-md pre.code-block .entity,
+.news-content pre.code-block .entity,
+.game-content pre.code-block .entity,
+.prose-md .code-block .support,
+.news-content .code-block .support,
+.game-content .code-block .support { color: #d2a8ff; } /* tên hàm / class */
+
+.prose-md .code-block .variable,
+.news-content .code-block .variable,
+.game-content .code-block .variable,
+.prose-md pre.code-block .variable,
+.news-content pre.code-block .variable,
+.game-content pre.code-block .variable,
+.prose-md .code-block .variable-parameter,
+.news-content .code-block .variable-parameter,
+.game-content .code-block .variable-parameter { color: #ffa657; } /* biến / tham số */
+
+.prose-md .code-block .punctuation,
+.news-content .code-block .punctuation,
+.game-content .code-block .punctuation,
+.prose-md pre.code-block .punctuation,
+.news-content pre.code-block .punctuation,
+.game-content pre.code-block .punctuation { color: #c9d1d9; }
+
+/* --- 2) Code line numbers — CSS counter, hiển thị trái, mờ, không chọn --- */
+.prose-md pre.code-block,
+.news-content pre.code-block,
+.game-content pre.code-block {
+    counter-reset: md-code-line;
+}
+.prose-md pre.code-block .code-line,
+.news-content pre.code-block .code-line,
+.game-content pre.code-block .code-line {
+    counter-increment: md-code-line;
+    display: inline-block;
+    width: 100%;
+}
+.prose-md pre.code-block .code-line::before,
+.news-content pre.code-block .code-line::before,
+.game-content pre.code-block .code-line::before {
+    content: counter(md-code-line);
+    display: inline-block;
+    min-width: 2.2em;
+    margin-right: 1.2em;
+    text-align: right;
+    color: var(--muted, #6b7280);
+    opacity: 0.55;
+    user-select: none;
+    -webkit-user-select: none;
+}
+[data-theme="dark"] .prose-md pre.code-block .code-line::before,
+[data-theme="dark"] .news-content pre.code-block .code-line::before,
+[data-theme="dark"] .game-content pre.code-block .code-line::before {
+    color: #6e7681;
+}
+
+/* --- 3) Diff block coloring --- */
+.prose-md .diff-add,
+.news-content .diff-add,
+.game-content .diff-add {
+    display: inline-block;
+    width: 100%;
+    background: rgba(46, 160, 67, 0.15);
+    color: #3fb950;
+}
+.prose-md .diff-del,
+.news-content .diff-del,
+.game-content .diff-del {
+    display: inline-block;
+    width: 100%;
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+}
+.prose-md .diff-meta,
+.news-content .diff-meta,
+.game-content .diff-meta {
+    display: inline-block;
+    width: 100%;
+    background: rgba(56, 139, 253, 0.15);
+    color: #58a6ff;
+}
+
+/* --- 4) mark / ins / u / sub — inline formatting mới --- */
+.prose-md mark, .news-content mark, .game-content mark, .bio-md mark {
+    background: rgba(255, 212, 0, 0.35);
+    color: inherit;
+    padding: 0.08em 0.25em;
+    border-radius: 3px;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+}
+[data-theme="dark"] .prose-md mark,
+[data-theme="dark"] .news-content mark,
+[data-theme="dark"] .game-content mark,
+[data-theme="dark"] .bio-md mark {
+    background: rgba(187, 128, 9, 0.4);
+    color: #fff;
+}
+.prose-md ins, .news-content ins, .game-content ins, .bio-md ins {
+    text-decoration: underline;
+    text-decoration-style: solid;
+    text-decoration-color: #3fb950;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 2px;
+}
+.prose-md u, .news-content u, .game-content u, .bio-md u {
+    text-underline-offset: 2px;
+}
+.prose-md sub, .news-content sub, .game-content sub, .bio-md sub {
+    font-size: 0.72em;
+}
+
+/* --- 5) @mention + #hashtag --- */
+.prose-md .md-mention,
+.news-content .md-mention,
+.game-content .md-mention,
+.bio-md .md-mention {
+    color: #58a6ff;
+    font-weight: 600;
+    text-decoration: none;
+    background: rgba(56, 139, 253, 0.1);
+    padding: 0.05em 0.35em;
+    border-radius: 999px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.prose-md .md-mention:hover,
+.news-content .md-mention:hover,
+.game-content .md-mention:hover,
+.bio-md .md-mention:hover {
+    background: rgba(56, 139, 253, 0.22);
+}
+.prose-md .md-hashtag,
+.news-content .md-hashtag,
+.game-content .md-hashtag,
+.bio-md .md-hashtag {
+    color: #d2a8ff;
+    font-weight: 600;
+    text-decoration: none;
+}
+.prose-md .md-hashtag:hover,
+.news-content .md-hashtag:hover,
+.game-content .md-hashtag:hover,
+.bio-md .md-hashtag:hover {
+    text-decoration: underline;
+}
+
+/* --- 6) Bio Markdown — render_bio trên trang hồ sơ --- */
+.bio-md {
+    font-size: 0.95rem;
+    line-height: 1.65;
+    word-break: break-word;
+}
+.bio-md p { margin: 0 0 0.5em; }
+.bio-md p:last-child { margin-bottom: 0; }
+.bio-md a { color: var(--link, #2563eb); text-decoration: none; }
+.bio-md a:hover { text-decoration: underline; }
+[data-theme="dark"] .bio-md a { color: #58a6ff; }
+.bio-md ul, .bio-md ol { margin: 0.4em 0; padding-left: 1.4em; }
+.bio-md li { margin: 0.15em 0; }
+.bio-md code {
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 0.85em;
+    background: rgba(175, 184, 193, 0.2);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+}
+.bio-md pre.code-block {
+    font-size: 0.8rem;
+    padding: 0.75em 1em;
+    margin: 0.6em 0;
+}
+.bio-md blockquote {
+    margin: 0.5em 0;
+    padding: 0.2em 0.9em;
+    border-left: 3px solid var(--border, #d1d5db);
+    color: var(--muted, #6b7280);
+}
+.bio-md h1, .bio-md h2, .bio-md h3, .bio-md h4 {
+    font-size: 1em; /* heading trong bio giữ kích thước tiết chế */
+    font-weight: 700;
+    margin: 0.6em 0 0.3em;
+}
+.profile-bio.bio-md { margin: 4px 0 8px; }
+
+/* --- 7) Badge "Hỗ trợ Markdown" trên label form --- */
+.md-support-badge {
+    display: inline-block;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #a21caf;
+    background: rgba(162, 28, 175, 0.1);
+    border: 1px solid rgba(162, 28, 175, 0.25);
+    padding: 0.1em 0.5em;
+    border-radius: 999px;
+    vertical-align: middle;
+    margin-left: 0.35em;
+}
+[data-theme="dark"] .md-support-badge {
+    color: #d8b4fe;
+    background: rgba(162, 28, 175, 0.18);
+    border-color: rgba(216, 180, 254, 0.3);
+}
