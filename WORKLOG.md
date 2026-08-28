@@ -155,3 +155,24 @@ Stage Summary:
   running:healthy, GITHUB_TOKEN active.
 - ✅ 2 GitHub releases (v2.4.1 + v2.5.0), 3 commits authored mhieuhonda
 - ✅ 281 tests pass, clippy 0 warnings, rustdoc 0 warnings, fmt clean
+
+---
+Task ID: v2.5.1-patch
+Agent: Super Z (main)
+Task: Bug cuối lọt lưới — /manifest.json bị ép Content-Type text/html.
+
+Work Log:
+- Smoke test cuối phát hiện: cache_control_html insert CỨNG
+  Content-Type: text/html cho mọi GET có Accept: text/html →
+  /manifest.json (application/manifest+json + max-age=86400) bị trả
+  text/html + cache 60s từ v2.3.0 (PWA chạy được nhờ browser khoan dung).
+- Fix: (1) bỏ insert cứng — copy loop đã khôi phục Content-Type gốc;
+  (2) thêm /manifest vào skip list giữ Cache-Control riêng của handler.
+- Commit e6ea080, tag v2.5.1. CI/CD/Release success.
+
+Stage Summary:
+- ✅ Prod health {"status":"ok","version":"2.5.1"}
+- ✅ /manifest.json → application/manifest+json (đúng spec Web App Manifest)
+- ✅ Error pages text/html (giữ nguyên fix v2.4.1)
+- ✅ 3 releases: v2.4.1 (hotfix), v2.5.0 (Markdown v2.5 + Bio MD),
+  v2.5.1 (manifest MIME). Toàn bộ commits author mhieuhonda.
