@@ -1248,7 +1248,7 @@ fn rebalance_spans_per_line(content: &str) -> String {
 ///
 /// Bỏ qua (không link) khi nằm trong:
 ///   - `<pre>` / `<code>` (đó là mã nguồn)
-///   - `<a>` (đã là link — tránh lồng <a> trong <a>, HTML không hợp lệ)
+///   - `<a>` (đã là link — tránh lồng thẻ `<a>` trong thẻ `<a>`, HTML không hợp lệ)
 ///   - attribute của tag (chỉ xử lý text node)
 ///
 /// An toàn entity: `&#39;` / `&#x27;` chứa `#` nhưng # đứng sau `&` và
