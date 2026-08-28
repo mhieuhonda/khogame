@@ -5,6 +5,63 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.1] — 2026-08-28 — HOTFIX: trang lỗi hiện HTML thô + không thể đăng repo GitHub
+
+Bản hotfix khẩn cấp 2 lỗi nghiêm trọng phát hiện trên production:
+
+### 🐛 Bug Fixes (Critical)
+
+- **FIX "rất nhiều trang chỉ hiện HTML thô, không có giao diện"** — lỗi
+  được báo cáo là MỌI trang lỗi (404/403/500) hiển thị source HTML thô
+  thay vì giao diện. Root cause gồm 2 lớp, xác nhận trực tiếp trên prod
+  (`/news/{slug-lỗi}` và `/games/{slug-lỗi}` trả `Content-Type:
+  text/plain` với body HTML đầy đủ):
+  1. `src/error.rs::AppError::into_response` trả
+     `(StatusCode, html_string)` — Axum gán Content-Type mặc định
+     **text/plain** cho body kiểu String. Browser theo content-type mà
+     hiển thị THẺ HTML dạng chữ thay vì render. Fix: bọc body trong
+     `Html<>` → `text/html; charset=utf-8`.
+  2. `src/middleware.rs::error_page_mw` render lại body bằng
+     `Html(full_page)` (đúng) nhưng sau đó copy TOÀN BỘ headers của
+     response cũ đè lên — gồm cả `Content-Type: text/plain` — vô hiệu
+     hoá content-type đúng mà `Html<>` vừa set. Fix: skip
+     `Content-Type` + `Content-Encoding` khi copy headers (giữ security
+     headers, x-request-id, retry-after... như cũ).
+  - Regression test `test_app_error_response_content_type_is_html`
+    verify mọi AppError response đều có `Content-Type: text/html`.
+  - Ảnh hưởng trước fix: mọi link hỏng / nội dung đã xoá / form lỗi →
+    user thấy `<!DOCTYPE html>...` thô. Sau fix: trang lỗi hiển thị
+    đúng giao diện đầy đủ (navbar, theme, nút về trang chủ).
+
+- **FIX "không thể đăng repo GitHub" (500 Internal Server Error)** —
+  xác nhận qua log production: PG error `42804: column "status" is of
+  type repo_status but expression is of type text` lặp lại 3 lần
+  (04:08:02, 04:08:18, 04:08:31 — đúng các lần user bấm đăng).
+  Root cause: `src/repositories/repo_repo.rs::create_full` bind
+  `status: &str` vào cột enum `repo_status` KHÔNG có cast → PostgreSQL
+  từ chối (Postgres không tự implicit cast text → enum trong INSERT).
+  Fix: thêm cast tường minh `$13::repo_status` (pattern đã đúng ở
+  `set_status` / `list_admin` từ trước).
+  - Sau fix: đăng repo hoạt động bình thường (INSERT thành công,
+    metadata GitHub + ảnh thumbnail custom + liên kết game như thiết
+    kế v2.2.0).
+
+- **Cải thiện thông báo lỗi GitHub API** (`src/handlers/repos.rs`):
+  - 403 rate-limit: trước đây map `AppError::OAuth` → 500 + "Lỗi hệ
+    thống" chung chung. Giờ map `AppError::BadRequest` → 400 + "GitHub
+    API đang giới hạn số lượt truy vấn của máy chủ. Vui lòng thử lại
+    sau ít phút." — user hiểu được lý do và biết chờ thử lại.
+  - 401 (token sai/hết hạn): log ERROR rõ "GITHUB_TOKEN cấu hình không
+    hợp lệ" cho admin dễ tra cứu.
+
+### 🔍 Xác minh
+
+- Quét toàn bộ codebase các pattern tương tự: chỉ `create_full` là bind
+  text vào enum column không cast (games/news/reports/ai_agent đều bind
+  enum đúng kiểu hoặc dùng cast/literal). Không còn lỗi ẩn cùng loại.
+- Quét toàn bộ handlers: không còn response `(StatusCode, String)` nào
+  trả HTML với text/plain.
+
 ## [2.4.0] — 2026-08-27 — Markdown xịn hơn nữa + FIX hang forever + PERF cực mạnh + 30s request timeout
 
 Bản nâng cấp v2.4.0: **fix treo vĩnh viễn** khi request DB chậm / pool

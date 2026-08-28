@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use thiserror::Error;
 
 pub type AppResult<T> = Result<T, AppError>;
@@ -165,7 +165,15 @@ impl IntoResponse for AppError {
         .map_or_else(
             |_| (status, "Internal Server Error").into_response(),
             |html| {
-                let mut resp = (status, html).into_response();
+                // FIX v2.4.1 (bug "trang lỗi hiện HTML thuần"): bọc body
+                // trong `Html<()>` để Axum gán Content-Type: text/html.
+                // Trước đây `(status, html_string)` với String → Axum mặc
+                // định text/plain → browser hiển thị THẺ HTML thô thay vì
+                // render giao diện. Điều này ảnh hưởng MỌI response lỗi
+                // từ AppError (404/403/409/500...) trên mọi request
+                // browser (partial HTMX ít bị ảnh hưởng vì HTMX swap
+                // bất kể content-type).
+                let mut resp = (status, Html(html)).into_response();
                 // Thêm X-Request-ID vào response header cho client log
                 // (vd admin copy ID từ devtools network panel).
                 if let Some(ref rid) = request_id {
@@ -212,6 +220,37 @@ mod tests {
         assert_eq!(
             AppError::BadRequest("x".into()).status_and_message().0,
             StatusCode::BAD_REQUEST
+        );
+    }
+
+    /// REGRESSION v2.4.1 (bug "trang lỗi hiện HTML thuần"): body HTML của
+    /// AppError response PHẢI đi kèm Content-Type: text/html — không phải
+    /// text/plain mặc định của String. Browser hiển thị source thô thay vì
+    /// render giao diện nếu sai content-type.
+    #[test]
+    fn test_app_error_response_content_type_is_html() {
+        let resp = AppError::NotFound("không tồn tại".into()).into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let ct = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            ct.starts_with("text/html"),
+            "Content-Type phải là text/html, thực tế: {ct}"
+        );
+
+        let resp = AppError::Internal(anyhow::anyhow!("boom")).into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let ct = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default();
+        assert!(
+            ct.starts_with("text/html"),
+            "Content-Type phải là text/html, thực tế: {ct}"
         );
     }
 }

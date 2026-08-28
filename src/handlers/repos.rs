@@ -86,9 +86,24 @@ async fn fetch_github_meta(
         404 => Err(AppError::NotFound(format!(
             "Repo {owner}/{repo} không tồn tại hoặc ở chế độ riêng tư"
         ))),
-        403 => Err(AppError::OAuth(
-            "GitHub API giới hạn tốc độ. Thử lại sau ít phút hoặc cấu hình GITHUB_TOKEN.".into(),
-        )),
+        403 => {
+            // v2.4.1 — BadRequest (400) thay vì OAuth (500): user cần thấy
+            // lý do thật (rate limit) để biết chờ thử lại, thay vì thông
+            // báo "Lỗi hệ thống" chung chung gây hiểu app bị hỏng.
+            tracing::warn!("GitHub API 403 (rate limit?) cho {owner}/{repo}");
+            Err(AppError::BadRequest(
+                "GitHub API đang giới hạn số lượt truy vấn của máy chủ. Vui lòng thử lại sau ít phút."
+                    .into(),
+            ))
+        }
+        401 => {
+            // Token cấu hình sai/hết hạn — lỗi phía server (admin phải sửa
+            // GITHUB_TOKEN), giữ 500 nhưng message rõ cho admin qua log.
+            tracing::error!("GitHub API 401 — GITHUB_TOKEN cấu hình không hợp lệ");
+            Err(AppError::OAuth(
+                "Máy chủ cấu hình GitHub token không hợp lệ. Vui lòng báo quản trị viên.".into(),
+            ))
+        }
         code => Err(AppError::OAuth(format!("GitHub API lỗi HTTP {code}"))),
     }
 }

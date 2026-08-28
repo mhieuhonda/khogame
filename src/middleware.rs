@@ -1321,7 +1321,17 @@ pub async fn error_page_mw(
     let new_headers = new_resp.headers_mut();
     let keys: Vec<axum::http::HeaderName> = parts.headers.keys().cloned().collect();
     for key in keys {
-        if key == axum::http::header::CONTENT_LENGTH {
+        // FIX v2.4.1 (bug "trang lỗi hiện HTML thuần"): KHÔNG copy
+        // Content-Type + Content-Encoding từ response cũ. Response cũ do
+        // AppError sinh ra (trước fix) có thể mang Content-Type:
+        // text/plain — nếu đè lên `Html(full_page)` mới thì browser nhận
+        // text/plain và hiển thị THẺ HTML thô. Html<> đã tự set đúng
+        // `text/html; charset=utf-8`. Content-Encoding cũng bỏ: body mới
+        // chưa nén (CompressionLayer ở outer sẽ nén lại toàn bộ).
+        if key == axum::http::header::CONTENT_LENGTH
+            || key == axum::http::header::CONTENT_TYPE
+            || key == axum::http::header::CONTENT_ENCODING
+        {
             continue;
         }
         let values: Vec<HeaderValue> = parts.headers.get_all(&key).iter().cloned().collect();

@@ -114,12 +114,18 @@ impl RepoRepo {
         image_url: Option<&str>,
         status: &str,
     ) -> AppResult<Uuid> {
+        // FIX v2.4.1 (bug "không thể đăng repo" — 500): cột `status` là
+        // enum PG `repo_status`, bind `&str` sinh parameter kiểu text →
+        // PG error 42804 "column status is of type repo_status but
+        // expression is of type text" → AppError::Database → 500.
+        // Cast tường minh `$13::repo_status` (pattern đã dùng ở
+        // set_status/list_admin). Xác nhận qua log prod 2026-08-28.
         let result = sqlx::query(
             r"INSERT INTO github_repos
                 (user_id, game_id, owner, repo_name, description, homepage,
                  primary_language, stars, forks, open_issues, pushed_at,
                  image_url, status)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::repo_status)
                ON CONFLICT (owner, repo_name) DO NOTHING",
         )
         .bind(user_id)
