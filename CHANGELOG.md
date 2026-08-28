@@ -5,6 +5,22 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.1] — 2026-08-28 — FIX /manifest.json bị ép Content-Type text/html (bug v2.3.0)
+
+### 🐛 Bug Fixes
+
+- **FIX Content-Type /manifest.json sai từ v2.3.0**: middleware
+  `cache_control_html` insert cứng `Content-Type: text/html` cho MỌI GET
+  response có Accept: text/html mà nó xử lý → `/manifest.json` (handler
+  set `application/manifest+json; charset=utf-8`) bị trả về với
+  text/html + Cache-Control 60s (đè max-age=86400 của handler). PWA vẫn
+  chạy vì browser khoan dung MIME, nhưng sai chuẩn spec Web App Manifest.
+  Fix 2 lớp:
+  1. Bỏ insert cứng text/html — copy loop đã khôi phục Content-Type gốc
+     của response (askama → text/html; JSON/manifest endpoint → MIME đúng).
+  2. Thêm `/manifest` vào skip list (giữ nguyên Cache-Control riêng
+     max-age=86400 của handler, không bị hạ xuống 60s).
+
 ## [2.5.0] — 2026-08-28 — Markdown v2.5 "mạnh hơn nữa" + Bio Markdown + FIX syntax highlighting
 
 Bản nâng cấp lớn markdown engine theo yêu cầu "xịn hơn nữa mạnh hơn nữa":

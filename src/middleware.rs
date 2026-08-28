@@ -1081,6 +1081,10 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let is_get = method == axum::http::Method::GET || method == axum::http::Method::HEAD;
     let path = request.uri().path().to_string();
+    // v2.5.1 — thêm /manifest: handler set Content-Type
+    // application/manifest+json + Cache-Control max-age=86400 riêng —
+    // KHÔNG được xử lý như HTML page (bug v2.3.0: /manifest.json bị ép
+    // Content-Type text/html + cache 60s).
     let is_api = path.starts_with("/api/")
         || path.starts_with("/chat/")
         || path.starts_with("/ai/")
@@ -1089,6 +1093,7 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
         || path.starts_with("/sitemap")
         || path.starts_with("/robots")
         || path.starts_with("/health")
+        || path.starts_with("/manifest")
         || path.starts_with("/.well-known/");
     let is_static = path.starts_with("/static/") || path.starts_with("/uploads/");
     let is_htmx = request
@@ -1182,10 +1187,11 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
         }
         headers.insert(name.clone(), value.clone());
     }
-    headers.insert(
-        axum::http::header::CONTENT_TYPE,
-        HeaderValue::from_static("text/html; charset=utf-8"),
-    );
+    // v2.5.1 — FIX: KHÔNG ép Content-Type: text/html nữa. Copy loop phía
+    // trên đã khôi phục Content-Type GỐC của response (askama → text/html;
+    // manifest/JSON endpoint → đúng MIME riêng). Trước đây insert cứng
+    // text/html đè mất MIME gốc (bug từ v2.3.0: /manifest.json nhận về
+    // text/html thay vì application/manifest+json).
     headers.insert(axum::http::header::ETAG, etag_value(&etag));
     set_html_cache_headers(headers, has_session_cookie);
     if let Ok(v) = HeaderValue::from_str("Cookie, Accept, Accept-Encoding") {
