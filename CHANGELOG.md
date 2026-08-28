@@ -61,6 +61,9 @@ datacenter không có token.
 
 - Cache-bust `?v=2.8.0` toàn bộ static assets (layout, error, app.js,
   sw.js, middleware preload) — CSS hiệu ứng mới chắc chắn được fetch.
+- **Trả nợ cache-bust sót**: `/static/js/chat.js` trên trang chủ vẫn
+  `?v=2.5.0` từ v2.5.0 (v2.7.0 bump lỡ file này) + `CACHE_VERSION` của
+  service worker `ls-sw-v2.7.0` → `ls-sw-v2.8.0`.
 - Bump version 2.7.0 → 2.8.0.
 
 ## [2.7.0] — 2026-08-28 — Mạng xã hội trên hồ sơ + FIX cache-bust + FIX OAuth 500
