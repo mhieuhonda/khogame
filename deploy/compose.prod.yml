@@ -35,6 +35,12 @@ services:
       - ADMIN_EMAIL=khongdich.admin@gmail.com
       - RUST_LOG=khogame=info,tower_http=warn
       - TZ=Asia/Ho_Chi_Minh
+      # v2.8.0 — Token gọi GitHub API khi đăng/làm mới repo. KHÔNG có token
+      # → quota 60 req/giờ theo IP datacenter, dễ cạn vì chia sẻ NAT với
+      # app khác → đăng repo báo 403/429 liên tục. Giá trị thật khai báo
+      # trong tab Environment Variables của Service trên Coolify (không
+      # commit secret vào repo). PAT fine-grained không cần scope cho repo public.
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
       # v1.3.0 PERF: giữ 2 connection DB luôn ấm — traffic thấp sau giờ
       # tốn idle_timeout (300s) đóng hết connection, request đầu tiên của
       # user buổi sáng phải trả thêm ~5-20ms setup TCP+auth Postgres.
@@ -65,7 +71,7 @@ services:
     #   1) logging rotation (đã giữ — safe)
     #   2) app: read_only + tmpfs + cap_drop ALL (app non-root, port >1024)
     #   3) DB: chỉ CAP_CHOWN+DAC_OVERRIDE (giữ entrypoint chown), không ALL
-    #   4) Resource limits (mem_limit/cpus) — kiểm tra负载 thực tế trước
+    #   4) Resource limits (mem_limit/cpus) — kiểm tra tải thực tế trước
     # ─── Log rotation (json-file driver default không xoay → disk đầy) ───
     # Coolify host thường có disk 20-50GB; app log ~1MB/phút nếu traffic
     # cao → đầy disk trong ~1 tuần nếu không rotate.

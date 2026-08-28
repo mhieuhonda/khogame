@@ -2808,12 +2808,7 @@ pre code {
     .role-badge-admin .role-badge-flame,
     .role-badge-mod .role-badge-text::before,
     .role-badge-mod .role-badge-text::after,
-    .profile-page-admin-effects,
-    .profile-page-admin-effects::before,
-    .profile-page-admin-effects::after,
-    .profile-page-admin-effects .profile-meta h1,
-    .profile-page-admin-effects .profile-cover,
-    .profile-page-admin-effects .profile-avatar,
+    .rainbow-text,
     .profile-page-mod-effects,
     .profile-page-mod-effects::before,
     .profile-page-mod-effects .profile-meta h1,
@@ -2823,57 +2818,24 @@ pre code {
 }
 
 /* ============================================================
-   v2.6.0 — PROFILE-PAGE-WIDE EFFECTS (Admin rainbow + glitch)
-   Áp dụng cho TOÀN BỘ `.profile-page` khi staff bật `role_badge_effects`.
-   Reuse keyframes đã có (admin-fire-glow, admin-flame-border,
-   admin-rainbow-slide, mod-glitch-top, mod-glitch-bottom).
+   v2.8.0 — HIỆU ỨNG HỒ SƠ ĐƠN GIẢN HOÁ
+   Trước đây (v2.6.0) hiệu ứng áp cho TOÀN BỘ `.profile-page`:
+   viền lửa quanh section, glow nhấp nháy cả trang, cover gradient
+   động, avatar glow cam dày — lớp phủ này CHE MẤT ảnh đại diện và
+   tràn ra toàn trang. Theo yêu cầu: admin chỉ giữ ĐÚNG 2 hiệu ứng
+   rainbow: (1) khung chức vụ `.role-badge-admin` (block phía trên)
+   và (2) chữ rainbow tên `.rainbow-text` (block dưới đây).
+   Mod giữ nguyên glitch `profile-page-mod-effects` (block sau).
    ============================================================ */
 
-/* --- ADMIN: toàn trang hồ sơ có khung lửa + glow nhấp nháy + chữ rainbow --- */
-.profile-page-admin-effects {
-    position: relative;
-    border-radius: var(--radius-xl);
-    /* Glow nhẹ quanh toàn section — subtle, không che nội dung. */
-    animation: admin-fire-glow 2.4s ease-in-out infinite;
-}
-
-/* 2 lớp flame border chạy ngược pha nhau — viền lửa liếm quanh toàn
-   profile-page (không chỉ badge). Sử dụng mask technique tương tự
-   role-badge-admin nhưng scale lớn hơn. */
-.profile-page-admin-effects::before,
-.profile-page-admin-effects::after {
-    content: "";
-    position: absolute;
-    inset: -4px;
-    border-radius: var(--radius-xl);
-    padding: 2px;
-    background: linear-gradient(120deg, #fde68a, #f97316, #dc2626, #f59e0b, #fde68a);
-    background-size: 300% 300%;
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 0;
-}
-
-.profile-page-admin-effects::before {
-    animation: admin-flame-border 2.8s ease-in-out infinite;
-}
-
-.profile-page-admin-effects::after {
-    animation: admin-flame-border 2.8s ease-in-out infinite 1.4s;
-}
-
-/* Đảm bảo nội dung profile-header nằm TRÊN lớp flame ::before/::after */
-.profile-page-admin-effects > * {
-    position: relative;
-    z-index: 1;
-}
-
-/* Chữ rainbow chạy màu cho display_name (h1 đầu tiên trong profile-meta) */
-.profile-page-admin-effects .profile-meta h1 {
+/* Chữ rainbow chạy màu cho display_name của admin.
+   ⚠️ PHẢI áp trên span con của h1, KHÔNG áp trên chính h1:
+   h1 có `display: flex` — text node là anonymous flex item,
+   `background-clip: text` không tô màu chữ trong trường hợp này
+   → chữ biến mất hoàn toàn (bug thật trên prod v2.6.0–v2.7.0).
+   Span inline con của flex container thì background-clip: text
+   hoạt động đúng (đã kiểm chứng qua `.role-badge-text`). */
+.rainbow-text {
     background: linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
     background-size: 320% 100%;
     -webkit-background-clip: text;
@@ -2883,33 +2845,16 @@ pre code {
     animation: admin-rainbow-slide 5s linear infinite;
 }
 
-/* Cover gradient động — subtle shift giữa các màu lửa thay vì
-   static gradient. */
-.profile-page-admin-effects .profile-cover {
-    background:
-        radial-gradient(600px 200px at 20% 0%, rgba(249, 115, 22, 0.45), transparent 60%),
-        radial-gradient(500px 200px at 80% 100%, rgba(239, 68, 68, 0.38), transparent 60%),
-        linear-gradient(120deg, #1a0f0a, #2d1410, #1a0f0a);
-    animation: admin-cover-pulse 6s ease-in-out infinite;
-}
-
-@keyframes admin-cover-pulse {
-    0%, 100% {
-        filter: brightness(1) saturate(1);
+/* Nhắc trình duyệt giữ nền gradient khi in trang (in/preview PDF:
+   -webkit-text-fill-color transparent + nền bị bỏ → chữ trắng trên
+   giấy trắng). Chromium không in background mặc định — span vẫn
+   hiện màu đầu gradient nhờ color:transparent được override ở đây. */
+@media print {
+    .rainbow-text {
+        background: none;
+        -webkit-text-fill-color: #ef4444;
+        color: #ef4444;
     }
-    50% {
-        filter: brightness(1.12) saturate(1.18);
-    }
-}
-
-/* Avatar có glow lửa nhẹ */
-.profile-page-admin-effects .profile-avatar img,
-.profile-page-admin-effects .profile-avatar .avatar-fallback {
-    box-shadow:
-        0 0 0 3px rgba(249, 115, 22, 0.45),
-        0 0 18px rgba(249, 115, 22, 0.55),
-        0 0 36px rgba(239, 68, 68, 0.30);
-    animation: admin-fire-glow 2.4s ease-in-out infinite;
 }
 
 /* --- MODERATOR: glitch burst ngắn trên display_name + viền xanh nhấp nháy --- */

@@ -3,15 +3,24 @@
 {% block title %}{{ user.display_name }} (@{{ user.username }}){% endblock %}
 
 {% block content %}
-{# v2.6.0 — Hiệu ứng áp dụng cho TOÀN BỘ trang hồ sơ (không chỉ role badge):
-   - Admin bật `role_badge_effects`: class `profile-page-admin-effects`
-     → khung lửa gradient động quanh profile-header + chữ rainbow chạy
-     màu cho display_name + glow nhấp nháy cho cả section.
-   - Mod bật `role_badge_effects`: class `profile-page-mod-effects`
-     → glitch burst ngắn trên display_name + viền xanh nhấp nháy.
-   - Member/AI hoặc staff tắt hiệu ứng: không có class thêm → profile
-     thường, không thay đổi UX. #}
-<section class="profile-page{% if preferences.role_badge_effects && user.role.is_admin() %} profile-page-admin-effects{% else if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}">
+{# v2.8.0 — Hiệu ứng hồ sơ ĐƠN GIẢN HOÁ theo yêu cầu:
+   - Admin bật `role_badge_effects`: chỉ GIỮ 2 hiệu ứng rainbow
+     (1) khung chức vụ lửa `role-badge-admin` (xuống dưới) và
+     (2) chữ rainbow cho display_name qua `span.rainbow-text`.
+     ĐÃ BỎ: viền lửa quanh section, glow cả trang, cover gradient
+     động, avatar glow — những hiệu ứng này phủ lên ảnh đại diện và
+     tràn ra toàn trang gây rối mắt (v2.6.0 reverted).
+   - Mod bật `role_badge_effects`: giữ nguyên class
+     `profile-page-mod-effects` → glitch burst trên display_name.
+   - Member/AI hoặc staff tắt hiệu ứng: không class thêm → profile
+     thường, không thay đổi UX.
+   Lý do dùng span.rainbow-text thay vì style trực tiếp trên h1:
+   `background-clip: text` KHÔNG hoạt động trên flex container
+   (h1 có display:flex — text node thành anonymous flex item, nền
+   không clip theo chữ → chữ rainbow biến mất hoàn toàn trên
+   Chrome, đã gặp trên prod v2.6.0–v2.7.0). Span con thì hoạt động
+   đúng (chứng minh qua role-badge-text). #}
+<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}">
     <div class="profile-header">
         <div class="profile-cover"></div>
         <div class="profile-info">
@@ -24,13 +33,15 @@
                 {% endmatch %}
             </div>
             <div class="profile-meta">
-                {# v2.6.0 — data-text cho h1: dùng bởi hiệu ứng glitch CSS
+                {# v2.8.0 — data-text cho h1: dùng bởi hiệu ứng glitch CSS
                    `.profile-page-mod-effects .profile-meta h1::before/after`
                    (content: attr(data-text)) để clone text tạo lớp lệch màu
                    cyan/rose burst. Chỉ render attr khi mod bật effects —
-                   tránh markup thừa cho member/admin. #}
+                   tránh markup thừa cho member/admin.
+                   Tên admin bật effects bọc trong span.rainbow-text —
+                   xem comment đầu file vì sao phải là span con của h1. #}
                 <h1{% if preferences.role_badge_effects && user.role.is_moderator() %} data-text="{{ user.display_name }}"{% endif %}>
-                    {{ user.display_name }}
+                    {% if preferences.role_badge_effects && user.role.is_admin() %}<span class="rainbow-text">{{ user.display_name }}</span>{% else %}{{ user.display_name }}{% endif %}
                     {% match ai_profile %}
                     {% when Option::Some with (p) %}
                     {% if p.verified %}

@@ -1201,9 +1201,9 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
     // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
     if let Ok(link_val) = HeaderValue::from_str(
-        "</static/css/style.css?v=2.7.0>; rel=preload; as=style, \
-         </static/js/htmx.min.js?v=2.7.0>; rel=preload; as=script, \
-         </static/js/app.js?v=2.7.0>; rel=preload; as=script, \
+        "</static/css/style.css?v=2.8.0>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v=2.8.0>; rel=preload; as=script, \
+         </static/js/app.js?v=2.8.0>; rel=preload; as=script, \
          </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin",
     ) {
         headers.insert(axum::http::header::LINK, link_val);

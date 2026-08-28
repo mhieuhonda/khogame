@@ -5,6 +5,64 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.8.0] — 2026-08-28 — FIX hồ sơ admin (avatar + hiệu ứng) + FIX đăng repo 500
+
+Bản phát hành fix 2 nhóm lỗi theo báo cáo thực tế trên prod: (1) hiệu ứng
+hồ sơ admin tràn lan + glow cam phủ mất ảnh đại diện (regression v2.6.0),
+(2) đăng repo GitHub liên tục báo 500 khi GitHub API rate-limit IP
+datacenter không có token.
+
+### 🎨 Hồ sơ admin — đơn giản hoá hiệu ứng (theo yêu cầu)
+
+- **Bỏ toàn bộ hiệu ứng page-wide v2.6.0** trên hồ sơ admin: viền lửa
+  gradient quanh section, glow nhấp nháy cả trang, cover gradient đỏ +
+  pulse animation, avatar glow cam dày (`box-shadow` 3px ring + 18px +
+  36px + animation) — lớp phủ này CHE MẤT ảnh đại diện và tràn ra toàn
+  trang. Avatar trở về border + shadow chuẩn X-style, cover về gradient
+  mặc định.
+- **Giữ ĐÚNG 2 hiệu ứng rainbow** cho admin bật `role_badge_effects`:
+  (1) khung chức vụ lửa `.role-badge-admin` (chữ rainbow + viền lửa +
+  icon flicker — nguyên trạng từ v2.1.0), (2) chữ rainbow cho tên.
+- **FIX bug tên admin VÔ HÌNH trên prod (v2.6.0–v2.7.0)**: rainbow
+  trước đây áp trực tiếp lên `h1` có `display: flex` — text node là
+  anonymous flex item nên `background-clip: text` không tô màu chữ,
+  `-webkit-text-fill-color: transparent` khiến tên biến mất hoàn toàn
+  (chỉ còn khoảng trống, xác nhận qua screenshot prod light + dark).
+  Giờ tên bọc trong `<span class="rainbow-text">` — span con của flex
+  container thì clip đúng (chứng minh qua `.role-badge-text`).
+- Thêm `@media print` cho `.rainbow-text` — in trang hồ sơ không mất chữ.
+- Cập nhật hint checkbox hiệu ứng tại `/profile/edit` + block
+  `prefers-reduced-motion` (bỏ selector admin-effects cũ, thêm
+  `.rainbow-text`). Hiệu ứng mod (glitch) giữ nguyên không đổi.
+
+### 🐛 Đăng repo GitHub — hết 500 mù mờ
+
+- **Root cause chính trên prod**: service KHÔNG có `GITHUB_TOKEN` → gọi
+  `api.github.com` unauthenticated, quota 60 req/giờ theo IP datacenter
+  bị các app khác cùng NAT chia sẻ cạn sạch → GitHub trả 403/429 liên
+  tục. Nhánh 403 đã map 400 (v2.4.1) nhưng **429 + status lạ (451/5xx)
+  + lỗi kết nối + lỗi parse JSON vẫn rơi vào `AppError::OAuth`/`Http`
+  → 500 "Oops! Lỗi hệ thống" vô nghĩa**.
+- `fetch_github_meta` viết lại mapping lỗi: 403/429 → 400 + message rõ
+  (đọc `Retry-After` nhắc số phút chờ); 451/5xx GitHub → 400 "GitHub
+  API tạm thời gặp sự cố (HTTP {code})"; lỗi kết nối/timeout → 400
+  "Máy chủ tạm thời không kết nối được GitHub API"; JSON sai schema →
+  400 thay vì 500; 401 (token server sai) giữ 500 + log ERROR cho admin.
+- **Re-post repo của chính mình** không còn 409 "Repo đã tồn tại (có thể
+  vừa được người khác đăng ký cùng lúc)" vô nghĩa: giờ CẬP NHẬT metadata
+  mới nhất từ GitHub + game link + ảnh (giữ nguyên status duyệt,
+  `RepoRepo::update_repost` mới; ảnh custom giữ lại nếu form rỗng).
+  Staff đăng repo đã có của user khác nhận message hướng dẫn rõ.
+- Hướng dẫn vận hành: đặt `GITHUB_TOKEN` cho service để gọi API
+  authenticated (5.000 req/giờ, không chia sẻ quota IP với app khác).
+- 5 unit test mới khóa regression cho mapping lỗi GitHub API.
+
+### 🔧 Vận hành
+
+- Cache-bust `?v=2.8.0` toàn bộ static assets (layout, error, app.js,
+  sw.js, middleware preload) — CSS hiệu ứng mới chắc chắn được fetch.
+- Bump version 2.7.0 → 2.8.0.
+
 ## [2.7.0] — 2026-08-28 — Mạng xã hội trên hồ sơ + FIX cache-bust + FIX OAuth 500
 
 Bản phát hành bổ sung tính năng mạng xã hội 10 nền tảng cho hồ sơ người

@@ -62,10 +62,10 @@ self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.open(STATIC_CACHE).then(function(cache) {
             return cache.addAll([
-                '/static/js/htmx.min.js?v=2.7.0',
-                '/static/css/style.css?v=2.7.0',
-                '/static/css/fonts.css?v=2.7.0',
-                '/static/js/app.js?v=2.7.0',
+                '/static/js/htmx.min.js?v=2.8.0',
+                '/static/css/style.css?v=2.8.0',
+                '/static/css/fonts.css?v=2.8.0',
+                '/static/js/app.js?v=2.8.0',
                 '/static/img/favicon.svg'
             ]).catch(function() {
                 // Critical pre-cache fail (vd: file chưa tồn tại) → không

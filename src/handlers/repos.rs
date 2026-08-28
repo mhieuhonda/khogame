@@ -69,6 +69,58 @@ pub async fn new_form(
 }
 
 // ============= Gọi GitHub API lấy metadata =============
+/// Map HTTP status của GitHub API → AppError có thông điệp RÕ RÀNG.
+/// v2.8.0 — FIX "đăng repo liên tục 500": trước đây mọi status ngoài
+/// 200/404/403/401 (điển hình: 429 rate-limit mới của GitHub, 5xx của
+/// chính GitHub) rơi vào nhánh `AppError::OAuth` → 500 "Oops! Lỗi hệ
+/// thống" vô nghĩa cho user. Giờ: mọi lỗi GitHub API đều trả 4xx với
+/// message hành động được; lỗi thật sự phía server (401 token sai) mới
+/// giữ 500 + log ERROR cho admin.
+fn github_api_error(status: u16, retry_after_secs: Option<u64>) -> AppError {
+    match status {
+        404 => AppError::NotFound(
+            "Repo không tồn tại hoặc ở chế độ riêng tư. Kiểm tra lại URL (repo phải là public)."
+                .into(),
+        ),
+        // Rate limit: 403 (primary, theo IP) và 429 (primary/secondary,
+        // kèm Retry-After). Máy chủ KHÔNG cấu hình GITHUB_TOKEN sẽ dùng
+        // chung quota 60 req/giờ theo IP datacenter — dễ cạn vì các app
+        // khác cùng NAT. Khi exhausted, cả 403 lẫn 429 đều về đây.
+        403 | 429 => {
+            let hint = match retry_after_secs {
+                Some(s) if s > 0 && s < 3600 => {
+                    format!(" Vui lòng thử lại sau khoảng {} phút.", (s / 60).max(1))
+                }
+                _ => " Vui lòng thử lại sau ít phút.".to_string(),
+            };
+            tracing::warn!(
+                "GitHub API rate limit (HTTP {}) retry_after={:?}",
+                status,
+                retry_after_secs
+            );
+            AppError::BadRequest(format!(
+                "GitHub API đang giới hạn số lượt truy vấn của máy chủ.{hint}"
+            ))
+        }
+        // Token cấu hình sai/hết hạn — lỗi phía server (admin phải sửa
+        // GITHUB_TOKEN), giữ 500 nhưng log rõ cho admin.
+        401 => {
+            tracing::error!("GitHub API 401 — GITHUB_TOKEN cấu hình không hợp lệ hoặc đã hết hạn");
+            AppError::OAuth(
+                "Máy chủ cấu hình GitHub token không hợp lệ. Vui lòng báo quản trị viên.".into(),
+            )
+        }
+        // Các status khác (451 legal, 5xx GitHub...) — sự cố tạm thời
+        // phía GitHub, KHÔNG phải lỗi hệ thống của ta → 400 + message rõ.
+        code => {
+            tracing::warn!("GitHub API trả HTTP {} bất thường", code);
+            AppError::BadRequest(format!(
+                "GitHub API tạm thời gặp sự cố (HTTP {code}). Vui lòng thử lại sau ít phút."
+            ))
+        }
+    }
+}
+
 async fn fetch_github_meta(
     state: &AppState,
     owner: &str,
@@ -83,34 +135,39 @@ async fn fetch_github_meta(
     if let Some(token) = &state.config.github_token {
         req = req.bearer_auth(token);
     }
-    let resp = req
-        .send()
-        .await
-        .map_err(|e| AppError::OAuth(format!("Không kết nối được GitHub API: {e}")))?;
-    match resp.status().as_u16() {
-        200 => Ok(resp.json().await?),
-        404 => Err(AppError::NotFound(format!(
-            "Repo {owner}/{repo} không tồn tại hoặc ở chế độ riêng tư"
-        ))),
-        403 => {
-            // v2.4.1 — BadRequest (400) thay vì OAuth (500): user cần thấy
-            // lý do thật (rate limit) để biết chờ thử lại, thay vì thông
-            // báo "Lỗi hệ thống" chung chung gây hiểu app bị hỏng.
-            tracing::warn!("GitHub API 403 (rate limit?) cho {owner}/{repo}");
-            Err(AppError::BadRequest(
-                "GitHub API đang giới hạn số lượt truy vấn của máy chủ. Vui lòng thử lại sau ít phút."
+    // v2.8.0 — Lỗi kết nối (DNS/TCP/timeout) trước đây → AppError::OAuth
+    // → 500 "Oops!" vô nghĩa. Giờ: log raw error cho admin + trả 400 với
+    // message rõ cho user (sự cố tạm thời, thử lại được).
+    let resp = match req.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("GitHub API không kết nối được ({owner}/{repo}): {e}");
+            return Err(AppError::BadRequest(
+                "Máy chủ tạm thời không kết nối được GitHub API. Vui lòng thử lại sau ít phút."
                     .into(),
+            ));
+        }
+    };
+    // Retry-After (giây) — GitHub trả khi rate limit secondary/429.
+    let retry_after = resp
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok());
+    let status = resp.status().as_u16();
+    if status != 200 {
+        return Err(github_api_error(status, retry_after));
+    }
+    // 200 nhưng JSON sai định dạng (GitHub đổi schema?) — log raw + 400
+    // rõ ràng thay vì 500 mù (trước đây `?` trên resp.json() → Http → 500).
+    match resp.json::<crate::models::repo::GithubApiRepo>().await {
+        Ok(meta) => Ok(meta),
+        Err(e) => {
+            tracing::warn!("GitHub API trả JSON không deserialize được: {e}");
+            Err(AppError::BadRequest(
+                "GitHub API trả dữ liệu không đúng định dạng. Vui lòng thử lại sau ít phút.".into(),
             ))
         }
-        401 => {
-            // Token cấu hình sai/hết hạn — lỗi phía server (admin phải sửa
-            // GITHUB_TOKEN), giữ 500 nhưng message rõ cho admin qua log.
-            tracing::error!("GitHub API 401 — GITHUB_TOKEN cấu hình không hợp lệ");
-            Err(AppError::OAuth(
-                "Máy chủ cấu hình GitHub token không hợp lệ. Vui lòng báo quản trị viên.".into(),
-            ))
-        }
-        code => Err(AppError::OAuth(format!("GitHub API lỗi HTTP {code}"))),
     }
 }
 
@@ -139,12 +196,17 @@ pub async fn create(
             "URL repo không hợp lệ. Dùng dạng https://github.com/owner/repo hoặc owner/repo".into(),
         )
     })?;
-    // Chống chiếm quyền sở hữu repo entry: ON CONFLICT (owner, repo_name)
-    // DO UPDATE SET user_id = ... khiến user B đăng lại repo user A đã
-    // đăng sẽ LẤT user_id của A. Chặn trước: repo đã có thuộc user khác
+    // Chống chiếm quyền sở hữu repo entry: repo đã có thuộc user khác
     // (không phải staff) → 409 Conflict.
+    // v2.8.0 — Đăng LẠI repo CỦA CHÍNH MÌNH không còn báo lỗi vô nghĩa
+    // (trước đây: INSERT → ON CONFLICT DO NOTHING → rows_affected=0 →
+    // 409 "Repo đã tồn tại (có thể vừa được người khác đăng ký cùng lúc)")
+    // mà sẽ CẬP NHẬT metadata mới nhất từ GitHub + game link/ảnh mới.
+    let mut repost_id: Option<Uuid> = None;
     if let Some(existing) = RepoRepo::find_by_owner_name(&state.db, &owner, &name).await? {
-        if existing.user_id != user.id && !user.role.is_staff() {
+        if existing.user_id == user.id {
+            repost_id = Some(existing.id);
+        } else if !user.role.is_staff() {
             tracing::warn!(
                 "Repo hijack blocked: {} cố đăng ký {}/{} của user {}",
                 user.username,
@@ -156,6 +218,12 @@ pub async fn create(
                 "Repo này đã được người dùng khác đăng ký. Nếu đây là repo của bạn, hãy liên hệ quản trị viên."
                     .into(),
             ));
+        } else {
+            // Staff đăng repo của user khác → giữ nguyên sở hữu, chỉ nhắc
+            // quản lý qua trang admin thay vì ném 409 khó hiểu.
+            return Err(AppError::Conflict(format!(
+                "Repo {owner}/{name} đã được đăng ký trong hệ thống. Quản lý nó trong trang Quản trị → Repos."
+            )));
         }
     }
     // Validate description length nếu user cung cấp
@@ -220,6 +288,35 @@ pub async fn create(
     // Trước đây là 3 round-trip DB (create + set_image_url + set_status),
     // nếu 1 trong 3 fail thì repo tồn tại trong trạng thái inconsistent.
     let final_status = if auto_approve { "approved" } else { "pending" };
+
+    // v2.8.0 — Re-post repo của chính mình: CẬP NHẬT metadata + game link +
+    // ảnh mới thay vì chạm UNIQUE constraint rồi báo 409 vô nghĩa. Status
+    // duyệt giữ nguyên (không reset pending nếu repo đã approved).
+    if let Some(id) = repost_id {
+        RepoRepo::update_repost(
+            &state.db,
+            id,
+            game_id,
+            &description,
+            meta.homepage.as_deref().unwrap_or(""),
+            meta.language.as_deref().unwrap_or(""),
+            meta.stargazers_count.unwrap_or(0),
+            meta.forks_count.unwrap_or(0),
+            meta.open_issues_count.unwrap_or(0),
+            meta.pushed_at,
+            safe_image_url,
+        )
+        .await?;
+        tracing::info!(
+            "Repo re-posted (metadata refreshed): {}/{} by {} (id={})",
+            owner,
+            name,
+            user.username,
+            id
+        );
+        return Ok(Redirect::to("/repos"));
+    }
+
     let repo_id = RepoRepo::create_full(
         &state.db,
         user.id,
@@ -345,4 +442,70 @@ pub async fn user_repos_fragment(
         r#"<div class="repo-mini-grid">{}</div>"#,
         items.join("\n")
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::github_api_error;
+    use axum::http::StatusCode;
+
+    /// REGRESSION v2.8.0 (bug "đăng repo liên tục 500"): 403/429 rate-limit
+    /// PHẢI map sang BadRequest (400) với message rõ — không được rơi vào
+    /// nhánh 500 "Oops! Lỗi hệ thống" vô nghĩa.
+    #[test]
+    fn test_rate_limit_maps_to_bad_request_not_500() {
+        for status in [403u16, 429] {
+            let e = github_api_error(status, None);
+            let (st, msg) = e.status_and_message();
+            assert_eq!(st, StatusCode::BAD_REQUEST, "HTTP {status} phải là 400");
+            assert!(
+                msg.contains("giới hạn"),
+                "message phải nói rõ rate limit, thực tế: {msg}"
+            );
+        }
+    }
+
+    /// Retry-After (giây) được nhắc trong message → user biết chờ bao lâu.
+    #[test]
+    fn test_retry_after_hint_in_message() {
+        let e = github_api_error(429, Some(300));
+        let (_, msg) = e.status_and_message();
+        assert!(msg.contains("5 phút"), "phải nhắc 5 phút, thực tế: {msg}");
+        // Retry-After quá dài (>= 1h) → hint chung, không khớp số phút lẻ.
+        let e = github_api_error(403, Some(7200));
+        let (_, msg) = e.status_and_message();
+        assert!(msg.contains("thử lại sau ít phút"));
+    }
+
+    /// 404 → NotFound (404) — repo riêng tư/không tồn tại là lỗi user sửa được.
+    #[test]
+    fn test_404_maps_to_not_found() {
+        let e = github_api_error(404, None);
+        let (st, _) = e.status_and_message();
+        assert_eq!(st, StatusCode::NOT_FOUND);
+    }
+
+    /// Status lạ (451 legal, 502/503 GitHub down...) → BadRequest rõ ràng,
+    /// KHÔNG phải 500 mù mờ như trước đây (catch-all AppError::OAuth).
+    #[test]
+    fn test_unexpected_status_maps_to_bad_request_with_code() {
+        for status in [451u16, 500, 502, 503] {
+            let e = github_api_error(status, None);
+            let (st, msg) = e.status_and_message();
+            assert_eq!(st, StatusCode::BAD_REQUEST, "HTTP {status} phải là 400");
+            assert!(
+                msg.contains(&format!("HTTP {status}")),
+                "message phải chứa mã HTTP, thực tế: {msg}"
+            );
+        }
+    }
+
+    /// 401 (token server sai) — lỗi cấu hình phía server, giữ 500 + log cho
+    /// admin xử lý (user không tự sửa được).
+    #[test]
+    fn test_401_keeps_500_for_admin() {
+        let e = github_api_error(401, None);
+        let (st, _) = e.status_and_message();
+        assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

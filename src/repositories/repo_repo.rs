@@ -169,6 +169,52 @@ impl RepoRepo {
         Ok(id)
     }
 
+    /// v2.8.0 — Cập nhật repo khi chủ sở hữu ĐĂNG LẠI (re-post) của mình:
+    /// refresh metadata GitHub + game link + ảnh thumbnail, GIỮ NGUYÊN
+    /// user_id + status duyệt + created_at.
+    /// `image_url` = None (form rỗng) → GIỮ ảnh cũ (re-post không xoá oan
+    /// thumbnail custom đã upload); Some(url) → đặt mới.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn update_repost(
+        pool: &PgPool,
+        id: Uuid,
+        game_id: Option<Uuid>,
+        description: &str,
+        homepage: &str,
+        language: &str,
+        stars: i32,
+        forks: i32,
+        open_issues: i32,
+        pushed_at: Option<chrono::DateTime<chrono::Utc>>,
+        image_url: Option<&str>,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"UPDATE github_repos SET
+                game_id = $2,
+                description = NULLIF($3,''), homepage = NULLIF($4,''),
+                primary_language = NULLIF($5,''), stars = $6, forks = $7,
+                open_issues = $8, pushed_at = $9,
+                image_url = CASE WHEN COALESCE($10,'') = '' THEN image_url ELSE $10 END
+              WHERE id = $1",
+        )
+        .bind(id)
+        .bind(game_id)
+        .bind(description)
+        .bind(homepage)
+        .bind(language)
+        .bind(stars)
+        .bind(forks)
+        .bind(open_issues)
+        .bind(pushed_at)
+        .bind(image_url)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).

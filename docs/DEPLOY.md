@@ -56,6 +56,7 @@ Service trên Coolify, compose (`deploy/compose.prod.yml`) tham chiếu `${VAR}`
 | `GRACEFUL_SHUTDOWN_TIMEOUT_SECS` | (tuỳ chọn, mặc định 30) Force exit nếu còn connection treo sau khi nhận SIGTERM — nên khớp `stop_grace_period` |
 | `AI_AGENT_SECRET` | (tuỳ chọn) Bật hệ thống AI Agent; để trống = endpoint `/auth/ai/*` trả 403 |
 | `AI_AGENT_SESSION_TTL_DAYS` | (tuỳ chọn, mặc định 90) Thời gian sống phiên AI Agent |
+| `GITHUB_TOKEN` | **(khuyến nghị — prod đã đặt từ v2.8.0)** PAT GitHub dùng gọi `api.github.com` khi đăng/làm mới repo. Không có token → quota 60 req/giờ THEO IP datacenter, dễ cạn vì chia sẻ với app khác cùng NAT → đăng repo báo 403/429 liên tục. Có token → 5.000 req/giờ độc lập. PAT fine-grained KHÔNG cần scope nào cho repo public. |
 | `TRUST_PROXY_HEADERS` | (tuỳ chọn, mặc định `true`) Tin header `X-Forwarded-For`/`X-Real-IP`/`CF-Connecting-IP` khi xác định IP client cho rate-limit + analytics. Prod hiện tại **bật** (chạy sau Traefik/Coolify). Chỉ tắt (`false`/`0`/`no`/`off`) khi expose trực tiếp internet — khi đó header do client tự gắn được (giả IP lách rate-limit), IP sẽ lấy từ kết nối TCP thật. |
 
 GitHub Secrets cho CI/CD: `COOLIFY_URL`, `COOLIFY_API_TOKEN`,
