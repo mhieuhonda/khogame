@@ -107,3 +107,51 @@ Stage Summary:
 - ✅ GitHub release v2.4.0 published with full CHANGELOG
 - ✅ Coolify production deployment verified healthy with version 2.4.0
 - ✅ All commits authored as `mhieuhonda`
+
+---
+Task ID: v2.4.1-hotfix + v2.5.0-upgrade
+Agent: Super Z (main)
+Task: Fix "rất nhiều trang chỉ hiện HTML thuần" + "không thể đăng repo GitHub (500)" + nâng cấp Markdown v2.5 "xịn hơn nữa mạnh hơn nữa" + thêm Markdown cho bio hồ sơ. Rust 1.98, commit as mhieuhonda.
+
+Work Log:
+- Chẩn đoán qua Coolify API (logs prod) + curl production trực tiếp:
+  * BUG#1 HTML thô: AppError::into_response trả (StatusCode, String) →
+    Axum gán Content-Type: text/plain; error_page_mw render lại body
+    Html<> nhưng copy header Content-Type cũ đè lên. Xác nhận prod:
+    /news/*, /games/*, /u/* 404 → text/plain (browser hiện source thô).
+  * BUG#2 repo 500: log prod 3× PG 42804 "column status is of type
+    repo_status but expression is of type text" — create_full bind &str
+    vào enum không cast.
+  * Quét toàn bộ codebase: không còn chỗ bind enum sai nào khác.
+- v2.4.1 (commit 8dfbf17, tag v2.4.1): Html<> cho AppError; error_page_mw
+  skip Content-Type/Content-Encoding; create_full cast $13::repo_status;
+  GitHub API 403 → 400 message rõ; +1 regression test. CI/CD/Release
+  success. VERIFIED PROD: mọi 404 → text/html + full layout. ✅
+- v2.5.0 (commit 825ab3a + rustdoc fix 5506e0c, tag moved v2.5.0):
+  * 9 extension mới: emoji shortcodes, underline, subscript, highlight
+    ==mark==, insert ++ins++, inline footnotes, tasklist-in-table,
+    @mention → /u/{user}, #hashtag → /search?q= (an toàn entity/code/a).
+  * Diff block coloring (+/-/@@) trong syntect adapter; code line numbers
+    qua rebalance_spans_per_line (xử lý đúng span syntect mở xuyên dòng).
+  * FIX 2 bug có sẵn từ v2.2: code tag trùng thuộc tính class (invalid
+    HTML); syntax highlighting KHÔNG CÓ MÀU (CSS .hljs-* dead code —
+    thêm palette GitHub-dark cho scope-class syntect thật).
+  * Bio Markdown: render_bio (pipeline rút gọn, escape HTML raw, harden
+    links, mention/hashtag/emoji) + filter |bio; limit 500→1000; hint +
+    badge "Hỗ trợ Markdown" 3 form; render /u/* + admin user_detail.
+  * CACHE_VERSION 2→3; cache-bust ?v=2.5.0; 32 test mới (281 pass);
+    clippy clean; release build OK; lần push đầu CI fail rustdoc (2 thẻ
+    <a> chưa escape trong doc comment) → fix + move tag (chưa deploy lần
+    nào nên an toàn) → CI/CD/Release success lần 2.
+- Coolify: thêm env GITHUB_TOKEN vào service khogame → GitHub API rate
+  limit 60/giờ → 15.000/giờ (chống 403 khi đăng repo, hiệu lực từ deploy
+  v2.5.0).
+
+Stage Summary:
+- ✅ v2.4.1 trên prod: error pages text/html (fix HTML thô), repo INSERT
+  cast enum (fix 500). GitHub release v2.4.1 published.
+- ✅ v2.5.0 trên prod: health {"status":"ok","version":"2.5.0"}, CSS
+  ?v=2.5.0 (53 selector mới), logs 0 ERROR sau deploy, service
+  running:healthy, GITHUB_TOKEN active.
+- ✅ 2 GitHub releases (v2.4.1 + v2.5.0), 3 commits authored mhieuhonda
+- ✅ 281 tests pass, clippy 0 warnings, rustdoc 0 warnings, fmt clean
