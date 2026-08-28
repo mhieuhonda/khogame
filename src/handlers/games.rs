@@ -45,6 +45,10 @@ pub async fn home(
     // Thêm news queries (latest 3 published + count) cho section "Tin tức" ở homepage.
     // v2.3.0 — Thêm 1 query nữa cho `featured_repos` (top 8 approved theo
     // stars desc) để render section "Repo đề xuất" ngay sau "Đánh giá cao".
+    // v2.6.0 — 11 queries + unread_count chạy SONG SONG trong 1 join!
+    // Trước đây unread_for await SAU join! xong → cộng thêm 1 round-trip
+    // DB vào TTFB (cache miss = ~5ms, cache hit = ~0ms nhưng vẫn overhead).
+    // Tổng cộng homepage: 10 query song song + 1 unread = 11 futures.
     let (
         featured_res,
         latest_res,
@@ -56,6 +60,7 @@ pub async fn home(
         latest_news_res,
         news_count_res,
         featured_repos_res,
+        unread_res,
     ) = tokio::join!(
         GameRepo::featured(&state.db, 6, 0),
         GameRepo::list_published(&state.db, 12, 0, "latest"),
@@ -67,6 +72,7 @@ pub async fn home(
         NewsRepo::list_published(&state.db, 1, 3),
         NewsRepo::count_published(&state.db),
         RepoRepo::list_approved(&state.db, 8, 0, "stars"),
+        unread_for(&state, current_user.as_ref()),
     );
     let featured_games = featured_res.unwrap_or_default();
     let latest_games = latest_res?;
@@ -81,7 +87,7 @@ pub async fn home(
     // tự ẩn section. Không escalate lỗi vì repo là tính năng bonus, không
     // phải critical path của homepage.
     let featured_repos = featured_repos_res.unwrap_or_default();
-    let unread = unread_for(&state, current_user.as_ref()).await;
+    let unread = unread_res;
 
     // JSON-LD schema.org/WebSite — builder đã chuyển sang
     // `crate::services::json_ld::build_homepage_json_ld` để tái sử dụng +
@@ -287,12 +293,12 @@ pub async fn create_game(
         return Err(AppError::BadRequest("Phải có ít nhất một link tải".into()));
     }
 
-    // Sinh slug duy nhất: thử base, rồi base-2, base-3... tránh 500 do
-    // trùng ràng buộc UNIQUE khi có nhiều game cùng tên.
-    // Vòng 1: dò bằng SELECT EXISTS (nhanh, không đổi dữ liệu).
-    // Nếu INSERT vẫn dính unique violation (race: 2 request đồng thời
-    // check cùng lúc rồi cùng INSERT — TOCTOU), catch Conflict và dò
-    // tiếp suffix mới thay vì trả 500 cho user.
+    // v2.6.0 — Sinh slug duy nhất: 1 query EXISTS check thay vì loop 100 lần.
+    // Trước đây loop tới 100 round-trip DB nếu có 100 game cùng tên — dưới
+    // pool contention = hang forever (capped 30s bởi request_timeout → 504).
+    // Nếu base trùng → ghép UUID v4 (chắc chắn unique, không cần check lại).
+    // INSERT vẫn catch Conflict (race TOCTOU giữa EXISTS và INSERT) và retry
+    // với UUID mới — 3 lần max.
     let base_slug = {
         let s = slug::slugify(&form.title);
         if s.is_empty() {
@@ -301,29 +307,11 @@ pub async fn create_game(
             s
         }
     };
-    let mut slug = base_slug.clone();
-    let mut suffix = 1u32;
-    loop {
-        // Trả DB error thay vì unwrap_or(true) — trước đây transient
-        // DB error (network glitch, connection reset) bị coi là "slug
-        // tồn tại", rồi retry 100 lần với suffix số đếm rồi break với
-        // UUID random → user nhận URL xấu (my-game-101-{uuid}) mà
-        // không biết DB đang lỗi.
-        match GameRepo::slug_exists(&state.db, &slug).await {
-            Ok(false) => break, // slug free → dùng được
-            Ok(true) => {}      // trùng → thử suffix kế
-            Err(e) => return Err(e),
-        }
-        suffix += 1;
-        slug = format!("{base_slug}-{suffix}");
-        if suffix > 100 {
-            // Vượt 100 lần thử — khả năng cao là logic slug có vấn đề
-            // hoặc ai đó cố tình register 100 game cùng tên. Fallback
-            // UUID để user vẫn tạo được, không bắt retry mãi.
-            slug = format!("{}-{}", base_slug, uuid::Uuid::new_v4().simple());
-            break;
-        }
-    }
+    let mut slug = if GameRepo::slug_exists(&state.db, &base_slug).await? {
+        format!("{}-{}", base_slug, uuid::Uuid::new_v4().simple())
+    } else {
+        base_slug.clone()
+    };
 
     // INSERT với retry khi unique violation (race TOCTOU giữa EXISTS
     // và INSERT). Thử tối đa 3 lần, mỗi lần thêm suffix ngẫu nhiên.
@@ -396,9 +384,11 @@ pub async fn show_game(
         game.view_count += 1;
     }
 
-    // 5 truy vấn độc lập (author/links/screenshots/tags/category) chạy
-    // song song — trước đây tuần tự, trang game chịu tổng 5 round-trip.
-    let (author_res, links_res, screenshots_res, tags_res, category_res) = tokio::join!(
+    // v2.6.0 — 7 queries (author/links/screenshots/tags/category/comments/
+    // related) chạy SONG SONG — trước đây 5 query song song rồi comments +
+    // related tuần tự → cộng thêm 2 round-trip. Giờ tất cả 1 wave.
+    let user_id_opt = current_user.as_ref().map(|u| u.id);
+    let (author_res, links_res, screenshots_res, tags_res, category_res, comments_res, related_res) = tokio::join!(
         crate::repositories::UserRepo::find_by_id(&state.db, game.user_id),
         GameRepo::get_links(&state.db, game.id),
         GameRepo::get_screenshots(&state.db, game.id),
@@ -409,27 +399,23 @@ pub async fn show_game(
                 None => Ok(None),
             }
         },
+        crate::repositories::CommentRepo::list_by_game(&state.db, game.id, user_id_opt, 50, 0,),
+        GameRepo::related(&state.db, game.id, game.category_id, 6),
     );
     let author = author_res?.ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
     let links = links_res?;
     let screenshots = screenshots_res?;
     let tags = tags_res?;
     let category = category_res?;
-    let comments = crate::repositories::CommentRepo::list_by_game(
-        &state.db,
-        game.id,
-        current_user.as_ref().map(|u| u.id),
-        50,
-        0,
-    )
-    .await?;
-    let related_games = GameRepo::related(&state.db, game.id, game.category_id, 6).await?;
+    let comments = comments_res?;
+    let related_games = related_res?;
 
-    // 4 check trạng thái tương tác (like/bookmark/follow/rating) độc lập
-    // — join! chạy đồng thời thay vì 4 lần chờ tuần tự.
-    let (is_liked, is_bookmarked, is_following_author, user_rating) =
+    // v2.6.0 — 4 interaction checks + unread_count chạy SONG SONG —
+    // trước đây unread_for await SAU interaction block → cộng thêm 1
+    // round-trip. Giờ tất cả 5 futures trong 1 wave.
+    let (is_liked, is_bookmarked, is_following_author, user_rating, unread) =
         if let Some(ref u) = current_user {
-            let (liked_res, bm_res, following_res, rating_res) = tokio::join!(
+            let (liked_res, bm_res, following_res, rating_res, unread_res) = tokio::join!(
                 InteractionRepo::is_liked(&state.db, game.id, u.id),
                 InteractionRepo::is_bookmarked(&state.db, game.id, u.id),
                 async {
@@ -440,18 +426,18 @@ pub async fn show_game(
                     }
                 },
                 InteractionRepo::get_user_rating(&state.db, game.id, u.id),
+                unread_for(&state, current_user.as_ref()),
             );
             (
                 liked_res.unwrap_or(false),
                 bm_res.unwrap_or(false),
                 following_res.unwrap_or(false),
                 rating_res.unwrap_or(None),
+                unread_res,
             )
         } else {
-            (false, false, false, None)
+            (false, false, false, None, 0)
         };
-
-    let unread = unread_for(&state, current_user.as_ref()).await;
 
     // Structured data (JSON-LD) cho SEO: schema.org/VideoGame —
     // giúp Google hiển thị rich snippet (rating, lượt tải, v.v.) trên

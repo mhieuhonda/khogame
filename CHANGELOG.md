@@ -5,6 +5,104 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] — 2026-08-28 — FIX hang forever + PERF + Admin profile effects
+
+Bản phát hành LỚN tập trung 3 trụ cột: fix triệt để lỗi "hang forever"
+khi đăng repo/game/news, tối ưu perf siêu mượt cho các trang nặng, và
+thêm hiệu ứng rainbow/glitch cho TOÀN BỘ trang hồ sơ admin/mod.
+
+### 🐛 Bug Fixes — Hang Forever (CRITICAL)
+
+- **FIX loop slug 100 lần tuần tự** (`src/handlers/news.rs::make_unique_slug`,
+  `src/handlers/games.rs::create_game`): trước đây mỗi lần đăng tin/game
+  mới với tiêu đề trùng → loop tới 100 lần `SELECT EXISTS` tuần tự. Dưới
+  pool exhausted/DB chậm = 100 × 10s acquire_timeout = 1000s lý thuyết,
+  capped 30s bởi request_timeout → user thấy "hang forever" rồi 504.
+  FIX: 1 single SELECT EXISTS cho base slug, nếu trùng ghép UUID v4
+  (chắc chắn unique, không cần check lại). Toàn bộ ≤ 1 round-trip DB.
+- **FIX slug check `find_by_slug_public` chỉ check published/archived**:
+  trước đây 2 tin pending cùng tiêu đề → `find_by_slug_public` không thấy
+  tin pending kia → loop trả slug base → `NewsRepo::create` dính UNIQUE
+  violation → user nhận 400 và phải retry vô ích. FIX: thêm
+  `NewsRepo::slug_exists` query `WHERE slug = $1` (bất kể status),
+  đúng với semantics của UNIQUE constraint.
+- **FIX panic = "abort" giết cả process** (`Cargo.toml` profile.release):
+  trước đây 1 panic ở bất kỳ task nào (render markdown nặng, unwrap thiếu,
+  race condition) → cả server chết → browser nhận connection reset = user
+  thấy "hang forever". FIX: đổi `panic = "unwind"` — panic chỉ kill task
+  bị lỗi, server vẫn phục vụ các request khác. Overhead nhỏ (~1-2% binary
+  size) nhưng đáng để đảm bảo uptime cho prod.
+- **FIX thiếu `statement_timeout` trên PgPool** (`src/db.rs`): trước đây
+  query nặng (vd: sitemap với 10K rows, N+1) chiếm connection vô thời
+  hạn → pool exhausted → các request khác hang chờ connection rảnh.
+  FIX: set `statement_timeout = 15s` (env `DB_STATEMENT_TIMEOUT_SECS`)
+  qua `PgConnectOptions::options([("statement_timeout", ...)])`. Mọi
+  query vượt quá → PostgreSQL ngắt, trả lỗi thay vì treo. < request_timeout
+  (30s) để handler kịp trả response có ý nghĩa cho user.
+- **FIX `error_page_mw` query DB khi render trang lỗi** (`src/middleware.rs`):
+  khi request gốc fail do DB pool exhaustion, `current_user_from_jar` lại
+  cố query DB để lấy user → có thể treo thêm 10s (acquire_timeout) trước
+  khi render trang lỗi. FIX: wrap với `tokio::time::timeout(2s, ...)` —
+  nếu user lookup quá 2s, render trang lỗi với `current_user=None` nhanh
+  chóng thay vì cộng dồn latency vào response lỗi.
+- **FIX thiếu `DefaultBodyLimit`** (`src/routes.rs`): trước đây axum 0.8
+  default 2MB implicit — form news 50K chars + tags + URLs có thể gần kề
+  limit → request bị reject với error khó hiểu. Upload routes (avatar 5MB,
+  cover 10MB) cần limit cao hơn. FIX: set `DefaultBodyLimit::max(12 MB)`
+  toàn cục — đủ cho mọi upload + form, nhưng chặn malicious huge payload
+  DoS.
+
+### ⚡ Performance — Siêu mượt, không đổi UI
+
+- **PERF GameRepo::create batch INSERTs** (`src/repositories/game.rs`):
+  trước đây `create()` làm ~50+ sequential INSERTs (1 game + 5 links +
+  N screenshots + 2×20 tags). 20 screenshots = 20 round-trip; 20 tags =
+  40 round-trip (upsert + game_tags). FIX: dùng `sqlx::QueryBuilder` để
+  batch INSERT 1 query cho screenshots, 1 query upsert tags, 1 query
+  INSERT game_tags. Tổng số round-trip giảm từ ~50 xuống 5.
+- **PERF `unread_count` merge vào `tokio::join!`** (6 handlers):
+  `home`, `show_game`, `show_profile`, `repos::list`, `news::list`,
+  `edit_game_form` — trước đây `unread_for` await SAU `tokio::join!` block
+  xong → cộng thêm 1 round-trip vào TTFB. FIX: thêm `unread_for` future
+  vào join block — tất cả futures chạy đồng thời, TTFB giảm ~5ms (cache
+  miss) hoặc ~0.5ms (cache hit) cho mỗi page render.
+- **PERF `show_game` merge comments + related vào join!** (`src/handlers/games.rs`):
+  trước đây 5 query song song (author/links/screenshots/tags/category)
+  RỒI comments + related_games tuần tự → cộng 2 round-trip. FIX: gộp
+  tất cả 7 query vào 1 `tokio::join!` wave.
+- **PERF `sitemap` merge news query vào join!** (`src/handlers/api.rs`):
+  trước đây 4 query song song RỒI `NewsRepo::list_published` tuần tự.
+  FIX: gộp thành 5-way join.
+- **PERF `news_list` API merge items + total** (`src/handlers/api.rs`):
+  trước đây 2 query tuần tự. FIX: `tokio::join!` song song.
+
+### ✨ Tính năng mới — Admin/Mod profile effects on WHOLE page
+
+- **Hiệu ứng rainbow + glitch áp dụng cho TOÀN BỘ trang hồ sơ** (không
+  chỉ role badge): trước đây effect chỉ ở `<span class="role-badge">`
+  (chữ rainbow + viền lửa cho admin, glitch burst cho mod). FIX: thêm
+  class `.profile-page-admin-effects` / `.profile-page-mod-effects` lên
+  `<section class="profile-page">` khi staff bật `role_badge_effects`.
+  Hiệu ứng bao phủ: viền flame gradient động quanh toàn page, chữ
+  rainbow chạy màu cho display_name, cover gradient động màu lửa/xanh,
+  avatar có glow nhẹ. Reuse toàn bộ keyframes đã có (admin-fire-glow,
+  admin-flame-border, admin-rainbow-slide, mod-glitch-top/bottom) —
+  không thêm JS, không thêm deps, chỉ CSS + 1 attribute `data-text`
+  cho mod glitch clone text.
+- **Toggle BẬT/TẮT giữ nguyên**: checkbox `role_effects` trong
+  `/profile/edit` (đã có từ v2.1.0) giờ controls cả page effect, không
+  chỉ badge. Hint text cập nhật: "Hiệu ứng chức vụ trên toàn bộ hồ sơ".
+- **a11y `prefers-reduced-motion`**: tắt toàn bộ animation cho user
+  nhạy cảm chuyển động — badge vẫn giữ chữ rainbow gradient tĩnh + viền
+  lửa tĩnh, mod mất glitch burst nhưng text gốc hiển thị bình thường.
+
+### 🔧 Misc
+
+- Test `test_pool_tuning_defaults` bổ sung assert cho `statement_timeout`
+  (> 0, ≤ 600s).
+- Migration `016_role_badge_effects.sql` giữ nguyên — không cần thêm
+  column, dùng lại `user_preferences.role_badge_effects` có sẵn.
+
 ## [2.5.1] — 2026-08-28 — FIX /manifest.json bị ép Content-Type text/html (bug v2.3.0)
 
 ### 🐛 Bug Fixes

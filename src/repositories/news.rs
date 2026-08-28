@@ -344,6 +344,21 @@ impl NewsRepo {
         Ok(item)
     }
 
+    /// Kiểm tra slug đã tồn tại chưa (bất kể status). Dùng cho slug uniqueness
+    /// check khi tạo tin mới — không lọc theo status để tránh false negative
+    /// khi user khác đang có tin `pending` cùng slug (UNIQUE constraint
+    /// áp dụng cho toàn bộ rows, không phân biệt status).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn slug_exists(pool: &PgPool, slug: &str) -> AppResult<bool> {
+        let c: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM news WHERE slug = $1)")
+            .bind(slug)
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
+    }
+
     /// Lấy tin theo slug — không check status (admin xem).
     /// # Errors
     ///

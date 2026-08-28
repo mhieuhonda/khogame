@@ -1302,7 +1302,16 @@ pub async fn error_page_mw(
 
     // Lấy user hiện hành (best-effort — lỗi DB thì render trang lỗi
     // không có user, vẫn đẹp hơn fragment trơn).
-    let current_user = current_user_from_jar(&state, &jar).await;
+    // v2.6.0 — Wrap với timeout 2s: nếu error gốc là DB pool exhaustion
+    // (5xx), current_user_from_jar sẽ lại cố query DB → có thể treo
+    // thêm 10s (acquire_timeout) trước khi trả. Timeout 2s cắt ngang
+    // → render trang lỗi với current_user=None nhanh chóng thay vì
+    // cộng dồn latency vào response lỗi.
+    let current_user =
+        tokio::time::timeout(Duration::from_secs(2), current_user_from_jar(&state, &jar))
+            .await
+            .ok()
+            .flatten();
 
     // Render trang lỗi đầy đủ giao diện.
     let full_page = crate::templates::ErrorTemplate {

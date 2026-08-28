@@ -72,19 +72,23 @@ impl GameRepo {
         // Insert links
         Self::sync_links(pool, id, form).await?;
 
-        // Insert screenshots — propagate lỗi: screenshot là nội dung user
-        // chủ động thêm; fail im lặng (let _ =) khiến user tưởng đã lưu
-        // nhưng trang game thiếu ảnh mà không có thông báo nào. Lỗi thật
-        // (DB down, FK lỗi) phải hiện ra để user biết submit lại.
-        for (i, url) in form.screenshots_vec().iter().enumerate() {
-            sqlx::query(
-                r"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)",
-            )
-            .bind(id)
-            .bind(url)
-            .bind(i32::try_from(i).unwrap_or(i32::MAX))
-            .execute(pool)
-            .await?;
+        // v2.6.0 — Batch INSERT screenshots: 1 query multi-row thay vì
+        // N round-trip. Trước đây mỗi screenshot = 1 INSERT riêng →
+        // 20 screenshots = 20 DB round-trip tuần tự, tăng latency TTFB
+        // và khả năng pool exhaustion dưới tải cao.
+        // Dùng QueryBuilder để an toàn bind dynamic-length args (sqlx 0.9
+        // yêu cầu SqlSafeStr cho string động — QueryBuilder xử lý internally).
+        let screenshots = form.screenshots_vec();
+        if !screenshots.is_empty() {
+            let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+                "INSERT INTO game_screenshots (game_id, url, position) ",
+            );
+            builder.push_values(screenshots.iter().enumerate(), |mut b, (i, url)| {
+                b.push_bind(id)
+                    .push_bind(url)
+                    .push_bind(i32::try_from(i).unwrap_or(i32::MAX));
+            });
+            builder.build().execute(pool).await?;
         }
 
         // Insert tags
@@ -148,20 +152,23 @@ impl GameRepo {
             .await?;
         Self::sync_links(pool, id, form).await?;
 
-        // Replace screenshots — propagate lỗi (đồng bộ với create)
+        // Replace screenshots — propagate lỗi (đồng bộ với create).
+        // v2.6.0 — Batch INSERT 1 query thay vì N round-trip.
         sqlx::query("DELETE FROM game_screenshots WHERE game_id = $1")
             .bind(id)
             .execute(pool)
             .await?;
-        for (i, url) in form.screenshots_vec().iter().enumerate() {
-            sqlx::query(
-                r"INSERT INTO game_screenshots (game_id, url, position) VALUES ($1, $2, $3)",
-            )
-            .bind(id)
-            .bind(url)
-            .bind(i32::try_from(i).unwrap_or(i32::MAX))
-            .execute(pool)
-            .await?;
+        let screenshots = form.screenshots_vec();
+        if !screenshots.is_empty() {
+            let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+                "INSERT INTO game_screenshots (game_id, url, position) ",
+            );
+            builder.push_values(screenshots.iter().enumerate(), |mut b, (i, url)| {
+                b.push_bind(id)
+                    .push_bind(url)
+                    .push_bind(i32::try_from(i).unwrap_or(i32::MAX));
+            });
+            builder.build().execute(pool).await?;
         }
 
         // Replace tags
@@ -179,40 +186,56 @@ impl GameRepo {
             .execute(pool)
             .await?;
 
+        // v2.6.0 — Dedup + collect trước, rồi batch INSERT 1 query thay vì
+        // N×2 round-trip (INSERT INTO tags RETURNING id + INSERT game_tags
+        // per tag). Trước đây 20 tags = 40+ sequential round-trips.
         let mut seen = std::collections::HashSet::new();
+        let mut unique: Vec<(String, String)> = Vec::with_capacity(tags.len());
         for tag in tags {
-            let tag = tag.trim();
+            let tag = tag.trim().to_string();
             if tag.is_empty() {
                 continue;
             }
-            let tag_slug = slug::slugify(tag);
+            let tag_slug = slug::slugify(&tag);
             if tag_slug.is_empty() || !seen.insert(tag_slug.clone()) {
-                continue; // bỏ tag rỗng/trùng trong cùng 1 lần submit
+                continue;
             }
-            // Upsert không đụng usage_count; trigger sẽ +1 khi gắn vào game
-            let tag_id: Option<Uuid> = sqlx::query_scalar(
-                r"INSERT INTO tags (name, slug) VALUES ($1, $2)
-                   ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
-                   RETURNING id",
-            )
-            .bind(tag)
-            .bind(&tag_slug)
-            .fetch_optional(pool)
-            .await?;
-            if let Some(tid) = tag_id {
-                sqlx::query(
-                    "INSERT INTO game_tags (game_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                )
-                .bind(game_id)
-                .bind(tid)
-                .execute(pool)
-                .await?;
-            }
+            unique.push((tag, tag_slug));
+        }
+        if unique.is_empty() {
+            return Ok(());
+        }
+        // Batch upsert tags (RETURNING id) — 1 query cho tất cả tags.
+        let mut tag_builder =
+            sqlx::QueryBuilder::<sqlx::Postgres>::new("INSERT INTO tags (name, slug) ");
+        tag_builder.push_values(unique.iter(), |mut b, (name, slug)| {
+            b.push_bind(name).push_bind(slug);
+        });
+        tag_builder.push(" ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id");
+        let tag_ids: Vec<Uuid> = tag_builder
+            .build_query_as::<(Uuid,)>()
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(|r| r.0)
+            .collect();
+
+        if !tag_ids.is_empty() {
+            // Batch INSERT game_tags — 1 query.
+            let mut gt_builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+                "INSERT INTO game_tags (game_id, tag_id) ",
+            );
+            gt_builder.push_values(tag_ids.iter(), |mut b, tid| {
+                b.push_bind(game_id).push_bind(tid);
+            });
+            gt_builder.push(" ON CONFLICT DO NOTHING");
+            gt_builder.build().execute(pool).await?;
         }
         Ok(())
     }
 
     async fn sync_links(pool: &PgPool, game_id: Uuid, form: &GameForm) -> AppResult<()> {
+        // v2.6.0 — Collect links, batch INSERT 1 query thay vì 5 sequential.
         let links: [(&str, Platform, &Option<String>); 5] = [
             ("android", Platform::Android, &form.android_link),
             ("ios", Platform::Ios, &form.ios_link),
@@ -220,23 +243,28 @@ impl GameRepo {
             ("linux", Platform::Linux, &form.linux_link),
             ("macos", Platform::Macos, &form.macos_link),
         ];
-        for (_name, platform, link_opt) in links {
-            if let Some(url) = link_opt.as_deref().filter(|s| !s.is_empty()) {
-                // Propagate lỗi: link tải là trường BẮT BUỘC của form
-                // (validate đã chặn rỗng) — INSERT fail mà nuốt lỗi thì
-                // game được tạo KHÔNG có link tải nào, trang chi tiết
-                // render nút tải trống.
-                sqlx::query(
-                    r"INSERT INTO game_links (game_id, platform, url) VALUES ($1, $2, $3)
-                       ON CONFLICT (game_id, platform) DO UPDATE SET url = EXCLUDED.url",
-                )
-                .bind(game_id)
-                .bind(platform)
-                .bind(url)
-                .execute(pool)
-                .await?;
-            }
+        let collected: Vec<(Platform, &str)> = links
+            .into_iter()
+            .filter_map(|(_n, platform, link_opt)| {
+                link_opt
+                    .as_deref()
+                    .filter(|s| !s.is_empty())
+                    .map(|url| (platform, url))
+            })
+            .collect();
+        if collected.is_empty() {
+            return Ok(());
         }
+        let mut builder = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+            "INSERT INTO game_links (game_id, platform, url) ",
+        );
+        builder.push_values(collected.iter(), |mut b, (platform, url)| {
+            b.push_bind(game_id)
+                .push_bind(platform.clone())
+                .push_bind(url);
+        });
+        builder.push(" ON CONFLICT (game_id, platform) DO UPDATE SET url = EXCLUDED.url");
+        builder.build().execute(pool).await?;
         Ok(())
     }
 

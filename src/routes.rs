@@ -4,6 +4,7 @@ use crate::middleware::{
     request_timeout, require_admin, require_ai_agent, security_headers,
 };
 use crate::state::AppState;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
@@ -471,5 +472,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // nặng. Skip WebSocket upgrade (header Upgrade). Cấu hình qua env
         // REQUEST_TIMEOUT_SECS (default 30, max 600, 0 = tắt).
         .layer(middleware::from_fn(request_timeout))
+        // v2.6.0 — Body size limit toàn cục 12 MB: đủ cho mọi upload
+        // (avatar 5MB, cover 10MB) và form lớn (news content 50K chars ×
+        // UTF-8 ~150KB), nhưng chặn malicious huge payload DoS. Trước đây
+        // không set → axum default 2MB không đủ cho upload cover_image.
+        // Upload routes có size-check riêng trong storage::save_upload,
+        // nhưng check đó chạy SAU khi đọc toàn bytes vào memory →
+        // attacker gửi 100MB body, axum đọc hết, RỒI mới reject.
+        // DefaultBodyLimit chặn sớm ở layer streaming.
+        .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
         .with_state(state)
 }

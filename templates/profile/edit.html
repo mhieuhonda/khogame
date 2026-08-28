@@ -77,11 +77,11 @@
     {% if cu.role.is_staff() %}
     <div class="form-check">
         <input type="checkbox" name="role_effects" id="role_effects" {% if preferences.role_badge_effects %}checked{% endif %}>
-        <label for="role_effects">Hiệu ứng khung chức vụ
+        <label for="role_effects">Hiệu ứng chức vụ trên toàn bộ hồ sơ
             {% if cu.role.is_admin() %}
-            <small class="form-hint" style="display:block">(chữ rainbow + khung lửa trên hồ sơ của bạn)</small>
+            <small class="form-hint" style="display:block">(chữ rainbow + khung lửa rực cháy quanh toàn trang hồ sơ của bạn)</small>
             {% else %}
-            <small class="form-hint" style="display:block">(hiệu ứng glitch trên hồ sơ của bạn)</small>
+            <small class="form-hint" style="display:block">(hiệu ứng glitch trên toàn trang hồ sơ của bạn)</small>
             {% endif %}
         </label>
     </div>

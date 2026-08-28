@@ -104,6 +104,14 @@ fn validate_url(url: &str) -> Result<String, AppError> {
 }
 
 /// Sinh slug duy nhất cho news.
+///
+/// v2.6.0 — Fix hang: trước đây loop gọi `find_by_slug_public` tới 100 lần
+/// liên tiếp, mỗi lần 1 DB round-trip. Dưới pool exhausted / DB chậm,
+/// 100 round-trip × 10s acquire_timeout = 1000s lý thuyết (capped 30s
+/// bởi request_timeout → user thấy "hang forever").
+///
+/// Fix: 1 single SELECT EXISTS cho base slug. Nếu trùng → ghép UUID v4
+/// (chắc chắn unique, không cần check lại). Toàn bộ <= 1 round-trip DB.
 async fn make_unique_slug(state: &AppState, title: &str) -> AppResult<String> {
     let base = {
         let s = slug::slugify(title);
@@ -113,28 +121,14 @@ async fn make_unique_slug(state: &AppState, title: &str) -> AppResult<String> {
             s
         }
     };
-    // NewsRepo chưa có slug_exists → dùng find_by_slug_public (trả None nếu chưa có,
-    // bao gồm cả status pending/draft/rejected của người khác). Nhưng như vậy
-    // 2 tin pending cùng title sẽ đụng UNIQUE → catch ở create() và retry.
-    // Đơn giản hoá: thử base, nếu đã có thì thêm suffix.
-    let mut slug = base.clone();
-    let mut suffix = 1u32;
-    loop {
-        match NewsRepo::find_by_slug_public(&state.db, &slug).await? {
-            None => break,
-            Some(_) => {
-                suffix += 1;
-                slug = format!("{base}-{suffix}");
-                if suffix > 100 {
-                    // Vượt 100 lần thử — fallback UUID (dùng base, không
-                    // ghép thêm suffix để URL không quá xấu).
-                    slug = format!("{}-{}", base, Uuid::new_v4().simple());
-                    break;
-                }
-            }
-        }
+    // 1 query duy nhất — không còn loop. Nếu base đã có (status bất kỳ —
+    // UNIQUE constraint áp dụng cho mọi row, kể cả pending), ghép UUID v4
+    // để đảm bảo unique mà không cần check tiếp.
+    if NewsRepo::slug_exists(&state.db, &base).await? {
+        Ok(format!("{}-{}", base, Uuid::new_v4().simple()))
+    } else {
+        Ok(base)
     }
-    Ok(slug)
 }
 
 async fn unread_for(state: &AppState, user: Option<&crate::models::user::User>) -> i64 {

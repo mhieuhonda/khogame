@@ -176,3 +176,103 @@ Stage Summary:
 - ✅ Error pages text/html (giữ nguyên fix v2.4.1)
 - ✅ 3 releases: v2.4.1 (hotfix), v2.5.0 (Markdown v2.5 + Bio MD),
   v2.5.1 (manifest MIME). Toàn bộ commits author mhieuhonda.
+
+---
+Task ID: v2.6.0-hang-fix+admin-effects
+Agent: Super Z (main)
+Task: Fix lỗi hang forever khi đăng repo/game/news + thêm admin profile effects (rainbow/glitch trên toàn bộ trang hồ sơ, có toggle) + tối ưu perf siêu mượt không đổi UI + quét bug toàn codebase. Sẽ đưa lên PROD (cẩn thận). Rust 1.98. Tạo release tương ứng. Commits author mhieuhonda.
+
+Work Log:
+- Cloned repo fresh từ `https://github.com/mhieuhonda/khogame.git` (v2.5.1).
+- Cài Rust 1.98.0 qua rustup, verify rust-toolchain.toml match.
+- Subagent Explore quét codebase 26K LOC, đưa ra báo cáo:
+  * ROOT CAUSE hang: loop slug 100 lần tuần tự trong `make_unique_slug`
+    (news) và `create_game` (games) — mỗi iteration 1 DB round-trip.
+    GameRepo::create thêm ~50 sequential INSERTs (screenshots + tags).
+    panic="abort" khiến 1 panic = cả server chết = browser thấy hang.
+    Thiếu statement_timeout → query nặng chiếm connection mãi.
+    error_page_mw query DB khi render trang lỗi → cộng dồn latency.
+  * PERF: 6 handlers có `unread_count` await SAU tokio::join! xong;
+    show_game có comments + related_games tuần tự sau join!; sitemap
+    có news query tuần tự sau join!; news_list API items+total tuần tự.
+  * ADMIN profile effects: đã có role_badge_effects preference từ v2.1.0,
+    nhưng chỉ áp dụng cho `<span class="role-badge">` (1 element nhỏ).
+    Cần mở rộng ra toàn bộ `.profile-page` section.
+- Diagnosed xong, lập kế hoạch v2.6.0 — fix hang + perf + admin effects.
+
+- FIX #1 (HANG — ROOT CAUSE): `make_unique_slug` (news) — thay 100-iteration
+  loop bằng 1 SELECT EXISTS, nếu trùng ghép UUID v4. Thêm `NewsRepo::slug_exists`
+  (bất kể status, đúng UNIQUE constraint semantics) thay vì `find_by_slug_public`
+  (chỉ check published/archived → 2 tin pending cùng title dính 400 false).
+- FIX #2 (HANG): `create_game` (games) — cùng pattern: 1 SELECT EXISTS,
+  nếu trùng ghép UUID v4. INSERT retry pattern giữ nguyên (3 lần cho race TOCTOU).
+- FIX #3 (HANG): `GameRepo::create` batch INSERTs dùng `sqlx::QueryBuilder`:
+  * screenshots: 1 query multi-row thay vì N round-trip
+  * sync_tags: collect → 1 batch upsert tags RETURNING id → 1 batch INSERT
+    game_tags (2 queries thay vì 2N sequential)
+  * sync_links: collect → 1 batch INSERT ON CONFLICT (1 query thay vì 5)
+- FIX #4 (HANG): `Cargo.toml` profile.release `panic = "unwind"` thay vì
+  "abort" — 1 panic chỉ kill task, không kéo theo cả process.
+- FIX #5 (HANG): `src/db.rs` set `statement_timeout = 15s` qua
+  `PgConnectOptions::options([("statement_timeout", ...)])` — env
+  `DB_STATEMENT_TIMEOUT_SECS`. Mọi query vượt → PostgreSQL ngắt, không
+  treo connection. < request_timeout (30s) để handler kịp trả lỗi.
+- FIX #6 (HANG): `src/middleware.rs::error_page_mw` wrap `current_user_from_jar`
+  với `tokio::time::timeout(2s, ...)` — tránh treo thêm 10s khi DB pool
+  exhausted (query lookup user cho trang lỗi cũng fail).
+- FIX #7 (HANG): `src/routes.rs` thêm `DefaultBodyLimit::max(12 MB)` toàn
+  cục — đủ cho upload (avatar 5MB, cover 10MB) + form lớn, chặn DoS.
+
+- PERF #1: `home` (games.rs) — merge `unread_for` vào tokio::join! 11-way
+  (10 queries + unread song song).
+- PERF #2: `show_game` (games.rs) — merge comments + related_games + unread
+  vào tokio::join! block (7 queries + 5 interaction checks + unread = 13 futures).
+- PERF #3: `show_profile` (profile.rs) — merge unread vào tokio::join! 6-way.
+- PERF #4: `repos::list` (repos.rs) — merge unread vào tokio::join! 3-way.
+- PERF #5: `sitemap` (api.rs) — merge NewsRepo::list_published vào tokio::join!
+  5-way (trước đây 4 + news tuần tự).
+- PERF #6: `news_list` API (api.rs) — merge items + total vào tokio::join! 2-way.
+
+- ADMIN PROFILE EFFECTS:
+  * `templates/profile/show.html`: thêm class `.profile-page-admin-effects`
+    (admin) hoặc `.profile-page-mod-effects` (mod) lên `<section class="profile-page">`
+    khi `preferences.role_badge_effects && user.role.is_staff()`.
+  * `static/css/style.css`: thêm ~150 dòng CSS mới reuse toàn bộ keyframes
+    đã có (admin-fire-glow, admin-flame-border, admin-rainbow-slide, mod-glitch-*)
+    — áp dụng cho toàn page: viền flame gradient động quanh section, chữ
+    rainbow chạy màu cho display_name, cover gradient động, avatar có glow.
+    Mod: viền xanh nhấp nháy + glitch burst cho display_name.
+  * `templates/profile/edit.html`: hint text cập nhật "Hiệu ứng chức vụ
+    trên toàn bộ hồ sơ" + mô tả rõ "(chữ rainbow + khung lửa rực cháy quanh
+    toàn trang hồ sơ của bạn)".
+  * `templates/profile/show.html`: thêm `data-text="{{ user.display_name }}"`
+    attribute cho h1 khi mod bật effects — pure CSS glitch clone text.
+  * `static/css/style.css`: update `@media (prefers-reduced-motion: reduce)`
+    block để bao gồm cả selectors mới — tắt animation cho user nhạy cảm.
+  * REUSE `user_preferences.role_badge_effects` (migration 016 từ v2.1.0)
+    — không cần thêm column, không cần migration mới.
+
+- VERIFY:
+  * `cargo check` clean (~5s).
+  * `cargo test --lib` — 281 tests passed, 0 failed.
+  * `cargo clippy --all-targets` (default) — 0 warnings.
+  * `cargo clippy -- -W clippy::all -W clippy::pedantic` — chỉ pedantic
+    warnings pre-existing (docs backticks, similar_names, etc.) — không
+    có warning nào mới do thay đổi của v2.6.0.
+  * `cargo fmt --all -- --check` — pass (auto-applied).
+  * `cargo build --release` — success in 6m09s, binary size unchanged
+    đáng kể (panic=unwind +1-2% binary size — acceptable trade-off).
+- Bump Cargo.toml version 2.5.1 → 2.6.0.
+- Update CHANGELOG.md với mục v2.6.0 chi tiết.
+- Commit author: mhieuhonda <mhieuhonda@users.noreply.github.com>.
+
+Stage Summary:
+- ✅ Hang forever FIX: 7 root cause patches (slug loops, panic, statement_timeout,
+  error_page_mw, DefaultBodyLimit, GameRepo batch INSERTs, news slug check semantics).
+- ✅ PERF: 6 handlers tối ưu tokio::join! merge unread/comments/related/sitemap/news.
+- ✅ Admin profile effects: rainbow + glitch áp dụng cho TOÀN BỘ trang hồ sơ,
+  toggle giữ nguyên từ v2.1.0, a11y prefers-reduced-motion honored.
+- ✅ No UI change (chỉ thêm class CSS + 1 attribute) — giao diện không đổi,
+  chỉ thêm hiệu ứng khi staff bật.
+- ✅ 281 tests pass, clippy default clean, rustfmt pass, release build OK.
+- ⏭️ Commit + push + tạo GitHub release v2.6.0.

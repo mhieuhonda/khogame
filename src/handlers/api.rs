@@ -864,14 +864,17 @@ pub async fn sitemap(
     headers: axum::http::HeaderMap,
 ) -> AppResult<Response> {
     let base = &state.config.base_url;
-    // 4 query độc lập (categories/tags/users/games) chạy SONG SONG —
-    // trước đây tuần tự, mỗi lần bot/axios fetch sitemap chịu tổng 4
-    // round-trip DB liền nhau.
-    let (cats_res, tags_res, users_res, games_res) = tokio::join!(
+    // v2.6.0 — 5 query độc lập (categories/tags/users/games/news) chạy
+    // SONG SONG — trước đây 4 song song rồi news query tuần tự sau đó →
+    // cộng thêm 1 round-trip cho mỗi sitemap fetch (bot crawl thường
+    // mỗi vài giờ → không nặng nhưng dễ là first-request-of-day cache
+    // miss). Giờ tất cả 1 wave.
+    let (cats_res, tags_res, users_res, games_res, news_res) = tokio::join!(
         CategoryRepo::list_with_counts(&state.db),
         TagRepo::popular(&state.db, 50),
         UserRepo::sitemap_usernames(&state.db),
         GameRepo::sitemap_entries(&state.db),
+        NewsRepo::list_published(&state.db, 1, 50),
     );
     let mut urls = String::new();
     urls.push_str(&format!(
@@ -944,7 +947,8 @@ pub async fn sitemap(
         }
     }
     // News URLs — 50 tin published mới nhất (tránh sitemap quá lớn)
-    if let Ok(news) = NewsRepo::list_published(&state.db, 1, 50).await {
+    // v2.6.0 — dùng news_res từ tokio::join! thay vì await tuần tự.
+    if let Ok(news) = news_res {
         for n in news {
             urls.push_str(&format!(
                 r"  <url><loc>{}/news/{}</loc><lastmod>{}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
@@ -1231,22 +1235,32 @@ pub async fn news_list(
             "Category '{category_raw}' không hợp lệ"
         )));
     };
-    let items = if category.is_empty() {
-        NewsRepo::list_published(&state.db, page, per_page).await?
+    // v2.6.0 — items + total chạy SONG SONG — trước đây await tuần tự
+    // → cộng dồn 2 round-trip vào mỗi API call. Hỗ trợ API pagination
+    // gọi liên tục, mỗi lần tiết kiệm ~5ms TTFB.
+    let (items_res, total_res) = if category.is_empty() {
+        let (i, t) = tokio::join!(
+            NewsRepo::list_published(&state.db, page, per_page),
+            NewsRepo::count_published(&state.db),
+        );
+        (i, t.unwrap_or(0))
     } else {
-        NewsRepo::list_by_category(&state.db, &category, page, per_page).await?
+        let (i, t) = tokio::join!(
+            NewsRepo::list_by_category(&state.db, &category, page, per_page),
+            async {
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT COUNT(*) FROM news WHERE status = 'published' AND category = $1",
+                )
+                .bind(&category)
+                .fetch_one(&state.db)
+                .await
+                .unwrap_or(0)
+            },
+        );
+        (i, t)
     };
-    let total = if category.is_empty() {
-        NewsRepo::count_published(&state.db).await.unwrap_or(0)
-    } else {
-        sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM news WHERE status = 'published' AND category = $1",
-        )
-        .bind(&category)
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0)
-    };
+    let items = items_res?;
+    let total = total_res;
     let total_pages = ((total + per_page - 1) / per_page).max(1);
     Ok((
         [(header::CACHE_CONTROL, "public, max-age=120")],

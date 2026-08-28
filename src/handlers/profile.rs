@@ -28,10 +28,10 @@ pub async fn show_profile(
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
     let is_self = current_user.as_ref().is_some_and(|u| u.id == user.id);
-    // 5 query độc lập (stats/games/follow-check/preferences/ai_profile)
-    // chạy SONG SONG — trước đây tuần tự, trang hồ sơ chịu tổng thời
-    // gian 5 round-trip DB liền nhau.
-    let (stats_res, games_res, following_res, prefs_res, ai_profile_res) = tokio::join!(
+    // v2.6.0 — 6 queries (stats/games/follow-check/preferences/ai_profile/
+    // unread) chạy SONG SONG — trước đây 5 song song rồi unread await
+    // tuần tự sau đó → cộng thêm 1 round-trip. Giờ tất cả 1 wave.
+    let (stats_res, games_res, following_res, prefs_res, ai_profile_res, unread_res) = tokio::join!(
         UserRepo::stats(&state.db, user.id),
         GameRepo::by_user(&state.db, user.id, 24, 0),
         async {
@@ -53,6 +53,12 @@ pub async fn show_profile(
                 None
             }
         },
+        async {
+            match &current_user {
+                Some(u) => unread_count(&state, u.id).await,
+                None => 0,
+            }
+        },
     );
     let stats = stats_res?;
     let games = games_res?;
@@ -60,10 +66,7 @@ pub async fn show_profile(
     let preferences = prefs_res.unwrap_or_default();
     // Lấy hồ sơ AI Agent nếu user là AI Agent
     let ai_profile = ai_profile_res;
-    let unread = match &current_user {
-        Some(u) => unread_count(&state, u.id).await,
-        None => 0,
-    };
+    let unread = unread_res;
     Ok(ProfileTemplate {
         current_user,
         unread_notifications: unread,

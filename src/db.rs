@@ -13,11 +13,18 @@ use std::time::Duration;
 ///   của request đầu tiên sau khi idle.
 /// - `DB_ACQUIRE_TIMEOUT_SECS` (mặc định 10): thời gian tối đa chờ một
 ///   connection rảnh từ pool trước khi trả 500 — tăng nếu có query nặng.
+/// - `DB_STATEMENT_TIMEOUT_SECS` (mặc định 15): statement_timeout của mỗi
+///   connection trong pool (v2.6.0). Bất kỳ query nào chạy lâu hơn sẽ bị
+///   PostgreSQL ngắt → trả lỗi thay vì treo connection vô thời hạn.
+///   Giúp pool không bị exhausted khi 1 query nặng (vd: sitemap với 10K
+///   rows) chiếm connection mãi. < request_timeout (30s) để handler vẫn
+///   kịp trả response lỗi cho user.
 #[derive(Debug, Clone)]
 struct PoolTuning {
     max_connections: u32,
     min_connections: u32,
     acquire_timeout: Duration,
+    statement_timeout: Duration,
 }
 
 impl PoolTuning {
@@ -39,10 +46,21 @@ impl PoolTuning {
                 .filter(|v| *v > 0)
                 .unwrap_or(10),
         );
+        // v2.6.0 — statement_timeout ngắn hơn request_timeout (30s) để
+        // handler kịp trả lỗi có ý nghĩa cho user thay vì bị outer
+        // timeout cắt đứt. Mặc định 15s — đủ cho 99% query thông thường.
+        let statement_timeout = Duration::from_secs(
+            std::env::var("DB_STATEMENT_TIMEOUT_SECS")
+                .ok()
+                .and_then(|v| v.parse::<u64>().ok())
+                .filter(|v| *v > 0 && *v <= 600)
+                .unwrap_or(15),
+        );
         Self {
             max_connections,
             min_connections,
             acquire_timeout,
+            statement_timeout,
         }
     }
 }
@@ -55,11 +73,22 @@ impl PoolTuning {
 pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
     let tuning = PoolTuning::from_env();
     tracing::info!(
-        "DB pool: max={}, min={}, acquire_timeout={:?}",
+        "DB pool: max={}, min={}, acquire_timeout={:?}, statement_timeout={:?}",
         tuning.max_connections,
         tuning.min_connections,
-        tuning.acquire_timeout
+        tuning.acquire_timeout,
+        tuning.statement_timeout,
     );
+    // v2.6.0 — Set statement_timeout trên mỗi connection trong pool thông
+    // qua PgConnectOptions. Mọi query vượt quá thời gian sẽ bị server ngắt
+    // thay vì treo connection mãi → tránh pool exhaustion dưới load nặng.
+    let pg_options: sqlx::postgres::PgConnectOptions = database_url
+        .parse::<sqlx::postgres::PgConnectOptions>()
+        .map_err(|e| anyhow::anyhow!("DATABASE_URL parse fail: {e}"))?
+        .options([(
+            "statement_timeout",
+            &format!("{}", tuning.statement_timeout.as_millis()),
+        )]);
     let mut last_err: Option<anyhow::Error> = None;
     // Thử tối đa 30 lần x 2 giây = 1 phút
     for attempt in 1..=30 {
@@ -69,7 +98,7 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
             .acquire_timeout(tuning.acquire_timeout)
             .idle_timeout(Some(Duration::from_secs(300)))
             .max_lifetime(Some(Duration::from_mins(30)))
-            .connect(database_url)
+            .connect_with(pg_options.clone())
             .await
         {
             Ok(pool) => {
@@ -114,11 +143,15 @@ mod tests {
 
     #[test]
     fn test_pool_tuning_defaults() {
-        // Không set env → dùng default 25/2/10s (test chạy trong process
-        // riêng nên an toàn khi đọc env).
+        // Không set env → dùng default 25/2/10s/15s statement (test chạy
+        // trong process riêng nên an toàn khi đọc env).
         let t = PoolTuning::from_env();
         assert!(t.max_connections > 0);
         assert!(t.min_connections <= t.max_connections);
         assert!(t.acquire_timeout.as_secs() > 0);
+        // v2.6.0 — statement_timeout phải > 0 và <= 600s để không vô hiệu
+        // hóa bảo vệ pool exhaustion cũng như không ngắt query dài hợp lệ.
+        assert!(t.statement_timeout.as_secs() > 0);
+        assert!(t.statement_timeout.as_secs() <= 600);
     }
 }

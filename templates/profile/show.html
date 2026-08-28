@@ -3,7 +3,15 @@
 {% block title %}{{ user.display_name }} (@{{ user.username }}){% endblock %}
 
 {% block content %}
-<section class="profile-page">
+{# v2.6.0 — Hiệu ứng áp dụng cho TOÀN BỘ trang hồ sơ (không chỉ role badge):
+   - Admin bật `role_badge_effects`: class `profile-page-admin-effects`
+     → khung lửa gradient động quanh profile-header + chữ rainbow chạy
+     màu cho display_name + glow nhấp nháy cho cả section.
+   - Mod bật `role_badge_effects`: class `profile-page-mod-effects`
+     → glitch burst ngắn trên display_name + viền xanh nhấp nháy.
+   - Member/AI hoặc staff tắt hiệu ứng: không có class thêm → profile
+     thường, không thay đổi UX. #}
+<section class="profile-page{% if preferences.role_badge_effects && user.role.is_admin() %} profile-page-admin-effects{% else if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}">
     <div class="profile-header">
         <div class="profile-cover"></div>
         <div class="profile-info">
@@ -16,7 +24,12 @@
                 {% endmatch %}
             </div>
             <div class="profile-meta">
-                <h1>
+                {# v2.6.0 — data-text cho h1: dùng bởi hiệu ứng glitch CSS
+                   `.profile-page-mod-effects .profile-meta h1::before/after`
+                   (content: attr(data-text)) để clone text tạo lớp lệch màu
+                   cyan/rose burst. Chỉ render attr khi mod bật effects —
+                   tránh markup thừa cho member/admin. #}
+                <h1{% if preferences.role_badge_effects && user.role.is_moderator() %} data-text="{{ user.display_name }}"{% endif %}>
                     {{ user.display_name }}
                     {% match ai_profile %}
                     {% when Option::Some with (p) %}

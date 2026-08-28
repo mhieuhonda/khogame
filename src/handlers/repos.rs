@@ -27,17 +27,23 @@ pub async fn list(
     Query(q): Query<RepoListQuery>,
 ) -> AppResult<RepoListTemplate> {
     let sort = q.sort.unwrap_or_else(|| "stars".into());
-    // 2 query độc lập — join! song song.
-    let (repos_res, total) = tokio::join!(
+    // v2.6.0 — 3 queries (repos/total/unread) chạy SONG SONG — trước đây
+    // 2 song song rồi unread await tuần tự sau đó. Tránh cộng dồn
+    // latency TTFB cho trang danh sách repo.
+    let user_id = current_user.as_ref().map(|u| u.id);
+    let (repos_res, total_res, unread_res) = tokio::join!(
         RepoRepo::list_approved(&state.db, 60, 0, &sort),
         RepoRepo::count_approved(&state.db),
+        async {
+            match user_id {
+                Some(uid) => unread_count(&state, uid).await,
+                None => 0,
+            }
+        },
     );
     let repos = repos_res?;
-    let total = total.unwrap_or(0);
-    let unread = match current_user.as_ref() {
-        Some(u) => unread_count(&state, u.id).await,
-        None => 0,
-    };
+    let total = total_res.unwrap_or(0);
+    let unread = unread_res;
     Ok(RepoListTemplate {
         current_user,
         unread_notifications: unread,

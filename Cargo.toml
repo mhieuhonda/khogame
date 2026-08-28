@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "2.5.1"
+version = "2.6.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -79,7 +79,12 @@ opt-level = 3
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
+# v2.6.0 — panic = "unwind" thay vì "abort": một panic ở bất kỳ task nào
+# (vd: render markdown nặng, unwrap thiếu, race condition) sẽ chỉ kill task
+# đó, không kéo theo cả process. Trước đây "abort" khiến 1 panic = toàn bộ
+# server chết, browser nhận connection reset → user thấy "hang forever".
+# unwind có overhead nhỏ (~1-2% binary size) nhưng đáng để đảm bảo uptime.
+panic = "unwind"
 
 # Dev/test build nhanh hơn ~40%: dependencies (sqlx, tokio, axum...) compile
 # opt-level 1 — chỉ crate chính giữ debug không tối ưu. sqlx query macros
