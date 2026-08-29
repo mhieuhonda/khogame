@@ -21,7 +21,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v2.9.0';
+var CACHE_VERSION = 'ls-sw-v2.9.1';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;
@@ -67,16 +67,29 @@ function isPrivateRoute(url) {
     return PRIVATE_ROUTE_RE.test(url.pathname);
 }
 
+// v2.9.1 FIX (bổ sung v2.8.1) — route CÔNG KHÁI cũng render header theo
+// phiên (avatar, tên, badge thông báo, state like/bookmark của user đăng
+// nhập). Trước đây các trang này vẫn bị cache.put → máy dùng chung: user
+// sau logout/offline vẫn thấy header của user trước qua HTML_CACHE.
+// Server đã trả `Vary: Cookie` nhưng Cache API match() bỏ qua Vary →
+// phải tự chặn: request MANG session cookie → network-only (không cache
+// put, không fallback cache). Khách không cookie vẫn được cache bình
+// thường (anonymous HTML giống nhau cho mọi visitor).
+function hasSessionCookie(req) {
+    var cookie = req.headers.get('cookie');
+    return !!cookie && cookie.indexOf('kg_session=') !== -1;
+}
+
 // Install: pre-cache các critical assets (homepage, htmx, style.css)
 // để LCP install-first cũng có dữ liệu.
 self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.open(STATIC_CACHE).then(function(cache) {
             return cache.addAll([
-                '/static/js/htmx.min.js?v=2.9.0',
-                '/static/css/style.css?v=2.9.0',
-                '/static/css/fonts.css?v=2.9.0',
-                '/static/js/app.js?v=2.9.0',
+                '/static/js/htmx.min.js?v=2.9.1',
+                '/static/css/style.css?v=2.9.1',
+                '/static/css/fonts.css?v=2.9.1',
+                '/static/js/app.js?v=2.9.1',
                 '/static/img/favicon.svg'
             ]).catch(function() {
                 // Critical pre-cache fail (vd: file chưa tồn tại) → không
@@ -155,6 +168,11 @@ self.addEventListener('fetch', function(event) {
     // === 2) HTML routes (network-first with cache fallback) ===
     // FIX v2.8.1: route private → network-only, không cache fallback.
     if (isPrivateRoute(url)) {
+        return;
+    }
+    // v2.9.1: request mang session cookie (user đăng nhập) → network-only.
+    // Lý do + threat model xem comment `hasSessionCookie` phía trên.
+    if (hasSessionCookie(req)) {
         return;
     }
     if (isHtmlRequest(url)) {

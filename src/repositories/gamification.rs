@@ -151,6 +151,17 @@ impl GamificationRepo {
     /// Điểm danh hôm nay (idempotent — đã điểm rồi thì trả về streak cũ).
     /// Trả về (streak, xp_awarded, level_after).
     /// XP = DAILY_CHECKIN + min(streak-1, MAX_STREAK_BONUS) thưởng chuỗi.
+    ///
+    /// v2.9.1 FIX 2 lỗi:
+    /// 1. CONTRACT: đã điểm từ trước → trả `xp_awarded = 0` (handler dùng
+    ///    `xp_awarded == 0` để render "bạn đã điểm danh rồi" thay vì
+    ///    "Điểm danh thành công! +N XP" — trước đây trả xp đã lưu (>=5)
+    ///    khiến mọi re-click đều báo thành công +N XP oan).
+    /// 2. RACE: 2 tab bấm cùng lúc — cả 2 thấy `existing = None`, một bên
+    ///    INSERT daily_checkins thắng (PK user_id+date), bên kia DO NOTHING
+    ///    nhưng VẪN cộng xp_events + user_xp_totals → XP x2 cho 1 ngày.
+    ///    Giờ check `rows_affected`: INSERT no-op → trả (streak, 0) như
+    ///    already-checked-in, KHÔNG đụng vào xp_events/user_xp_totals.
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn do_checkin(pool: &PgPool, user_id: Uuid) -> AppResult<(i32, i32, LevelInfo)> {
@@ -165,7 +176,8 @@ impl GamificationRepo {
         .await?;
         if let Some(c) = existing {
             let level = level_from_xp(Self::total_xp(pool, user_id).await?);
-            return Ok((c.streak, c.xp_awarded, level));
+            // FIX 1: xp_awarded = 0 theo contract handler (already = xp == 0)
+            return Ok((c.streak, 0, level));
         }
         // Chuỗi: hôm qua có điểm không?
         let yesterday_streak: Option<i32> = sqlx::query_scalar(
@@ -178,7 +190,9 @@ impl GamificationRepo {
         let streak = yesterday_streak.map_or(1, |s| s + 1);
         let bonus = (streak - 1).min(xp::MAX_STREAK_BONUS);
         let xp_awarded = xp::DAILY_CHECKIN + bonus;
-        sqlx::query(
+        // FIX 2 (race): DO NOTHING giữa 2 request song song — phải kiểm tra
+        // rows_affected trước khi ghi xp, không thì bên thua race vẫn cộng XP.
+        let insert_result = sqlx::query(
             r"INSERT INTO daily_checkins (user_id, checkin_date, streak, xp_awarded)
                VALUES ($1, CURRENT_DATE, $2, $3)
                ON CONFLICT (user_id, checkin_date) DO NOTHING",
@@ -188,6 +202,20 @@ impl GamificationRepo {
         .bind(xp_awarded)
         .execute(&mut *tx)
         .await?;
+        if insert_result.rows_affected() == 0 {
+            // Request song song khác vừa chiếm slot điểm danh hôm nay.
+            // Rollback tx (không ghi gì), trả về state của bản ghi thắng.
+            tx.rollback().await?;
+            let winner = sqlx::query_as::<_, DailyCheckin>(
+                "SELECT user_id, checkin_date, streak, xp_awarded, created_at
+                 FROM daily_checkins WHERE user_id = $1 AND checkin_date = CURRENT_DATE",
+            )
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+            let level = level_from_xp(Self::total_xp(pool, user_id).await?);
+            return Ok((winner.streak, 0, level));
+        }
         // XP qua cùng tx để đảm bảo nhất quán
         sqlx::query(
             "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'daily_checkin', $2)",

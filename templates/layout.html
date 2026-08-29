@@ -24,12 +24,12 @@
        - htmx.min.js: lớn nhất (~52KB), defer nên parse không block nhưng
          download song song sớm giúp page ready tương tác nhanh hơn
        - app.js: bootstrap UI, defer — preload để khởi chạy sớm #}
-    <link rel="preload" href="/static/css/style.css?v=2.9.0" as="style">
-    <link rel="preload" href="/static/js/htmx.min.js?v=2.9.0" as="script">
-    <link rel="preload" href="/static/js/app.js?v=2.9.0" as="script">
-    <link rel="stylesheet" href="/static/css/style.css?v=2.9.0">
-    <link rel="stylesheet" href="/static/css/fonts.css?v=2.9.0">
-    <script src="/static/js/htmx.min.js?v=2.9.0" defer></script>
+    <link rel="preload" href="/static/css/style.css?v=2.9.1" as="style">
+    <link rel="preload" href="/static/js/htmx.min.js?v=2.9.1" as="script">
+    <link rel="preload" href="/static/js/app.js?v=2.9.1" as="script">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.9.1">
+    <link rel="stylesheet" href="/static/css/fonts.css?v=2.9.1">
+    <script src="/static/js/htmx.min.js?v=2.9.1" defer></script>
     {# Set theme trước khi paint để tránh FOUC (flash of unstyled content)
        khi user đã set light mode nhưng default HTML không có data-theme. #}
     <script>
@@ -278,7 +278,7 @@
         </div>
     </footer>
 
-    <script src="/static/js/app.js?v=2.9.0" defer></script>
+    <script src="/static/js/app.js?v=2.9.1" defer></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

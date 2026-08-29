@@ -497,6 +497,25 @@
             var title = container.dataset.title || document.title;
             var platform = btn.dataset.sharePlatform;
 
+            // v2.9.1 FIX — POST /games/{slug}/share từng là DEAD CODE: route +
+            // handler + cột share_count tồn tại từ v0.x nhưng KHÔNG có chỗ
+            // nào gọi → share_count mãi mãi = 0. Giờ fire-and-forget fetch
+            // (không chờ response, không block clipboard/social share).
+            // Endpoint cho phép khách (CurrentUser) → gọi luôn; 4xx im lặng bỏ qua.
+            // `data-slug` có sẵn trên .share-buttons của trang game (trước đây
+            // chỉ để cache-bust/ko dùng — giờ là khóa cho share analytics).
+            var slug = container.dataset.slug;
+            if (slug && platform) {
+                try {
+                    fetch('/games/' + encodeURIComponent(slug) + '/share', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'platform=' + encodeURIComponent(platform),
+                        keepalive: true
+                    }).catch(function() {});
+                } catch (err) { /* ignore */ }
+            }
+
             if (platform === 'copy') {
                 e.preventDefault();
                 copyShareLink(shareUrl);
@@ -768,7 +787,7 @@
         // skipWaiting → clients.claim để update apply ngay lập tức.
         window.addEventListener('load', function() {
             navigator.serviceWorker
-                .register('/static/js/sw.js?v=2.9.0', { scope: '/' })
+                .register('/static/js/sw.js?v=2.9.1', { scope: '/' })
                 .then(function(reg) {
                     if (reg && typeof reg.update === 'function') {
                         // Trigger update check sau 60s nếu user keep tab mở

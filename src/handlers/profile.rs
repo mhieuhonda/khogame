@@ -238,7 +238,9 @@ pub async fn update_profile(
     AuthUser(user): AuthUser,
     Form(form): Form<ProfileForm>,
 ) -> AppResult<Redirect> {
-    let display_name = form.display_name.trim();
+    // v2.9.1 — NFC normalize: browser/form có thể gửi tên NFD (dán từ nơi
+    // khác, một số IME) → dấu tiếng Việt render lệch font trên web.
+    let display_name = crate::utils::normalize_nfc(form.display_name.trim());
     if display_name.is_empty() {
         return Err(AppError::BadRequest(
             "Tên hiển thị không được để trống".into(),
@@ -297,7 +299,7 @@ pub async fn update_profile(
     ];
     let socials = SocialLinks::validate_form(&social_input).map_err(AppError::BadRequest)?;
 
-    UserRepo::update_profile(&state.db, user.id, display_name, bio, avatar_url).await?;
+    UserRepo::update_profile(&state.db, user.id, &display_name, bio, avatar_url).await?;
     // v2.7.0 — Lưu socials SAU khi profile + preferences update thành
     // công. Lỗi save socials → 500 (đáng lẽ tránh:validate đã pass trước
     // nên lỗi chỉ còn DB-level — hiếm, user sửa lại được).

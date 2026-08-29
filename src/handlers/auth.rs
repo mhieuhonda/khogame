@@ -164,7 +164,9 @@ pub async fn google_callback(
                 &state.db,
                 &userinfo.sub,
                 &userinfo.email,
-                userinfo.name.as_deref().unwrap_or("Người dùng"),
+                // v2.9.1 — NFC normalize: Google đôi khi trả name NFD
+                // (decomposed) → dấu tiếng Việt render lệch font trên web.
+                &crate::utils::normalize_nfc(userinfo.name.as_deref().unwrap_or("Người dùng")),
                 userinfo.picture.as_deref(),
                 Some(&ip_new),
                 Some(&ua_new),

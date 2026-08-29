@@ -69,16 +69,29 @@ pub async fn new_form(
 }
 
 // ============= Gọi GitHub API lấy metadata =============
-/// Map HTTP status của GitHub API → AppError có thông điệp RÕ RÀNG.
+/// Map [`GithubApiError`] của service GitHub → AppError có thông điệp RÕ
+/// RÀNG cho user. Hàm độc lập để unit test được (regression v2.8.0/v2.9.1).
+///
 /// v2.8.0 — FIX "đăng repo liên tục 500": trước đây mọi status ngoài
 /// 200/404/403/401 (điển hình: 429 rate-limit mới của GitHub, 5xx của
 /// chính GitHub) rơi vào nhánh `AppError::OAuth` → 500 "Oops! Lỗi hệ
 /// thống" vô nghĩa cho user. Giờ: mọi lỗi GitHub API đều trả 4xx với
 /// message hành động được; lỗi thật sự phía server (401 token sai) mới
 /// giữ 500 + log ERROR cho admin.
-fn github_api_error(status: u16, retry_after_secs: Option<u64>) -> AppError {
-    match status {
-        404 => AppError::NotFound(
+fn map_github_api_error(
+    owner: &str,
+    repo: &str,
+    e: crate::services::github::GithubApiError,
+) -> AppError {
+    match e.status {
+        None => {
+            tracing::warn!("GitHub API không kết nối được ({owner}/{repo}): {e}");
+            AppError::BadRequest(
+                "Máy chủ tạm thời không kết nối được GitHub API. Vui lòng thử lại sau ít phút."
+                    .into(),
+            )
+        }
+        Some(404) => AppError::NotFound(
             "Repo không tồn tại hoặc ở chế độ riêng tư. Kiểm tra lại URL (repo phải là public)."
                 .into(),
         ),
@@ -86,17 +99,16 @@ fn github_api_error(status: u16, retry_after_secs: Option<u64>) -> AppError {
         // kèm Retry-After). Máy chủ KHÔNG cấu hình GITHUB_TOKEN sẽ dùng
         // chung quota 60 req/giờ theo IP datacenter — dễ cạn vì các app
         // khác cùng NAT. Khi exhausted, cả 403 lẫn 429 đều về đây.
-        403 | 429 => {
-            let hint = match retry_after_secs {
-                Some(s) if s > 0 && s < 3600 => {
-                    format!(" Vui lòng thử lại sau khoảng {} phút.", (s / 60).max(1))
+        Some(s @ (403 | 429)) => {
+            let hint = match e.retry_after {
+                Some(sec) if sec > 0 && sec < 3600 => {
+                    format!(" Vui lòng thử lại sau khoảng {} phút.", (sec / 60).max(1))
                 }
                 _ => " Vui lòng thử lại sau ít phút.".to_string(),
             };
             tracing::warn!(
-                "GitHub API rate limit (HTTP {}) retry_after={:?}",
-                status,
-                retry_after_secs
+                "GitHub API rate limit (HTTP {s}) retry_after={:?}",
+                e.retry_after
             );
             AppError::BadRequest(format!(
                 "GitHub API đang giới hạn số lượt truy vấn của máy chủ.{hint}"
@@ -104,16 +116,24 @@ fn github_api_error(status: u16, retry_after_secs: Option<u64>) -> AppError {
         }
         // Token cấu hình sai/hết hạn — lỗi phía server (admin phải sửa
         // GITHUB_TOKEN), giữ 500 nhưng log rõ cho admin.
-        401 => {
+        Some(401) => {
             tracing::error!("GitHub API 401 — GITHUB_TOKEN cấu hình không hợp lệ hoặc đã hết hạn");
             AppError::OAuth(
                 "Máy chủ cấu hình GitHub token không hợp lệ. Vui lòng báo quản trị viên.".into(),
             )
         }
+        // 200 nhưng JSON sai định dạng (GitHub đổi schema?) — log raw + 400
+        // rõ ràng thay vì 500 mù (trước đây `?` trên resp.json() → Http → 500).
+        Some(200) => {
+            tracing::warn!("GitHub API trả JSON không deserialize được: {e}");
+            AppError::BadRequest(
+                "GitHub API trả dữ liệu không đúng định dạng. Vui lòng thử lại sau ít phút.".into(),
+            )
+        }
         // Các status khác (451 legal, 5xx GitHub...) — sự cố tạm thời
         // phía GitHub, KHÔNG phải lỗi hệ thống của ta → 400 + message rõ.
-        code => {
-            tracing::warn!("GitHub API trả HTTP {} bất thường", code);
+        Some(code) => {
+            tracing::warn!("GitHub API trả HTTP {code} bất thường");
             AppError::BadRequest(format!(
                 "GitHub API tạm thời gặp sự cố (HTTP {code}). Vui lòng thử lại sau ít phút."
             ))
@@ -121,54 +141,21 @@ fn github_api_error(status: u16, retry_after_secs: Option<u64>) -> AppError {
     }
 }
 
+/// Gọi GitHub API lấy metadata — ủy thác cho `services::github` (dùng chung
+/// với job nền refresh số sao v2.9.1) rồi map lỗi sang AppError thân thiện.
 async fn fetch_github_meta(
     state: &AppState,
     owner: &str,
     repo: &str,
 ) -> AppResult<crate::models::repo::GithubApiRepo> {
-    let url = format!("https://api.github.com/repos/{owner}/{repo}");
-    let mut req = state
-        .http_client
-        .get(&url)
-        .header("Accept", "application/vnd.github+json")
-        .header("X-GitHub-Api-Version", "2022-11-28");
-    if let Some(token) = &state.config.github_token {
-        req = req.bearer_auth(token);
-    }
-    // v2.8.0 — Lỗi kết nối (DNS/TCP/timeout) trước đây → AppError::OAuth
-    // → 500 "Oops!" vô nghĩa. Giờ: log raw error cho admin + trả 400 với
-    // message rõ cho user (sự cố tạm thời, thử lại được).
-    let resp = match req.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!("GitHub API không kết nối được ({owner}/{repo}): {e}");
-            return Err(AppError::BadRequest(
-                "Máy chủ tạm thời không kết nối được GitHub API. Vui lòng thử lại sau ít phút."
-                    .into(),
-            ));
-        }
-    };
-    // Retry-After (giây) — GitHub trả khi rate limit secondary/429.
-    let retry_after = resp
-        .headers()
-        .get("retry-after")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.trim().parse::<u64>().ok());
-    let status = resp.status().as_u16();
-    if status != 200 {
-        return Err(github_api_error(status, retry_after));
-    }
-    // 200 nhưng JSON sai định dạng (GitHub đổi schema?) — log raw + 400
-    // rõ ràng thay vì 500 mù (trước đây `?` trên resp.json() → Http → 500).
-    match resp.json::<crate::models::repo::GithubApiRepo>().await {
-        Ok(meta) => Ok(meta),
-        Err(e) => {
-            tracing::warn!("GitHub API trả JSON không deserialize được: {e}");
-            Err(AppError::BadRequest(
-                "GitHub API trả dữ liệu không đúng định dạng. Vui lòng thử lại sau ít phút.".into(),
-            ))
-        }
-    }
+    crate::services::github::fetch_repo_meta(
+        &state.http_client,
+        state.config.github_token.as_ref(),
+        owner,
+        repo,
+    )
+    .await
+    .map_err(|e| map_github_api_error(owner, repo, e))
 }
 
 // ============= Tạo repo =============
@@ -454,8 +441,19 @@ pub async fn user_repos_fragment(
 
 #[cfg(test)]
 mod tests {
-    use super::github_api_error;
+    use super::map_github_api_error;
+    use crate::services::github::GithubApiError;
     use axum::http::StatusCode;
+
+    /// Helper dựng GithubApiError cho test — thay cho hàm github_api_error
+    /// cũ (v2.9.1 tách service github dùng chung, mapping lỗi giữ nguyên ngữ nghĩa).
+    fn gh_err(status: u16, retry_after: Option<u64>) -> GithubApiError {
+        GithubApiError {
+            status: Some(status),
+            retry_after,
+            message: format!("test HTTP {status}"),
+        }
+    }
 
     /// REGRESSION v2.8.0 (bug "đăng repo liên tục 500"): 403/429 rate-limit
     /// PHẢI map sang BadRequest (400) với message rõ — không được rơi vào
@@ -463,7 +461,7 @@ mod tests {
     #[test]
     fn test_rate_limit_maps_to_bad_request_not_500() {
         for status in [403u16, 429] {
-            let e = github_api_error(status, None);
+            let e = map_github_api_error("o", "r", gh_err(status, None));
             let (st, msg) = e.status_and_message();
             assert_eq!(st, StatusCode::BAD_REQUEST, "HTTP {status} phải là 400");
             assert!(
@@ -476,19 +474,36 @@ mod tests {
     /// Retry-After (giây) được nhắc trong message → user biết chờ bao lâu.
     #[test]
     fn test_retry_after_hint_in_message() {
-        let e = github_api_error(429, Some(300));
+        let e = map_github_api_error("o", "r", gh_err(429, Some(300)));
         let (_, msg) = e.status_and_message();
         assert!(msg.contains("5 phút"), "phải nhắc 5 phút, thực tế: {msg}");
         // Retry-After quá dài (>= 1h) → hint chung, không khớp số phút lẻ.
-        let e = github_api_error(403, Some(7200));
+        let e = map_github_api_error("o", "r", gh_err(403, Some(7200)));
         let (_, msg) = e.status_and_message();
         assert!(msg.contains("thử lại sau ít phút"));
+    }
+
+    /// Lỗi network (không có HTTP status) → BadRequest rõ ràng, KHÔNG 500 mù.
+    #[test]
+    fn test_network_error_maps_to_bad_request() {
+        let e = map_github_api_error(
+            "o",
+            "r",
+            GithubApiError {
+                status: None,
+                retry_after: None,
+                message: "dns fail".into(),
+            },
+        );
+        let (st, msg) = e.status_and_message();
+        assert_eq!(st, StatusCode::BAD_REQUEST);
+        assert!(msg.contains("không kết nối được"));
     }
 
     /// 404 → NotFound (404) — repo riêng tư/không tồn tại là lỗi user sửa được.
     #[test]
     fn test_404_maps_to_not_found() {
-        let e = github_api_error(404, None);
+        let e = map_github_api_error("o", "r", gh_err(404, None));
         let (st, _) = e.status_and_message();
         assert_eq!(st, StatusCode::NOT_FOUND);
     }
@@ -498,7 +513,7 @@ mod tests {
     #[test]
     fn test_unexpected_status_maps_to_bad_request_with_code() {
         for status in [451u16, 500, 502, 503] {
-            let e = github_api_error(status, None);
+            let e = map_github_api_error("o", "r", gh_err(status, None));
             let (st, msg) = e.status_and_message();
             assert_eq!(st, StatusCode::BAD_REQUEST, "HTTP {status} phải là 400");
             assert!(
@@ -512,7 +527,7 @@ mod tests {
     /// admin xử lý (user không tự sửa được).
     #[test]
     fn test_401_keeps_500_for_admin() {
-        let e = github_api_error(401, None);
+        let e = map_github_api_error("o", "r", gh_err(401, None));
         let (st, _) = e.status_and_message();
         assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
     }

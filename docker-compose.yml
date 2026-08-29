@@ -61,6 +61,17 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-khongdich.admin@gmail.com}
       RUST_LOG: ${RUST_LOG:-khogame=debug,tower_http=info}
       TZ: Asia/Ho_Chi_Minh
+      # v2.9.1 — GitHub token (optional): tăng quota GitHub API 60 → 5000
+      # req/giờ cho đăng repo + job nền refresh số sao. Lấy từ .env.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      # v2.9.1 — Email notification (SMTP, optional): để trống SMTP_HOST →
+      # email tắt im lặng (dev thường không cần). Xem .env.example.
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-starttls}
     ports:
       - "3000:3000"
     volumes:

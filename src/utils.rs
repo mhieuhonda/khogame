@@ -233,6 +233,26 @@ pub fn is_safe_image_url(url: &str) -> bool {
         || crate::services::storage::is_upload_url(url)
 }
 
+/// v2.9.1 FIX — chuẩn hoá chuỗi Unicode về dạng NFC (precomposed).
+///
+/// Google OAuth ĐÔI KHI trả `name` ở dạng NFD (decomposed): "Hiếu" thành
+/// `H` + `i` + `e` + U+0302 + `u` thay vì precomposed `Hiếu`. Hiển thị
+/// NFD trên web gây 2 vấn đề thật:
+/// 1. Dấu combining (U+0302, U+031B horn, U+0323 dot-below...) rơi ngoài
+///    `unicode-range` của @font-face subset Inter vietnamese → browser
+///    fallback sang font hệ thống CHO RIÊNG dấu → dấu lệch nét, lệch vị
+///    trí so với chữ (bug "tên hiển thị bị lỗi, lệch" trên desktop).
+/// 2. NFD chiếm nhiều bytes hơn NFC khi search/so sánh chuỗi ("Hiếu" NFD
+///    ≠ "Hiếu" NFC khi dùng = trong SQL/JS).
+///
+/// NFC là dạng chuẩn của text tiếng Việt (Unicode Normalization Form C).
+/// Áp cho mọi điểm vào của display_name: Google OAuth, edit profile, AI agent.
+#[must_use]
+pub fn normalize_nfc(s: &str) -> String {
+    use unicode_normalization::UnicodeNormalization;
+    s.nfc().collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -314,6 +334,28 @@ mod tests {
         assert_eq!(initials("Nguyễn Văn A"), "NA");
         assert_eq!(initials("hello"), "HE");
         assert_eq!(initials(""), "?");
+    }
+
+    /// REGRESSION v2.9.1 — NFC normalize: tên Google NFD ("Hiếu" decomposed)
+    /// phải về precomposed để font subset vietnamese render đúng dấu,
+    /// không bị lệch glyphs trên desktop.
+    #[test]
+    fn test_normalize_nfc_vietnamese() {
+        // 'ê' decomposed = 'e' + U+0302 (combining circumflex)
+        assert_eq!(normalize_nfc("Hie\u{0302}u"), "Hiêu"); // H-i-e-◌̂-u → Hiêu
+                                                           // 'ế' decomposed = 'e' + U+0302 (circumflex) + U+0301 (acute) —
+                                                           // ĐÚNG THỨ TỰ dấu này mới là NFD của "Hiếu" (Google trả dạng này).
+        assert_eq!(normalize_nfc("Hie\u{0302}\u{0301}u"), "Hiếu");
+        assert_eq!(normalize_nfc("Hiếu").chars().count(), 4);
+        // Chuỗi đã NFC → giữ nguyên
+        assert_eq!(normalize_nfc("Hiếu"), "Hiếu");
+        // ASCII không đổi
+        assert_eq!(normalize_nfc("Louis Space"), "Louis Space");
+        // "ưng" với horn decomposed: ư = u + U+031B
+        assert_eq!(normalize_nfc("Hu\u{031B}ng"), "Hưng");
+        // "ỡ" full decomposed: ỡ = O + U+031B (horn) + U+0303 (tilde) —
+        // tổ hợp 2 dấu phải compose thành U+1EE0 ("Ỡ").
+        assert_eq!(normalize_nfc("O\u{031B}\u{0303}ng"), "Ỡng");
     }
 
     #[test]

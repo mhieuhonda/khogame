@@ -49,7 +49,9 @@ impl AiAgentRepo {
         user_agent: &str,
     ) -> AppResult<String> {
         // Validate display_name + model_name không rỗng
-        let display_name = display_name.trim();
+        // v2.9.1 — NFC normalize tên AI (NFD → NFC, cùng lý do hồ sơ user).
+        let display_name = crate::utils::normalize_nfc(display_name.trim());
+        let display_name = display_name.as_str();
         if display_name.is_empty() {
             return Err(AppError::BadRequest(
                 "Tên hiển thị không được để trống".into(),

@@ -1,6 +1,54 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v2.9.1-ui-bugfixes
+Agent: Super Z (main)
+Task: Fix tên hiển thị lệch trên desktop + menu ba gạch tràn mobile + số sao GitHub không cập nhật + quét codebase lần 2 fix tuyệt đối mọi lỗi. Rust 1.98, prod-ready, tạo release.
+
+Work Log:
+- Clone repo + quét cấu trúc (src/ 18 handlers, 60 templates, 7802 dòng CSS, 1089 dòng app.js).
+- Dựng trang hồ sơ tĩnh với đúng CSS site + headless Chromium (Playwright) chụp ảnh
+  1280px desktop + 375×667 mobile → XÁC MINH ĐƯỢC 2 lỗi thật trước khi sửa:
+  1. Desktop: tên hiển thị trôi lên đè cover, tách khỏi avatar (meta cao ~300px sau
+     khi v2.9.0 thêm Level/XP + showcase, cộng align-items: flex-end).
+  2. Mobile: menu mega cao 716px > viewport 667px, không cuộn được, "Đăng xuất" unreachable.
+- FIX CSS (style.css):
+  * .profile-info align-items flex-end → flex-start (layout hồ sơ kiểu X) + avatar
+    flex-shrink: 0 + nút hành động align-self: flex-end giữ vị trí đáy như cũ.
+  * .profile-meta h1 overflow-wrap: anywhere — tên dài 1 từ không còn tràn ngang.
+  * .site-menu max-height calc(100dvh - header) + overflow-y auto + overscroll-behavior
+    contain; mobile ≤640px menu 1 cột full-width.
+- FIX SỐ SAO GITHUB (root cause: RepoRepo::refresh_all_stars dead code, không bao giờ
+  được gọi): tạo services/github.rs dùng chung (fetch_repo_meta + GithubApiError có
+  is_rate_limited); handler repos.rs ủy thác + map lỗi giữ nguyên regression suite;
+  janitor thêm run_repo_star_refresh (3h/lần, batch 100 repo stale >1h, delay 1.5s,
+  dừng khi rate limit, 404 bỏ qua); lib.rs spawn task; repo_repo.rs thêm
+  list_stale_approved (thay refresh_all_stars).
+- FIX TÊN LỆCH FONT (nguyên nhân thứ 2): utils::normalize_nfc — Google OAuth có thể
+  trả name NFD → dấu combining (U+031B/U+0323) ngoài unicode-range font subset
+  Inter vietnamese → fallback font khác cho riêng dấu → lệch nét. Áp tại OAuth +
+  edit profile + AI register. Test tổ hợp dấu tiếng Việt đầy đủ.
+- Quét codebase lần 2 (Explore agent toàn repo) → fix thêm 7 lỗi:
+  5. list_replies game_slug rỗng → reply-to-reply POST /games//comments 404.
+  6. do_checkin trả xp đã lưu cho re-click → luôn báo "thành công +N XP" oan.
+  7. Race do_checkin: ON CONFLICT DO NOTHING không check rows_affected → XP x2.
+  8. POST /games/{slug}/share dead code → app.js fire-and-forget fetch (data-slug có sẵn).
+  9. Incident ID 5xx hiển thị cho user không được log → tracing::error! kèm ID.
+  10. sw.js cache HTML cá nhân hoá trên máy dùng chung → request có kg_session → network-only.
+  11. SMTP_* không được nội suy trong compose (email không thể bật ở prod) → thêm
+      ${SMTP_*:-} vào 2 compose + tài liệu .env.example (REQUEST_TIMEOUT_SECS,
+      DB_STATEMENT_TIMEOUT_SECS, COOKIE_SECURE, REPO_REFRESH_INTERVAL_SECS).
+- Bump version 2.9.1: Cargo.toml + ?v=2.9.1 toàn template + CACHE_VERSION sw.js.
+- Build + verify: cargo check clean, clippy 0 warning, 306/306 unit tests pass
+  (Rust 1.98.0). Headless verify sau fix: tên cạnh avatar ✓, tên dài wrap ✓,
+  menu cuộn tới đáy nút Đăng xuất fully visible ✓.
+
+Stage Summary:
+- 0 migration mới, 0 schema change — deploy an toàn, không rủi ro dữ liệu.
+- Commit v2.9.1 + tag + GitHub Release kèm binary note; prod compose thêm SMTP
+  passthrough (default rỗng — không đổi hành vi hiện tại).
+
+---
 Task ID: v2.9.0-gamification
 Agent: Super Z (main)
 Task: Super-fix toàn bộ lỗi + thêm 50 tính năng giữ chân người dùng + bỏ icon lửa khung chức vụ admin. Rust 1.98, production-ready, tạo releases.

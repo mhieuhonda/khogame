@@ -392,13 +392,30 @@ impl RepoRepo {
         Ok(())
     }
 
+    /// v2.9.1 — Danh sách repo approved có metadata CŨ hơn `stale_after`
+    /// (theo `updated_at`, có trigger tự cập nhật khi UPDATE) — job nền
+    /// janitor refresh số sao dùng để chọn batch, mỗi chu kỳ chỉ quét số
+    /// repo stale nhất, không đốt quota GitHub API vô ích với repo vừa
+    /// được refresh (updated_at mới = bỏ qua).
+    ///
+    /// Trả về (id, owner, repo_name) — đủ để dựng URL API.
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn refresh_all_stars(pool: &PgPool) -> AppResult<Vec<(Uuid, String, String)>> {
+    pub async fn list_stale_approved(
+        pool: &PgPool,
+        stale_after_secs: i64,
+        limit: i64,
+    ) -> AppResult<Vec<(Uuid, String, String)>> {
         let rows = sqlx::query_as::<_, (Uuid, String, String)>(
-            "SELECT id, owner, repo_name FROM github_repos WHERE status = 'approved' LIMIT 500",
+            r"SELECT id, owner, repo_name FROM github_repos
+              WHERE status = 'approved'
+                AND updated_at < NOW() - make_interval(secs => $1)
+              ORDER BY updated_at ASC
+              LIMIT $2",
         )
+        .bind(stale_after_secs)
+        .bind(limit)
         .fetch_all(pool)
         .await?;
         Ok(rows)

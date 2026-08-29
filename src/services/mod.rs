@@ -10,11 +10,14 @@
 //! - `audit`: ghi admin log (chuyển từ `handlers/admin.rs`).
 //! - `json_ld`: builder JSON-LD schema.org cho homepage + game detail
 //!   (chuyển từ `handlers/games.rs`).
+//! - `github`: client GitHub REST API dùng chung cho đăng repo (handler)
+//!   và job nền refresh số sao (janitor) — v2.9.1.
 
 pub mod audit;
 #[cfg(feature = "email")]
 pub mod email;
 pub mod gamification;
+pub mod github;
 pub mod json_ld;
 pub mod markdown;
 pub mod storage;

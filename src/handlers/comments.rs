@@ -223,11 +223,27 @@ pub async fn list_replies(
     // khi cuộn tới; trước đây yêu cầu đăng nhập → 401 với khách)
     let replies =
         CommentRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
+    // v2.9.1 FIX — trước đây `game_slug: ""` cho mọi reply: partial comment_item
+    // luôn render nút "Trả lời" + form reply `hx-post="/games/{slug}/comments"`,
+    // slug rỗng → POST "/games//comments" không khớp route nào → 404 khi
+    // user trả lời một reply (backend hỗ trợ reply-to-reply từ v2.x —
+    // create_comment depth normalization — chỉ là form gửi sai endpoint).
+    // Mỗi comment (kể cả reply) đều mang `game_id` riêng → lấy slug từ
+    // chính reply đầu tiên, 1 query là đủ cho toàn bộ danh sách.
+    let game_slug = match replies.first() {
+        Some(first_reply) => {
+            crate::repositories::GameRepo::find_by_id(&state.db, first_reply.game_id)
+                .await?
+                .map(|g| g.slug)
+                .unwrap_or_default()
+        }
+        None => String::new(),
+    };
     let mut html = String::new();
     for r in &replies {
         let partial = CommentItemPartial {
             comment: r,
-            game_slug: "", // not needed for replies list
+            game_slug: &game_slug,
             current_user: current_user.as_ref(),
             load_replies: false,
         };

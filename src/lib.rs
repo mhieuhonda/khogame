@@ -45,6 +45,12 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     // Detached task. Bỏ qua nếu SMTP chưa cấu hình (flush_pending sẽ noop).
     tokio::spawn(janitor::run_email_flusher((*state).clone()));
 
+    // v2.9.1 — Job nền refresh metadata repo GitHub (số sao/fork/issues)
+    // mỗi 3h (override bằng REPO_REFRESH_INTERVAL_SECS). FIX lỗi "repo
+    // GitHub không cập nhật số sao" — trước đây metadata chỉ thay đổi khi
+    // chủ repo bấm "Làm mới"/đăng lại thủ công. Detached task.
+    tokio::spawn(janitor::run_repo_star_refresh((*state).clone()));
+
     let app = routes::build_router(state);
 
     let addr = format!("{}:{}", config.host, config.port);

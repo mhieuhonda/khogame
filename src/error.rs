@@ -146,9 +146,20 @@ impl IntoResponse for AppError {
         // Đối với lỗi 5xx, sinh request_id ngẫu nhiên nếu không có từ
         // request extension. User sẽ thấy ID trong trang lỗi → báo cáo
         // cho admin, admin tra `tracing` log có cùng ID.
+        // v2.9.1 FIX — ID này trước đây CHƯA BAO GIỜ được log (comment cũ
+        // hứa "admin tra tracing log có cùng ID" nhưng không có lệnh log
+        // nào in nó) → ID user báo cáo không thể correlate với log server.
+        // Giờ log ERROR kèm đúng ID hiển thị cho user.
         let request_id = (status.as_u16() >= 500)
             .then(uuid::Uuid::new_v4)
             .map(|u| u.to_string());
+        if let Some(rid) = &request_id {
+            tracing::error!(
+                incident_id = %rid,
+                status = status.as_u16(),
+                "5xx — ID sự cố hiển thị cho user (tra ID này trong log)"
+            );
+        }
 
         let error_info = ErrorPageInfo {
             status: status.as_u16(),

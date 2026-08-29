@@ -5,6 +5,99 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.1] — 2026-08-29 — Fix UI hồ sơ desktop + menu mobile + 8 bug từ audit
+
+Bản vá ổn định sau v2.9.0: sửa 3 lỗi người dùng báo trực tiếp (tên hiển
+thị lệch trên desktop, menu ba gạch tràn điện thoại, số sao GitHub không
+cập nhật) cùng 5 lỗi nữa phát hiện qua quét codebase lần 2. Không có
+migration mới, không đổi schema — deploy an toàn.
+
+### 🐛 Sửa lỗi (UI/UX — báo trực tiếp)
+
+1. **Tên hiển thị trên hồ sơ desktop bị trôi lên đè cover, lệch khỏi
+   avatar** (báo bởi chủ site): v2.9.0 thêm khối Level/XP + Huy hiệu
+   showcase vào `.profile-meta` khiến cột này cao ~300px, mà
+   `.profile-info` dùng `align-items: flex-end` → h1 (nằm ở đỉnh meta)
+   bị đẩy lên trên cùng, đè lên ảnh cover, tách hẳn khỏi avatar.
+   Fix: `align-items: flex-start` (kiểu hồ sơ X/Twitter) + nút hành động
+   giữ `align-self: flex-end` ở đáy hàng như cũ + avatar `flex-shrink: 0`
+   (trước đây bị nén méo khi hàng hẹp).
+2. **Tên dài 1 từ tràn ngang ra ngoài khung hồ sơ**: flex item ẩn danh
+   chứa text node có `min-width: auto` = chiều rộng từ dài nhất, không
+   co được. Fix: `overflow-wrap: anywhere` trên `.profile-meta h1` —
+   min-content hạ xuống 1 ký tự, tên dài tự xuống dòng trong khung.
+3. **Menu ba gạch tràn màn hình điện thoại, không cuộn được** (báo bởi
+   chủ site): mega menu 20+ mục (user đăng nhập/admin còn nhiều hơn)
+   cao hơn viewport — phần thừa bị cắt, nút "Đăng xuất" unreachable
+   (panel absolute trong header sticky, cuộn trang không giúp gì).
+   Fix: `.site-menu` giới hạn `max-height: calc(100dvh - header)` +
+   `overflow-y: auto` + `overscroll-behavior: contain` (cuộn trong panel,
+   không kéo trang sau); mobile ≤640px chuyển 1 cột full-width dễ đọc,
+   vùng chạm lớn hơn. Xác minh headless browser 375×667: cuộn tới đáy,
+   nút Đăng xuất fully visible.
+
+### 🐛 Sửa lỗi (backend — phát hiện qua audit)
+
+4. **Số sao repo GitHub không bao giờ tự cập nhật** (báo bởi chủ site):
+   `RepoRepo::refresh_all_stars` có từ v0.x nhưng KHÔNG BAO GIỜ được
+   gọi — dead code; metadata chỉ thay đổi khi chủ repo bấm "Làm mới"/
+   đăng lại. Fix: job nền `run_repo_star_refresh` trong janitor, mỗi 3h
+   (env `REPO_REFRESH_INTERVAL_SECS`) chọn tối đa 100 repo approved stale
+   > 1h, gọi GitHub API (có GITHUB_TOKEN → 5000 req/h), nghỉ 1.5s giữa
+   các call, DỪNG batch khi dính rate limit 403/429 (chu kỳ sau tự tiếp
+   tục). Tách service dùng chung `services/github.rs` — handler đăng repo
+   và job nền không còn 2 bản copy lệch nhau. Repo 404 (xoá/chuyển
+   private) → bỏ qua, giữ dữ liệu cũ.
+5. **Trả lời reply trong bình luận → 404**: `list_replies` render partial
+   với `game_slug: ""` → form reply POST `/games//comments` không khớp
+   route. Backend vốn hỗ trợ reply-to-reply — chỉ là form sai endpoint.
+   Fix: lấy slug từ `game_id` của reply đầu tiên.
+6. **Điểm danh lại luôn báo "Điểm danh thành công! +N XP"**: repo trả
+   xp đã lưu (>=5) cho re-click, handler kỳ vọng 0 = "đã điểm rồi" →
+   flag `already` không bao giờ true, user tưởng được cộng XP thêm.
+   Fix: repo trả `(streak, 0, level)` theo đúng contract.
+7. **Race điểm danh cộng XP gấp đôi**: 2 tab bấm cùng lúc — bên thua
+   `ON CONFLICT DO NOTHING` vẫn cộng `xp_events` + `user_xp_totals`.
+   Fix: kiểm tra `rows_affected`, no-op → trả state của bản ghi thắng,
+   KHÔNG đụng vào XP.
+8. **Nút chia sẻ không đếm lượt**: `POST /games/{slug}/share` + cột
+   `share_count` có từ v0.x nhưng không có chỗ nào gọi. Fix: app.js
+   fire-and-forget fetch khi user bấm share (mọi platform, không block
+   clipboard/social).
+9. **ID sự cố 5xx hiển thị cho user không được log** → không thể correlate.
+   Fix: `tracing::error!` kèm đúng ID trong trang lỗi.
+10. **Service worker cache HTML có dữ liệu cá nhân** trên máy dùng chung:
+    route công khai render header theo phiên (avatar/badge/state) vẫn bị
+    `cache.put`; `Vary: Cookie` bị Cache API bỏ qua. Fix: request mang
+    session cookie → network-only, không cache.
+11. **Email notification không thể hoạt động ở prod**: `SMTP_*` không được
+    nội suy trong cả 2 compose file (Coolify chỉ pass biến được tham
+    chiếu) + không có trong `.env.example`. Fix: thêm SMTP_HOST/PORT/
+    USERNAME/PASSWORD/FROM/TLS + REPO_REFRESH_INTERVAL_SECS vào compose
+    (default rỗng — không bật thì app chạy y như cũ) + tài liệu hoá
+    `.env.example`.
+
+### ✨ Cải tiến
+
+- **Chuẩn hoá Unicode NFC cho tên hiển thị** (`utils::normalize_nfc`):
+  Google OAuth đôi khi trả `name` NFD (decomposed) — dấu combining
+  (U+031B horn, U+0323 dot-below...) rơi ngoài `unicode-range` của font
+  subset Inter vietnamese → browser fallback font khác CHO RIÊNG DẤU →
+  tên render lệch nét/lệch vị trí trên desktop. Áp tại 3 điểm vào:
+  Google OAuth, edit hồ sơ, đăng ký AI Agent + regression test tổ hợp
+  dấu tiếng Việt (ế = e + U+0302 + U+0301, ư = u + U+031B...).
+- Service github + job refresh có unit test riêng (`is_rate_limited`,
+  mapping lỗi 403/404/401/451/5xx/network — giữ nguyên regression suite
+  v2.8.0, thêm case network error).
+- Compile-time guards mới cho hằng số job refresh (interval ≥ 300s,
+  stale < interval, batch ≤ 500, delay ≥ 500ms).
+
+### 🔧 Kỹ thuật
+
+- Bump cache-bust `?v=2.9.1` toàn template + `CACHE_VERSION` service
+  worker (`ls-sw-v2.9.1`) — user nhận CSS/JS mới ngay, không kẹt cache.
+- 306 unit tests pass, cargo check + clippy sạch 0 warning (Rust 1.98).
+
 ## [2.9.0] — 2026-08-29 — GAMIFICATION ENGINE: 50 tính năng giữ chân người dùng
 
 Bản phát hành lớn nhất lịch sử dự án: **gamification engine hoàn chỉnh**
