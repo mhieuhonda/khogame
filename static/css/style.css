@@ -4589,6 +4589,10 @@ blockquote {
 }
 
 .notification-item {
+    /* v2.9.2 — flex row: <a> chiếm phần còn lại, button "đã đọc" là sibling
+       (trước đây button lồng trong <a> — HTML invalid, đã tách ra). */
+    display: flex;
+    align-items: flex-start;
     border-bottom: 1px solid var(--border-muted);
 }
 
@@ -4616,6 +4620,10 @@ blockquote {
     align-items: flex-start;
     gap: 14px;
     padding: 16px;
+    /* v2.9.2 — link chiếm hết chiều rộng còn lại của item flex (button
+       "đã đọc" nằm ngoài link). min-width:0 giữ ellipsis của notif-body. */
+    flex: 1;
+    min-width: 0;
     color: inherit;
     transition: background-color var(--transition-fast);
 }
@@ -4688,6 +4696,9 @@ blockquote {
     background-color: var(--bg-canvas);
     flex-shrink: 0;
     transition: all var(--transition-fast);
+    /* v2.9.2 — canh với padding 16px của link, chừa lề phải 16px. */
+    margin: 16px 16px 16px 0;
+    cursor: pointer;
 }
 
 .notif-mark-read:hover {

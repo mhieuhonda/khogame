@@ -1,4 +1,4 @@
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::{SocialLinks, User, UserPreference, UserStats, UserWithGameCount};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -76,33 +76,68 @@ impl UserRepo {
             .collect();
         let username = Self::ensure_unique_username(pool, &base_username).await;
 
-        let user = sqlx::query_as::<_, User>(
-            r"INSERT INTO users (email, username, display_name, avatar_url, google_sub,
-                  signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at)
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $7, NOW())
-              RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
-        )
-        .bind(email)
-        .bind(&username)
-        .bind(name)
-        .bind(avatar_url)
-        .bind(google_sub)
-        .bind(signup_ip)
-        .bind(signup_ua)
-        .fetch_one(pool)
-        .await?;
-
-        // Create default preferences
-        let _ = sqlx::query(
-            "INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
-        )
-        .bind(user.id)
-        .execute(pool)
-        .await;
-
-        Ok(user)
+        // v2.9.2 FIX (race OAuth callback): Google đôi khi callback 2 lần
+        // gần như đồng thời (double redirect / user double-click). Trước đây
+        // cả 2 đều thấy username còn trống (check-then-insert) → INSERT
+        // thắng/thua: bên thua dính unique violation → AppError::Conflict →
+        // user thật nhận 400 "Dữ liệu đã tồn tại" ngay lần đăng nhập đầu.
+        // Giờ: unique violation → fetch lại theo google_sub (idempotent —
+        // cùng tài khoản đã tạo thành công bởi request song song) hoặc thử
+        // username mới với suffix ngẫu nhiên (username bị user khác chiếm).
+        // Tối đa 3 lần — vượt quá thì báo lỗi thật (tránh loop vô hạn).
+        for attempt in 0..3u32 {
+            let candidate = if attempt == 0 {
+                username.clone()
+            } else {
+                let suffix = Uuid::new_v4().simple().to_string();
+                format!("{username}_{}", suffix.get(..4).unwrap_or("x"))
+            };
+            let insert = sqlx::query_as::<_, User>(
+                r"INSERT INTO users (email, username, display_name, avatar_url, google_sub,
+                      signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at)
+                  VALUES ($1, $2, $3, $4, $5, $6, $7, $6, $7, NOW())
+                  RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
+                    role, is_banned, last_seen_at, created_at, updated_at,
+                    signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
+            )
+            .bind(email)
+            .bind(&candidate)
+            .bind(name)
+            .bind(avatar_url)
+            .bind(google_sub)
+            .bind(signup_ip)
+            .bind(signup_ua)
+            .fetch_one(pool)
+            .await;
+            match insert {
+                Ok(user) => {
+                    // Create default preferences
+                    let _ = sqlx::query(
+                        "INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+                    )
+                    .bind(user.id)
+                    .execute(pool)
+                    .await;
+                    return Ok(user);
+                }
+                Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
+                    // Cùng tài khoản Google đã được tạo bởi request song song?
+                    // → trả về user đó (idempotent, đăng nhập bình thường).
+                    if let Some(existing) = Self::find_by_google_sub(pool, google_sub).await? {
+                        return Ok(existing);
+                    }
+                    // Không — username bị chiếm trong race → thử suffix mới.
+                    tracing::warn!(
+                        "create_from_google: username '{candidate}' trùng trong race, thử lại (lần {})",
+                        attempt + 1
+                    );
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Err(AppError::Conflict(
+            "Không tạo được tài khoản sau nhiều lần thử — vui lòng đăng nhập lại".into(),
+        ))
     }
 
     /// Cập nhật `last_login_ip/ua/at` khi user đăng nhập lại.

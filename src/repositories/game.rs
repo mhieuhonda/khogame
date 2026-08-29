@@ -662,12 +662,14 @@ impl GameRepo {
               WHERE g.status = 'published'
                 AND EXISTS (
                     SELECT 1 FROM daily_stats ds
-                    WHERE ds.game_id = g.id AND ds.day >= CURRENT_DATE - 7
+                    WHERE ds.game_id = g.id
+                      AND ds.day >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 7
                 )
               ORDER BY (
                     SELECT COALESCE(SUM(ds.views + 2 * ds.downloads), 0)
                     FROM daily_stats ds
-                    WHERE ds.game_id = g.id AND ds.day >= CURRENT_DATE - 7
+                    WHERE ds.game_id = g.id
+                      AND ds.day >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - 7
                   ) DESC, g.view_count DESC
               LIMIT $1",
         )

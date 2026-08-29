@@ -12,10 +12,13 @@
             </h1>
         </div>
         {% if unread_notifications > 0 %}
+        {# v2.9.2 FIX: hx-swap="outerHTML" thay thế cả .notifications-list bằng
+           danh sách item không có wrapper → vỡ DOM/CSS sau lần dùng đầu.
+           Handler trả về N item con → innerHTML là đúng nghĩa. #}
         <button class="btn btn-outline btn-sm"
                 hx-post="/notifications/mark-all-read"
                 hx-target=".notifications-list"
-                hx-swap="outerHTML"
+                hx-swap="innerHTML"
                 hx-on::after-request="if(event.detail.successful) this.remove()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
             Đánh dấu tất cả đã đọc
@@ -25,6 +28,10 @@
 
     <div class="notifications-list">
         {% for n in notifications %}
+        {# v2.9.2 FIX: button "đánh dấu đã đọc" trước đây LỒNG BÊN TRONG <a>
+           (interactive content lồng nhau — vi phạm HTML5 content model, click
+           nút có thể kích hoạt cả navigation). Giờ button là sibling của <a>
+           trong .notification-item (flex row) — CSS đã cập nhật tương ứng. #}
         <div class="notification-item {% if !n.is_read %}unread{% endif %}" id="notif-{{ n.id }}">
             <a href="{{ n.link_or() }}" class="notification-link">
                 <div class="notif-icon">{{ n.icon() }}</div>
@@ -38,17 +45,17 @@
                         <span class="notif-time">{{ n.created_at.to_rfc3339()|time_ago }}</span>
                     </div>
                 </div>
-                {% if !n.is_read %}
-                <button class="notif-mark-read"
-                        hx-post="/notifications/{{ n.id }}/read"
-                        hx-target="closest .notification-item"
-                        hx-swap="outerHTML"
-                        title="Đánh dấu đã đọc"
-                        aria-label="Đánh dấu thông báo '{{ n.title }}' đã đọc">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                </button>
-                {% endif %}
             </a>
+            {% if !n.is_read %}
+            <button class="notif-mark-read"
+                    hx-post="/notifications/{{ n.id }}/read"
+                    hx-target="closest .notification-item"
+                    hx-swap="outerHTML"
+                    title="Đánh dấu đã đọc"
+                    aria-label="Đánh dấu thông báo '{{ n.title }}' đã đọc">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            {% endif %}
         </div>
         {% else %}
         <div class="empty-state" style="border:0">

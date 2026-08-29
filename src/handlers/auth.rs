@@ -110,7 +110,14 @@ pub async fn google_callback(
     auth::clear_oauth_next_cookie(&mut cleanup_jar, &state.config.base_url);
 
     match (q.state.as_deref(), cookie_state.as_deref()) {
-        (Some(s_from_google), Some(s_from_cookie)) if s_from_google == s_from_cookie => {
+        (Some(s_from_google), Some(s_from_cookie))
+            // v2.9.2 — constant-time so sánh (nhất quán với AI token; tránh
+            // timing oracle dù thực tế khó khai thác qua mạng).
+            if crate::utils::constant_time_eq(
+                s_from_google.as_bytes(),
+                s_from_cookie.as_bytes(),
+            ) =>
+        {
             // OK - state khớp
         }
         _ => {

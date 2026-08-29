@@ -1,3 +1,53 @@
+// ============================================================
+// v2.9.2 — NGÀY KINH DOANH THEO GIỜ VIỆT NAM (UTC+7, không DST)
+// ------------------------------------------------------------
+// Trước đây codebase dùng LẪN LỘN 3 chuẩn "hôm nay":
+//   1. `CURRENT_DATE` trong SQL (phụ thuộc timezone của Postgres server —
+//      compose set TZ=Asia/Ho_Chi_Minh nhưng chỉ có hiệu lực nếu volume DB
+//      được initdb SAU khi set TZ; volume cũ có thể vẫn UTC),
+//   2. `date_trunc('day', NOW() AT TIME ZONE 'UTC')` (chuẩn UTC),
+//   3. `Utc::now().date_naive()` trong Rust (chuẩn UTC).
+// Hệ quả: trong khung 17:00–24:00 UTC (= 00:00–07:00 giờ VN) hai bên lệch
+// 1 ngày — streak điểm danh "giữ" nhầm khi đã đứt, XP cap ngày reset sai
+// giờ, "X tin hôm nay" của chat đếm từ 07:00 sáng VN.
+// Chuẩn hoá: MỌI mốc "hôm nay" dùng giờ VN tường minh qua named zone
+// 'Asia/Ho_Chi_Minh' trong SQL và offset +7h cố định trong Rust — KHÔNG
+// còn phụ thuộc cấu hình timezone của server Postgres.
+// ============================================================
+
+/// Ngày "hôm nay" (DATE) theo giờ VN, tính trong SQL — dùng nhét vào query
+/// runtime (không phải input user, an toàn cho `format!`).
+pub const SQL_TODAY_VN: &str = "(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date";
+
+/// Mốc `timestamptz` "đầu giờ sáng nay (00:00 VN)" trong SQL — dùng so với
+/// cột `created_at`/`earned_at` kiểu timestamptz.
+pub const SQL_TODAY_START_VN: &str =
+    "date_trunc('day', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh'";
+
+/// Ngày "hôm nay" theo giờ VN trong Rust (UTC+7 cố định — Việt Nam không
+/// áp dụng daylight saving nên cộng offset vào timestamp UTC là chính xác).
+#[must_use]
+pub fn today_vn() -> chrono::NaiveDate {
+    (chrono::Utc::now() + chrono::Duration::hours(7)).date_naive()
+}
+
+/// So sánh 2 slice byte constant-time (chống timing attack).
+///
+/// v2.9.2: chuyển thành public utility (trước đây là private trong
+/// handlers/ai_agent.rs) để OAuth callback (`handlers/auth.rs`) so sánh
+/// state cookie bằng constant-time như AI token — nhất quán toàn codebase.
+#[must_use]
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 #[must_use]
 pub fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {

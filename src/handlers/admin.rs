@@ -1426,8 +1426,15 @@ pub async fn broadcast(
     // làm Location header.
     let link = form.link.as_deref().unwrap_or("").trim();
     if !link.is_empty() {
+        // v2.9.2 FIX: thêm chặn `/\` ở đầu — trước đây chỉ chặn `//`, nhưng
+        // browser (Chrome/Edge) normalise `\` thành `/` (WHATWG URL Parser)
+        // → `/\evil.com` thành protocol-relative URL đưa user ra domain
+        // ngoài qua notification link (phishing). Cùng logic với
+        // `utils::sanitize_redirect` nhưng giữ hành vi REJECT (BadRequest)
+        // của form admin thay vì tự sửa URL ngầm.
         let is_safe = (link.starts_with('/')
             && !link.starts_with("//")
+            && !link.starts_with("/\\")
             && !link.bytes().any(|b| b.is_ascii_control()))
             || crate::utils::is_safe_url(link);
         if !is_safe {

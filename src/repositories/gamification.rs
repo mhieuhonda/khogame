@@ -90,15 +90,19 @@ impl GamificationRepo {
             };
             match cap {
                 Some(cap) => {
-                    let today_count: i64 = sqlx::query_scalar(
+                    // SQL động: chỉ nhét hằng SQL_TODAY_START_VN (không có
+                    // input user) — AssertSqlSafe đánh dấu đã audit.
+                    let sql = format!(
                         r"SELECT COUNT(*) FROM xp_events
                           WHERE user_id = $1 AND reason = $2
-                            AND created_at >= date_trunc('day', NOW())",
-                    )
-                    .bind(user_id)
-                    .bind(reason)
-                    .fetch_one(&mut *tx)
-                    .await?;
+                            AND created_at >= {}",
+                        crate::utils::SQL_TODAY_START_VN
+                    );
+                    let today_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+                        .bind(user_id)
+                        .bind(reason)
+                        .fetch_one(&mut *tx)
+                        .await?;
                     if today_count >= i64::from(cap) {
                         0 // đã chạm trần ngày — log amount 0
                     } else {
@@ -138,13 +142,15 @@ impl GamificationRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn today_checkin(pool: &PgPool, user_id: Uuid) -> AppResult<Option<DailyCheckin>> {
-        let row = sqlx::query_as::<_, DailyCheckin>(
+        let sql = format!(
             "SELECT user_id, checkin_date, streak, xp_awarded, created_at
-             FROM daily_checkins WHERE user_id = $1 AND checkin_date = CURRENT_DATE",
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+             FROM daily_checkins WHERE user_id = $1 AND checkin_date = {}",
+            crate::utils::SQL_TODAY_VN
+        );
+        let row = sqlx::query_as::<_, DailyCheckin>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?;
         Ok(row)
     }
 
@@ -167,41 +173,47 @@ impl GamificationRepo {
     pub async fn do_checkin(pool: &PgPool, user_id: Uuid) -> AppResult<(i32, i32, LevelInfo)> {
         let mut tx = pool.begin().await?;
         // Đã điểm hôm nay chưa?
-        let existing = sqlx::query_as::<_, DailyCheckin>(
+        let sql = format!(
             "SELECT user_id, checkin_date, streak, xp_awarded, created_at
-             FROM daily_checkins WHERE user_id = $1 AND checkin_date = CURRENT_DATE",
-        )
-        .bind(user_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+             FROM daily_checkins WHERE user_id = $1 AND checkin_date = {}",
+            crate::utils::SQL_TODAY_VN
+        );
+        let existing = sqlx::query_as::<_, DailyCheckin>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         if let Some(c) = existing {
             let level = level_from_xp(Self::total_xp(pool, user_id).await?);
             // FIX 1: xp_awarded = 0 theo contract handler (already = xp == 0)
             return Ok((c.streak, 0, level));
         }
         // Chuỗi: hôm qua có điểm không?
-        let yesterday_streak: Option<i32> = sqlx::query_scalar(
+        let sql = format!(
             "SELECT streak FROM daily_checkins
-             WHERE user_id = $1 AND checkin_date = CURRENT_DATE - 1",
-        )
-        .bind(user_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+             WHERE user_id = $1 AND checkin_date = {} - 1",
+            crate::utils::SQL_TODAY_VN
+        );
+        let yesterday_streak: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         let streak = yesterday_streak.map_or(1, |s| s + 1);
         let bonus = (streak - 1).min(xp::MAX_STREAK_BONUS);
         let xp_awarded = xp::DAILY_CHECKIN + bonus;
         // FIX 2 (race): DO NOTHING giữa 2 request song song — phải kiểm tra
         // rows_affected trước khi ghi xp, không thì bên thua race vẫn cộng XP.
-        let insert_result = sqlx::query(
+        let sql = format!(
             r"INSERT INTO daily_checkins (user_id, checkin_date, streak, xp_awarded)
-               VALUES ($1, CURRENT_DATE, $2, $3)
+               VALUES ($1, {}, $2, $3)
                ON CONFLICT (user_id, checkin_date) DO NOTHING",
-        )
-        .bind(user_id)
-        .bind(streak)
-        .bind(xp_awarded)
-        .execute(&mut *tx)
-        .await?;
+            crate::utils::SQL_TODAY_VN
+        );
+        let insert_result = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .bind(streak)
+            .bind(xp_awarded)
+            .execute(&mut *tx)
+            .await?;
         if insert_result.rows_affected() == 0 {
             // Request song song khác vừa chiếm slot điểm danh hôm nay.
             // Rollback tx (không ghi gì), trả về state của bản ghi thắng.
@@ -253,7 +265,11 @@ impl GamificationRepo {
         .fetch_optional(pool)
         .await?;
         Ok(row.map_or(0, |(d, s)| {
-            let today = Utc::now().date_naive();
+            // v2.9.2 FIX: “hôm nay” theo giờ VN (UTC+7) thay vì UTC —
+            // trước đây trong khung 17:00–24:00 UTC (00:00–07:00 VN) so
+            // sai ngày với checkin_date (ghi theo giờ VN) → streak hiển
+            // thị “giữ” nhầm khi thực tế đã đứt (hoặc ngược lại).
+            let today = crate::utils::today_vn();
             let yesterday = today - chrono::Duration::days(1);
             if d >= yesterday {
                 s
@@ -558,11 +574,13 @@ impl GamificationRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn checkins_today_count(pool: &PgPool) -> AppResult<i64> {
-        let c: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM daily_checkins WHERE checkin_date = CURRENT_DATE",
-        )
-        .fetch_one(pool)
-        .await?;
+        let sql = format!(
+            "SELECT COUNT(*) FROM daily_checkins WHERE checkin_date = {}",
+            crate::utils::SQL_TODAY_VN
+        );
+        let c: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(pool)
+            .await?;
         Ok(c)
     }
 
@@ -570,12 +588,14 @@ impl GamificationRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn achievements_today_count(pool: &PgPool) -> AppResult<i64> {
-        let c: i64 = sqlx::query_scalar(
+        let sql = format!(
             "SELECT COUNT(*) FROM user_achievements
-             WHERE earned_at >= date_trunc('day', NOW())",
-        )
-        .fetch_one(pool)
-        .await?;
+             WHERE earned_at >= {}",
+            crate::utils::SQL_TODAY_START_VN
+        );
+        let c: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(pool)
+            .await?;
         Ok(c)
     }
 

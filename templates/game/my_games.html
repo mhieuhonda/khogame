@@ -60,7 +60,12 @@
         {% if page < total_pages %}<a href="/my-games?page={{ page + 1 }}" class="page-link" rel="next">Sau →</a>{% endif %}
     </nav>
     {% endif %}
-    {% if games.is_empty() && total > 0 %}
+    {# v2.9.2 FIX: trước đây nhánh {% else %} chạy cho MỌI trường hợp còn
+       lại — kể cả khi bảng game CÓ dữ liệu → empty-state "Bạn chưa đăng
+       game nào" vẫn render bên dưới bảng. Giờ: chỉ hiện 1 trong 2 empty
+       state khi bảng thực sự rỗng. #}
+    {% if games.is_empty() %}
+    {% if total > 0 %}
     <div class="empty-state"><p>Không có game nào ở trang này.</p></div>
     {% else %}
     <div class="empty-state">
@@ -71,6 +76,7 @@
         <p>Chia sẻ game đầu tiên của bạn với cộng đồng!</p>
         <a href="/games/new" class="btn btn-primary">Đăng game ngay</a>
     </div>
+    {% endif %}
     {% endif %}
 </section>
 {% endblock %}

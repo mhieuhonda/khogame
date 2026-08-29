@@ -77,21 +77,29 @@ impl ChatRepo {
         Ok(rows)
     }
 
-    /// Đếm số tin nhắn trong ngày (UTC) — hiển thị ở header của chat card
+    /// Đếm số tin nhắn trong ngày (giờ VN) — hiển thị ở header của chat card
     /// ("Đã chat X tin hôm nay") cho cảm giác sống động.
+    ///
+    /// v2.9.2 FIX: trước đây dùng mốc UTC (`date_trunc('day', ... AT TIME
+    /// ZONE 'UTC')`) → "hôm nay" đếm từ 07:00 giờ VN, lệch với phần còn lại
+    /// của app (điểm danh/streak theo ngày VN). Giờ dùng chung chuẩn ngày VN
+    /// (`utils::SQL_TODAY_START_VN`) không phụ thuộc timezone server.
     ///
     /// # Errors
     /// Trả về lỗi khi DB fail.
     pub async fn count_today(db: &PgPool) -> AppResult<i64> {
-        let count = sqlx::query_scalar::<_, i64>(
+        // SQL động: chỉ nhét hằng SQL_TODAY_START_VN (không input user).
+        let sql = format!(
             r#"
             SELECT COUNT(*) FROM chat_messages
             WHERE is_deleted = FALSE
-              AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+              AND created_at >= {}
             "#,
-        )
-        .fetch_one(db)
-        .await?;
+            crate::utils::SQL_TODAY_START_VN
+        );
+        let count = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_one(db)
+            .await?;
         Ok(count)
     }
 

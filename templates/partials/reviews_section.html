@@ -50,12 +50,22 @@
                 {% match my_review %}
                 {% when Option::Some with (r) %}
                 <button type="submit" class="btn btn-primary btn-sm">Cập nhật review</button>
-                <a href="/reviews/{{ r.id }}/delete" class="btn btn-outline btn-sm btn-danger-outline review-delete-link" data-confirm="Xóa review của bạn?">Xóa</a>
+                {# v2.9.2 FIX: trước đây là <a href="/reviews/{id}/delete"> phát GET
+                   vào route chỉ nhận POST → 405, nút Xóa chết hoàn toàn. Giờ dùng
+                   button gắn với form POST riêng bên dưới qua thuộc tính `form=`
+                   (form không được lồng nhau trong HTML5 — button nằm trong form
+                   cập nhật review). data-confirm vẫn bắt được qua submit event. #}
+                <button type="submit" form="review-delete-form" class="btn btn-outline btn-sm btn-danger-outline review-delete-link">Xóa</button>
                 {% when Option::None %}
                 <button type="submit" class="btn btn-primary btn-sm">Gửi review (+15 XP)</button>
                 {% endmatch %}
             </div>
         </form>
+        {% match my_review %}
+        {% when Option::Some with (r) %}
+        <form method="post" action="/reviews/{{ r.id }}/delete" id="review-delete-form" class="review-delete-form" data-confirm="Xóa review của bạn?"></form>
+        {% when Option::None %}
+        {% endmatch %}
     </div>
     {% when Option::None %}
     <p class="reviews-login-hint"><a href="/login">Đăng nhập</a> để viết review cho game này.</p>

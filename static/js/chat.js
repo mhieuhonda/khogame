@@ -104,10 +104,20 @@
     function renderMessage(msg) {
         var node = el('div', 'chat-msg');
         node.setAttribute('data-id', msg.id);
-        if (msg.user_id && currentUser && msg.user_id === currentUser.id) {
+        // v2.9.2 FIX: currentUser.id luôn null (init chỉ lấy được username từ
+        // header) → so sánh id không bao giờ khớp → highlight "tin của mình"
+        // không hoạt động. So sánh username (đáng tin từ cả 2 nguồn).
+        if (msg.user_id && currentUser &&
+            (msg.user_id === currentUser.id ||
+             (currentUser.username && msg.username === currentUser.username))) {
             node.classList.add('chat-msg-own');
         }
-        var isStaff = msg.role === 'Admin' || msg.role === 'Moderator';
+        // v2.9.2 FIX: server trả role::text từ Postgres enum ('admin' /
+        // 'moderator' — lowercase) → so sánh 'Admin'/'Moderator' hoa-hoa
+        // không bao giờ khớp → badge staff không hiện. Normalize lower-case
+        // để an toàn với cả 2 chuẩn dữ liệu.
+        var roleLower = (msg.role || '').toLowerCase();
+        var isStaff = roleLower === 'admin' || roleLower === 'moderator';
 
         node.appendChild(avatarNode(msg));
 
@@ -118,7 +128,7 @@
         header.appendChild(author);
         if (isStaff) {
             var badge = el('span', 'chat-msg-badge');
-            badge.textContent = msg.role === 'Admin' ? 'Admin' : 'Mod';
+            badge.textContent = roleLower === 'admin' ? 'Admin' : 'Mod';
             header.appendChild(badge);
         }
         var time = el('span', 'chat-msg-time');

@@ -5,6 +5,145 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.2] — 2026-08-29 — Fix CI/CD trigger chết + 15 bug từ audit toàn diện
+
+Bản vá sau khi quét codebase 2 vòng độc lập (backend Rust + templates/
+frontend JS). Đáng chú ý nhất: **CI/CD workflow YAML hỏng từ lâu** —
+`branches: ain]` thay vì `branches: [main]` khiến CI và CD KHÔNG BAO GIỜ
+tự chạy khi push main (mọi release trước đều deploy thủ công). Không có
+migration mới, không đổi schema — deploy an toàn.
+
+### ⚙️ CI/CD (2 lỗi)
+
+1. **`.github/workflows/ci.yml` + `deploy.yml`: trigger `push`/`pull_request`
+   trỏ vào branch không tồn tại** — YAML `branches: ain]` (dư dấu `]`, mất
+   `[m`) là chuỗi hợp lệ trong YAML nên không báo lỗi parse, nhưng GitHub
+   Actions match branch tên `ain]` → workflow không bao giờ kích hoạt khi
+   push/PR vào `main`. Hệ quả: 306 unit test + clippy -D warnings + cargo
+   audit không chạy tự động; CD build image + gọi Coolify deploy cũng không
+   tự chạy. Fix: `branches: [main]` (2 chỗ trong ci.yml, 1 chỗ trong
+   deploy.yml) — validate lại bằng YAML parser.
+
+### 🔒 Bảo mật (5 lỗi)
+
+2. **Rate-limit bị bypass hoàn toàn với request không cookie khi app chạy
+   sau proxy shared-IP** (`middleware.rs`): topology prod (nginx stream
+   không PROXY protocol) làm mọi request rơi vào nhánh IP-private — client
+   không gửi cookie nào được sinh anon-id MỚI cho từng request → bucket
+   rỗng mới mỗi lần → bot/curl xoá cookie hoặc bỏ qua Set-Cookie gửi vô
+   hạn request trên MỌI endpoint (brute-force `/auth/ai/login`, spam
+   comment/upload, đốt quota GitHub API). Fix: request không-cookie dùng
+   chung bucket `x:anon-unknown` (theo path-bucket) — browser thật chỉ
+   chạm bucket này đúng 1 lần đầu (response kèm Set-Cookie, request sau
+   có anon riêng), bot không cookie dồn vào 1 bucket bị chặn đúng ngưỡng.
+   Fail-closed.
+3. **WebSocket chat không giới hạn số connection/user** (`state.rs` +
+   `handlers/chat.rs`): 1 user đăng nhập mở được vô số WS connection (mỗi
+   connection = 1 task + rx buffer 256 event) → DoS bộ nhớ. Fix: cap
+   `MAX_WS_CONNS_PER_USER = 5` — connection thứ 6 bị đóng ngay với close
+   code 1013 (Try Again Later), check+increment atomic dưới 1 mutex.
+4. **`request_timeout` bị tắt cho MỌI request có header `Upgrade`**
+   (`middleware.rs`): attacker gửi `Upgrade: websocket` trên route thường
+   để tắt timeout 30s, giữ connection + pool slot treo vô hạn. Fix: chỉ
+   skip timeout cho route WS thật (`/chat/ws`).
+5. **Admin broadcast link chấp nhận `/\evil.com`** (`handlers/admin.rs`):
+   check inline chỉ chặn `//` — browser normalise `\` thành `/` (WHATWG)
+   → protocol-relative URL đưa user ra domain ngoài qua notification link
+   (phishing). Fix: chặn thêm `/\` (cùng logic `sanitize_redirect`, giữ
+   hành vi reject BadRequest của form admin).
+6. **OAuth state so sánh bằng `==`** (`handlers/auth.rs`): không constant-
+   time — thiếu nhất quán với AI token. Fix: `constant_time_eq` chuyển
+   thành public utility trong `utils.rs` (ai_agent.rs dùng lại), OAuth
+   callback so sánh constant-time.
+
+### 🐛 Backend (6 lỗi)
+
+7. **Whitelist rate-limit thiếu toàn bộ route v2.9.0** (`middleware.rs`):
+   `checkin`, `leaderboard`, `achievements`, `collections`, `reviews`,
+   `uploads`, `chat/*`, `typing`, `online-users`, `random`... không nằm
+   trong `STATIC_SEGMENTS` → tất cả normalize thành `/{x}` và dùng chung
+   1 bucket 120/phút (typing poll + online-users poll + lướt leaderboard
+   ăn chung nhau → 429 oan); like comment tin tức (`/news_comments/{id}/
+   like`) không rơi vào bucket 10/phút write. Fix: bổ sung 25 segment +
+   matcher `contains("/news_comments/")`; POST /repos tách bucket riêng
+   6/phút (chỉ POST — GET danh sách vẫn 120/phút) chống đốt quota GitHub
+   API. Thêm 2 regression test mới.
+8. **3 chuẩn "hôm nay" lẫn lộn — lệch ngày 17:00–24:00 UTC** (`utils.rs`,
+   `repositories/gamification.rs`, `chat.rs`, `settings_repo.rs`,
+   `game.rs`): điểm danh dùng `CURRENT_DATE` (phụ thuộc timezone Postgres
+   server — chỉ đúng nếu volume được initdb sau khi set TZ), chat
+   `count_today` dùng UTC, streak so ngày bằng `Utc::now()` trong Rust →
+   trong khung 17:00–24:00 UTC (00:00–07:00 VN) streak "giữ" nhầm khi đã
+   đứt, XP cap ngày reset sai giờ, "X tin hôm nay" đếm từ 07:00 sáng VN.
+   Fix: thống nhất MỘT chuẩn giờ VN tường minh — SQL: `(NOW() AT TIME
+   ZONE 'Asia/Ho_Chi_Minh')::date` + mốc `date_trunc(...) AT TIME ZONE
+   'Asia/Ho_Chi_Minh'` qua hằng `utils::SQL_TODAY_VN` /
+   `SQL_TODAY_START_VN`; Rust: `utils::today_vn()` (UTC+7 cố định, không
+   DST). KHÔNG còn phụ thuộc timezone server Postgres. SQL động đánh dấu
+   `AssertSqlSafe` (chỉ nhét hằng, không input user).
+9. **Race OAuth signup → user thật nhận 400 ngay lần đầu đăng nhập**
+   (`repositories/user.rs`): Google đôi khi callback 2 lần gần đồng thời;
+   cả 2 thấy username còn trống, INSERT thua race dính unique violation →
+   `Conflict` → 400 "Dữ liệu đã tồn tại". Fix: `create_from_google`
+   idempotent — unique violation → fetch lại theo `google_sub` (trả về
+   user request song song vừa tạo) hoặc thử username suffix ngẫu nhiên
+   (tối đa 3 lần).
+10. **Trang profile chạy 2 lần y hệt query `user_achievements`**
+    (`handlers/profile.rs`): 2 entry trong `tokio::join!` gọi cùng repo
+    method. Fix: query 1 lần, duyệt 2 lần cho showcased + achievements —
+    tiết kiệm 1 round-trip DB mỗi view.
+11. **`require_admin` trả `StatusCode` trần** (`middleware.rs`): admin gõ
+    nhầm URL / user thường vào `/admin` thấy text trơ "403 Forbidden"
+    không giao diện, không HX-Redirect, không request_id. Fix: trả
+    `AppError::Unauthorized` (303 → /login, cùng hành vi AuthUser) /
+    `AppError::Forbidden` (render trang lỗi đầy đủ qua error_page_mw).
+12. **cargo-audit gate**: giữ nguyên — Cargo.lock không có advisory mới
+    sau quét.
+
+### 🎨 Frontend (7 lỗi)
+
+13. **Nút "Xóa" review chết hoàn toàn — 405 Method Not Allowed**
+    (`partials/reviews_section.html`): `<a href="/reviews/{id}/delete">`
+    phát GET vào route chỉ nhận POST; `data-confirm` không cứu được vì
+    app.js chỉ bắt submit của `<form>`. Fix: button `form="review-delete-
+    form"` gắn với form POST riêng bên ngoài (form không được lồng nhau
+    trong HTML5) — data-confirm vẫn hoạt động qua submit event.
+14. **Trang "Game của tôi" luôn kèm empty-state "Bạn chưa đăng game nào"
+    bên dưới bảng có dữ liệu** (`game/my_games.html`): nhánh `{% else %}`
+    chạy cho mọi trường hợp còn lại kể cả khi bảng có game. Fix: tách
+    điều kiện — chỉ hiện 1 trong 2 empty-state khi bảng thực sự rỗng.
+15. **Badge "Admin"/"Mod" trên tin nhắn chat không bao giờ hiển thị**
+    (`static/js/chat.js`): server trả `role::text` lowercase ('admin'/
+    'moderator') nhưng JS so sánh 'Admin'/'Moderator' hoa-hoa → luôn
+    false. Fix: normalize `.toLowerCase()`.
+16. **HTMX "Đánh dấu tất cả đã đọc" vỡ DOM danh sách thông báo**
+    (`notifications/index.html`): `hx-swap="outerHTML"` thay cả wrapper
+    `.notifications-list` bằng N item không wrapper → CSS layout vỡ, các
+    swap sau mất target. Fix: `hx-swap="innerHTML"` (handler trả item con
+    — đúng nghĩa inner).
+17. **Button lồng trong `<a>` (HTML invalid + a11y)**
+    (`partials/notification_item.html` + `notifications/index.html`):
+    button "đánh dấu đã đọc" nằm trong `<a class="notification-link">` —
+    interactive content lồng nhau, click có thể kích hoạt cả navigation.
+    Fix: button tách thành sibling trong `.notification-item` (flex row,
+    CSS cập nhật: link `flex:1`, button margin canh padding).
+18. **Highlight "tin nhắn của chính mình" không bao giờ hoạt động**
+    (`static/js/chat.js`): `currentUser.id` luôn null (init chỉ lấy được
+    username từ header) → so sánh `msg.user_id === currentUser.id` luôn
+    false. Fix: so sánh thêm `msg.username === currentUser.username`.
+19. **Trùng `id="g"` cho 2 SVG gradient trên trang login**
+    (`auth/login.html` + `layout.html`): HTML invalid — SVG resolve
+    first-match nên đổi gradient 1 chỗ sẽ hỏng chỗ kia ngầm. Fix: đổi
+    auth card thành `id="g-auth"`.
+
+### 📦 Cache-bust & phiên bản
+
+- `Cargo.toml` version 2.9.1 → **2.9.2**; mọi `?v=2.9.1` trên templates
+  (`style.css`, `fonts.css`, `htmx.min.js`, `app.js`, `chat.js`, `sw.js`)
+  bump lên `?v=2.9.2`; `sw.js` `CACHE_VERSION = 'ls-sw-v2.9.2'` (activate
+  xoá cache cũ + skipWaiting/clients.claim có sẵn).
+- README badge version cập nhật 2.2.0 → 2.9.2 (lệch hụt nhiều release).
+
 ## [2.9.1] — 2026-08-29 — Fix UI hồ sơ desktop + menu mobile + 8 bug từ audit
 
 Bản vá ổn định sau v2.9.0: sửa 3 lỗi người dùng báo trực tiếp (tên hiển

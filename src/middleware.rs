@@ -211,19 +211,28 @@ where
 /// Admin-only middleware
 /// # Errors
 ///
-/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+/// Trả về `AppError::Unauthorized` khi chưa đăng nhập (303 → /login, cùng
+/// hành vi với AuthUser extractor) và `AppError::Forbidden` khi đã đăng
+/// nhập nhưng không phải staff.
+///
+/// v2.9.2 FIX: trước đây trả `StatusCode` trần → admin gõ nhầm URL / user
+/// thường vào /admin thấy text trơ “403 Forbidden” không giao diện, không
+/// HX-Redirect, không request_id. Giờ đi qua AppError → error_page_mw
+/// render trang lỗi đầy đủ + HX-Redirect cho HTMX như mọi route khác.
 pub async fn require_admin(
     State(state): State<Arc<AppState>>,
     request: Request,
     next: Next,
-) -> Result<Response, StatusCode> {
+) -> Result<Response, AppError> {
     // Extract cookies from request headers
     let jar = CookieJar::from_headers(request.headers());
     let user = current_user_from_jar(&state, &jar)
         .await
-        .ok_or(StatusCode::UNAUTHORIZED)?;
+        .ok_or(AppError::Unauthorized)?;
     if !user.role.is_staff() {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên mới truy cập được khu vực này".into(),
+        ));
     }
     Ok(next.run(request).await)
 }
@@ -466,6 +475,53 @@ mod path_normalization_tests {
     fn trailing_slash_normalized() {
         // Slash cuối không tạo bucket khác
         assert_eq!(norm("/games/foo/comments/"), norm("/games/foo/comments"));
+    }
+
+    // ── v2.9.2 regression: whitelist bổ sung segments v2.9.0 bị sót ──
+
+    #[test]
+    fn v290_routes_keep_own_buckets() {
+        // Trước đây các endpoint này bị gộp vào bucket "/{x}" chung
+        // (typing poll + leaderboard + collections cùng ăn 1 bucket 120/phút).
+        let paths = [
+            "/checkin",
+            "/checkin-widget",
+            "/leaderboard",
+            "/achievements",
+            "/following",
+            "/collections",
+            "/games/abc/add-to-collection",
+            "/games/abc/reviews",
+            "/reviews/123/helpful",
+            "/uploads/avatar",
+            "/uploads/game/cover",
+            "/chat/typing",
+            "/chat/online-users",
+            "/chat/history",
+            "/games/random",
+            "/preview",
+            "/opensearch-suggest",
+        ];
+        for p in paths {
+            assert_ne!(norm(p), "/{x}", "path {p} phải giữ segment tĩnh riêng");
+        }
+        assert_eq!(norm("/chat/typing"), "/chat/typing");
+        assert_eq!(norm("/games/random"), "/games/random");
+        assert_eq!(norm("/uploads/repo/image"), "/uploads/repo/image");
+    }
+
+    #[test]
+    fn news_comments_like_normalized_with_prefix() {
+        // news_comments phải giữ nguyên prefix để matcher 10/phút
+        // (path.contains("/news_comments/")) nhận diện được sau normalize.
+        assert_eq!(
+            norm("/news_comments/550e8400-e29b-41d4-a716-446655440000/like"),
+            "/news_comments/{x}/like"
+        );
+        assert_eq!(
+            norm("/news_comments/abc/replies"),
+            "/news_comments/{x}/replies"
+        );
     }
 }
 
@@ -741,6 +797,51 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         "all",
         "news.rss",
         "news-suggest",
+        // v2.9.2 — bổ sung segments còn thiếu (v2.9.0 thêm route mới nhưng
+        // quên cập nhật whitelist → các endpoint này bị gộp chung bucket
+        // /{x} 120/phút với nhau: typing + online-users poll + leaderboard
+        // + collections cùng ăn 1 bucket → 429 oan; news_comments like
+        // không rơi vào bucket 10/phút write như /comments).
+        // gamification
+        "checkin",
+        "checkin-status",
+        "checkin-widget",
+        "leaderboard",
+        "achievements",
+        "showcase",
+        // social / collections / reviews
+        "following",
+        "collections",
+        "add-to-collection",
+        "remove-from-collection",
+        "reviews",
+        "helpful",
+        // live chat
+        "chat",
+        "ws",
+        "typing",
+        "online",
+        "online-users",
+        "history",
+        // games misc
+        "random",
+        // uploads
+        "uploads",
+        "avatar",
+        "cover",
+        "image",
+        "game",
+        "repo",
+        // news comments (prefix riêng cho like/delete/replies)
+        "news_comments",
+        // misc bị sót
+        "preview",
+        "opensearch-suggest",
+        // admin news actions
+        "approve",
+        "archive",
+        "reject",
+        "unfeature",
     ];
     let mut out = String::with_capacity(path.len());
     for seg in path.split('/') {
@@ -816,12 +917,23 @@ pub async fn rate_limit(
         } else if let Some(anon) = anon_cookie_value(request.headers()) {
             format!("a:{anon}")
         } else {
-            // Chưa có cookie nào → sinh anon id, set vào response;
-            // bucket cho request NÀY đã dùng id mới (không đợi request
-            // sau) để 1 browser spam liên tục vẫn bị giới hạn đúng.
+            // Chưa có cookie nào → sinh anon id, set vào response để request
+            // SAU (browser thật lưu cookie) được theo dõi per-browser.
+            //
+            // v2.9.2 FIX (rate-limit bypass): trước đây bucket của request
+            // HIỆN TẠI dùng luôn id mới sinh → mỗi request không cookie là
+            // một bucket rỗng mới → bot/curl không lưu Set-Cookie (hoặc xoá
+            // cookie mỗi lần) bypass hoàn toàn rate limit trên MỌI endpoint
+            // (brute-force /auth/ai/login, spam comments/uploads, đốt quota
+            // GitHub API). Giờ request không-cookie dùng chung bucket
+            // "x:anon-unknown" (per path-bucket) — browser thật chỉ chạm
+            // bucket này đúng 1 lần đầu tiên (response kèm Set-Cookie,
+            // request sau đã có anon riêng), bot không cookie thì toàn bộ
+            // dồn vào 1 bucket → bị chặn đúng ngưỡng. Fail-closed: gắt hơn
+            // chứ không bao giờ nới lỏng.
             let anon = Uuid::new_v4().to_string();
-            set_anon_cookie = Some(anon.clone());
-            format!("a:{anon}")
+            set_anon_cookie = Some(anon);
+            "x:anon-unknown".to_string()
         }
     } else {
         ip.clone()
@@ -859,10 +971,24 @@ pub async fn rate_limit(
         // vào bucket 10/phút của "comments" thì 40 request bị 429 + 40
         // toast "thao tác quá nhanh". Tách bucket riêng 240/phút cho read-only.
         (240, 60)
-    } else if path.ends_with("/comments") || path.contains("/comments/") {
-        // Match /games/{slug}/comments (POST create) và
-        // /comments/{id}/like, /comments/{id}/edit, /comments/{id} (DELETE).
+    } else if (path == "/repos" || path == "/repos/new")
+        && request.method() == axum::http::Method::POST
+    {
+        // v2.9.2 — POST /repos gọi GitHub API (fetch_github_meta) mỗi lần
+        // trước khi INSERT. Chống đốt cạn quota GITHUB_TOKEN (5000/h) khi
+        // bị spam: 6 lần tạo repo/phút là dư sức cho người thật điền form.
+        // Chỉ áp dụng POST — GET /repos (danh sách) vẫn 120/phút bình thường.
+        (6, 60)
+    } else if path.ends_with("/comments")
+        || path.contains("/comments/")
+        || path.contains("/news_comments/")
+    {
+        // Match /games/{slug}/comments (POST create), /news/{slug}/comments,
+        // và /comments/{id}/like, /comments/{id}/edit, /comments/{id}
+        // (DELETE), /news_comments/{id}/like, /news_comments/{id} (DELETE).
         // Tất cả là write action — giới hạn 10/phút.
+        // v2.9.2 — thêm /news_comments/ (like + delete comment tin tức trước
+        // đây chỉ bị chặn ở 120/phút chung).
         (10, 60) // 10 bình luận/phút
     } else {
         (120, 60)
@@ -1956,7 +2082,12 @@ mod cookie_value_tests {
 pub async fn request_timeout(request: Request, next: Next) -> Response {
     // WebSocket upgrade — skip timeout (WS có heartbeat 30s riêng,
     // không thể ngắt qua HTTP timeout vì upgrade đã chuyển sang WS).
-    if request.headers().get(axum::http::header::UPGRADE).is_some() {
+    // v2.9.2 FIX: chỉ skip với route WS thật (/chat/ws) — trước đây mọi
+    // request có header Upgrade đều được skip → attacker gửi
+    // `Upgrade: websocket` trên route thường để tắt timeout 30s, giữ
+    // connection + pool slot treo vô hạn.
+    let is_ws_route = request.uri().path() == "/chat/ws";
+    if is_ws_route && request.headers().get(axum::http::header::UPGRADE).is_some() {
         return next.run(request).await;
     }
     let secs: u64 = std::env::var("REQUEST_TIMEOUT_SECS")

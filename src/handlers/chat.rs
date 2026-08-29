@@ -2,8 +2,8 @@ use crate::error::{AppError, AppResult};
 use crate::middleware::current_user_from_jar;
 use crate::models::chat::ChatMessageWithUser;
 use crate::repositories::ChatRepo;
-use crate::state::{AppState, ChatEvent};
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use crate::state::{AppState, ChatEvent, PresenceAdd, MAX_WS_CONNS_PER_USER};
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -100,28 +100,44 @@ pub async fn ws_handler(
 }
 
 /// Vòng đời 1 WebSocket connection:
-/// 1. presence_add → broadcast Presence{online} cho mọi client khác
+/// 0. presence_add (ref-count + cap `MAX_WS_CONNS_PER_USER`) — vượt cap →
+///    đóng ngay với close code 1013 (Try Again Later), không vào loop.
+/// 1. Nếu user MỚI online (0→1 connection) → broadcast Presence{online}.
 /// 2. Subscribe broadcast channel (TRƯỚC loop để tránh miss event đầu)
 /// 3. Loop song song: select! giữa {recv WS, recv broadcast, heartbeat}
 ///    - WS frame → xử lý chat / delete command
 ///    - Broadcast event → forward xuống client qua `socket.send`
 ///    - Heartbeat 30s → ping giữ connection sống
-/// 4. Khi recv trả None/Close/Error → break, presence_remove, broadcast
-///    Presence{online-1}.
+/// 4. Khi recv trả None/Close/Error → break, presence_remove (giảm
+///    ref-count — user chỉ offline khi đóng connection cuối), broadcast
+///    Presence{online-1} chỉ khi user thật sự rời khỏi map.
 ///
-/// Thiết kế: KHÔNG spawn 2 task riêng (recv + send) như draft đầu — vì
-/// axum 0.8 `WebSocket` không có `split()` builtin, và share `&mut socket`
-/// giữa 2 task cần `tokio::sync::Mutex` phức tạp. Dùng `tokio::select!`
-/// trong 1 task đủ: concurrency OK vì select poll cả 3 future cùng lúc,
-/// và cleanup đơn giản (không cần oneshot channel).
+/// v2.9.2 FIX: presence chuyển sang ref-count theo connection (multi-tab
+/// đúng) + cap connection/user (chặn DoS mở hàng trăm WS đốt bộ nhớ).
 async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_staff: bool) {
-    // 1) Presence: đánh dấu online ngay khi connect.
-    if let Some(new_count) = state.presence_add(user_id) {
-        let _ = state
-            .chat_tx
-            .send(ChatEvent::Presence { online: new_count });
+    // 0) Presence: đăng ký connection (atomic check+increment dưới 1 lock).
+    match state.presence_add(user_id, MAX_WS_CONNS_PER_USER) {
+        PresenceAdd::Rejected => {
+            tracing::warn!(
+                "Chat WS từ chối: user {user_id} vượt {MAX_WS_CONNS_PER_USER} connection"
+            );
+            // 1013 Try Again Later — client hiểu là “đóng tạm thời”.
+            let _ = socket
+                .send(Message::Close(Some(CloseFrame {
+                    code: 1013,
+                    reason: "Quá nhiều kết nối — hãy đóng bớt tab".into(),
+                })))
+                .await;
+            return;
+        }
+        PresenceAdd::NewlyOnline(new_count) => {
+            let _ = state
+                .chat_tx
+                .send(ChatEvent::Presence { online: new_count });
+        }
+        // Tab thứ 2+ của user đã online — không broadcast (count không đổi).
+        PresenceAdd::Already(_) => {}
     }
-
     // 2) Subscribe broadcast trước khi loop — tránh miss event đầu tiên.
     let mut rx = state.chat_tx.subscribe();
     // Heartbeat 30s — gửi Ping để giữ connection sống (NAT timeout 60s+).
@@ -180,7 +196,8 @@ async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_s
         }
     }
 
-    // 4) Cleanup: remove presence + broadcast new count cho các client khác.
+    // 4) Cleanup: giảm ref-count presence (chỉ khi là connection cuối thì
+    // mới broadcast count mới — tab 2 còn mở thì user vẫn online).
     if let Some(new_count) = state.presence_remove(user_id) {
         let _ = state
             .chat_tx

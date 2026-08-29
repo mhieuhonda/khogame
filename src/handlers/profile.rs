@@ -43,7 +43,6 @@ pub async fn show_profile(
         level_res,
         streak_res,
         ach_res,
-        showcased_res,
         activity_res,
         collections_res,
         unread_res,
@@ -91,11 +90,10 @@ pub async fn show_profile(
                 .unwrap_or(0)
         },
         async {
-            GamificationRepo::user_achievements(&state.db, user.id)
-                .await
-                .unwrap_or_default()
-        },
-        async {
+            // v2.9.2 FIX: query này trước đây chạy HAI LẦN y hệt (ach_res +
+            // showcased_res đều gọi user_achievements) — giờ chỉ query 1 lần,
+            // clone kết quả cho cả 2 consumer bên dưới (tiết kiệm 1 round-trip
+            // DB mỗi lần xem hồ sơ).
             GamificationRepo::user_achievements(&state.db, user.id)
                 .await
                 .unwrap_or_default()
@@ -129,8 +127,9 @@ pub async fn show_profile(
     let level = level_res;
     let streak = streak_res;
     let all_achievements = ach_res;
-    let showcased_list = showcased_res;
-    let showcased: Vec<crate::models::gamification::Achievement> = showcased_list
+    // v2.9.2 — showcased + achievements cùng duyệt 1 kết quả query duy nhất
+    // (trước đây 2 query y hệt chạy song song cho 2 danh sách này).
+    let showcased: Vec<crate::models::gamification::Achievement> = all_achievements
         .iter()
         .filter(|(_, _, is_shown)| *is_shown)
         .map(|(a, _, _)| a.clone())

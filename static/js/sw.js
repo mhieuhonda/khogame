@@ -21,7 +21,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v2.9.1';
+var CACHE_VERSION = 'ls-sw-v2.9.2';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;
@@ -86,10 +86,10 @@ self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.open(STATIC_CACHE).then(function(cache) {
             return cache.addAll([
-                '/static/js/htmx.min.js?v=2.9.1',
-                '/static/css/style.css?v=2.9.1',
-                '/static/css/fonts.css?v=2.9.1',
-                '/static/js/app.js?v=2.9.1',
+                '/static/js/htmx.min.js?v=2.9.2',
+                '/static/css/style.css?v=2.9.2',
+                '/static/css/fonts.css?v=2.9.2',
+                '/static/js/app.js?v=2.9.2',
                 '/static/img/favicon.svg'
             ]).catch(function() {
                 // Critical pre-cache fail (vd: file chưa tồn tại) → không

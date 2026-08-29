@@ -787,7 +787,7 @@
         // skipWaiting → clients.claim để update apply ngay lập tức.
         window.addEventListener('load', function() {
             navigator.serviceWorker
-                .register('/static/js/sw.js?v=2.9.1', { scope: '/' })
+                .register('/static/js/sw.js?v=2.9.2', { scope: '/' })
                 .then(function(reg) {
                     if (reg && typeof reg.update === 'function') {
                         // Trigger update check sau 60s nếu user keep tab mở

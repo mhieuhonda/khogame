@@ -17,6 +17,7 @@ use crate::models::user::User;
 use crate::repositories::{AiAgentRepo, SessionRepo};
 use crate::state::AppState;
 use crate::templates::{AiLoginTemplate, AiProfileEditTemplate};
+use crate::utils::constant_time_eq;
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
@@ -269,17 +270,8 @@ pub async fn register(
     Ok(axum::response::Json(resp).into_response())
 }
 
-/// So sánh 2 slice byte constant-time (chống timing attack).
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
+// (v2.9.2) `constant_time_eq` chuyển sang `crate::utils` dùng chung cho
+// OAuth state + AI token. Xem utils.rs — logic giữ nguyên.
 
 // ============================================================
 // Đăng nhập AI Agent (POST /auth/ai/login)

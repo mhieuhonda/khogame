@@ -465,3 +465,72 @@ Stage Summary:
   fix 500 sai sự thật (OAuth access_denied) + nợ cache-bust 2 bản.
 - ✅ 293 tests pass, clippy -D warnings clean, rustfmt clean, rustdoc clean.
 - ⏭️ Commit author mhieuhonda + push main + tag v2.7.0 → GitHub Release.
+
+---
+## [2.9.2] — 2026-08-29 — Fix CI/CD trigger chết + 15 bug từ audit toàn diện
+
+- CONTEXT: Yêu cầu quét toàn bộ codebase 2 vòng độc lập trước khi đưa lên
+  prod. Vòng 1: cargo check/clippy/fmt/test(306) đã PASS từ v2.9.1 → chuyển
+  trọng tâm sang các lớp compiler không bắt được (CI YAML, security runtime,
+  frontend). Vòng 2: 2 agent quét sâu song song (backend Rust 30.8k dòng +
+  templates/frontend 9k dòng) → 15 lỗi thật sự + 1 false positive (script
+  auto-refresh ai_reports.html thực tế NẰM TRONG block content — không sửa).
+
+- CI/CD (2 lỗi nghiêm trọng nhất):
+  * ci.yml + deploy.yml: `branches: ain]` → `branches: [main]`. YAML vẫn
+    parse hợp lệ (string scalar) nên không ai phát hiện — CI/CD không bao
+    giờ tự chạy khi push main. Validate bằng PyYAML sau fix.
+- Security (5): rate-limit bypass bucket `x:anon-unknown` cho request
+  không-cookie (bot không lưu Set-Cookie trước đây được bucket mới mỗi
+  request); cap 5 WS connection/user + close 1013; request_timeout chỉ skip
+  cho /chat/ws thật (trước đây mọi request có header Upgrade); broadcast
+  link chặn `/\evil.com`; OAuth state so sánh constant-time (constant_time_eq
+  chuyển vào utils.rs, ai_agent.rs dùng lại).
+- Backend (5): STATIC_SEGMENTS +25 segment thiếu của v2.9.0 (typing/
+  leaderboard/collections/uploads/chat... từng gộp chung bucket /{x});
+  matcher 10/phút mở rộng cho /news_comments/; POST /repos bucket riêng
+  6/phút chống đốt quota GitHub API (GET vẫn 120/phút); thống nhất MỘT chuẩn
+  "hôm nay" = giờ VN (SQL_TODAY_VN / SQL_TODAY_START_VN / today_vn — không
+  còn phụ thuộc timezone server Postgres; CURRENT_DATE/date_trunc UTC/
+  Utc::now() trước đây lệch nhau 17:00–24:00 UTC) + AssertSqlSafe cho SQL
+  động; create_from_google idempotent khi race OAuth callback (fetch lại
+  theo google_sub / thử username suffix, tối đa 3 lần); profile bỏ 1 query
+  user_achievements trùng; require_admin trả AppError (303 → /login + trang
+  lỗi đầy đủ thay vì text trơ).
+- Frontend (7): nút Xóa review 405 → button form="review-delete-form" POST
+  (form không lồng nhau); my_games empty-state render nhầm khi có dữ liệu;
+  chat badge Admin/Mod so role lowercase; notifications mark-all-read
+  hx-swap innerHTML (trước outerHTML vỡ DOM); button "đã đọc" tách khỏi <a>
+  (HTML invalid) + CSS flex row; highlight tin nhắn của mình so username
+  (currentUser.id luôn null); login.html đổi SVG gradient id "g" → "g-auth"
+  (trùng với layout.html).
+- Testability: presence tách thành struct PresenceMap (state.rs) + 4 unit
+  test mới (multi-tab refcount, cap connection, remove noop, 2 users).
+  Middleware: +2 regression test cho normalize_path_for_rate_limit.
+- Version/cache-bust: Cargo.toml 2.9.2; ?v=2.9.2 toàn bộ layout/error/index/
+  sw.js/app.js; CACHE_VERSION ls-sw-v2.9.2; README badge 2.2.0 → 2.9.2
+  (lệch hụt từ v2.3.0); CHANGELOG.md mục [2.9.2] đầy đủ.
+- KHÔNG đổi schema, KHÔNG migration mới — deploy an toàn. Chấp nhận Transition
+  1 ngày: daily_stats/checkin ghi theo chuẩn cũ có thể lệch biên ngày khi
+  đổi sang chuẩn VN (analytics only, không ảnh hưởng dữ liệu user).
+- ĐÃ CÂN NHẮC NHƯNG KHÔNG LÀM (giữ release nhỏ, an toàn prod): quota upload
+  per-user + janitor dọn file mồ côi (rủi ro xoá nhầm file prod — làm riêng
+  v2.9.3+); cache metadata GitHub 60s (chỉ cần rate-limit 6/phút vì handler
+  check duplicate DB TRƯỚC khi gọi GitHub); gộp N+1 check_and_award (bounded
+  ~26 query nhỏ mỗi login); admin/users fetch 2000 (TODO v3.0 sẵn).
+
+- VERIFY (khớp toàn bộ CI pipeline):
+  * YAML 3 workflow — PyYAML parse OK, branches: ['main'].
+  * `cargo fmt --all -- --check` — pass.
+  * `cargo check --locked --all-targets` — pass (khogame 2.9.2).
+  * `cargo clippy --all-targets --locked -- -D warnings` — pass.
+  * `cargo test --locked --all` — 312 passed, 0 failed (+6 mới).
+  * `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items`
+    — pass.
+  * `cargo build --release --locked` — kiểm tra binary prod cuối.
+
+Stage Summary:
+- ✅ 15 lỗi fix (2 CI/CD + 5 security + 6 backend + 7 frontend, tính cả
+  sub-fix trong từng mục), 6 test mới, không regression.
+- ✅ Full CI pipeline xanh local: fmt/check/clippy/test/doc + YAML validate.
+- ⏭️ Commit author mhieuhonda + push main + tag v2.9.2 → GitHub Release.

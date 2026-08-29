@@ -1,4 +1,9 @@
 {# Notification item #}
+{# v2.9.2 FIX: button "đánh dấu đã đọc" trước đây LỒNG BÊN TRONG <a>
+   (interactive content lồng nhau — vi phạm HTML5 content model, click nút
+   có thể kích hoạt cả navigation; screen reader đọc lồng lỗi). Giờ button
+   là sibling của <a> trong .notification-item (flex row) — CSS cập nhật
+   tương ứng (.notification-item display:flex). #}
 <div class="notification-item {% if !notification.is_read %}unread{% endif %}" id="notif-{{ notification.id }}">
     <a href="{{ notification.link_or() }}" class="notification-link">
         <div class="notif-icon">{{ notification.icon() }}</div>
@@ -12,15 +17,15 @@
                 <span class="notif-time">{{ notification.created_at.to_rfc3339()|time_ago }}</span>
             </div>
         </div>
-        {% if !notification.is_read %}
-        <button class="notif-mark-read"
-                hx-post="/notifications/{{ notification.id }}/read"
-                hx-target="closest .notification-item"
-                hx-swap="outerHTML"
-                title="Đánh dấu đã đọc"
-                aria-label="Đánh dấu thông báo '{{ notification.title }}' đã đọc">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        </button>
-        {% endif %}
     </a>
+    {% if !notification.is_read %}
+    <button class="notif-mark-read"
+            hx-post="/notifications/{{ notification.id }}/read"
+            hx-target="closest .notification-item"
+            hx-swap="outerHTML"
+            title="Đánh dấu đã đọc"
+            aria-label="Đánh dấu thông báo '{{ notification.title }}' đã đọc">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    </button>
+    {% endif %}
 </div>

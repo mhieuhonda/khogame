@@ -150,19 +150,26 @@ impl StatsRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn daily_last_7_days(pool: &PgPool) -> AppResult<Vec<DailyStatRow>> {
-        let rows = sqlx::query_as::<_, DailyStatRow>(
+        // v2.9.2 — mốc ngày theo giờ VN tường minh (không phụ thuộc timezone
+        // server Postgres như CURRENT_DATE trước đây). generate_series(0,6)
+        // + trừ số nguyên khỏi DATE — 7 ngày liên tiếp kết thúc hôm nay VN.
+        // SQL động chỉ nhét hằng SQL_TODAY_VN (không input user).
+        let sql = format!(
             r"WITH days AS (
-                  SELECT generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day')::date AS day
+                  SELECT {} - n AS day
+                  FROM generate_series(0, 6) AS n
                )
                SELECT d.day,
                  COALESCE((SELECT SUM(views) FROM daily_stats ds WHERE ds.day = d.day), 0)::bigint AS views,
                  COALESCE((SELECT SUM(downloads) FROM daily_stats ds WHERE ds.day = d.day), 0)::bigint AS downloads,
-                 COALESCE((SELECT COUNT(*) FROM games g WHERE g.created_at::date = d.day), 0)::bigint AS new_games,
-                 COALESCE((SELECT COUNT(*) FROM users u WHERE u.created_at::date = d.day), 0)::bigint AS new_users
+                 COALESCE((SELECT COUNT(*) FROM games g WHERE (g.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = d.day), 0)::bigint AS new_games,
+                 COALESCE((SELECT COUNT(*) FROM users u WHERE (u.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = d.day), 0)::bigint AS new_users
                FROM days d ORDER BY d.day",
-        )
-        .fetch_all(pool)
-        .await?;
+            crate::utils::SQL_TODAY_VN
+        );
+        let rows = sqlx::query_as::<_, DailyStatRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_all(pool)
+            .await?;
         Ok(rows)
     }
 
@@ -170,13 +177,16 @@ impl StatsRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_view(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
-        sqlx::query(
-            r"INSERT INTO daily_stats (day, game_id, views) VALUES (CURRENT_DATE, $1, 1)
+        // v2.9.2 — ngày ghi theo giờ VN tường minh (SQL_TODAY_VN, hằng SQL).
+        let sql = format!(
+            r"INSERT INTO daily_stats (day, game_id, views) VALUES ({}, $1, 1)
                ON CONFLICT (day, game_id) DO UPDATE SET views = daily_stats.views + 1",
-        )
-        .bind(game_id)
-        .execute(pool)
-        .await?;
+            crate::utils::SQL_TODAY_VN
+        );
+        sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(game_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -184,13 +194,16 @@ impl StatsRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn record_download(pool: &PgPool, game_id: Uuid) -> AppResult<()> {
-        sqlx::query(
-            r"INSERT INTO daily_stats (day, game_id, downloads) VALUES (CURRENT_DATE, $1, 1)
+        // v2.9.2 — ngày ghi theo giờ VN tường minh (SQL_TODAY_VN, hằng SQL).
+        let sql = format!(
+            r"INSERT INTO daily_stats (day, game_id, downloads) VALUES ({}, $1, 1)
                ON CONFLICT (day, game_id) DO UPDATE SET downloads = daily_stats.downloads + 1",
-        )
-        .bind(game_id)
-        .execute(pool)
-        .await?;
+            crate::utils::SQL_TODAY_VN
+        );
+        sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(game_id)
+            .execute(pool)
+            .await?;
         Ok(())
     }
 
@@ -201,12 +214,14 @@ impl StatsRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn cleanup_old_daily_stats(pool: &PgPool, days: i64) -> AppResult<u64> {
-        let res = sqlx::query(
-            "DELETE FROM daily_stats WHERE day < CURRENT_DATE - ($1 || ' days')::INTERVAL",
-        )
-        .bind(days.to_string())
-        .execute(pool)
-        .await?;
+        let sql = format!(
+            "DELETE FROM daily_stats WHERE day < {} - ($1 || ' days')::INTERVAL",
+            crate::utils::SQL_TODAY_VN
+        );
+        let res = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(days.to_string())
+            .execute(pool)
+            .await?;
         Ok(res.rows_affected())
     }
 }
