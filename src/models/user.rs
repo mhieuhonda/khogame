@@ -265,8 +265,9 @@ pub struct UserPreference {
     pub email_notifications: bool,
     pub show_online: bool,
     pub language: String,
-    /// Hiệu ứng khung chức vụ trên hồ sơ (rainbow+lửa cho Admin,
+    /// Hiệu ứng khung chức vụ trên hồ sơ (rainbow cho Admin,
     /// glitch cho Mod) — chỉ có tác dụng với staff. Migration 016.
+    /// v2.9.0: bỏ icon lửa — badge admin chỉ còn chữ rainbow.
     pub role_badge_effects: bool,
 }
 
@@ -320,7 +321,7 @@ mod tests {
     #[test]
     fn test_is_moderator_exact() {
         // is_moderator phải CHÍNH XÁC Moderator — admin không tính là mod
-        // (dùng để chọn hiệu ứng glitch thay vì rainbow+lửa).
+        // (dùng để chọn hiệu ứng glitch thay vì rainbow).
         assert!(UserRole::Moderator.is_moderator());
         assert!(!UserRole::Admin.is_moderator());
         assert!(!UserRole::User.is_moderator());

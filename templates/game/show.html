@@ -211,12 +211,13 @@
                     {% endif %}
                     {% include "partials/comment_list_loop.html" %}
                 </div>
-                {% if game.comment_count > 50 %}
+                {# FIX v2.8.1: dùng comments_total (comment gốc, không gồm replies) #}
+                {% if comments_total > 50 %}
                 <div class="comments-load-more">
                     <button class="btn btn-outline btn-sm"
                             hx-get="/games/{{ game.slug }}/comments?page=2"
                             hx-target="closest .comments-load-more"
-                            hx-swap="outerHTML">Tải thêm bình luận (còn {{ game.comment_count - 50 }})</button>
+                            hx-swap="outerHTML">Tải thêm bình luận (còn {{ comments_total - 50 }})</button>
                 </div>
                 {% endif %}
             </section>

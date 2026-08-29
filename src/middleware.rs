@@ -1111,13 +1111,18 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
         .get(axum::http::header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    // Cookie session — nếu có cookie ls_session → user đã login → dùng
-    // Cache-Control private, không cache browser (revalidate mỗi request).
+    // Cookie session — nếu có cookie kg_session (SESSION_COOKIE) → user đã
+    // login → dùng Cache-Control private, không cache browser (revalidate
+    // mỗi request). FIX v2.8.1: trước đây check sai tên cookie cũ
+    // "ls_session=" → has_session_cookie luôn false → mọi trang cá nhân
+    // (/profile, /my-games, /notifications...) bị gắn `public, max-age=60`
+    // → CDN/browser cache được nội dung riêng tư + sau logout vẫn xem được
+    // trang đã login qua nút Back (privacy leak trên máy dùng chung).
     let has_session_cookie = request
         .headers()
         .get(axum::http::header::COOKIE)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|cookies| cookies.contains("ls_session="));
+        .is_some_and(|cookies| cookies.contains(&format!("{SESSION_COOKIE}=")));
 
     let response = next.run(request).await;
 

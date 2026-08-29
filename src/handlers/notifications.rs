@@ -24,9 +24,11 @@ pub async fn list(
     AuthUser(user): AuthUser,
     Query(q): Query<NotificationsQuery>,
 ) -> AppResult<NotificationsTemplate> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let notifications =
         NotificationRepo::list_for_user(&state.db, user.id, per_page, offset, false).await?;
     let total = NotificationRepo::count_for_user(&state.db, user.id)

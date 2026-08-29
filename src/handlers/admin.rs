@@ -221,9 +221,11 @@ pub async fn reports(
     // Chuẩn hoá status: None/""/whitespace → không filter (tránh branch
     // SQL lệch nhau giữa list và count).
     let status = q.status.as_deref().filter(|s| !s.trim().is_empty());
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // list + count độc lập — join! song song
     let (reports_res, total_res) = tokio::join!(
         ReportRepo::list(&state.db, status, per_page, offset),
@@ -403,7 +405,7 @@ pub async fn pin_comment(
     };
     match game_pinned {
         Some(pinned) => {
-            let comment = CommentRepo::find_by_id(&state.db, id)
+            let comment = CommentRepo::find_by_id(&state.db, id, Some(user.id))
                 .await?
                 .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
             // Lấy slug game để form trả lời trong item vẫn trỏ đúng URL
@@ -475,9 +477,11 @@ pub async fn games(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // 3 query độc lập — join! song song.
     let (games_res, total_res, status_counts_res) = tokio::join!(
         GameRepo::admin_list(&state.db, q.status.as_deref(), per_page, offset),
@@ -561,9 +565,11 @@ pub async fn users(
     if !user.role.is_admin() {
         return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
     }
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let search = q.q.as_deref().filter(|s| !s.trim().is_empty());
     let status_filter = q
         .status
@@ -790,9 +796,11 @@ pub async fn comments(
     }
     // Phân trang: trước đây list_recent(100) cứng — quá 100 comment là
     // comment cũ mất dạng, admin không thể kiểm duyệt.
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let (comments_res, total_res) = tokio::join!(
         CommentRepo::list_recent(&state.db, per_page, offset),
         CommentRepo::count_all(&state.db),
@@ -1134,9 +1142,11 @@ pub async fn repos(
     // Chuẩn hoá status filter + phân trang 50/trang (trước đây list 100
     // cứng — quá 100 repo là repo cũ không duyệt/xem được).
     let status = q.status.as_deref().filter(|s| !s.trim().is_empty());
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let (repos_res, total_res) = tokio::join!(
         RepoRepo::list_admin(&state.db, status, per_page, offset),
         RepoRepo::count_admin(&state.db, status),
@@ -1447,9 +1457,11 @@ pub async fn audit_log(
     }
     // Phân trang: trước đây list(200) cứng — audit log tích lũy vô hạn
     // (mọi action admin), quá 200 dòng là lịch sử cũ không xem được.
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 100;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let (logs_res, total_res) = tokio::join!(
         AdminLogRepo::list(&state.db, per_page, offset),
         AdminLogRepo::count(&state.db),
@@ -1760,7 +1772,7 @@ pub async fn news_pending(
             "Chỉ admin được duyệt tin tức. Moderator không có quyền này.".into(),
         ));
     }
-    let page = params.page.unwrap_or(1).max(1);
+    let page = params.page.unwrap_or(1).clamp(1, 10_000);
     let items = NewsRepo::list_pending(&state.db, page, ADMIN_NEWS_PER_PAGE).await?;
     let total = NewsRepo::count_pending(&state.db).await?;
     let total_pages = ((total + ADMIN_NEWS_PER_PAGE - 1) / ADMIN_NEWS_PER_PAGE).max(1);
@@ -1789,7 +1801,7 @@ pub async fn news_all(
             "Chỉ admin xem được tất cả tin tức.".into(),
         ));
     }
-    let page = params.page.unwrap_or(1).max(1);
+    let page = params.page.unwrap_or(1).clamp(1, 10_000);
     let offset = (page - 1).max(0) * ADMIN_NEWS_PER_PAGE;
     let items = sqlx::query_as::<_, crate::models::news::NewsForAdmin>(
         r"SELECT n.*, u.display_name AS author_name,

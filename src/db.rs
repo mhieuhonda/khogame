@@ -110,9 +110,12 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
             Err(e) => {
                 // Cẩn thận: sqlx error Display có thể chứa DATABASE_URL
                 // với user:pass@host — log raw sẽ rò rỉ credential vào
-                // stdout/log aggregator. Strip phần userinfo trước khi log.
+                // stdout/log aggregator. FIX v2.8.1: trước đây dùng
+                // `split('@').next()` — giữ lại ĐÚNG nửa chứa password
+                // (postgres://user:PASS) và vứt mất host. Giờ redact đúng
+                // đoạn userinfo giữa "://" và "@".
                 let safe_msg = e.to_string();
-                let stripped = safe_msg.split('@').next().unwrap_or(&safe_msg);
+                let stripped = redact_db_credentials(&safe_msg);
                 // Phân biệt retryable vs fatal: connection refused/timeout
                 // → retry; auth fail/db doesn't exist → fail fast không
                 // có point retry 30 lần chờ 60s.
@@ -137,6 +140,37 @@ pub async fn connect(database_url: &str) -> anyhow::Result<PgPool> {
     Err(last_err.unwrap_or_else(|| anyhow::anyhow!("Không kết nối được database")))
 }
 
+/// FIX v2.8.1 — Redact userinfo (user:password) trong chuỗi lỗi có thể
+/// chứa DSN kiểu `postgres://user:pass@host:port/db`, giữ lại host để
+/// operator vẫn đọc được context. Xử lý NHIỀU lần xuất hiện (error message
+/// có thể lặp URL). Không có "://" hoặc "@" → trả nguyên văn.
+/// Thao tác trên char boundary (ASCII "://" và "@") → an toàn UTF-8
+/// cho message tiếng Việt.
+fn redact_db_credentials(msg: &str) -> String {
+    let mut out = String::with_capacity(msg.len());
+    let mut rest = msg;
+    while let Some(pos) = rest.find("://") {
+        out.push_str(&rest[..pos]);
+        out.push_str("://");
+        let after = &rest[pos + 3..];
+        // Tìm '@' trong 256 ký tự đầu sau "://" (userinfo thực tế ngắn;
+        // tránh nuốt '@' của phần message dài phía sau — VD email)
+        let window: String = after.chars().take(256).collect();
+        match window.find('@') {
+            // Userinfo không rỗng → redact, nhảy qua '@'
+            Some(at) if at > 0 => {
+                out.push_str("***@");
+                rest = &after[at + 1..];
+            }
+            // Không có '@' hoặc userinfo rỗng ("scheme://@host") →
+            // tiếp tục quét từ sau "://"
+            _ => rest = after,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,5 +187,33 @@ mod tests {
         // hóa bảo vệ pool exhaustion cũng như không ngắt query dài hợp lệ.
         assert!(t.statement_timeout.as_secs() > 0);
         assert!(t.statement_timeout.as_secs() <= 600);
+    }
+
+    /// FIX v2.8.1 — redact_db_credentials phải XÓA password và GIỮ host.
+    /// Trước đây split('@').next() làm ngược lại mọi thứ (giữ password,
+    /// vứt host).
+    #[test]
+    fn test_redact_db_credentials() {
+        assert_eq!(
+            redact_db_credentials("postgres://khogame:S3cret@db.local:5432/khogame"),
+            "postgres://***@db.local:5432/khogame"
+        );
+        // Không có userinfo → nguyên văn
+        assert_eq!(
+            redact_db_credentials("postgres://localhost:5432/khogame"),
+            "postgres://localhost:5432/khogame"
+        );
+        // URL xuất hiện 2 lần trong message — cả hai đều được redact
+        assert_eq!(
+            redact_db_credentials(
+                "fail: postgres://u:p@a/db rồi lại postgres://u2:p2@b/db"
+            ),
+            "fail: postgres://***@a/db rồi lại postgres://***@b/db"
+        );
+        // Chuỗi không liên quan đến URL → nguyên văn (kể cả email)
+        assert_eq!(
+            redact_db_credentials("admin@example.com gửi lỗi thường"),
+            "admin@example.com gửi lỗi thường"
+        );
     }
 }

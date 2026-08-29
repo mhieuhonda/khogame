@@ -130,7 +130,7 @@ pub struct ProfileForm {
     pub language: Option<String>,
     pub email_notifications: Option<String>,
     pub show_online: Option<String>,
-    /// v2.1.0 — bật/tắt hiệu ứng khung chức vụ (rainbow+lửa cho Admin,
+    /// v2.1.0 — bật/tắt hiệu ứng khung chức vụ (rainbow cho Admin,
     /// glitch cho Mod). Checkbox có name này = bật, vắng = tắt.
     pub role_effects: Option<String>,
     /// v2.7.0 — mạng xã hội: 10 field `social_<platform_id>` (github,
@@ -276,9 +276,11 @@ pub async fn bookmarks_page(
     AuthUser(user): AuthUser,
     Query(q): Query<BookmarksQuery>,
 ) -> AppResult<BookmarksTemplate> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let games = InteractionRepo::bookmarks_for_user(&state.db, user.id, per_page, offset).await?;
     let total = InteractionRepo::count_bookmarks_for_user(&state.db, user.id)
         .await

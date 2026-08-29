@@ -59,7 +59,7 @@ pub async fn create_comment(
     // Chuẩn hoá depth bình luận về tối đa 2 cấp: trả lời một reply
     // sẽ được gắn vào comment gốc để luôn hiển thị đúng vị trí.
     if let Some(pid) = parent_id {
-        let parent = CommentRepo::find_by_id(&state.db, pid)
+        let parent = CommentRepo::find_by_id(&state.db, pid, Some(user.id))
             .await?
             .ok_or_else(|| AppError::BadRequest("Bình luận cha không tồn tại".into()))?;
         // Verify parent belongs to same game — chống IDOR qua parent_id
@@ -88,7 +88,7 @@ pub async fn create_comment(
     }
 
     // Return the new comment HTML for HTMX prepend
-    let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id)
+    let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id, Some(user.id))
         .await?
         .ok_or_else(|| AppError::Internal(anyhow::anyhow!("Failed to load created comment")))?;
     let partial = CommentItemPartial {
@@ -128,7 +128,7 @@ pub async fn edit_comment(
             "Nội dung quá dài (tối đa 1000 ký tự, hiện có {char_count})"
         )));
     }
-    let existing = CommentRepo::find_by_id(&state.db, id)
+    let existing = CommentRepo::find_by_id(&state.db, id, Some(user.id))
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     // Chỉ chủ sở hữu được sửa (repo cũng kiểm tra + giới hạn 5 phút)
@@ -160,7 +160,7 @@ pub async fn delete_comment(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Html<String>> {
-    let comment = CommentRepo::find_by_id(&state.db, id)
+    let comment = CommentRepo::find_by_id(&state.db, id, Some(user.id))
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     if comment.user_id != user.id && !user.role.is_staff() {
@@ -186,7 +186,7 @@ pub async fn like_comment(
     // nhưng aria-pressed / class "active" không update → UI không phản ánh
     // state like mới. Render lại full partial đảm bảo nút like, count, aria
     // đều đồng bộ.
-    let comment = CommentRepo::find_by_id(&state.db, id)
+    let comment = CommentRepo::find_by_id(&state.db, id, Some(user.id))
         .await?
         .ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
     // Lấy game_slug để partial render nút reply/edit đúng endpoint
@@ -249,9 +249,12 @@ pub async fn list_comments_page(
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page tràn
+    // i64 → wrap thành số ÂM → Postgres "OFFSET must not be negative"
+    // → 500 (prod) hoặc panic task (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let comments = CommentRepo::list_by_game(
         &state.db,
         game.id,
@@ -260,8 +263,12 @@ pub async fn list_comments_page(
         offset,
     )
     .await?;
+    // FIX v2.8.1: đếm comment GỐC (không tính replies) — comment_count
+    // trigger đếm cả replies khiến remaining bị thổi phồng và nút
+    // "Tải thêm" treo vĩnh viễn khi hết comment gốc.
+    let total_top_level = CommentRepo::count_top_level(&state.db, game.id).await?;
     let loaded = offset + comments.len() as i64;
-    let remaining = (i64::from(game.comment_count) - loaded).max(0);
+    let remaining = (total_top_level - loaded).max(0);
     let tpl = crate::templates::CommentsPageTemplate {
         current_user,
         comments,

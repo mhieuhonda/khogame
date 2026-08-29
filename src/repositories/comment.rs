@@ -163,20 +163,29 @@ impl CommentRepo {
         Ok(comments)
     }
 
+    /// FIX v2.8.1: thêm `viewer_id` — trước đây `is_liked` hardcode FALSE
+    /// khiến nút like comment sau khi bấm luôn render trạng thái CHƯA like
+    /// (partial swap về state cũ → UI sai lệch so với DB).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<CommentWithUser>> {
+    pub async fn find_by_id(
+        pool: &PgPool,
+        id: Uuid,
+        viewer_id: Option<Uuid>,
+    ) -> AppResult<Option<CommentWithUser>> {
         let c = sqlx::query_as::<_, CommentWithUser>(
             r"SELECT c.id, c.game_id, c.user_id, c.parent_id, c.content,
                 c.like_count, c.is_pinned, c.created_at, c.updated_at,
                 u.display_name as user_name, u.avatar_url as user_avatar,
-                FALSE as is_liked
+                EXISTS(SELECT 1 FROM comment_likes cl
+                       WHERE cl.comment_id = c.id AND cl.user_id = $2) AS is_liked
               FROM comments c
               JOIN users u ON u.id = c.user_id
               WHERE c.id = $1",
         )
         .bind(id)
+        .bind(viewer_id.unwrap_or_else(Uuid::nil))
         .fetch_optional(pool)
         .await?;
         Ok(c)
@@ -293,7 +302,7 @@ impl CommentRepo {
         .bind(user_id)
         .execute(pool)
         .await?;
-        Self::find_by_id(pool, id)
+        Self::find_by_id(pool, id, Some(user_id))
             .await?
             .ok_or_else(|| crate::error::AppError::NotFound("Bình luận không tồn tại".into()))
     }
@@ -388,6 +397,24 @@ impl CommentRepo {
         let c: i64 = sqlx::query_scalar(
             "SELECT (SELECT COUNT(*) FROM comments) + (SELECT COUNT(*) FROM news_comments)",
         )
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
+    /// Đếm comment GỐC (top-level, parent_id IS NULL) của 1 game.
+    /// FIX v2.8.1: `games.comment_count` (trigger) đếm CẢ replies — phân
+    /// trang "Tải thêm" chỉ list comment gốc → dùng comment_count để tính
+    /// "còn N" bị thổi phồng số replies và treo nút load-more vô hạn khi
+    /// hết comment gốc. Dùng count này cho mọi UI phân trang comment.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn count_top_level(pool: &PgPool, game_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM comments WHERE game_id = $1 AND parent_id IS NULL",
+        )
+        .bind(game_id)
         .fetch_one(pool)
         .await?;
         Ok(c)

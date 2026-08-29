@@ -388,7 +388,7 @@ pub async fn show_game(
     // related) chạy SONG SONG — trước đây 5 query song song rồi comments +
     // related tuần tự → cộng thêm 2 round-trip. Giờ tất cả 1 wave.
     let user_id_opt = current_user.as_ref().map(|u| u.id);
-    let (author_res, links_res, screenshots_res, tags_res, category_res, comments_res, related_res) = tokio::join!(
+    let (author_res, links_res, screenshots_res, tags_res, category_res, comments_res, comments_total_res, related_res) = tokio::join!(
         crate::repositories::UserRepo::find_by_id(&state.db, game.user_id),
         GameRepo::get_links(&state.db, game.id),
         GameRepo::get_screenshots(&state.db, game.id),
@@ -400,6 +400,9 @@ pub async fn show_game(
             }
         },
         crate::repositories::CommentRepo::list_by_game(&state.db, game.id, user_id_opt, 50, 0,),
+        // FIX v2.8.1: đếm comment gốc riêng để nút "Tải thêm" hiển thị
+        // đúng số còn lại (comment_count trigger đếm cả replies).
+        crate::repositories::CommentRepo::count_top_level(&state.db, game.id),
         GameRepo::related(&state.db, game.id, game.category_id, 6),
     );
     let author = author_res?.ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
@@ -408,6 +411,7 @@ pub async fn show_game(
     let tags = tags_res?;
     let category = category_res?;
     let comments = comments_res?;
+    let comments_total = comments_total_res?;
     let related_games = related_res?;
 
     // v2.6.0 — 4 interaction checks + unread_count chạy SONG SONG —
@@ -465,6 +469,7 @@ pub async fn show_game(
         tags,
         category,
         comments,
+        comments_total,
         related_games,
         is_liked,
         is_bookmarked,
@@ -723,9 +728,11 @@ async fn build_list_template(
         )));
     }
     let sort = sort_raw;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
 
     // Trang "featured" chỉ liệt kê game nổi bật, không phải toàn bộ game.
     // games + total độc lập — join! song song.
@@ -893,9 +900,11 @@ pub async fn list_by_category(
         )));
     }
     let sort = sort_raw;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // games + count độc lập — join! song song.
     let (games_res, total_res) = tokio::join!(
         GameRepo::by_category(&state.db, &cat_slug, per_page, offset, &sort),
@@ -941,9 +950,11 @@ pub async fn list_by_tag(
         )));
     }
     let sort = sort_raw;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let (games_res, total_res) = tokio::join!(
         GameRepo::by_tag(&state.db, &tag_slug, per_page, offset, &sort),
         GameRepo::count_by_tag(&state.db, &tag_slug),
@@ -1018,9 +1029,11 @@ pub async fn search(
         )));
     }
     let sort = sort_raw;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // Clamp từ khóa 200 ký tự (bằng giới hạn title game) — chống gửi
     // pattern khổng lồ làm ILIKE quét chậm toàn bảng games.
     let q_q: String = q.q.chars().take(200).collect();
@@ -1139,9 +1152,11 @@ pub async fn my_games(
     AuthUser(user): AuthUser,
     Query(q): Query<MyGamesQuery>,
 ) -> AppResult<MyGamesTemplate> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 30;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // games + total độc lập — join! song song.
     let (games_res, total_res) = tokio::join!(
         GameRepo::all_by_user(&state.db, user.id, per_page, offset),

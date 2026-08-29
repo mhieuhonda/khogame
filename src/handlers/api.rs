@@ -59,9 +59,11 @@ pub async fn games_list(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ApiListQuery>,
 ) -> AppResult<Response> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = q.per_page.unwrap_or(24).clamp(1, 50);
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let sort_raw = q.sort.clone().unwrap_or_else(|| "latest".into());
     // Validate sort whitelist — repo có match nhưng fallback cho mọi giá trị
     // lạ. Validate ở đây để trả 400 rõ ràng thay vì 200 với order mặc định
@@ -235,15 +237,21 @@ pub async fn game_comments(
     if g.status != crate::models::game::GameStatus::Published {
         return Err(AppError::NotFound("Game không tồn tại".into()));
     }
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math chống tràn số OFFSET (xem comments.rs)
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let comments = crate::repositories::CommentRepo::list_by_game(
         &state.db, g.id,
         None, // viewer ẩn danh — is_liked luôn false trong API công khai
         per_page, offset,
     )
     .await?;
+    // FIX v2.8.1: "total" trả về số comment GỐC khớp với những gì API
+    // list (parent_id IS NULL) — trước đây trả comment_count (gồm cả
+    // replies) khiến client tính sai số trang.
+    let total_top_level =
+        crate::repositories::CommentRepo::count_top_level(&state.db, g.id).await?;
     let data: Vec<serde_json::Value> = comments
         .iter()
         .map(|c| {
@@ -265,7 +273,7 @@ pub async fn game_comments(
         [(header::CACHE_CONTROL, "public, max-age=60")],
         Json(serde_json::json!({
             "data": data,
-            "total": g.comment_count,
+            "total": total_top_level,
             "page": page,
             "per_page": per_page,
         })),
@@ -280,9 +288,11 @@ pub async fn repos_list(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ApiListQuery>,
 ) -> AppResult<Response> {
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 30;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     let sort_raw = q.sort.unwrap_or_else(|| "stars".into());
     // Validate sort whitelist — trả 400 rõ ràng thay vì fallback.
     const SORT_WHITELIST: &[&str] = &["stars", "recent"];
@@ -1213,7 +1223,7 @@ pub async fn news_list(
     State(state): State<Arc<AppState>>,
     Query(params): Query<NewsListApiParams>,
 ) -> AppResult<Response> {
-    let page = params.page.unwrap_or(1).max(1);
+    let page = params.page.unwrap_or(1).clamp(1, 10_000);
     let per_page = 12i64;
     let category_raw = params.category.as_deref().unwrap_or("");
     // v1.4.0: validate category bằng DB + fallback whitelist.
@@ -1405,9 +1415,11 @@ pub async fn games_by_category(
     let cat = CategoryRepo::find_by_slug(&state.db, &cat_slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Thể loại không tồn tại".into()))?;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // games + count độc lập — join! song song
     let (games_res, total_res) = tokio::join!(
         GameRepo::by_category(
@@ -1447,9 +1459,11 @@ pub async fn games_by_tag(
     let tag = TagRepo::find_by_slug(&state.db, &tag_slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Tag không tồn tại".into()))?;
-    let page = q.page.unwrap_or(1).max(1);
+    let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 24;
-    let offset = (page - 1) * per_page;
+    // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page
+    // tràn i64 → OFFSET âm → 500 (prod) / panic (debug).
+    let offset = page.saturating_sub(1).saturating_mul(per_page);
     // games + count độc lập — join! song song
     let (games_res, total_res) = tokio::join!(
         GameRepo::by_tag(

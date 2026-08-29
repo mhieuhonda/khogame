@@ -141,6 +141,30 @@ async fn mark_failed(pool: &PgPool, id: Uuid, error: &str, max_attempts: i32) ->
     Ok(())
 }
 
+/// FIX v2.8.1 — Phục hồi email kẹt trạng thái 'sending'.
+///
+/// `claim_pending` chuyển hàng loạt row sang 'sending' rồi mới gửi SMTP.
+/// Nếu process crash / bị SIGKILL giữa batch (redeploy, OOM) thì các row
+/// 'sending' mồ côi KHÔNG BAO GIỜ được đụng tới nữa (claim_pending chỉ
+/// chọn 'pending') → email silently lost. Hàng này đưa row kẹt quá
+/// `stuck_secs` về 'pending' (giữ nguyên attempts + backoff để không
+/// spam vô hạn) để lần flush kế tiếp thử lại. Trả về số row đã requeue.
+/// # Errors
+///
+/// Trả lỗi khi DB fail.
+pub async fn requeue_stuck_sending(pool: &PgPool, stuck_secs: i64) -> AppResult<u64> {
+    let res = sqlx::query(
+        r"UPDATE email_queue
+          SET status = 'pending', next_retry_at = NOW()
+          WHERE status = 'sending'
+            AND queued_at < NOW() - ($1 || ' seconds')::INTERVAL",
+    )
+    .bind(stuck_secs)
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 /// Flush 1 batch email pending. Trả về (sent, failed, skipped).
 /// Noop nếu SMTP_HOST chưa cấu hình.
 /// # Errors

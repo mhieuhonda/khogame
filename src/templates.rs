@@ -163,6 +163,10 @@ pub struct GameShowTemplate {
     pub tags: Vec<String>,
     pub category: Option<category::Category>,
     pub comments: Vec<comment::CommentWithUser>,
+    /// Tổng comment GỐC (không gồm replies) — FIX v2.8.1: nút
+    /// "Tải thêm" trước đây dùng game.comment_count (trigger đếm cả
+    /// replies) → số "còn N" sai + nút treo khi hết comment gốc.
+    pub comments_total: i64,
     pub related_games: Vec<GameCard>,
     pub is_liked: bool,
     pub is_bookmarked: bool,

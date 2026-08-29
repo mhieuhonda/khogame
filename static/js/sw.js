@@ -56,6 +56,17 @@ function isStaticAsset(url) {
     });
 }
 
+// FIX v2.8.1 — Trang CÁ NHÂN (nội dung theo phiên đăng nhập) KHÔNG được
+// cache vào HTML cache: nếu user logout / đổi tài khoản trên máy dùng
+// chung, trang offline-fallback có thể phục hồi nội dung riêng tư từ
+// cache cho người đang ngồi trước màn hình. Với các route này → request
+// đi thẳng network (không respondWith), không cache.put, offline → lỗi
+// trình duyệt thay vì rỉ nội dung riêng tư.
+var PRIVATE_ROUTE_RE = /^(\/profile|\/my-games|\/my-news|\/notifications|\/bookmarks|\/admin|\/following)($|\/)/;
+function isPrivateRoute(url) {
+    return PRIVATE_ROUTE_RE.test(url.pathname);
+}
+
 // Install: pre-cache các critical assets (homepage, htmx, style.css)
 // để LCP install-first cũng có dữ liệu.
 self.addEventListener('install', function(event) {
@@ -142,6 +153,10 @@ self.addEventListener('fetch', function(event) {
     }
 
     // === 2) HTML routes (network-first with cache fallback) ===
+    // FIX v2.8.1: route private → network-only, không cache fallback.
+    if (isPrivateRoute(url)) {
+        return;
+    }
     if (isHtmlRequest(url)) {
         event.respondWith(
             caches.open(HTML_CACHE).then(function(cache) {

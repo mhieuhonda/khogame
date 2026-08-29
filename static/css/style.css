@@ -2631,9 +2631,10 @@ pre code {
 }
 
 /* ============================================================
-   KHUNG CHỨC VỤ HIỆU ỨNG (v2.1.0)
-   - Admin (Quản trị viên): chữ RAINBOW chạy màu + khung LỬA rực
-     cháy (border gradient động + glow nhấp nháy + icon lửa flicker)
+   KHUNG CHỨC VỤ HIỆU ỨNG (v2.9.0)
+   - Admin (Quản trị viên): CHỮ RAINBOW chạy màu + khung viền
+     RAINBOW gradient động (icon lửa đã được BỎ theo yêu cầu —
+     badge chỉ còn duy nhất chữ "Quản Trị Viên")
    - Moderator (Điều hành viên): hiệu ứng GLITCH (RGB-split burst
      ngắn mỗi ~2.4s, mượt không chói mắt)
    - Member: badge thường `.profile-role` (không hiệu ứng)
@@ -2654,46 +2655,20 @@ pre code {
     line-height: 1.4;
 }
 
-/* --- ADMIN: chữ rainbow + khung lửa rực cháy --- */
+/* --- ADMIN: chữ rainbow + khung viền rainbow (v2.9.0: bỏ lửa) --- */
 .role-badge-admin {
-    border: 2px solid #f97316;
+    border: 2px solid transparent;
     background:
         linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
-        linear-gradient(120deg, #fde68a, #f97316, #dc2626, #f59e0b, #fde68a) border-box;
+        linear-gradient(120deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444) border-box;
+    background-size: 100% 100%, 320% 100%;
     border-color: transparent;
     background-clip: padding-box, border-box;
     -webkit-background-clip: padding-box, border-box;
     box-shadow:
-        0 0 10px rgba(249, 115, 22, 0.30),
-        0 0 26px rgba(239, 68, 68, 0.15);
-    animation: admin-fire-glow 2.4s ease-in-out infinite;
-}
-
-/* Lửa liếm quanh viền — 2 lớp flame mask chạy ngược pha nhau */
-.role-badge-admin::before,
-.role-badge-admin::after {
-    content: "";
-    position: absolute;
-    inset: -3px;
-    border-radius: var(--radius-full);
-    padding: 2px;
-    background: linear-gradient(120deg, #fde68a, #f97316, #dc2626, #f59e0b, #fde68a);
-    background-size: 300% 300%;
-    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite: exclude;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 1;
-}
-
-.role-badge-admin::before {
-    animation: admin-flame-border 2.8s ease-in-out infinite;
-}
-
-.role-badge-admin::after {
-    animation: admin-flame-border 2.8s ease-in-out infinite 1.4s;
+        0 0 10px rgba(139, 92, 246, 0.22),
+        0 0 26px rgba(59, 130, 246, 0.12);
+    animation: admin-rainbow-glow 2.4s ease-in-out infinite;
 }
 
 /* Chữ rainbow chạy màu mượt */
@@ -2709,40 +2684,19 @@ pre code {
     animation: admin-rainbow-slide 5s linear infinite;
 }
 
-/* Icon lửa nhấp nháy */
-.role-badge-admin .role-badge-flame {
-    color: #f97316;
-    filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.8));
-    animation: admin-flame-flicker 1.6s ease-in-out infinite;
-    flex-shrink: 0;
-}
-
 @keyframes admin-rainbow-slide {
     0% { background-position: 0% 0; }
     100% { background-position: 320% 0; }
 }
 
-@keyframes admin-fire-glow {
+/* Glow mềm màu tím/xanh nhấp nháy nhẹ — thay cho glow lửa cũ */
+@keyframes admin-rainbow-glow {
     0%, 100% {
-        box-shadow: 0 0 10px rgba(249, 115, 22, 0.30), 0 0 26px rgba(239, 68, 68, 0.15);
+        box-shadow: 0 0 10px rgba(139, 92, 246, 0.22), 0 0 26px rgba(59, 130, 246, 0.12);
     }
     50% {
-        box-shadow: 0 0 18px rgba(249, 115, 22, 0.55), 0 0 44px rgba(239, 68, 68, 0.30);
+        box-shadow: 0 0 16px rgba(139, 92, 246, 0.38), 0 0 38px rgba(59, 130, 246, 0.22);
     }
-}
-
-@keyframes admin-flame-border {
-    0%, 100% { background-position: 0% 50%; opacity: 0; }
-    15% { opacity: 0.9; }
-    50% { background-position: 100% 50%; opacity: 0.55; }
-    85% { opacity: 0.85; }
-}
-
-@keyframes admin-flame-flicker {
-    0%, 100% { transform: scale(1) rotate(-2deg); opacity: 0.95; }
-    25% { transform: scale(1.12) rotate(2deg); opacity: 1; }
-    50% { transform: scale(0.94) rotate(-1deg); opacity: 0.85; }
-    75% { transform: scale(1.08) rotate(1deg); opacity: 1; }
 }
 
 /* --- MODERATOR: hiệu ứng Glitch --- */
@@ -2798,14 +2752,11 @@ pre code {
 }
 
 /* Tôn trọng người dùng nhạy cảm chuyển động (a11y): tắt toàn bộ animation,
-   badge về trạng thái tĩnh — admin vẫn giữ chữ rainbow gradient + viền lửa,
+   badge về trạng thái tĩnh — admin vẫn giữ chữ rainbow gradient (tĩnh),
    mod mất glitch burst nhưng text gốc hiển thị bình thường. */
 @media (prefers-reduced-motion: reduce) {
     .role-badge-admin,
-    .role-badge-admin::before,
-    .role-badge-admin::after,
     .role-badge-admin .role-badge-text,
-    .role-badge-admin .role-badge-flame,
     .role-badge-mod .role-badge-text::before,
     .role-badge-mod .role-badge-text::after,
     .rainbow-text,

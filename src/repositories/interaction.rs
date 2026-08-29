@@ -177,12 +177,21 @@ impl InteractionRepo {
             .await?;
             // Notify followee — trong cùng tx để đảm bảo không follow
             // được mà thiếu thông báo (hoặc ngược lại) khi DB chập chờn.
+            // FIX v2.8.1: CHỈ insert nếu CHƯA có thông báo 'follow' CHƯA ĐỌC
+            // từ cùng actor — chống spam khi lặp follow/unfollow liên tục
+            // (trước đây mỗi lần re-follow lại đẩy 1 notification + 1 email
+            // vào hộp thư nạn nhân — victim có thể bị dìm ~60 notif/phút).
             let follower_username = Self::get_username(&mut *tx, follower_id)
                 .await
                 .unwrap_or_default();
             sqlx::query(
                 r"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                  VALUES ($1, $2, 'follow'::notification_type, $3, $4)",
+                  SELECT $1, $2, 'follow'::notification_type, $3, $4
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM notifications n
+                      WHERE n.user_id = $1 AND n.actor_id = $2
+                        AND n.type = 'follow' AND n.is_read = FALSE
+                  )",
             )
             .bind(followee_id)
             .bind(follower_id)

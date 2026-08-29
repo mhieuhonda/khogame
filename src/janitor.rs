@@ -20,6 +20,13 @@ const EMAIL_FLUSH_INTERVAL_SECS: u64 = 120;
 /// Số email gửi mỗi batch — giới hạn để không quá tải SMTP trong 1 lần.
 const EMAIL_BATCH_SIZE: i64 = 25;
 
+/// FIX v2.8.1 — Email bị claim (status='sending') rồi process crash/redeploy
+/// (compose stop_grace_period 30s → SIGKILL khi SMTP chậm) sẽ KHÔNG BAO GIỜ
+/// được gửi lại vì claim_pending chỉ chọn status='pending'. Requeue những
+/// row kẹt 'sending' quá 10 phút (batch gửi tối đa vài giây — 10 phút nghĩa
+/// là chắc chắn process đã chết) về 'pending' để lần flush kế tiếp xử lý.
+const EMAIL_STUCK_SENDING_SECS: i64 = 600;
+
 /// Task nền dọn dẹp dữ liệu tạm — chạy suốt vòng đời server.
 ///
 /// Trước đây session hết hạn chỉ được dọn opportunistic khi có người
@@ -87,6 +94,22 @@ pub async fn run_email_flusher(state: AppState) {
         interval.as_secs()
     );
     loop {
+        // FIX v2.8.1: phục hồi email kẹt 'sending' (process chết giữa batch)
+        // trước khi flush — xem comment EMAIL_STUCK_SENDING_SECS.
+        match crate::services::email::requeue_stuck_sending(&state.db, EMAIL_STUCK_SENDING_SECS)
+            .await
+        {
+            Ok(n) if n > 0 => {
+                tracing::info!(
+                    "Email flusher: requeue {} email kẹt trạng thái 'sending' sau crash",
+                    n
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!("Email flusher: lỗi requeue email kẹt 'sending': {}", e);
+            }
+        }
         match crate::services::email::flush_pending(&state.db, EMAIL_BATCH_SIZE).await {
             Ok((sent, failed, skipped)) => {
                 if sent > 0 || failed > 0 {
