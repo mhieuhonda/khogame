@@ -55,7 +55,9 @@ pub async fn submit_review(
             "Nội dung review tối đa 4000 ký tự".into(),
         ));
     }
-    ReviewRepo::create_or_update(
+    // v2.9.3 FIX (XP farm): chỉ cộng XP khi review MỚI được tạo —
+    // edit/re-rate review cũ không cộng lại và không notify owner.
+    let (_review_id, was_insert) = ReviewRepo::create_or_update(
         &state.db,
         game.id,
         user.id,
@@ -64,13 +66,15 @@ pub async fn submit_review(
         form.rating,
     )
     .await?;
-    // XP + huy hiệu (best-effort, fire-and-forget)
-    let owner_id = game.user_id;
-    let db = state.db.clone();
-    let reviewer_id = user.id;
-    tokio::spawn(async move {
-        gsvc::on_review(&db, reviewer_id, owner_id).await;
-    });
+    // XP + huy hiệu (best-effort, fire-and-forget) — chỉ khi INSERT
+    if was_insert {
+        let owner_id = game.user_id;
+        let db = state.db.clone();
+        let reviewer_id = user.id;
+        tokio::spawn(async move {
+            gsvc::on_review(&db, reviewer_id, owner_id).await;
+        });
+    }
     Ok(Redirect::to(&format!("/games/{slug}#reviews")))
 }
 
@@ -125,6 +129,11 @@ pub async fn delete_review(
             _ => return Err(AppError::Forbidden("Không phải review của bạn".into())),
         }
     }
-    ReviewRepo::delete(&state.db, id, user.id).await?;
+    // v2.9.3 FIX: truyền is_staff vào repo + 404 khi không xóa được dòng
+    // nào (trước đây staff xóa review người khác là no-op báo thành công).
+    let deleted = ReviewRepo::delete(&state.db, id, user.id, user.role.is_staff()).await?;
+    if !deleted {
+        return Err(AppError::NotFound("Review không tồn tại".into()));
+    }
     Ok(Redirect::to(&format!("/games/{slug}#reviews")))
 }

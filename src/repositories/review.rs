@@ -7,7 +7,14 @@ pub struct ReviewRepo;
 
 impl ReviewRepo {
     /// Tạo hoặc CẬP NHẬT review của user cho game (1 user = 1 review/game,
-    /// UNIQUE(game_id, user_id)). Notify chủ game (bỏ qua tự review).
+    /// UNIQUE(game_id, user_id)). Notify chủ game (bỏ qua tự review) —
+    /// CHỈ khi review mới được tạo, không phải khi edit/re-rate.
+    ///
+    /// v2.9.3 FIX (XP farm + spam): trả về `(id, was_insert)`. Trước đây
+    /// mọi lần POST (kể cả edit review cũ) đều được coi là review mới →
+    /// handler cộng +15 XP mỗi lần (reason `review` không có cap) và
+    /// notify/email owner mỗi lần. Giờ phân biệt INSERT vs UPDATE qua
+    /// `xmax = 0` (row mới insert có xmax = 0; row vừa UPDATE có xmax ≠ 0).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -18,15 +25,15 @@ impl ReviewRepo {
         title: &str,
         content: &str,
         rating: i16,
-    ) -> AppResult<Uuid> {
-        let id: Uuid = sqlx::query_scalar(
+    ) -> AppResult<(Uuid, bool)> {
+        let (id, was_insert): (Uuid, bool) = sqlx::query_as(
             r"INSERT INTO reviews (game_id, user_id, title, content, rating)
               VALUES ($1, $2, $3, $4, $5)
               ON CONFLICT (game_id, user_id) DO UPDATE SET
                 title = EXCLUDED.title,
                 content = EXCLUDED.content,
                 rating = EXCLUDED.rating
-              RETURNING id",
+              RETURNING id, (xmax = 0) AS was_insert",
         )
         .bind(game_id)
         .bind(user_id)
@@ -36,31 +43,35 @@ impl ReviewRepo {
         .fetch_one(pool)
         .await?;
 
-        // Notify game owner
-        let owner_id: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
-            .bind(game_id)
-            .fetch_optional(pool)
-            .await?;
-        if let Some(oid) = owner_id {
-            if oid != user_id {
-                let game_slug: String = sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
+        // Notify game owner — chỉ khi review MỚI (edit không spam lại)
+        if was_insert {
+            let owner_id: Option<Uuid> =
+                sqlx::query_scalar("SELECT user_id FROM games WHERE id = $1")
                     .bind(game_id)
-                    .fetch_one(pool)
+                    .fetch_optional(pool)
                     .await?;
-                let _ = sqlx::query(
-                    r"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                      VALUES ($1, $2, 'review'::notification_type, $3, $4)",
-                )
-                .bind(oid)
-                .bind(user_id)
-                .bind("Có người vừa đánh giá game của bạn")
-                .bind(format!("/games/{game_slug}"))
-                .execute(pool)
-                .await;
+            if let Some(oid) = owner_id {
+                if oid != user_id {
+                    let game_slug: String =
+                        sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
+                            .bind(game_id)
+                            .fetch_one(pool)
+                            .await?;
+                    let _ = sqlx::query(
+                        r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                          VALUES ($1, $2, 'review'::notification_type, $3, $4)",
+                    )
+                    .bind(oid)
+                    .bind(user_id)
+                    .bind("Có người vừa đánh giá game của bạn")
+                    .bind(format!("/games/{game_slug}"))
+                    .execute(pool)
+                    .await;
+                }
             }
         }
 
-        Ok(id)
+        Ok((id, was_insert))
     }
 
     /// v2.9.0 — Review của game kèm `is_helpful` của viewer (vote qua
@@ -187,12 +198,23 @@ impl ReviewRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid) -> AppResult<()> {
-        sqlx::query("DELETE FROM reviews WHERE id = $1 AND user_id = $2")
-            .bind(id)
-            .bind(user_id)
-            .execute(pool)
-            .await?;
-        Ok(())
+    /// v2.9.3 FIX: staff (admin/mod) xóa review của NGƯỜI KHÁC trước đây
+    /// no-op âm thầm (`AND user_id = $2` dùng id của staff → rows_affected
+    /// = 0, handler vẫn báo thành công). Giờ truyền `is_staff`: staff xóa
+    /// được review bất kỳ; đồng thời trả bool để handler 404 khi không xóa
+    /// được dòng nào thay vì báo thành công giả.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid, is_staff: bool) -> AppResult<bool> {
+        let res = sqlx::query(
+            "DELETE FROM reviews WHERE id = $1 AND ($3 OR user_id = $2)",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(is_staff)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
     }
 }

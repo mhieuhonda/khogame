@@ -422,18 +422,27 @@ impl GameRepo {
     /// Xuất bản game: đặt status='published' và giữ `published_at` cũ nếu
     /// đã có (COALESCE) — để re-publish không reset mốc xuất bản gốc,
     /// ảnh hưởng đến thứ tự sort "latest" và sitemap lastmod.
+    ///
+    /// v2.9.3 FIX (XP farm): chỉ UPDATE khi `status <> 'published'` và trả
+    /// về `true` nếu game MỚI được publish ở lần gọi này. Trước đây
+    /// UPDATE vô điều kiện + caller luôn coi là "mới publish" → POST
+    /// `/games/{slug}/publish` lặp lại được +50 XP mỗi lần (hook
+    /// on_game_published fire lại) + spam notification cho followers.
+    /// # Returns
+    /// `true` nếu game chuyển trạng thái → caller mới fire hook XP.
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<()> {
-        sqlx::query(
+    pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<bool> {
+        let res = sqlx::query(
             "UPDATE games SET status = 'published', \
-             published_at = COALESCE(published_at, NOW()) WHERE id = $1",
+             published_at = COALESCE(published_at, NOW()) \
+             WHERE id = $1 AND status <> 'published'",
         )
         .bind(id)
         .execute(pool)
         .await?;
-        Ok(())
+        Ok(res.rows_affected() > 0)
     }
 
     /// # Errors

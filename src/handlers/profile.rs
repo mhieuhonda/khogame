@@ -441,7 +441,16 @@ pub async fn revoke_own_session(
     // Không cần check "phải phiên hiện tại" — delete_for_user scope theo
     // user_id nên chỉ xóa được phiên của chính mình. Thu hồi cả phiên đang
     // dùng cũng hợp lệ (user sẽ bị logout ở thiết bị này).
-    crate::repositories::SessionRepo::delete_for_user(&state.db, id, user.id).await?;
+    let deleted = crate::repositories::SessionRepo::delete_for_user(&state.db, id, user.id).await?;
+    if !deleted {
+        return Err(AppError::NotFound("Phiên không tồn tại".into()));
+    }
+    // v2.9.3 FIX: trước đây chỉ xoá row DB mà không invalidate session
+    // cache (TTL 10s) → thiết bị bị thu hồi vẫn dùng được tới 10s, mâu
+    // thuẫn với bất biến "user bị đá ra NGAY LẬP TỨC" ở logout/logout-all/
+    // admin revoke. invalidate_session_cache_for_user xoá mọi entry cache
+    // của user này — an toàn (chỉ tốn 1 cache miss cho các phiên còn lại).
+    crate::middleware::invalidate_session_cache_for_user(user.id);
     Ok(Redirect::to("/profile/sessions"))
 }
 

@@ -9,6 +9,16 @@ const NOTIFICATION_RETENTION_DAYS: i64 = 90;
 /// Số ngày giữ `daily_stats` (chart dashboard chỉ dùng 7 ngày gần nhất).
 const DAILY_STATS_RETENTION_DAYS: i64 = 90;
 
+/// v2.9.3 — Số ngày giữ dòng email_queue ở trạng thái kết thúc
+/// (sent/failed/skipped). Trước đây KHÔNG có job xoá nào → bảng phình
+/// vô hạn (mỗi notification tạo 1 row dù SMTP không chạy).
+const EMAIL_QUEUE_RETENTION_DAYS: i64 = 30;
+
+/// v2.9.3 — Số ngày giữ nhật ký `xp_events` (90 ngày đủ cho activity
+/// feed). Tổng XP không phụ thuộc bảng này (đã cache ở user_xp_totals)
+/// nên xoá an toàn tuyệt đối.
+const XP_EVENTS_RETENTION_DAYS: i64 = 90;
+
 /// Chu kỳ chạy dọn dẹp mặc định (6 giờ). Có thể override qua env
 /// `JANITOR_INTERVAL_SECS` (tối thiểu 60s để tránh spam DB khi test).
 const DEFAULT_INTERVAL_SECS: u64 = 6 * 3600;
@@ -196,14 +206,21 @@ pub async fn run_janitor(state: AppState) {
         // liên tục. Log duration để admin quan sát; vẫn giữ hành vi cũ
         // (sleep interval giữa các lần) vì dọn dẹp là idempotent.
         let start = std::time::Instant::now();
-        let (sessions, notifications, daily_stats) = do_cleanup(&state).await;
+        let (sessions, notifications, daily_stats, emails, xp_events) = do_cleanup(&state).await;
         let elapsed = start.elapsed();
-        if sessions > 0 || notifications > 0 || daily_stats > 0 {
+        if sessions > 0
+            || notifications > 0
+            || daily_stats > 0
+            || emails > 0
+            || xp_events > 0
+        {
             tracing::info!(
-                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ (mất {:?})",
+                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ (mất {:?})",
                 sessions,
                 notifications,
                 daily_stats,
+                emails,
+                xp_events,
                 elapsed
             );
         } else if elapsed > Duration::from_secs(30) {
@@ -270,8 +287,11 @@ pub async fn run_email_flusher(state: AppState) {
     }
 }
 
-/// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`) đã xoá.
-async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
+/// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`,
+/// email_queue kết thúc, xp_events) đã xoá.
+async fn do_cleanup(
+    state: &AppState,
+) -> (u64, u64, u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
         .await
         .unwrap_or_else(|e| {
@@ -291,7 +311,54 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
             tracing::warn!("Janitor: lỗi dọn daily_stats: {}", e);
             0
         });
-    (sessions, notifications, daily_stats)
+    // v2.9.3 — dọn email_queue ở trạng thái kết thúc (sent/failed/skipped):
+    // trước đây không job nào xoá → bảng lớn dần vô hạn. Row 'pending'
+    // KHÔNG BAO GIỜ bị xoá ở đây (email chưa gửi phải được giữ lại).
+    let emails = cleanup_email_queue(&state.db, EMAIL_QUEUE_RETENTION_DAYS)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Janitor: lỗi dọn email_queue: {}", e);
+            0
+        });
+    // v2.9.3 — dọn xp_events quá 90 ngày: tổng XP sống ở user_xp_totals
+    // (bảng cache tăng dần) nên xoá log cũ không ảnh hưởng số dư.
+    let xp_events = cleanup_xp_events(&state.db, XP_EVENTS_RETENTION_DAYS)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Janitor: lỗi dọn xp_events: {}", e);
+            0
+        });
+    (sessions, notifications, daily_stats, emails, xp_events)
+}
+
+/// Xoá email_queue ở trạng thái kết thúc (sent/failed/skipped) cũ hơn
+/// `days` ngày. `pending`/`sending` luôn được giữ lại.
+/// # Errors
+///
+/// Trả lỗi khi DB fail.
+async fn cleanup_email_queue(pool: &sqlx::PgPool, days: i64) -> crate::error::AppResult<u64> {
+    let res = sqlx::query(
+        "DELETE FROM email_queue
+         WHERE status IN ('sent', 'failed', 'skipped')
+           AND queued_at < NOW() - ($1 || ' days')::INTERVAL",
+    )
+    .bind(days.to_string())
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
+/// Xoá nhật ký xp_events cũ hơn `days` ngày (an toàn — total XP nằm ở
+/// user_xp_totals, không phụ thuộc bảng log).
+/// # Errors
+///
+/// Trả lỗi khi DB fail.
+async fn cleanup_xp_events(pool: &sqlx::PgPool, days: i64) -> crate::error::AppResult<u64> {
+    let res = sqlx::query("DELETE FROM xp_events WHERE created_at < NOW() - ($1 || ' days')::INTERVAL")
+        .bind(days.to_string())
+        .execute(pool)
+        .await?;
+    Ok(res.rows_affected())
 }
 
 /// v2.2.0 — Test compile-time guards
@@ -299,9 +366,9 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64) {
 mod tests {
     use super::{
         DAILY_STATS_RETENTION_DAYS, DEFAULT_INTERVAL_SECS, EMAIL_BATCH_SIZE,
-        EMAIL_FLUSH_INTERVAL_SECS, EMAIL_STUCK_SENDING_SECS, NOTIFICATION_RETENTION_DAYS,
-        REPO_REFRESH_BATCH_SIZE, REPO_REFRESH_DELAY_MS, REPO_REFRESH_INTERVAL_SECS,
-        REPO_STALE_AFTER_SECS,
+        EMAIL_FLUSH_INTERVAL_SECS, EMAIL_QUEUE_RETENTION_DAYS, EMAIL_STUCK_SENDING_SECS,
+        NOTIFICATION_RETENTION_DAYS, REPO_REFRESH_BATCH_SIZE, REPO_REFRESH_DELAY_MS,
+        REPO_REFRESH_INTERVAL_SECS, REPO_STALE_AFTER_SECS, XP_EVENTS_RETENTION_DAYS,
     };
 
     /// Compile-time guards: nếu ai đổi hằng số janitor thành giá trị vô lý
@@ -316,6 +383,9 @@ mod tests {
         // v2.8.1 — email kẹt 'sending' phải requeue sau thời gian hợp lý
         // (vài phút batch → 10 phút là chắc chắn process đã chết).
         assert!(EMAIL_STUCK_SENDING_SECS >= 300);
+        // v2.9.3 — guards retention mới:
+        assert!(EMAIL_QUEUE_RETENTION_DAYS >= 7); // email log phải sống đủ lâu để audit
+        assert!(XP_EVENTS_RETENTION_DAYS >= 30); // activity feed cần cửa sổ tối thiểu
         // v2.9.1 — guards cho job refresh repo:
         assert!(REPO_REFRESH_INTERVAL_SECS >= 300); // tránh spam GitHub API
         assert!(REPO_STALE_AFTER_SECS >= 300); // stale "hợp lý", không quét liên tục

@@ -39,12 +39,16 @@ async fn notify_level_up(
 }
 
 /// Cộng XP + tự gửi notification lên cấp nếu vượt ngưỡng.
+/// v2.9.3 FIX: dùng `xp_effective` (XP thực cộng sau anti-farm cap) để
+/// suy ra level trước đó — trước đây dùng `amount` gốc nên khi bị cap
+/// về 0 mà user đang gần ngưỡng, `level.xp - amount` rơi dưới ngưỡng cũ
+/// → notification "Lên cấp" ảo lặp lại dù tổng XP không đổi.
 pub async fn award_xp(pool: &PgPool, user_id: Uuid, reason: &str, amount: i32) {
-    if let Ok((_, level)) = GamificationRepo::award_xp(pool, user_id, reason, amount).await {
-        // Level-up check: đọc level TRƯỚC không khả thi trong award đã gộp —
-        // thay vào đó dùng logic "XP mới chạm đúng ngưỡng"? Đơn giản hoá:
-        // so level suy từ (total - amount) với level mới.
-        let prev = crate::models::gamification::level_from_xp(level.xp - amount.max(0));
+    if let Ok((_, xp_effective, level)) =
+        GamificationRepo::award_xp(pool, user_id, reason, amount).await
+    {
+        // Level-up check: level TRƯỚC = level suy từ (tổng mới - XP thực cộng).
+        let prev = crate::models::gamification::level_from_xp(level.xp - xp_effective.max(0));
         if level.level > prev.level {
             notify_level_up(pool, user_id, level).await;
         }

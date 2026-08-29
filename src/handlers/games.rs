@@ -1292,14 +1292,19 @@ pub async fn publish_game(
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền".into()));
     }
-    GameRepo::publish(&state.db, game.id).await?;
-    // v2.9.0 — XP + huy hiệu + thông báo followers
-    let db = state.db.clone();
-    let (uid, gid) = (user.id, game.id);
-    let (gslug, gtitle) = (game.slug.clone(), game.title.clone());
-    tokio::spawn(async move {
-        crate::services::gamification::on_game_published(&db, uid, gid, &gslug, &gtitle).await;
-    });
+    // v2.9.3 FIX (XP farm): chỉ fire hook XP/notification khi game MỚI
+    // chuyển sang published — re-publish game đã published không cộng XP
+    // và không spam followers.
+    let newly_published = GameRepo::publish(&state.db, game.id).await?;
+    if newly_published {
+        // v2.9.0 — XP + huy hiệu + thông báo followers
+        let db = state.db.clone();
+        let (uid, gid) = (user.id, game.id);
+        let (gslug, gtitle) = (game.slug.clone(), game.title.clone());
+        tokio::spawn(async move {
+            crate::services::gamification::on_game_published(&db, uid, gid, &gslug, &gtitle).await;
+        });
+    }
     Ok(Html(
         "<div class='alert alert-success'>Đã xuất bản game.</div>".into(),
     ))

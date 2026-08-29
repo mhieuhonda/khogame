@@ -882,6 +882,20 @@ pub async fn rate_limit(
     next: Next,
 ) -> Result<Response, RateLimited> {
     let path = request.uri().path().to_string();
+    // v2.9.3 FIX: miễn rate-limit cho asset tĩnh GET/HEAD (/static/*,
+    // /uploads/*) và healthcheck. Asset tĩnh: cacheable, không nhạy cảm,
+    // mỗi trang đầu tải ~8 file song song — trước đây khi IP-private
+    // fallback, toàn bộ visitor mới chưa có cookie (anon) dồn vào bucket
+    // chung "x:anon-unknown" → ~15 visitor đầu tiên là đốt 120/phút → 429
+    // trên CSS cho người dùng thật. Healthcheck cũng không nên đốt quota.
+    if (request.method() == axum::http::Method::GET
+        || request.method() == axum::http::Method::HEAD)
+        && (path.starts_with("/static/")
+            || path.starts_with("/uploads/")
+            || path == "/health")
+    {
+        return Ok(next.run(request).await);
+    }
     // Lấy IP thật của client qua ConnectInfo (được axum thêm vào request
     // extensions khi dùng into_make_service_with_connect_info). Nếu chạy sau
     // proxy (Traefik/Coolify), ưu tiên header X-Forwarded-For / X-Real-IP /
@@ -1331,12 +1345,16 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // Link header cho HTTP/2 Early Hints — preload critical assets.
     // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
     // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
-    if let Ok(link_val) = HeaderValue::from_str(
-        "</static/css/style.css?v=2.8.0>; rel=preload; as=style, \
-         </static/js/htmx.min.js?v=2.8.0>; rel=preload; as=script, \
-         </static/js/app.js?v=2.8.0>; rel=preload; as=script, \
-         </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin",
-    ) {
+    // v2.9.3 FIX: trước đây hardcode ?v=2.8.0 trong khi layout.html dùng
+    // ?v=CARGO_PKG_VERSION — 2 URL khác cache key → preload luôn lãng phí,
+    // asset tải 2 lần ở first view. Giờ dùng cùng nguồn env!().
+    let ver = env!("CARGO_PKG_VERSION");
+    if let Ok(link_val) = HeaderValue::from_str(&format!(
+        "</static/css/style.css?v={ver}>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v={ver}>; rel=preload; as=script, \
+         </static/js/app.js?v={ver}>; rel=preload; as=script, \
+         </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin"
+    )) {
         headers.insert(axum::http::header::LINK, link_val);
     }
     let _ = HeaderName::from_static; // silence unused import warning

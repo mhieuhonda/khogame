@@ -37,12 +37,18 @@ pub mod xp {
     pub const RECEIVED_FOLLOW: i32 = 10;
 
     /// Anti-farm: số lượng tối đa event XP mỗi NGÀY cho các reason
-    /// dễ spam (bình luận, chat). Vượt ngưỡng → không cộng thêm nhưng
-    /// vẫn ghi log hoạt động (amount = 0) để activity feed đầy đủ.
+    /// dễ spam (bình luận, chat). Vượt ngưỡng → không cộng thêm.
+    /// (v2.9.3: bỏ ghi event amount=0 — activity feed chỉ đọc amount>0
+    /// nên ghi amount=0 là thuần rác DB, nhân lên với mỗi chat/like.)
     pub const MAX_COMMENT_XP_PER_DAY: i32 = 10;
     pub const MAX_CHAT_XP_PER_DAY: i32 = 20;
     pub const MAX_RECEIVED_LIKE_XP_PER_DAY: i32 = 50;
     pub const MAX_RECEIVED_DOWNLOAD_XP_PER_DAY: i32 = 50;
+    /// v2.9.3 FIX (XP farm): `received_follow` trước đây KHÔNG có cap —
+    /// unfollow → re-follow lặp vòng (120 lần/phút theo bucket route)
+    /// bơm +10 XP/lần vào account mục tiêu. Cap 50 XP/ngày tương tự
+    /// `received_like`.
+    pub const MAX_RECEIVED_FOLLOW_XP_PER_DAY: i32 = 50;
 }
 
 pub struct GamificationRepo;
@@ -67,7 +73,10 @@ impl GamificationRepo {
         Ok(level_from_xp(Self::total_xp(pool, user_id).await?))
     }
 
-    /// Cộng XP + ghi log. Trả về (tổng XP mới, LevelInfo mới).
+    /// Cộng XP + ghi log. Trả về (tổng XP mới, XP thực cộng, LevelInfo mới).
+    /// `xp_effective` = 0 khi bị chạm trần anti-farm — caller (service) dùng
+    /// giá trị này để tính level TRƯỚC khi cộng, tránh báo "Lên cấp" ảo
+    /// khi tổng không đổi (v2.9.3 FIX).
     /// Không thông báo ở tầng repo — caller quyết định (tránh lặp
     /// notification khi award_xp được gọi từ nhiều ngữ cảnh).
     /// # Errors
@@ -77,7 +86,7 @@ impl GamificationRepo {
         user_id: Uuid,
         reason: &str,
         amount: i32,
-    ) -> AppResult<(i32, LevelInfo)> {
+    ) -> AppResult<(i32, i32, LevelInfo)> {
         let mut tx = pool.begin().await?;
         // Anti-farm cap: đếm số event cùng reason đã có hôm nay
         let effective = if amount > 0 {
@@ -86,6 +95,7 @@ impl GamificationRepo {
                 "chat_message" => Some(xp::MAX_CHAT_XP_PER_DAY),
                 "received_like" => Some(xp::MAX_RECEIVED_LIKE_XP_PER_DAY),
                 "received_download" => Some(xp::MAX_RECEIVED_DOWNLOAD_XP_PER_DAY),
+                "received_follow" => Some(xp::MAX_RECEIVED_FOLLOW_XP_PER_DAY),
                 _ => None,
             };
             match cap {
@@ -104,7 +114,7 @@ impl GamificationRepo {
                         .fetch_one(&mut *tx)
                         .await?;
                     if today_count >= i64::from(cap) {
-                        0 // đã chạm trần ngày — log amount 0
+                        0 // đã chạm trần ngày — không cộng thêm
                     } else {
                         amount
                     }
@@ -114,13 +124,17 @@ impl GamificationRepo {
         } else {
             amount
         };
-        // Log event (kể cả amount=0 — activity feed vẫn có hoạt động)
-        sqlx::query("INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, $2, $3)")
-            .bind(user_id)
-            .bind(reason)
-            .bind(effective)
-            .execute(&mut *tx)
-            .await?;
+        // Log event — CHỈ khi có XP thực (v2.9.3: amount=0 không được
+        // activity feed đọc (bộ lọc amount>0) nên không ghi nữa, tránh
+        // xp_events phình vô hạn do chat/like spam).
+        if effective > 0 {
+            sqlx::query("INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, $2, $3)")
+                .bind(user_id)
+                .bind(reason)
+                .bind(effective)
+                .execute(&mut *tx)
+                .await?;
+        }
         // Upsert tổng
         let total: i32 = sqlx::query_scalar(
             r"INSERT INTO user_xp_totals (user_id, total_xp)
@@ -135,7 +149,7 @@ impl GamificationRepo {
         .fetch_one(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok((total, level_from_xp(total)))
+        Ok((total, effective, level_from_xp(total)))
     }
 
     /// Trạng thái điểm danh hôm nay của user.
@@ -218,13 +232,19 @@ impl GamificationRepo {
             // Request song song khác vừa chiếm slot điểm danh hôm nay.
             // Rollback tx (không ghi gì), trả về state của bản ghi thắng.
             tx.rollback().await?;
-            let winner = sqlx::query_as::<_, DailyCheckin>(
+            // v2.9.3 FIX: trước đây SELECT lại bằng CURRENT_DATE (timezone
+            // server) trong khi insert ghi theo ngày VN — server chạy UTC
+            // thì khung 17:00–24:00 UTC fetch_one không thấy row →
+            // RowNotFound → double-click thứ hai nhận 400 vô nghĩa.
+            let sql = format!(
                 "SELECT user_id, checkin_date, streak, xp_awarded, created_at
-                 FROM daily_checkins WHERE user_id = $1 AND checkin_date = CURRENT_DATE",
-            )
-            .bind(user_id)
-            .fetch_one(pool)
-            .await?;
+                 FROM daily_checkins WHERE user_id = $1 AND checkin_date = {}",
+                crate::utils::SQL_TODAY_VN
+            );
+            let winner = sqlx::query_as::<_, DailyCheckin>(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(user_id)
+                .fetch_one(pool)
+                .await?;
             let level = level_from_xp(Self::total_xp(pool, user_id).await?);
             return Ok((winner.streak, 0, level));
         }
@@ -530,23 +550,30 @@ impl GamificationRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn leaderboard_top_xp(pool: &PgPool, limit: i64) -> AppResult<Vec<LeaderboardEntry>> {
-        let rows = sqlx::query_as::<_, LeaderboardEntry>(
+        // v2.9.3 FIX: streak lấy từ checkin gần nhất KHÔNG có điều kiện
+        // thời gian → user đứt chuỗi từ 2 tháng trước vẫn hiện "🔥 30".
+        // Giờ chỉ nhận streak khi checkin gần nhất là hôm nay hoặc hôm qua
+        // (đúng quy tắc current_streak) — cũ hơn → 0.
+        let sql = format!(
             r"SELECT u.username, u.display_name, u.avatar_url,
                       x.total_xp,
                       (SELECT COUNT(*) FROM games g
                         WHERE g.user_id = u.id AND g.status = 'published') AS games_count,
                       COALESCE((SELECT c.streak FROM daily_checkins c
                         WHERE c.user_id = u.id
+                          AND c.checkin_date >= {} - 1
                         ORDER BY c.checkin_date DESC LIMIT 1), 0)::bigint AS streak
                FROM user_xp_totals x
                JOIN users u ON u.id = x.user_id
                WHERE u.is_banned = FALSE AND u.role <> 'ai_agent'
                ORDER BY x.total_xp DESC, u.created_at ASC
                LIMIT $1",
-        )
-        .bind(limit)
-        .fetch_all(pool)
-        .await?;
+            crate::utils::SQL_TODAY_VN
+        );
+        let rows = sqlx::query_as::<_, LeaderboardEntry>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(limit)
+            .fetch_all(pool)
+            .await?;
         Ok(rows)
     }
 
