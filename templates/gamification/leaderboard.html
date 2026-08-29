@@ -48,6 +48,42 @@
             {% endif %}
         </div>
 
+        {# === v3.0.0 — BẢNG XẾP HẠNG MÙA (tháng) + HALL OF FAME TUẦN === #}
+        <div class="season-boards">
+            <div class="season-board">
+                <h3 class="leaderboard-subtitle">🏅 Top tháng này</h3>
+                {% if season_entries.is_empty() %}
+                <p class="empty-state">Tháng mới bắt đầu — ai sẽ lên đầu tiên?</p>
+                {% else %}
+                <ol class="leaderboard-list season-list">
+                    {% for e in season_entries %}
+                    <li class="leaderboard-row {% if loop.index <= 3 %}leaderboard-top-{{ loop.index }}{% endif %}">
+                        <span class="leaderboard-rank">{{ loop.index }}</span>
+                        <a href="/u/{{ e.username }}" class="leaderboard-user">{{ e.display_name }}</a>
+                        <span class="leaderboard-xp">+{{ e.period_xp }} XP</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% endif %}
+            </div>
+            <div class="season-board">
+                <h3 class="leaderboard-subtitle">⚡ Hall of Fame tuần</h3>
+                {% if weekly_entries.is_empty() %}
+                <p class="empty-state">Tuần này còn trống — dẫn trước ngay!</p>
+                {% else %}
+                <ol class="leaderboard-list season-list">
+                    {% for e in weekly_entries %}
+                    <li class="leaderboard-row {% if loop.index <= 3 %}leaderboard-top-{{ loop.index }}{% endif %}">
+                        <span class="leaderboard-rank">{{ loop.index }}</span>
+                        <a href="/u/{{ e.username }}" class="leaderboard-user">{{ e.display_name }}</a>
+                        <span class="leaderboard-xp">+{{ e.period_xp }} XP</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% endif %}
+            </div>
+        </div>
+
         <aside class="leaderboard-side">
             <h2 class="leaderboard-subtitle">🔥 Game hot tuần này</h2>
             {% if hot_games.is_empty() %}
@@ -63,6 +99,20 @@
                 {% endfor %}
             </ol>
             {% endif %}
+            {# === v3.0.0 — LỊCH ĐIỂM DANH THÁNG === #}
+            {% match calendar %}
+            {% when Option::Some with (days) %}
+            <div class="checkin-calendar">
+                <h3 class="leaderboard-subtitle">📅 Điểm danh tháng này</h3>
+                <div class="calendar-grid">
+                    {% for d in days %}
+                    <span class="calendar-day {% if d.checked_in %}calendar-checked{% endif %} {% if d.is_today %}calendar-today{% endif %} {% if d.is_future %}calendar-future{% endif %}" title="Ngày {{ d.day }}">{{ d.day }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% when Option::None %}
+            {% endmatch %}
+
             <div class="leaderboard-cta">
                 <p>Cách kiếm XP:</p>
                 <ul class="leaderboard-rules">

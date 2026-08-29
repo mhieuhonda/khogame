@@ -39,7 +39,7 @@ async fn notify_level_up(
 }
 
 /// Cộng XP + tự gửi notification lên cấp nếu vượt ngưỡng.
-/// v2.9.3 FIX: dùng `xp_effective` (XP thực cộng sau anti-farm cap) để
+/// v3.0.0 FIX: dùng `xp_effective` (XP thực cộng sau anti-farm cap) để
 /// suy ra level trước đó — trước đây dùng `amount` gốc nên khi bị cap
 /// về 0 mà user đang gần ngưỡng, `level.xp - amount` rơi dưới ngưỡng cũ
 /// → notification "Lên cấp" ảo lặp lại dù tổng XP không đổi.
@@ -134,6 +134,20 @@ pub async fn on_game_published(
         .flatten()
         .unwrap_or_default();
     let link = format!("/games/{game_slug}");
+    // v3.0.0 — lọc theo tùy chọn thông báo từng follower (1 query gộp:
+    // LEFT JOIN prefs — vắng row = TRUE). Best-effort.
+    let filtered: Vec<Uuid> = sqlx::query_scalar(
+        r"SELECT f.follower_id
+           FROM follows f
+           LEFT JOIN user_notification_prefs p ON p.user_id = f.follower_id
+           WHERE f.followee_id = $1
+             AND COALESCE(p.inapp_new_game, TRUE)",
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or(followers);
+    let followers = filtered;
     for f in followers {
         let _ = sqlx::query(
             r"INSERT INTO notifications (user_id, actor_id, type, title, content, link)

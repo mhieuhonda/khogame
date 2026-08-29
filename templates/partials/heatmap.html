@@ -1,0 +1,26 @@
+{# Heatmap hoạt động 13 tuần — context: `heatmap` (HeatmapWidget) — dùng trong profile/show.html #}
+<div class="heatmap-wrap">
+    <div class="heatmap-grid" aria-label="Heatmap hoạt động 13 tuần">
+        {% for week in heatmap.weeks %}
+        <div class="heatmap-col">
+            {% for cell in week %}
+            {% match cell %}
+            {% when Option::Some with (cell2) %}
+            <span class="heatmap-cell heat-{{ cell2.level }}" title="{{ cell2.count }} hoạt động"></span>
+            {% when Option::None %}
+            <span class="heatmap-cell heat-empty"></span>
+            {% endmatch %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    <div class="heatmap-legend">
+        <span>Ít</span>
+        <span class="heatmap-cell heat-0"></span>
+        <span class="heatmap-cell heat-1"></span>
+        <span class="heatmap-cell heat-2"></span>
+        <span class="heatmap-cell heat-3"></span>
+        <span class="heatmap-cell heat-4"></span>
+        <span>Nhiều</span>
+    </div>
+</div>

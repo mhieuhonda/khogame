@@ -35,6 +35,9 @@ pub struct ChatMessageWithUser {
     /// Role của author — client hiển thị badge "Admin" / "Mod" để user
     /// phân biệt được tin nhắn từ staff vs user thường.
     pub role: String,
+    /// v3.0.0 — Viền tên phát sáng (mua "Viền Tên 30 Ngày" ở cửa hàng XP,
+    /// còn hạn: user_boosts.name_glow_until > NOW()).
+    pub name_glow: bool,
 }
 
 impl ChatMessageWithUser {

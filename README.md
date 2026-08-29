@@ -6,8 +6,8 @@
 ![Axum](https://img.shields.io/badge/Axum-0.8.9-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue?logo=postgresql)
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
-![Tests](https://img.shields.io/badge/tests-221%2B-brightgreen)
-![Version](https://img.shields.io/badge/version-2.9.3-0f172a)
+![Tests](https://img.shields.io/badge/tests-322-brightgreen)
+![Version](https://img.shields.io/badge/version-3.0.0-0f172a)
 
 ## Stack công nghệ
 
@@ -40,6 +40,24 @@
 - Like · Bookmark · Rate 1-5 sao · Follow author
 - Email notifications (lettre + email_queue + janitor flusher 2 phút)
 - Báo cáo nội dung (workflow pending → reviewing → resolved/dismissed)
+
+### Giữ chân người dùng (v3.0.0 — Retention Engine)
+- **Nhiệm vụ hằng ngày + hàng tuần** (daily/weekly quests) — tự sinh 5 nhiệm vụ/ngày deterministic theo user, progress auto-bump từ mọi hành động, claim XP thủ công (agency)
+- **Vòng quay may mắn** — 1 lượt/ngày, trọng số công khai, jackpot 500 XP (0.5%), animation celebrate khi trúng lớn
+- **Câu đố hằng ngày (Trivia)** — 3 câu/ngày, đáp án chỉ chấm ở server (chống inspect), đúng cả 3 nhận bonus
+- **Cửa hàng XP** — Streak Freeze ❄️, XP Boost x2 24h ⚡, Viền Tên chat 30 ngày ✨, Hộp Bí Ẩn 🎁; trừ XP atomic trong 1 transaction
+- **Streak Freeze tự động** — lỡ 1 ngày điểm danh tự tiêu 1 freeze, chuỗi tiếp tục (PK chống double-consume, chỉ bảo vệ đúng 1 ngày)
+- **Giới thiệu bạn bè (Referral)** — link ngắn `/r/{code}` + cookie 30 ngày, cả 2 phía +100 XP khi người mới đăng nhập lần đầu
+- **Heatmap hoạt động 13 tuần** trên hồ sơ (GitHub-style) + lịch điểm danh tháng
+- **Streak warning banner** — nhắc điểm danh khi chuỗi đang chờ + **XP toast** cho mọi phần thưởng
+- **Game của Ngày** — deterministic theo ngày VN (hashtext id+date), mỗi ngày một bất ngờ
+- **Sắp ra mắt** — đếm ngược release_date trên trang game + section homepage
+- **Người chơi khác cũng thích** — co-occurrence qua bảng likes (collaborative-ish)
+- **Onboarding checklist** — 5 bước đầu ×20 XP cho người mới (avatar, bio, comment, bookmark, rating)
+- **Độ hoàn thiện hồ sơ** — ring % avatar/bio/socials trên profile
+- **Bảng xếp hạng mùa (tháng) + Hall of Fame tuần** — cạnh tranh chu kỳ ngắn từ xp_events
+- **Đặc quyền theo cấp độ** — giới hạn bộ sưu tập tăng theo level (5→7→12→20)
+- **Tùy chọn thông báo** — bật/tắt từng loại in-app (follow/new_game/review/mention) + **email tổng hợp hằng tuần** opt-in (job sáng thứ 2 giờ VN)
 
 ### Admin
 - Dashboard chart 7 ngày (views/downloads/games/users)

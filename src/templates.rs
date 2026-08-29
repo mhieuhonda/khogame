@@ -76,6 +76,13 @@ impl_template_response!(
     CollectionShowTemplate,
     ProfileSessionsTemplate,
     AdminAchievementsTemplate,
+    // v3.0.0 — retention pages
+    QuestsTemplate,
+    SpinTemplate,
+    TriviaTemplate,
+    ShopTemplate,
+    ReferralTemplate,
+    NotifPrefsTemplate,
 );
 
 /// Home page
@@ -111,6 +118,15 @@ pub struct IndexTemplate {
     pub recommended_games: Vec<GameCard>,
     /// v2.9.0 — "Game của tuần" (hot theo daily_stats 7 ngày).
     pub week_games: Vec<GameCard>,
+    /// v3.0.0 — "Game của ngày" (deterministic theo ngày VN).
+    pub game_of_the_day: Option<crate::models::retention::GameOfDay>,
+    /// v3.0.0 — "Sắp ra mắt" (release_date >= hôm nay, gần nhất trước).
+    pub upcoming_games: Vec<crate::models::retention::UpcomingGame>,
+    /// v3.0.0 — Cảnh báo "sắp mất streak": Some(streak) khi user đã có
+    /// chuỗi nhưng CHƯA điểm danh hôm nay. None khi an toàn / chưa login.
+    pub streak_warning: Option<i32>,
+    /// v3.0.0 — Widget onboarding (None nếu ẩn — user cũ đã xong).
+    pub onboarding: Option<OnboardingWidget>,
 }
 
 /// Login page
@@ -201,6 +217,13 @@ pub struct GameShowTemplate {
     pub my_review: Option<crate::models::review::Review>,
     /// v2.9.0 — Bộ sưu tập của viewer kèm cờ đã chứa game này hay chưa.
     pub my_collections: Vec<(uuid::Uuid, String, bool)>,
+    /// v3.0.0 — "Người chơi khác cũng thích" (co-occurrence qua likes).
+    pub also_liked: Vec<GameCard>,
+    /// v3.0.0 — Số ngày còn lại tới release_date (None nếu đã ra mắt /
+    /// không có ngày). >0 → hiển thị đếm ngược.
+    pub release_countdown_days: Option<i64>,
+    /// v3.0.0 — User đã tải nhưng CHƯA đánh giá → hiện prompt mời đánh giá.
+    pub invite_rating: bool,
 }
 
 /// Search results
@@ -273,6 +296,12 @@ pub struct ProfileTemplate {
     pub activity: Vec<crate::models::gamification::ActivityEvent>,
     /// v2.9.0 — Bộ sưu tập công khai của user.
     pub collections: Vec<crate::repositories::collection::CollectionWithOwner>,
+    /// v3.0.0 — Heatmap hoạt động 13 tuần.
+    pub heatmap: crate::templates::HeatmapWidget,
+    /// v3.0.0 — Độ hoàn thiện hồ sơ 0-100 (avatar+bio+socials).
+    pub completeness_pct: i32,
+    /// v3.0.0 — Năm tham gia (anniversary context) + số tháng thành viên.
+    pub member_months: i64,
 }
 
 /// Edit profile
@@ -709,6 +738,20 @@ pub mod filters {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    /// v3.0.0 — cache-bust version tự động từ CARGO_PKG_VERSION. Dùng trong
+    /// layout: `?v={{ ""|ver }}` — bump Cargo.toml là toàn site + Link
+    /// preload (middleware) đồng bộ version, hết lỗi quên bump tay
+    /// (bug v3.0.0: preload hardcode ?v=2.8.0 trong khi layout ?v=2.9.2).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[askama::filter_fn]
+    pub fn ver(s: impl Display, _: &dyn Values) -> ::askama::Result<String> {
+        // Input bị bỏ qua — chỉ cần 1 cách gọi ổn định từ template.
+        let _ = &s;
+        Ok(env!("CARGO_PKG_VERSION").to_string())
+    }
+
     #[askama::filter_fn]
     pub fn abs_url(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<String> {
         let base = super::SITE_BASE_URL
@@ -1288,6 +1331,12 @@ pub struct LeaderboardTemplate {
     pub unread_notifications: i64,
     pub entries: Vec<crate::models::gamification::LeaderboardEntry>,
     pub hot_games: Vec<GameCard>,
+    /// v3.0.0 — Top XP tháng hiện tại (season board).
+    pub season_entries: Vec<crate::models::retention::SeasonEntry>,
+    /// v3.0.0 — Top XP tuần hiện tại (hall of fame tuần).
+    pub weekly_entries: Vec<crate::models::retention::SeasonEntry>,
+    /// v3.0.0 — Lịch điểm danh tháng hiện tại của viewer (None nếu anon).
+    pub calendar: Option<Vec<crate::models::retention::CalendarDay>>,
 }
 
 /// Trang huy hiệu cá nhân (/achievements)
@@ -1375,4 +1424,114 @@ pub struct AdminAchievementsTemplate {
     pub total_holders: i64,
     pub earned_today: i64,
     pub checkins_today: i64,
+}
+
+// ============================================================
+// v3.0.0 — RETENTION: nhiệm vụ, vòng quay, câu đố, cửa hàng,
+// referral, tùy chọn thông báo.
+// ============================================================
+
+/// Trang nhiệm vụ hằng ngày/tuần (/quests)
+#[derive(Template)]
+#[template(path = "gamification/quests.html")]
+pub struct QuestsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub quests: Vec<crate::models::retention::QuestWithProgress>,
+    pub level: crate::models::gamification::LevelInfo,
+}
+
+/// Trang vòng quay may mắn (/spin)
+#[derive(Template)]
+#[template(path = "gamification/spin.html")]
+pub struct SpinTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Giải đã quay hôm nay (Some = đã quay, nút disabled).
+    pub today_prize: Option<i32>,
+    pub level: crate::models::gamification::LevelInfo,
+}
+
+/// Trang câu đố hằng ngày (/trivia)
+#[derive(Template)]
+#[template(path = "gamification/trivia.html")]
+pub struct TriviaTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub questions: Vec<crate::models::retention::TriviaQuestionPublic>,
+    /// Số câu đúng hôm nay (để hiện trạng thái hoàn thành).
+    pub correct_today: i64,
+}
+
+/// Trang cửa hàng XP (/shop)
+#[derive(Template)]
+#[template(path = "gamification/shop.html")]
+pub struct ShopTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<crate::models::retention::ShopItemWithStock>,
+    pub total_xp: i32,
+}
+
+/// Trang chương trình giới thiệu (/referral)
+#[derive(Template)]
+#[template(path = "gamification/referral.html")]
+pub struct ReferralTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub info: crate::models::retention::ReferralInfo,
+    /// Host công khai (vd louis.vangioitutien.com) — hiện link đầy đủ.
+    pub base_url_host: String,
+}
+
+/// Trang tùy chọn thông báo (/settings/notifications)
+#[derive(Template)]
+#[template(path = "pages/notif_prefs.html")]
+pub struct NotifPrefsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub prefs: crate::models::retention::NotificationPrefs,
+    /// Hiện banner "đã lưu" sau khi POST redirect ?saved=1.
+    pub saved: bool,
+}
+
+/// 1 ô heatmap: số hoạt động + mức màu 0-4 (tính sẵn ở Rust).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HeatCell {
+    pub count: i32,
+    /// 0..=4 — class CSS heat-N.
+    pub level: u8,
+}
+
+impl HeatCell {
+    /// Tính mức màu từ số hoạt động (hàm thuần — test được).
+    #[must_use]
+    pub fn from_count(count: i32) -> Self {
+        let level = if count <= 0 {
+            0
+        } else if count == 1 {
+            1
+        } else if count <= 3 {
+            2
+        } else if count <= 8 {
+            3
+        } else {
+            4
+        };
+        Self { count, level }
+    }
+}
+
+/// Dữ liệu heatmap (render qua include trong profile.html).
+#[derive(Debug, Clone)]
+pub struct HeatmapWidget {
+    /// 13 tuần × 7 ngày — cell None = ngoài phạm vi.
+    pub weeks: Vec<[Option<HeatCell>; 7]>,
+}
+
+/// Dữ liệu onboarding checklist (render qua include trong index.html).
+#[derive(Debug, Clone)]
+pub struct OnboardingWidget {
+    pub steps: Vec<crate::models::retention::OnboardingStepStatus>,
+    pub done_count: usize,
 }

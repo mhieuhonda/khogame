@@ -211,6 +211,12 @@ impl InteractionRepo {
         if follower_id == followee_id {
             return Ok(false);
         }
+        // v3.0.0 — tôn trọng tùy chọn thông báo của followee: tắt
+        // "theo dõi" in-app thì vẫn follow bình thường, chỉ không tạo
+        // notification (check trước tx — pref mặc định TRUE nếu chưa có row).
+        let inapp_ok = crate::repositories::PrefsRepo::allows(pool, followee_id, "follow")
+            .await
+            .unwrap_or(true);
         // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race)
         let mut tx = pool.begin().await?;
         let deleted =
@@ -232,6 +238,7 @@ impl InteractionRepo {
             .await?;
             // Notify followee — trong cùng tx để đảm bảo không follow
             // được mà thiếu thông báo (hoặc ngược lại) khi DB chập chờn.
+            // v3.0.0: chỉ khi followee KHÔNG tắt loại 'follow'.
             // FIX v2.8.1: CHỈ insert nếu CHƯA có thông báo 'follow' CHƯA ĐỌC
             // từ cùng actor — chống spam khi lặp follow/unfollow liên tục
             // (trước đây mỗi lần re-follow lại đẩy 1 notification + 1 email
@@ -239,21 +246,23 @@ impl InteractionRepo {
             let follower_username = Self::get_username(&mut *tx, follower_id)
                 .await
                 .unwrap_or_default();
-            sqlx::query(
-                r"INSERT INTO notifications (user_id, actor_id, type, title, link)
-                  SELECT $1, $2, 'follow'::notification_type, $3, $4
-                  WHERE NOT EXISTS (
-                      SELECT 1 FROM notifications n
-                      WHERE n.user_id = $1 AND n.actor_id = $2
-                        AND n.type = 'follow' AND n.is_read = FALSE
-                  )",
-            )
-            .bind(followee_id)
-            .bind(follower_id)
-            .bind("Có người mới theo dõi bạn")
-            .bind(format!("/u/{follower_username}"))
-            .execute(&mut *tx)
-            .await?;
+            if inapp_ok {
+                sqlx::query(
+                    r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+                      SELECT $1, $2, 'follow'::notification_type, $3, $4
+                      WHERE NOT EXISTS (
+                          SELECT 1 FROM notifications n
+                          WHERE n.user_id = $1 AND n.actor_id = $2
+                            AND n.type = 'follow' AND n.is_read = FALSE
+                      )",
+                )
+                .bind(followee_id)
+                .bind(follower_id)
+                .bind("Có người mới theo dõi bạn")
+                .bind(format!("/u/{follower_username}"))
+                .execute(&mut *tx)
+                .await?;
+            }
             tx.commit().await?;
             Ok(true)
         }
@@ -336,6 +345,20 @@ impl InteractionRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    /// v3.0.0 — user đã tải game này chưa (cho prompt "mời đánh giá").
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn has_downloaded(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
+        let exists: Option<i32> = sqlx::query_scalar(
+            "SELECT 1 FROM downloads WHERE game_id = $1 AND user_id = $2 LIMIT 1",
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(exists.is_some())
+    }
+
     pub async fn record_download(
         pool: &PgPool,
         game_id: Uuid,

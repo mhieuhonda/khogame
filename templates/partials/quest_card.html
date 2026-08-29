@@ -1,0 +1,25 @@
+{# Card 1 nhiệm vụ — include BÊN TRONG vòng {% for q in quests %}.
+   Context: biến `q` (QuestWithProgress). #}
+<div class="quest-card {% if q.claimed %}quest-claimed-card{% else if q.completed %}quest-completed-card{% endif %}">
+    <div class="quest-icon" aria-hidden="true">{{ q.quest.icon }}</div>
+    <div class="quest-body">
+        <h3 class="quest-title">{{ q.quest.title }}</h3>
+        <p class="quest-desc">{{ q.quest.description }}</p>
+        <div class="quest-progress-bar">
+            <div class="quest-progress-fill" style="width: {% if q.quest.target > 0 %}{{ (q.progress * 100) / q.quest.target }}{% else %}0{% endif %}%"></div>
+        </div>
+        <span class="quest-progress-label">{{ q.progress }}/{{ q.quest.target }} · +{{ q.quest.xp_reward }} XP</span>
+    </div>
+    <div class="quest-action">
+        {% if q.claimed %}
+        <span class="quest-claimed">✓ Đã nhận</span>
+        {% else if q.completed %}
+        <button class="btn btn-primary btn-sm"
+                hx-post="/quests/{{ q.quest.id }}/claim"
+                hx-target="closest .quest-action"
+                hx-swap="innerHTML">Nhận thưởng</button>
+        {% else %}
+        <span class="quest-pending">Đang làm…</span>
+        {% endif %}
+    </div>
+</div>

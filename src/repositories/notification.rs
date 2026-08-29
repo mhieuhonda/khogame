@@ -202,10 +202,14 @@ impl NotificationRepo {
         if user_ids.is_empty() {
             return Ok(());
         }
+        // v3.0.0 — lọc theo prefs: user tắt 'mention' không nhận (LEFT JOIN
+        // prefs — vắng row = TRUE, hành vi cũ bảo toàn)
         sqlx::query(
             r"INSERT INTO notifications (user_id, actor_id, type, title, link)
               SELECT u, $2, 'mention'::notification_type, $3, $4
-              FROM unnest($1::uuid[]) AS u",
+              FROM unnest($1::uuid[]) AS u
+              LEFT JOIN user_notification_prefs p ON p.user_id = u
+              WHERE COALESCE(p.inapp_mention, TRUE)",
         )
         .bind(user_ids)
         .bind(actor_id)
@@ -229,10 +233,14 @@ impl NotificationRepo {
         if user_ids.is_empty() {
             return Ok(());
         }
+        // v3.0.0 — lọc theo prefs: user tắt 'mention' không nhận (LEFT JOIN
+        // prefs — vắng row = TRUE, hành vi cũ bảo toàn)
         sqlx::query(
             r"INSERT INTO notifications (user_id, actor_id, type, title, link)
               SELECT u, $2, 'mention'::notification_type, $3, $4
-              FROM unnest($1::uuid[]) AS u",
+              FROM unnest($1::uuid[]) AS u
+              LEFT JOIN user_notification_prefs p ON p.user_id = u
+              WHERE COALESCE(p.inapp_mention, TRUE)",
         )
         .bind(user_ids)
         .bind(actor_id)

@@ -149,6 +149,24 @@ pub async fn show_profile(
     );
     let activity = activity_res;
     let collections = collections_res;
+    // v3.0.0 — heatmap 13 tuần (dữ liệu thô → grid 7×13)
+    let heat_rows = crate::repositories::ActivityRepo::heatmap(&state.db, user.id)
+        .await
+        .unwrap_or_default();
+    let heatmap = build_heatmap_widget(&heat_rows);
+    // v3.0.0 — completeness: avatar (35%) + bio (35%) + socials (30%)
+    let mut completeness_pct = 0i32;
+    if user.avatar_url.as_deref().map(|a| !a.is_empty()).unwrap_or(false) {
+        completeness_pct += 35;
+    }
+    if user.bio.as_deref().map(|b| !b.is_empty()).unwrap_or(false) {
+        completeness_pct += 35;
+    }
+    if !socials.is_empty() {
+        completeness_pct += 30;
+    }
+    let member_months = (chrono::Utc::now() - user.created_at).num_days() / 30;
+
     Ok(ProfileTemplate {
         current_user,
         unread_notifications: unread,
@@ -167,7 +185,46 @@ pub async fn show_profile(
         achievements_count,
         activity,
         collections,
+        heatmap,
+        completeness_pct,
+        member_months,
     })
+}
+
+/// Xây grid heatmap 13 tuần × 7 ngày từ danh sách ngày hoạt động.
+/// Tuần bắt đầu thứ 2 (cột dọc), ô ngoài phạm vi = None.
+fn build_heatmap_widget(
+    rows: &[crate::models::retention::HeatmapDay],
+) -> crate::templates::HeatmapWidget {
+    use chrono::{Datelike, Duration};
+    use std::collections::HashMap;
+    let today = crate::utils::today_vn();
+    let mut counts: HashMap<chrono::NaiveDate, i32> = HashMap::new();
+    for r in rows {
+        counts.insert(r.day, r.activity_count);
+    }
+    // Điểm kết thúc = Chủ nhật của tuần hiện tại
+    let days_since_monday = i64::from(today.weekday().num_days_from_monday());
+    let week_end = today + Duration::days(6 - days_since_monday);
+    let week_start = week_end - Duration::days(90); // 13 tuần × 7 - 1
+    let mut weeks: Vec<[Option<crate::templates::HeatCell>; 7]> = Vec::with_capacity(13);
+    let mut cursor = week_start;
+    loop {
+        let mut col: [Option<crate::templates::HeatCell>; 7] = Default::default();
+        for cell in &mut col {
+            if cursor > week_end {
+                break;
+            }
+            let c = counts.get(&cursor).copied().unwrap_or(0);
+            *cell = Some(crate::templates::HeatCell::from_count(c));
+            cursor += Duration::days(1);
+        }
+        weeks.push(col);
+        if cursor > week_end {
+            break;
+        }
+    }
+    crate::templates::HeatmapWidget { weeks }
 }
 
 // ============= My profile redirect =============
@@ -346,6 +403,8 @@ pub async fn update_profile(
     let uid_hook = user.id;
     tokio::spawn(async move {
         crate::services::gamification::on_profile_update(&db_hook, uid_hook).await;
+        // v3.0.0 — onboarding steps avatar/bio (best-effort)
+        crate::services::retention::check_profile_onboarding(&db_hook, uid_hook).await;
     });
     Ok(Redirect::to(&format!("/u/{}", user.username)))
 }
@@ -445,7 +504,7 @@ pub async fn revoke_own_session(
     if !deleted {
         return Err(AppError::NotFound("Phiên không tồn tại".into()));
     }
-    // v2.9.3 FIX: trước đây chỉ xoá row DB mà không invalidate session
+    // v3.0.0 FIX: trước đây chỉ xoá row DB mà không invalidate session
     // cache (TTL 10s) → thiết bị bị thu hồi vẫn dùng được tới 10s, mâu
     // thuẫn với bất biến "user bị đá ra NGAY LẬP TỨC" ở logout/logout-all/
     // admin revoke. invalidate_session_cache_for_user xoá mọi entry cache

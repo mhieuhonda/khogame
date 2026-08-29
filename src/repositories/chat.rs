@@ -37,9 +37,11 @@ impl ChatRepo {
             SELECT
                 i.id, i.user_id, i.content, i.is_deleted, i.created_at,
                 u.username, u.display_name, u.avatar_url,
-                u.role::text AS role
+                u.role::text AS role,
+                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow
             FROM inserted i
             JOIN users u ON u.id = i.user_id
+            LEFT JOIN user_boosts b ON b.user_id = u.id
             "#,
         )
         .bind(user_id)
@@ -63,9 +65,11 @@ impl ChatRepo {
             SELECT
                 m.id, m.user_id, m.content, m.is_deleted, m.created_at,
                 u.username, u.display_name, u.avatar_url,
-                u.role::text AS role
+                u.role::text AS role,
+                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow
             FROM chat_messages m
             JOIN users u ON u.id = m.user_id
+            LEFT JOIN user_boosts b ON b.user_id = m.user_id
             WHERE m.is_deleted = FALSE
             ORDER BY m.created_at DESC
             LIMIT $1

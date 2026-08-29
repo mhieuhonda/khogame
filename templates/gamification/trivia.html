@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}Câu đố game{% endblock %}
+{% block description %}Câu đố game hằng ngày trên Louis Space — trả lời đúng để nhận XP, đủ 3 câu nhận thêm thưởng.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Câu đố hằng ngày
+        </h1>
+        <a href="/quests" class="section-more">Nhiệm vụ →</a>
+    </div>
+
+    <p class="achievements-hint">🧠 Trả lời đúng mỗi câu +10 XP. Trả lời đúng <strong>cả 3 câu</strong> nhận thêm +20 XP. Mỗi ngày 3 câu mới!</p>
+
+    {% if questions.is_empty() %}
+    <div class="empty-state">
+        <p>{% if correct_today >= 3 %}🎉 Bạn đã hoàn thành câu đố hôm nay — quay lại ngày mai!{% else %}Hết câu hỏi hôm nay — quay lại ngày mai nhé!{% endif %}</p>
+    </div>
+    {% endif %}
+
+    <div class="trivia-list">
+        {% for q in questions %}
+        <div class="trivia-card" id="trivia-q{{ q.id }}">
+            <h3 class="trivia-question">{{ loop.index }}. {{ q.question }}</h3>
+            <div class="trivia-choices">
+                {% for opt_text in q.options_list() %}
+                <button class="trivia-choice"
+                        hx-post="/trivia/answer"
+                        hx-vals='{"question_id": {{ q.id }}, "answer_index": {{ loop.index0 }}}'
+                        hx-target="#trivia-fb{{ q.id }}"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="find button, this">{{ opt_text }}</button>
+                {% endfor %}
+            </div>
+            <div id="trivia-fb{{ q.id }}" aria-live="polite"></div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

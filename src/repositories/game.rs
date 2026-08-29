@@ -423,7 +423,7 @@ impl GameRepo {
     /// đã có (COALESCE) — để re-publish không reset mốc xuất bản gốc,
     /// ảnh hưởng đến thứ tự sort "latest" và sitemap lastmod.
     ///
-    /// v2.9.3 FIX (XP farm): chỉ UPDATE khi `status <> 'published'` và trả
+    /// v3.0.0 FIX (XP farm): chỉ UPDATE khi `status <> 'published'` và trả
     /// về `true` nếu game MỚI được publish ở lần gọi này. Trước đây
     /// UPDATE vô điều kiện + caller luôn coi là "mới publish" → POST
     /// `/games/{slug}/publish` lặp lại được +50 XP mỗi lần (hook
@@ -1062,6 +1062,108 @@ impl GameRepo {
         .fetch_all(pool)
         .await?;
         Ok(cards)
+    }
+
+    /// v3.0.0 — "NGƯỜI CHƠI KHÁC CŨNG THÍCH": co-occurrence qua bảng
+    /// likes — user thích game này cũng thích những game nào. Top 6,
+    /// loại trừ chính game hiện tại.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn also_liked(
+        pool: &PgPool,
+        game_id: Uuid,
+        limit: i64,
+    ) -> AppResult<Vec<GameCard>> {
+        let cards = sqlx::query_as::<_, GameCard>(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                c.name as category_name, c.slug as category_slug,
+                u.display_name as author_name, u.avatar_url as author_avatar,
+                g.view_count, g.download_count, g.like_count, g.comment_count,
+                g.rating_avg, g.rating_count,
+                COALESCE(
+                  (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                  ARRAY[]::text[]
+                ) as platforms,
+                g.published_at
+              FROM games g
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.status = 'published' AND g.id IN (
+                SELECT l2.game_id FROM likes l1
+                JOIN likes l2 ON l2.user_id = l1.user_id
+                WHERE l1.game_id = $1 AND l2.game_id <> $1
+                GROUP BY l2.game_id
+                ORDER BY COUNT(*) DESC
+                LIMIT $2
+              )",
+        )
+        .bind(game_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(cards)
+    }
+
+    /// v3.0.0 — GAME CỦA NGÀY: deterministic theo ngày VN (hashtext của
+    /// id + ngày) — cùng ngày ai cũng thấy cùng 1 game, khác ngày khác
+    /// game → lý do quay lại mỗi ngày. Rất rẻ (1 query, index scan).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn game_of_the_day(pool: &PgPool) -> AppResult<Option<GameCard>> {
+        let sql = format!(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                c.name as category_name, c.slug as category_slug,
+                u.display_name as author_name, u.avatar_url as author_avatar,
+                g.view_count, g.download_count, g.like_count, g.comment_count,
+                g.rating_avg, g.rating_count,
+                COALESCE(
+                  (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                  ARRAY[]::text[]
+                ) as platforms,
+                g.published_at
+              FROM games g
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.status = 'published'
+              ORDER BY hashtext(g.id::text || {}::text)
+              LIMIT 1",
+            crate::utils::SQL_TODAY_VN
+        );
+        let card = sqlx::query_as::<_, GameCard>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_optional(pool)
+            .await?;
+        Ok(card)
+    }
+
+    /// v3.0.0 — GAME SẮP RA MẤT: release_date >= hôm nay (giờ VN), gần nhất
+    /// trước. Section "Sắp ra mắt" trên homepage — tạo cảm giác "sắp có
+    /// gì đó xảy ra" giữ user quay lại theo dõi.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn upcoming_releases(
+        pool: &PgPool,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::retention::UpcomingGame>> {
+        let sql = format!(
+            r"SELECT slug, title, cover_image, release_date
+              FROM games
+              WHERE status = 'published'
+                AND release_date IS NOT NULL
+                AND release_date >= {}
+              ORDER BY release_date ASC
+              LIMIT $1",
+            crate::utils::SQL_TODAY_VN
+        );
+        let rows = sqlx::query_as::<_, crate::models::retention::UpcomingGame>(
+            sqlx::AssertSqlSafe(sql.as_str()),
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
     }
 
     /// # Errors

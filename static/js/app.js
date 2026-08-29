@@ -1106,3 +1106,37 @@
         window.addEventListener('DOMContentLoaded', initHtmx);
     }
 })();
+
+/* ============================================================
+   v3.0.0 — RETENTION enhancements
+   ============================================================ */
+
+/* XP Toast: partial HTMX trả về element có attribute data-xp-toast
+   (vd data-xp-toast="+50 XP") → hiện toast nổi phía dưới màn hình.
+   Giúp người chơi THẤY ngay phần thưởng — dopamine loop của retention. */
+(function () {
+  'use strict';
+  function showXpToast(text) {
+    var toast = document.createElement('div');
+    toast.className = 'xp-toast';
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    // Self-remove sau 2.8s (khớp animation trong style.css)
+    setTimeout(function () { toast.remove(); }, 2800);
+  }
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    var target = evt.detail && evt.detail.target;
+    if (!target) return;
+    // Tìm phần tử có data-xp-toast trong swapped content
+    var el = target.querySelector
+      ? target.querySelector('[data-xp-toast]')
+      : null;
+    if (!el && target.getAttribute && target.getAttribute('data-xp-toast')) {
+      el = target;
+    }
+    if (el) {
+      var text = el.getAttribute('data-xp-toast');
+      if (text) showXpToast(text);
+    }
+  });
+})();

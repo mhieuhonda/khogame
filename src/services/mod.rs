@@ -20,6 +20,7 @@ pub mod gamification;
 pub mod github;
 pub mod json_ld;
 pub mod markdown;
+pub mod retention;
 pub mod storage;
 
 pub use audit::audit;

@@ -61,6 +61,22 @@ pub async fn create(
     if form.description.len() > 300 {
         return Err(AppError::BadRequest("Mô tả tối đa 300 ký tự".into()));
     }
+    // v3.0.0 — LEVEL PERK: giới hạn số bộ sưu tập tăng theo cấp độ.
+    // Cơ sở 5; +2 từ Lv.3, +5 từ Lv.7, +10 từ Lv.10 → max 15.
+    let (count, level) = {
+        let (c, l) = tokio::join!(
+            CollectionRepo::count_for_user(&state.db, user.id),
+            crate::repositories::GamificationRepo::level_of(&state.db, user.id),
+        );
+        (c.unwrap_or(0), l.unwrap_or_else(|_| crate::models::gamification::level_from_xp(0)))
+    };
+    let max_collections = collection_limit_for_level(level.level);
+    if count >= i64::from(max_collections) {
+        return Err(AppError::BadRequest(format!(
+            "Bạn đã đạt giới hạn {} bộ sưu tập ở Cấp {} — lên cấp cao hơn để mở thêm (hoặc xoá bớt)!",
+            max_collections, level.level
+        )));
+    }
     CollectionRepo::create(
         &state.db,
         user.id,
@@ -70,6 +86,18 @@ pub async fn create(
     )
     .await?;
     Ok(Redirect::to("/collections"))
+}
+
+/// v3.0.0 — Giới hạn bộ sưu tập theo cấp độ (hàm thuần — test được).
+/// Lv.1-2: 5 · Lv.3-6: 7 · Lv.7-9: 12 · Lv.10+: 20.
+#[must_use]
+pub fn collection_limit_for_level(level: i32) -> i32 {
+    match level {
+        0..=2 => 5,
+        3..=6 => 7,
+        7..=9 => 12,
+        _ => 20,
+    }
 }
 
 /// GET /collections/{id} — xem bộ sưu tập (public hoặc chủ sở hữu).
@@ -146,7 +174,16 @@ pub async fn add_game(
             "Bạn không có quyền sửa bộ sưu tập này".into(),
         ));
     }
-    CollectionRepo::add_game(&state.db, collection.id, game.id).await?;
+    let added = CollectionRepo::add_game(&state.db, collection.id, game.id).await?;
+    // v3.0.0 — quest add_collection (chỉ khi add THÀNH CÔNG — đã có trong
+    // collection thì add_game trả false, không bump ảo)
+    if added {
+        let db_ret = state.db.clone();
+        let ret_uid = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "add_collection", 1).await;
+        });
+    }
     Ok(Redirect::to(&format!("/games/{slug}")))
 }
 
@@ -172,4 +209,21 @@ pub async fn remove_game(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     CollectionRepo::remove_game(&state.db, collection.id, game.id).await?;
     Ok(Redirect::to(&format!("/games/{slug}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collection_limit_for_level;
+
+    #[test]
+    fn test_collection_limit_by_level() {
+        assert_eq!(collection_limit_for_level(1), 5);
+        assert_eq!(collection_limit_for_level(2), 5);
+        assert_eq!(collection_limit_for_level(3), 7);
+        assert_eq!(collection_limit_for_level(6), 7);
+        assert_eq!(collection_limit_for_level(7), 12);
+        assert_eq!(collection_limit_for_level(9), 12);
+        assert_eq!(collection_limit_for_level(10), 20);
+        assert_eq!(collection_limit_for_level(99), 20);
+    }
 }

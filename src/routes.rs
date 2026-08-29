@@ -142,6 +142,24 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/following", get(handlers::gamification::following_feed))
         .route("/games/random", get(handlers::gamification::random_game))
+        // === v3.0.0 RETENTION: quests / spin / trivia / shop / referral /
+        // prefs + link ngắn referral ===
+        .route("/quests", get(handlers::quests::quests_page))
+        .route(
+            "/quests/{id}/claim",
+            post(handlers::quests::claim_quest),
+        )
+        .route("/spin", get(handlers::arcade::spin_page).post(handlers::arcade::do_spin))
+        .route("/trivia", get(handlers::arcade::trivia_page))
+        .route("/trivia/answer", post(handlers::arcade::answer_trivia))
+        .route("/shop", get(handlers::shop::shop_page))
+        .route("/shop/buy", post(handlers::shop::buy_item))
+        .route("/referral", get(handlers::referral::referral_page))
+        .route("/r/{code}", get(handlers::referral::short_link))
+        .route(
+            "/settings/notifications",
+            get(handlers::prefs::page).post(handlers::prefs::save),
+        )
         // Collections
         .route(
             "/collections",

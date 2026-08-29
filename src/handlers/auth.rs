@@ -1,7 +1,7 @@
 use crate::auth;
 use crate::error::{AppError, AppResult};
 use crate::middleware::{AuthUser, CurrentUser};
-use crate::repositories::{SessionRepo, UserRepo};
+use crate::repositories::{ReferralRepo, SessionRepo, UserRepo};
 use crate::state::AppState;
 use crate::templates::LoginTemplate;
 use askama::Template;
@@ -103,6 +103,10 @@ pub async fn google_callback(
     let cookie_state = jar.get(OAUTH_STATE_COOKIE).map(|c| c.value().to_string());
     let next_path = jar
         .get(auth::OAUTH_NEXT_COOKIE)
+        .map(|c| c.value().to_string());
+    // v3.0.0 — capture referral cookie TRƯỚC khi jar bị move vào cleanup
+    let referral_code_cookie = jar
+        .get(crate::handlers::referral::REFERRAL_COOKIE)
         .map(|c| c.value().to_string());
     let mut cleanup_jar = jar;
     // Xoá cookie state và next dù thành công hay thất bại
@@ -228,6 +232,41 @@ pub async fn google_callback(
 
     let mut new_jar = cleanup_jar;
     auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
+
+    // v3.0.0 — REFERRAL: người MỚI (is_new_user) đăng nhập lần đầu với
+    // cookie referral (từ link /r/{code}) → ghi nhận + thưởng XP cả 2
+    // phía. Chỉ user MỚI được nhận (tài khoản cũ gắn cookie không có
+    // gì thay đổi) — chống self-referral cho account sẵn có.
+    if is_new_user {
+        if let Some(ref_code) = referral_code_cookie {
+            let referrer = ReferralRepo::resolve_code(&state.db, &ref_code)
+                .await
+                .ok()
+                .flatten();
+            if let Some(referrer_id) = referrer {
+                match ReferralRepo::record_referral(&state.db, referrer_id, user.id).await {
+                    Ok(Some(rid)) => {
+                        let st = state.clone();
+                        let (new_uid, rid) = (user.id, rid);
+                        tokio::spawn(async move {
+                            crate::handlers::referral::reward_both(&st, rid, new_uid).await;
+                        });
+                    }
+                    Ok(None) => {
+                        tracing::info!(code = %ref_code, "Referral bỏ qua (đã có/self)");
+                    }
+                    Err(e) => tracing::warn!("Referral record fail: {e}"),
+                }
+            }
+            // Xoá cookie referral (dùng kèm path "/" khớp với lúc set)
+            use axum_extra::extract::cookie::Cookie;
+            new_jar = new_jar.remove(
+                Cookie::build((crate::handlers::referral::REFERRAL_COOKIE, ""))
+                    .path("/")
+                    .build(),
+            );
+        }
+    }
 
     // Redirect về `next` nếu có, mặc định /
     // Dùng helper sanitize_redirect thống nhất — chặn control char,

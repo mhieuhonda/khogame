@@ -882,7 +882,7 @@ pub async fn rate_limit(
     next: Next,
 ) -> Result<Response, RateLimited> {
     let path = request.uri().path().to_string();
-    // v2.9.3 FIX: miễn rate-limit cho asset tĩnh GET/HEAD (/static/*,
+    // v3.0.0 FIX: miễn rate-limit cho asset tĩnh GET/HEAD (/static/*,
     // /uploads/*) và healthcheck. Asset tĩnh: cacheable, không nhạy cảm,
     // mỗi trang đầu tải ~8 file song song — trước đây khi IP-private
     // fallback, toàn bộ visitor mới chưa có cookie (anon) dồn vào bucket
@@ -1345,14 +1345,14 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // Link header cho HTTP/2 Early Hints — preload critical assets.
     // Browser cache first visit có thể dùng hint này fetch song song CSS/JS
     // trước khi parse HTML đến thẻ <link>/<script> tương ứng.
-    // v2.9.3 FIX: trước đây hardcode ?v=2.8.0 trong khi layout.html dùng
-    // ?v=CARGO_PKG_VERSION — 2 URL khác cache key → preload luôn lãng phí,
-    // asset tải 2 lần ở first view. Giờ dùng cùng nguồn env!().
-    let ver = env!("CARGO_PKG_VERSION");
+    // v3.0.0 FIX: trước đây hardcode ?v=2.8.0 trong khi layout.html dùng
+    // ?v=CARGO_PKG_VERSION (2.9.2) — 2 URL khác cache key → preload luôn
+    // lãng phí, asset tải 2 lần. Giờ lấy version từ cùng nguồn env!().
+    let v = env!("CARGO_PKG_VERSION");
     if let Ok(link_val) = HeaderValue::from_str(&format!(
-        "</static/css/style.css?v={ver}>; rel=preload; as=style, \
-         </static/js/htmx.min.js?v={ver}>; rel=preload; as=script, \
-         </static/js/app.js?v={ver}>; rel=preload; as=script, \
+        "</static/css/style.css?v={v}>; rel=preload; as=style, \
+         </static/js/htmx.min.js?v={v}>; rel=preload; as=script, \
+         </static/js/app.js?v={v}>; rel=preload; as=script, \
          </static/fonts/inter-var-latin.woff2>; rel=preload; as=font; crossorigin"
     )) {
         headers.insert(axum::http::header::LINK, link_val);

@@ -83,12 +83,28 @@ pub async fn leaderboard(
     State(state): State<Arc<AppState>>,
     crate::middleware::CurrentUser(current_user): crate::middleware::CurrentUser,
 ) -> AppResult<LeaderboardTemplate> {
-    let (top_users, hot_games) = tokio::join!(
+    let (top_users, hot_games, season, weekly, calendar) = tokio::join!(
         GamificationRepo::leaderboard_top_xp(&state.db, 20),
         crate::repositories::GameRepo::hot_this_week(&state.db, 10),
+        // v3.0.0 — season tháng + hall of fame tuần
+        GamificationRepo::season_leaderboard(&state.db, 10),
+        GamificationRepo::weekly_leaderboard(&state.db, 10),
+        // v3.0.0 — lịch điểm danh tháng của viewer
+        async {
+            match current_user.as_ref() {
+                Some(u) => crate::repositories::ActivityRepo::checkin_calendar_month(
+                        &state.db, u.id,
+                    )
+                    .await
+                    .ok(),
+                None => None,
+            }
+        },
     );
     let entries: Vec<LeaderboardEntry> = top_users?;
     let hot_games = hot_games?;
+    let season_entries = season?;
+    let weekly_entries = weekly?;
     let unread = match current_user.as_ref() {
         Some(u) => crate::handlers::auth::unread_count(&state, u.id).await,
         None => 0,
@@ -98,6 +114,9 @@ pub async fn leaderboard(
         unread_notifications: unread,
         entries,
         hot_games,
+        season_entries,
+        weekly_entries,
+        calendar,
     })
 }
 

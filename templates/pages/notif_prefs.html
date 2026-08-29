@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+
+{% block title %}Tùy chọn thông báo{% endblock %}
+{% block description %}Chọn loại thông báo bạn muốn nhận trên Louis Space và đăng ký email tổng hợp hằng tuần.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            Tùy chọn thông báo
+        </h1>
+    </div>
+
+    {% if saved %}
+    <div class="alert alert-success">✅ Đã lưu tùy chọn thông báo của bạn.</div>
+    {% endif %}
+
+    <form method="post" action="/settings/notifications" class="prefs-form">
+        <fieldset class="prefs-group">
+            <legend>Thông báo trong ứng dụng</legend>
+            <label class="prefs-row"><input type="checkbox" name="inapp_follow" {% if prefs.inapp_follow %}checked{% endif %}> Khi có người <strong>theo dõi</strong> bạn</label>
+            <label class="prefs-row"><input type="checkbox" name="inapp_new_game" {% if prefs.inapp_new_game %}checked{% endif %}> Khi tác giả bạn theo dõi <strong>đăng game mới</strong></label>
+            <label class="prefs-row"><input type="checkbox" name="inapp_review" {% if prefs.inapp_review %}checked{% endif %}> Khi game của bạn có <strong>review mới</strong></label>
+            <label class="prefs-row"><input type="checkbox" name="inapp_mention" {% if prefs.inapp_mention %}checked{% endif %}> Khi có người <strong>nhắc đến (@)</strong> bạn</label>
+        </fieldset>
+        <fieldset class="prefs-group">
+            <legend>Email</legend>
+            <label class="prefs-row"><input type="checkbox" name="weekly_digest" {% if prefs.weekly_digest %}checked{% endif %}> 📬 <strong>Tổng hợp hằng tuần</strong> — game hot + tin mới, gửi sáng thứ 2 (mỗi tuần 1 email duy nhất)</label>
+            <p class="achievements-hint">Email thông báo tức thời (bình luận, like...) vẫn tuân theo nút "Email thông báo" trong phần hồ sơ.</p>
+        </fieldset>
+        <button type="submit" class="btn btn-primary">Lưu tùy chọn</button>
+    </form>
+</section>
+{% endblock %}

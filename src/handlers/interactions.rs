@@ -51,6 +51,12 @@ pub async fn toggle_like(
         tokio::spawn(async move {
             crate::services::gamification::on_like(&db, actor, owner).await;
         });
+        // v3.0.0 — quest like_game + heatmap
+        let db_ret = state.db.clone();
+        let ret_uid = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "like_game", 1).await;
+        });
     }
     // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
     let like_count = GameRepo::find_by_id(&state.db, game.id)
@@ -78,6 +84,14 @@ pub async fn toggle_bookmark(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
     let is_bookmarked = InteractionRepo::toggle_bookmark(&state.db, game.id, user.id).await?;
+    // v3.0.0 — onboarding step first_bookmark (chỉ khi ĐANG bookmark)
+    if is_bookmarked {
+        let db_ob = state.db.clone();
+        let uid_ob = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::onboarding_step(&db_ob, uid_ob, "first_bookmark").await;
+        });
+    }
     // v2.9.0 — huy hiệu discovery khi bookmark (best-effort)
     if is_bookmarked {
         let db = state.db.clone();
@@ -111,6 +125,19 @@ pub async fn rate(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
     InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
+    // v3.0.0 — quest rate_game + onboarding first_rating + heatmap
+    {
+        let db_ret = state.db.clone();
+        let ret_uid = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "rate_game", 1).await;
+        });
+        let db_ob = state.db.clone();
+        let uid_ob = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::onboarding_step(&db_ob, uid_ob, "first_rating").await;
+        });
+    }
 
     // Reload game to get updated rating
     let game = GameRepo::find_by_id(&state.db, game.id)

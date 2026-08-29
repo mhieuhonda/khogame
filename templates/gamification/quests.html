@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+
+{% block title %}Nhiệm vụ{% endblock %}
+{% block description %}Nhiệm vụ hằng ngày và hàng tuần trên Louis Space — hoàn thành để nhận XP, lên cấp và mở khóa đặc quyền.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+            Nhiệm vụ của bạn
+        </h1>
+        <div class="section-more-group">
+            <a href="/spin" class="section-more">🎡 Vòng quay</a>
+            <a href="/trivia" class="section-more">🧠 Câu đố</a>
+            <a href="/shop" class="section-more">🛒 Cửa hàng</a>
+        </div>
+    </div>
+
+    <div class="ach-summary-item quest-level-chip">
+        <span class="level-chip level-chip-lg">Lv.{{ level.level }}</span>
+        <span class="ach-summary-label">{{ level.title }} · {{ level.xp }} XP</span>
+    </div>
+
+    <h2 class="leaderboard-subtitle">📅 Nhiệm vụ hôm nay (reset 00:00 giờ VN)</h2>
+    <div class="quest-list">
+        {% for q in quests %}
+        {% if q.quest.period == "daily" %}
+        {% include "partials/quest_card.html" %}
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <h2 class="leaderboard-subtitle">🗓️ Nhiệm vụ tuần này (reset sáng thứ 2)</h2>
+    <div class="quest-list">
+        {% for q in quests %}
+        {% if q.quest.period == "weekly" %}
+        {% include "partials/quest_card.html" %}
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    <p class="achievements-hint">💡 Nhiệm vụ tự cập nhật khi bạn xem game, bình luận, thích, chia sẻ... Hoàn thành xong bấm "Nhận thưởng" để lấy XP!</p>
+</section>
+{% endblock %}

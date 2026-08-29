@@ -7850,3 +7850,157 @@ kbd.kbd-key {
     letter-spacing: 0.06em;
     color: var(--fg-muted);
 }
+
+/* ============================================================
+   v3.0.0 — RETENTION: quests, spin, trivia, shop, referral,
+   heatmap, streak banner, onboarding, calendar, season boards,
+   release countdown, invite rating, chat name glow, XP toast.
+   ============================================================ */
+
+/* --- Toast XP (global, dùng data-xp-toast trên partial HTMX) --- */
+.xp-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff;
+  padding: 10px 22px; border-radius: 999px; font-weight: 700; font-size: .95rem;
+  box-shadow: 0 8px 24px rgba(34,197,94,.4); z-index: 9999;
+  animation: xp-toast-in .3s cubic-bezier(.2,1.4,.4,1), xp-toast-out .4s ease 2.2s forwards;
+  pointer-events: none;
+}
+@keyframes xp-toast-in { from { opacity: 0; transform: translate(-50%, 16px) scale(.9); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes xp-toast-out { to { opacity: 0; transform: translate(-50%, -8px); } }
+
+/* --- Quests --- */
+.quest-level-chip { display: flex; align-items: center; gap: .75rem; margin-bottom: 1.25rem; }
+.quest-list { display: flex; flex-direction: column; gap: .75rem; margin: 1rem 0 2rem; }
+.quest-card { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+  border: 1px solid var(--border-muted); border-radius: 14px; background: var(--bg-card);
+  transition: border-color .2s, transform .15s; }
+.quest-card:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.quest-completed-card { border-color: #22c55e55; background: linear-gradient(135deg, rgba(34,197,94,.06), transparent); }
+.quest-claimed-card { opacity: .65; }
+.quest-icon { font-size: 1.75rem; flex-shrink: 0; }
+.quest-body { flex: 1; min-width: 0; }
+.quest-title { font-size: 1rem; font-weight: 700; margin: 0 0 .15rem; }
+.quest-desc { font-size: .85rem; color: var(--text-dim); margin: 0 0 .5rem; }
+.quest-progress-bar { height: 6px; border-radius: var(--radius-full); background: var(--border-muted); overflow: hidden; margin-bottom: .3rem; }
+.quest-progress-fill { height: 100%; background: linear-gradient(90deg, #22c55e, #84cc16); border-radius: var(--radius-full); transition: width .4s ease; }
+.quest-progress-label { font-size: .75rem; color: var(--text-dim); }
+.quest-claimed { color: #22c55e; font-weight: 700; white-space: nowrap; }
+.quest-pending { color: var(--text-dim); font-size: .85rem; white-space: nowrap; }
+.section-more-group { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+/* --- Spin (đa số style nằm trong spin.html head_extra) --- */
+.spin-result.celebrate { animation: pop-in .45s cubic-bezier(.2,1.4,.4,1), celebrate-glow 1.2s ease .2s; }
+@keyframes celebrate-glow { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 48px rgba(245,158,11,.8); } }
+
+/* --- Trivia --- */
+.trivia-list { display: flex; flex-direction: column; gap: 1rem; }
+.trivia-card { padding: 1.25rem 1.5rem; border: 1px solid var(--border-muted); border-radius: 14px; background: var(--bg-card); }
+.trivia-question { margin: 0 0 1rem; font-size: 1.05rem; }
+.trivia-choices { display: grid; gap: .5rem; }
+.trivia-choice { text-align: left; padding: .65rem 1rem; border-radius: 10px; border: 1px solid var(--border-muted);
+  background: var(--bg-soft); color: var(--text); cursor: pointer; transition: border-color .15s, background .15s; font-size: .95rem; }
+.trivia-choice:hover:not(:disabled) { border-color: #6366f1; background: rgba(99,102,241,.08); }
+.trivia-choices-review .trivia-choice { cursor: default; }
+.trivia-choice.correct { border-color: #22c55e; background: rgba(34,197,94,.12); color: #16a34a; font-weight: 600; }
+.trivia-choice.wrong { border-color: #ef4444; background: rgba(239,68,68,.1); color: #dc2626; }
+.trivia-choice.dim { opacity: .55; }
+.trivia-feedback { margin-top: 1rem; padding: .75rem 1rem; border-radius: 10px; animation: pop-in .3s ease; }
+.trivia-feedback.correct { background: rgba(34,197,94,.1); border: 1px solid #22c55e55; }
+.trivia-feedback.wrong { background: rgba(239,68,68,.08); border: 1px solid #ef444455; }
+.trivia-explanation { margin: .5rem 0 0; font-size: .85rem; color: var(--text-dim); }
+.trivia-bonus { margin-top: .75rem; padding: .6rem 1rem; border-radius: 10px; background: linear-gradient(135deg, rgba(245,158,11,.15), rgba(234,179,8,.1)); border: 1px solid #f59e0b55; font-weight: 600; }
+
+/* --- Shop --- */
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.shop-card { padding: 1.5rem 1.25rem; border: 1px solid var(--border-muted); border-radius: 16px;
+  background: var(--bg-card); display: flex; flex-direction: column; gap: .6rem; align-items: flex-start;
+  transition: transform .15s, border-color .2s; }
+.shop-card:hover { transform: translateY(-2px); border-color: #a855f766; }
+.shop-item-icon { font-size: 2.25rem; }
+.shop-item-name { margin: 0; font-size: 1.05rem; }
+.shop-item-desc { margin: 0; font-size: .85rem; color: var(--text-dim); flex: 1; }
+.shop-owned { margin: 0; font-size: .8rem; color: #22c55e; }
+.shop-result { width: 100%; }
+
+/* --- Referral --- */
+.referral-link-line { word-break: break-all; }
+
+/* --- Heatmap (GitHub-style) --- */
+.profile-heat-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; align-items: start; }
+@media (max-width: 720px) { .profile-heat-row { grid-template-columns: 1fr; } }
+.heatmap-grid { display: flex; gap: 3px; overflow-x: auto; padding-bottom: .5rem; }
+.heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+.heatmap-cell { width: 12px; height: 12px; border-radius: 3px; background: var(--border-muted); display: inline-block; }
+.heatmap-cell.heat-0 { background: var(--border-muted); }
+.heatmap-cell.heat-1 { background: #22c55e40; }
+.heatmap-cell.heat-2 { background: #22c55e80; }
+.heatmap-cell.heat-3 { background: #22c55eb0; }
+.heatmap-cell.heat-4 { background: #22c55e; }
+.heatmap-legend { display: flex; align-items: center; gap: 4px; font-size: .72rem; color: var(--text-dim); margin-top: .5rem; }
+.completeness-block { text-align: center; }
+.completeness-ring { width: 120px; height: 120px; margin: 0 auto 1rem; border-radius: 50%;
+  background: conic-gradient(#a855f7 calc(var(--pct, 0) * 1%), var(--border-muted) 0);
+  display: flex; align-items: center; justify-content: center; position: relative; }
+.completeness-ring::after { content: ""; position: absolute; inset: 12px; border-radius: 50%; background: var(--bg); }
+.completeness-num { position: relative; z-index: 1; font-size: 1.6rem; font-weight: 800; }
+.completeness-note { font-size: .85rem; color: var(--text-dim); }
+
+/* --- Streak banner --- */
+.streak-banner { display: flex; align-items: center; gap: 1rem; margin: 1.25rem auto; padding: 1rem 1.5rem;
+  max-width: 1100px; border-radius: 14px; background: linear-gradient(135deg, rgba(245,158,11,.15), rgba(239,68,68,.1));
+  border: 1px solid #f59e0b66; }
+.streak-banner-icon { font-size: 2rem; }
+.streak-banner-text { flex: 1; display: flex; flex-direction: column; gap: .15rem; }
+.streak-banner-text em { color: #f59e0b; font-style: normal; font-weight: 800; }
+
+/* --- Onboarding widget --- */
+.onboarding-widget { max-width: 1100px; margin: 1.25rem auto; padding: 1.5rem; border-radius: 16px;
+  background: linear-gradient(135deg, rgba(99,102,241,.08), rgba(168,85,247,.06));
+  border: 1px solid #6366f155; }
+.onboarding-title { margin: 0 0 .25rem; font-size: 1.15rem; }
+.onboarding-sub { margin: 0 0 1rem; color: var(--text-dim); font-size: .9rem; }
+.onboarding-list { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .5rem; }
+.onboarding-step { display: flex; align-items: center; gap: .75rem; padding: .5rem .75rem; border-radius: 10px; background: var(--bg-card); }
+.onboarding-step.onboarding-done { opacity: .6; }
+.onboarding-step.onboarding-done .onboarding-label { text-decoration: line-through; }
+.onboarding-check { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--border-muted); font-size: .8rem; font-weight: 700; flex-shrink: 0; }
+.onboarding-done .onboarding-check { background: #22c55e; color: #fff; }
+.onboarding-icon { font-size: 1.1rem; }
+.onboarding-label { flex: 1; }
+.onboarding-xp { color: #22c55e; font-weight: 700; font-size: .85rem; }
+
+/* --- Game của ngày + upcoming --- */
+.gotd-grid { max-width: 420px; }
+.gotd-hint { color: var(--text-dim); font-size: .85rem; margin-top: -.5rem; }
+.upcoming-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem; }
+.upcoming-item { display: flex; align-items: center; gap: .75rem; padding: .75rem 1rem; border-radius: 12px;
+  border: 1px solid var(--border-muted); background: var(--bg-card); color: var(--text); transition: border-color .15s; }
+.upcoming-item:hover { border-color: #0ea5e9; }
+.upcoming-item img { border-radius: 8px; object-fit: cover; }
+.upcoming-fallback { font-size: 1.75rem; }
+.upcoming-title { flex: 1; font-weight: 600; font-size: .92rem; }
+.upcoming-date { font-size: .8rem; color: #0ea5e9; white-space: nowrap; }
+
+/* --- Release countdown + invite rating (game detail) --- */
+.release-countdown { display: flex; align-items: center; gap: .75rem; margin: 1.5rem 0; padding: 1rem 1.25rem;
+  border-radius: 12px; background: linear-gradient(135deg, rgba(14,165,233,.12), rgba(99,102,241,.08));
+  border: 1px solid #0ea5e955; }
+.countdown-icon { font-size: 1.5rem; }
+.invite-rating { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1rem 0;
+  padding: .9rem 1.25rem; border-radius: 12px; background: rgba(245,158,11,.08); border: 1px dashed #f59e0b66; }
+
+/* --- Leaderboard: season boards + calendar --- */
+.season-boards { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin: 2rem 0; }
+@media (max-width: 860px) { .season-boards { grid-template-columns: 1fr; } }
+.season-list .leaderboard-xp { margin-left: auto; color: #22c55e; font-weight: 700; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: .5rem; }
+.calendar-day { aspect-ratio: 1; display: flex; align-items: center; justify-content: center;
+  border-radius: 6px; font-size: .72rem; background: var(--border-muted); color: var(--text-dim); }
+.calendar-day.calendar-checked { background: #22c55e; color: #fff; font-weight: 700; }
+.calendar-day.calendar-today { outline: 2px solid #f59e0b; outline-offset: 1px; }
+.calendar-day.calendar-future { opacity: .35; }
+
+/* --- Chat name glow (cửa hàng XP) --- */
+.chat-name-glow { text-shadow: 0 0 8px rgba(245,158,11,.9), 0 0 16px rgba(245,158,11,.5); color: #fbbf24; }

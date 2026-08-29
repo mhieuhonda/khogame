@@ -10,7 +10,7 @@ impl ReviewRepo {
     /// UNIQUE(game_id, user_id)). Notify chủ game (bỏ qua tự review) —
     /// CHỈ khi review mới được tạo, không phải khi edit/re-rate.
     ///
-    /// v2.9.3 FIX (XP farm + spam): trả về `(id, was_insert)`. Trước đây
+    /// v3.0.0 FIX (XP farm + spam): trả về `(id, was_insert)`. Trước đây
     /// mọi lần POST (kể cả edit review cũ) đều được coi là review mới →
     /// handler cộng +15 XP mỗi lần (reason `review` không có cap) và
     /// notify/email owner mỗi lần. Giờ phân biệt INSERT vs UPDATE qua
@@ -51,7 +51,12 @@ impl ReviewRepo {
                     .fetch_optional(pool)
                     .await?;
             if let Some(oid) = owner_id {
-                if oid != user_id {
+                // v3.0.0 — tôn trọng prefs của chủ game (mặc định TRUE)
+                if oid != user_id
+                    && crate::repositories::PrefsRepo::allows(pool, oid, "review")
+                        .await
+                        .unwrap_or(true)
+                {
                     let game_slug: String =
                         sqlx::query_scalar("SELECT slug FROM games WHERE id = $1")
                             .bind(game_id)
@@ -198,7 +203,7 @@ impl ReviewRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    /// v2.9.3 FIX: staff (admin/mod) xóa review của NGƯỜI KHÁC trước đây
+    /// v3.0.0 FIX: staff (admin/mod) xóa review của NGƯỜI KHÁC trước đây
     /// no-op âm thầm (`AND user_id = $2` dùng id của staff → rows_affected
     /// = 0, handler vẫn báo thành công). Giờ truyền `is_staff`: staff xóa
     /// được review bất kỳ; đồng thời trả bool để handler 404 khi không xóa

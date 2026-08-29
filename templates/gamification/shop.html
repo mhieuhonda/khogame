@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}Cửa hàng XP{% endblock %}
+{% block description %}Cửa hàng Louis Space — đổi XP lấy Streak Freeze, XP Boost x2, viền tên phát sáng và Hộp Bí Ẩn.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+            Cửa hàng XP
+        </h1>
+        <a href="/quests" class="section-more">Kiếm thêm XP →</a>
+    </div>
+
+    <div class="ach-summary-item quest-level-chip">
+        <span class="level-chip level-chip-lg">💰 {{ total_xp }} XP</span>
+        <span class="ach-summary-label">Số dư khả dụng</span>
+    </div>
+
+    <div class="shop-grid">
+        {% for row in items %}
+        <div class="shop-card" id="shop-{{ row.item.id }}">
+            <div class="shop-item-icon" aria-hidden="true">{{ row.item.icon }}</div>
+            <h3 class="shop-item-name">{{ row.item.name }}</h3>
+            <p class="shop-item-desc">{{ row.item.description }}</p>
+            {% if row.owned > 0 %}
+            <p class="shop-owned">Đang có: <strong>{{ row.owned }}</strong></p>
+            {% endif %}
+            <button class="btn btn-primary btn-sm"
+                    hx-post="/shop/buy"
+                    hx-vals='{"item_id": "{{ row.item.id }}"}'
+                    hx-target="#shop-result-{{ row.item.id }}"
+                    hx-swap="innerHTML"
+                    hx-disabled-elt="this">{{ row.item.price }} XP — Mua</button>
+            <div id="shop-result-{{ row.item.id }}" aria-live="polite"></div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <p class="achievements-hint">❄️ Streak Freeze tự động kích hoạt khi bạn lỡ điểm danh 1 ngày. ⚡ XP Boost áp dụng cho MỌI nguồn XP (kể cả điểm danh).</p>
+</section>
+{% endblock %}

@@ -175,7 +175,7 @@ pub async fn flush_pending(pool: &PgPool, batch_size: i64) -> AppResult<(u64, u6
         Some(s) => s,
         None => {
             // SMTP chưa cấu hình — mark pending thành 'skipped' để không
-            // retry spam. v2.9.3 FIX: CHỈ mark các row cũ hơn 1 giờ và
+            // retry spam. v3.0.0 FIX: CHỈ mark các row cũ hơn 1 giờ và
             // chưa bị mark 'skipped' lần nào (last_error khác giá trị này)
             // — trước đây UPDATE toàn bộ pending mỗi 2 phút mỗi vòng
             // flusher = full-table write vô nghĩa, row vừa enqueue vòng
@@ -183,11 +183,11 @@ pub async fn flush_pending(pool: &PgPool, batch_size: i64) -> AppResult<(u64, u6
             // skip (1 lần duy nhất) → write volume = O(số row) thay vì
             // O(số vòng × số row).
             let skipped = sqlx::query(
-                r#"UPDATE email_queue SET status = 'skipped', last_error = 'SMTP not configured'
+                r"UPDATE email_queue SET status = 'skipped', last_error = 'SMTP not configured'
                   WHERE status = 'pending'
                     AND queued_at < NOW() - INTERVAL '1 hour'
                     AND last_error IS DISTINCT FROM 'SMTP not configured'
-                  RETURNING 1"#,
+                  RETURNING 1",
             )
             .execute(pool)
             .await?

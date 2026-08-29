@@ -125,6 +125,10 @@
         var header = el('div', 'chat-msg-header');
         var author = el('span', 'chat-msg-author');
         author.textContent = msg.display_name || msg.username;
+        // v3.0.0 — viền tên phát sáng (cửa hàng XP: name_glow_until còn hạn)
+        if (msg.name_glow) {
+            author.classList.add('chat-name-glow');
+        }
         header.appendChild(author);
         if (isStaff) {
             var badge = el('span', 'chat-msg-badge');

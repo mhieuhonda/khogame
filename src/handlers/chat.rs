@@ -270,6 +270,12 @@ async fn send_message(state: &AppState, user_id: Uuid, content: &str) {
             tokio::spawn(async move {
                 crate::services::gamification::on_chat_message(&db, user_id).await;
             });
+            // v3.0.0 — quest chat + heatmap (best-effort)
+            let db_ret = state.db.clone();
+            let ret_uid = user_id;
+            tokio::spawn(async move {
+                crate::services::retention::on_action(db_ret, ret_uid, "chat", 1).await;
+            });
         }
         Err(e) => tracing::error!("Chat create DB error: {e}"),
     }

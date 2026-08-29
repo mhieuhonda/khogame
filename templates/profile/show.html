@@ -358,6 +358,26 @@
 {% endif %}
 
 {# === v2.9.0 — HOẠT ĐỘNG GẦN ĐÂY === #}
+{# === v3.0.0 — HEATMAP HOẠT ĐỘNG 13 TUẦN === #}
+<div class="profile-content" style="margin-top:32px">
+    <div class="profile-heat-row">
+        <div class="heatmap-block">
+            <h2 class="section-heading">🔥 Hoạt động 13 tuần</h2>
+            {% include "partials/heatmap.html" %}
+        </div>
+        <div class="completeness-block">
+            <h2 class="section-heading">✨ Hồ sơ hoàn thiện</h2>
+            <div class="completeness-ring" style="--pct: {{ completeness_pct }}%">
+                <span class="completeness-num">{{ completeness_pct }}%</span>
+            </div>
+            {% if is_self %}
+            <a href="/profile/edit" class="btn btn-outline btn-sm">Hoàn thiện hồ sơ</a>
+            {% endif %}
+            <p class="completeness-note">Thành viên <strong>{{ member_months }}</strong> tháng 🎂</p>
+        </div>
+    </div>
+</div>
+
 {% if !activity.is_empty() %}
 <div class="profile-content" id="activity" style="margin-top:32px">
     <div class="section-header">

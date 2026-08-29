@@ -55,7 +55,7 @@ pub async fn submit_review(
             "Nội dung review tối đa 4000 ký tự".into(),
         ));
     }
-    // v2.9.3 FIX (XP farm): chỉ cộng XP khi review MỚI được tạo —
+    // v3.0.0 FIX (XP farm): chỉ cộng XP khi review MỚI được tạo —
     // edit/re-rate review cũ không cộng lại và không notify owner.
     let (_review_id, was_insert) = ReviewRepo::create_or_update(
         &state.db,
@@ -73,6 +73,12 @@ pub async fn submit_review(
         let reviewer_id = user.id;
         tokio::spawn(async move {
             gsvc::on_review(&db, reviewer_id, owner_id).await;
+        });
+        // v3.0.0 — quest review + heatmap
+        let db_ret = state.db.clone();
+        let ret_uid = reviewer_id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "review", 1).await;
         });
     }
     Ok(Redirect::to(&format!("/games/{slug}#reviews")))
@@ -129,7 +135,7 @@ pub async fn delete_review(
             _ => return Err(AppError::Forbidden("Không phải review của bạn".into())),
         }
     }
-    // v2.9.3 FIX: truyền is_staff vào repo + 404 khi không xóa được dòng
+    // v3.0.0 FIX: truyền is_staff vào repo + 404 khi không xóa được dòng
     // nào (trước đây staff xóa review người khác là no-op báo thành công).
     let deleted = ReviewRepo::delete(&state.db, id, user.id, user.role.is_staff()).await?;
     if !deleted {

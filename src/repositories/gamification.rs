@@ -38,13 +38,13 @@ pub mod xp {
 
     /// Anti-farm: số lượng tối đa event XP mỗi NGÀY cho các reason
     /// dễ spam (bình luận, chat). Vượt ngưỡng → không cộng thêm.
-    /// (v2.9.3: bỏ ghi event amount=0 — activity feed chỉ đọc amount>0
+    /// (v3.0.0: bỏ ghi event amount=0 — activity feed chỉ đọc amount>0
     /// nên ghi amount=0 là thuần rác DB, nhân lên với mỗi chat/like.)
     pub const MAX_COMMENT_XP_PER_DAY: i32 = 10;
     pub const MAX_CHAT_XP_PER_DAY: i32 = 20;
     pub const MAX_RECEIVED_LIKE_XP_PER_DAY: i32 = 50;
     pub const MAX_RECEIVED_DOWNLOAD_XP_PER_DAY: i32 = 50;
-    /// v2.9.3 FIX (XP farm): `received_follow` trước đây KHÔNG có cap —
+    /// v3.0.0 FIX (XP farm): `received_follow` trước đây KHÔNG có cap —
     /// unfollow → re-follow lặp vòng (120 lần/phút theo bucket route)
     /// bơm +10 XP/lần vào account mục tiêu. Cap 50 XP/ngày tương tự
     /// `received_like`.
@@ -73,10 +73,18 @@ impl GamificationRepo {
         Ok(level_from_xp(Self::total_xp(pool, user_id).await?))
     }
 
+    /// Hệ số XP boost đang active (1 hoặc 2 — mua XP Boost ở cửa hàng).
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    async fn xp_multiplier(pool: &PgPool, user_id: Uuid) -> AppResult<i32> {
+        let active = crate::repositories::ShopRepo::xp_boost_active(pool, user_id).await?;
+        Ok(if active { 2 } else { 1 })
+    }
+
     /// Cộng XP + ghi log. Trả về (tổng XP mới, XP thực cộng, LevelInfo mới).
     /// `xp_effective` = 0 khi bị chạm trần anti-farm — caller (service) dùng
     /// giá trị này để tính level TRƯỚC khi cộng, tránh báo "Lên cấp" ảo
-    /// khi tổng không đổi (v2.9.3 FIX).
+    /// khi tổng không đổi (v3.0.0 FIX).
     /// Không thông báo ở tầng repo — caller quyết định (tránh lặp
     /// notification khi award_xp được gọi từ nhiều ngữ cảnh).
     /// # Errors
@@ -124,7 +132,14 @@ impl GamificationRepo {
         } else {
             amount
         };
-        // Log event — CHỈ khi có XP thực (v2.9.3: amount=0 không được
+        // v3.0.0 — XP Boost (cửa hàng): nhân đôi XP thực cộng (sau cap).
+        // Boost 0→0 vẫn 0, không tạo XP từ hư không.
+        let effective = if effective > 0 {
+            effective * Self::xp_multiplier(pool, user_id).await? // (đọc ngoài tx — best-effort, lệch 1 request chấp nhận được)
+        } else {
+            0
+        };
+        // Log event — CHỈ khi có XP thực (v3.0.0: amount=0 không được
         // activity feed đọc (bộ lọc amount>0) nên không ghi nữa, tránh
         // xp_events phình vô hạn do chat/like spam).
         if effective > 0 {
@@ -150,6 +165,147 @@ impl GamificationRepo {
         .await?;
         tx.commit().await?;
         Ok((total, effective, level_from_xp(total)))
+    }
+
+    /// Tiêu 1 Streak Freeze cho ngày HÔM QUA nếu đủ điều kiện.
+    /// Trả Some(streak của hôm-trước-hôm-qua) khi đã tiêu, None khi không.
+    /// Gọi trong tx của do_checkin — nhất quán, chống double-consume bằng
+    /// PK (user_id, freeze_date).
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    async fn maybe_consume_streak_freeze(
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        user_id: Uuid,
+    ) -> AppResult<Option<i32>> {
+        // Hôm-trước-hôm-qua có checkin không? (nếu không — chuỗi đã đứt
+        // trước đó, không có gì để bảo vệ)
+        let sql = format!(
+            "SELECT streak FROM daily_checkins
+             WHERE user_id = $1 AND checkin_date = {} - 2",
+            crate::utils::SQL_TODAY_VN
+        );
+        let Some(prev_streak): Option<i32> =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(user_id)
+                .fetch_optional(&mut **tx)
+                .await?
+        else {
+            return Ok(None);
+        };
+        // Đã dùng freeze cho hôm qua chưa? (chỉ 1 lần duy nhất)
+        let sql = format!(
+            "SELECT 1 FROM streak_freeze_usage
+             WHERE user_id = $1 AND freeze_date = {} - 1",
+            crate::utils::SQL_TODAY_VN
+        );
+        let already: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+        if already.is_some() {
+            return Ok(None);
+        }
+        // Còn freeze trong kho không? (FOR UPDATE chống race tiêu đôi)
+        let qty: Option<i32> = sqlx::query_scalar(
+            r"SELECT quantity FROM user_inventory
+              WHERE user_id = $1 AND item_id = 'streak_freeze' FOR UPDATE",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        let Some(qty) = qty else {
+            return Ok(None);
+        };
+        if qty <= 0 {
+            return Ok(None);
+        }
+        if qty == 1 {
+            sqlx::query(
+                "DELETE FROM user_inventory
+                 WHERE user_id = $1 AND item_id = 'streak_freeze'",
+            )
+            .bind(user_id)
+            .execute(&mut **tx)
+            .await?;
+        } else {
+            sqlx::query(
+                "UPDATE user_inventory SET quantity = quantity - 1, updated_at = NOW()
+                 WHERE user_id = $1 AND item_id = 'streak_freeze'",
+            )
+            .bind(user_id)
+            .execute(&mut **tx)
+            .await?;
+        }
+        // Ghi usage — PK chặn double trong race
+        let sql = format!(
+            "INSERT INTO streak_freeze_usage (user_id, freeze_date)
+             VALUES ($1, {} - 1)
+             ON CONFLICT (user_id, freeze_date) DO NOTHING",
+            crate::utils::SQL_TODAY_VN
+        );
+        let res = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .execute(&mut **tx)
+            .await?;
+        if res.rows_affected() == 0 {
+            return Ok(None);
+        }
+        tracing::info!(user = %user_id, "Streak Freeze đã tự kích hoạt cho ngày hôm qua");
+        Ok(Some(prev_streak))
+    }
+
+    /// Bảng xếp hạng XP theo THÁNG hiện tại (season board) từ xp_events.
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn season_leaderboard(
+        pool: &PgPool,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::retention::SeasonEntry>> {
+        let rows = sqlx::query_as::<_, crate::models::retention::SeasonEntry>(
+            r"SELECT u.username, u.display_name, u.avatar_url,
+                      COALESCE(SUM(e.amount), 0)::bigint AS period_xp
+               FROM xp_events e
+               JOIN users u ON u.id = e.user_id
+               WHERE e.amount > 0
+                 AND e.created_at >= date_trunc('month',
+                      NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')
+                     AT TIME ZONE 'Asia/Ho_Chi_Minh'
+                 AND u.is_banned = FALSE AND u.role <> 'ai_agent'
+               GROUP BY u.id, u.username, u.display_name, u.avatar_url
+               ORDER BY period_xp DESC, u.created_at ASC
+               LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Bảng xếp hạng XP theo TUẦN hiện tại (thứ 2 → nay, giờ VN).
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn weekly_leaderboard(
+        pool: &PgPool,
+        limit: i64,
+    ) -> AppResult<Vec<crate::models::retention::SeasonEntry>> {
+        let rows = sqlx::query_as::<_, crate::models::retention::SeasonEntry>(
+            r"SELECT u.username, u.display_name, u.avatar_url,
+                      COALESCE(SUM(e.amount), 0)::bigint AS period_xp
+               FROM xp_events e
+               JOIN users u ON u.id = e.user_id
+               WHERE e.amount > 0
+                 AND e.created_at >= date_trunc('week',
+                      NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')
+                     AT TIME ZONE 'Asia/Ho_Chi_Minh'
+                 AND u.is_banned = FALSE AND u.role <> 'ai_agent'
+               GROUP BY u.id, u.username, u.display_name, u.avatar_url
+               ORDER BY period_xp DESC, u.created_at ASC
+               LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
     }
 
     /// Trạng thái điểm danh hôm nay của user.
@@ -212,8 +368,24 @@ impl GamificationRepo {
             .fetch_optional(&mut *tx)
             .await?;
         let streak = yesterday_streak.map_or(1, |s| s + 1);
+        // v3.0.0 — STREAK FREEZE tự động: hôm qua bị lỡ (hôm trước hôm qua
+        // có điểm, hôm qua trống) + user còn Streak Freeze trong kho →
+        // tiêu 1 freeze để "bảo vệ" ngày hôm qua, chuỗi tiếp tục (streak
+        // = streak của hôm-trước-hôm-qua + 2: 1 ngày đóng băng + hôm nay).
+        // Chỉ bảo vệ đúng 1 ngày liền trước — lỡ từ 2 ngày trở lên thì
+        // chuỗi đứt thật (thiết kế cố ý để giữ giá trị của streak).
+        let streak = if yesterday_streak.is_none() {
+            match Self::maybe_consume_streak_freeze(&mut tx, user_id).await? {
+                Some(prev_streak) => prev_streak + 2,
+                None => streak,
+            }
+        } else {
+            streak
+        };
         let bonus = (streak - 1).min(xp::MAX_STREAK_BONUS);
-        let xp_awarded = xp::DAILY_CHECKIN + bonus;
+        // v3.0.0 — XP Boost x2 áp dụng cả điểm danh (nhất quán toàn hệ)
+        let mult = Self::xp_multiplier(pool, user_id).await?;
+        let xp_awarded = (xp::DAILY_CHECKIN + bonus) * mult;
         // FIX 2 (race): DO NOTHING giữa 2 request song song — phải kiểm tra
         // rows_affected trước khi ghi xp, không thì bên thua race vẫn cộng XP.
         let sql = format!(
@@ -232,7 +404,7 @@ impl GamificationRepo {
             // Request song song khác vừa chiếm slot điểm danh hôm nay.
             // Rollback tx (không ghi gì), trả về state của bản ghi thắng.
             tx.rollback().await?;
-            // v2.9.3 FIX: trước đây SELECT lại bằng CURRENT_DATE (timezone
+            // v3.0.0 FIX: trước đây SELECT lại bằng CURRENT_DATE (timezone
             // server) trong khi insert ghi theo ngày VN — server chạy UTC
             // thì khung 17:00–24:00 UTC fetch_one không thấy row →
             // RowNotFound → double-click thứ hai nhận 400 vô nghĩa.
@@ -550,7 +722,7 @@ impl GamificationRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn leaderboard_top_xp(pool: &PgPool, limit: i64) -> AppResult<Vec<LeaderboardEntry>> {
-        // v2.9.3 FIX: streak lấy từ checkin gần nhất KHÔNG có điều kiện
+        // v3.0.0 FIX: streak lấy từ checkin gần nhất KHÔNG có điều kiện
         // thời gian → user đứt chuỗi từ 2 tháng trước vẫn hiện "🔥 30".
         // Giờ chỉ nhận streak khi checkin gần nhất là hôm nay hoặc hôm qua
         // (đúng quy tắc current_streak) — cũ hơn → 0.

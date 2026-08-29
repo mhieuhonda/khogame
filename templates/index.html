@@ -86,6 +86,92 @@
 </section>
 {% endif %}
 
+{# === v3.0.0 — STREAK WARNING banner === #}
+{% match streak_warning %}
+{% when Option::Some with (streak) %}
+<div class="streak-banner">
+    <span class="streak-banner-icon">🔥</span>
+    <div class="streak-banner-text">
+        <strong>Chuỗi {{ streak }} ngày của bạn đang chờ!</strong>
+        <span>Điểm danh ngay hôm nay để không mất chuỗi — còn <em>{{ streak }}</em> ngày công sức đấy!</span>
+    </div>
+    <button class="btn btn-primary btn-sm"
+            hx-post="/checkin"
+            hx-target="closest .streak-banner"
+            hx-swap="outerHTML">Điểm danh ngay</button>
+</div>
+{% when Option::None %}
+{% endmatch %}
+
+{# === v3.0.0 — ONBOARDING CHECKLIST (user mới) === #}
+{% match onboarding %}
+{% when Option::Some with (widget) %}
+<div class="onboarding-widget">
+    <h2 class="onboarding-title">🚀 Lộ trình khởi đầu — nhận <strong>100 XP</strong></h2>
+    <p class="onboarding-sub">Hoàn thành 5 bước nhỏ để bắt đầu hành trình trên Louis Space:</p>
+    <ul class="onboarding-list">
+        {% for s in widget.steps %}
+        <li class="onboarding-step {% if s.done %}onboarding-done{% endif %}">
+            <span class="onboarding-check">{% if s.done %}✓{% else %}{{ loop.index }}{% endif %}</span>
+            <span class="onboarding-icon">{{ s.icon }}</span>
+            <span class="onboarding-label">{{ s.label }}</span>
+            <span class="onboarding-xp">+{{ s.xp }} XP</span>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="quest-progress-bar">
+        <div class="quest-progress-fill" style="width: {{ (widget.done_count * 100) / 5 }}%"></div>
+    </div>
+</div>
+{% when Option::None %}
+{% endmatch %}
+
+{# === v3.0.0 — GAME CỦA NGÀY === #}
+{% match game_of_the_day %}
+{% when Option::Some with (gotd) %}
+<section class="content-section gotd-section">
+    <div class="section-header">
+        <h2 class="section-title section-title-accent">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+            Game của ngày {{ gotd.date_label }}
+        </h2>
+        <a href="/trivia" class="section-more">🧠 Câu đố game →</a>
+    </div>
+    <p class="gotd-hint">Mỗi ngày 1 game được chọn đặc biệt — quay lại ngày mai để khám phá tựa mới!</p>
+    <div class="game-grid gotd-grid">
+        {% let game = &gotd.card %}
+        {% include "partials/game_card.html" %}
+    </div>
+</section>
+{% when Option::None %}
+{% endmatch %}
+
+{# === v3.0.0 — SẮP RA MẤT (countdown) === #}
+{% if !upcoming_games.is_empty() %}
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Sắp ra mắt
+        </h2>
+    </div>
+    <div class="upcoming-list">
+        {% for g in upcoming_games %}
+        <a href="/games/{{ g.slug }}" class="upcoming-item">
+            {% match g.cover_image %}
+            {% when Option::Some with (url) %}
+            {% if !url.is_empty() %}<img src="{{ url }}" alt="" width="80" height="45" loading="lazy">{% else %}<span class="upcoming-fallback">🎮</span>{% endif %}
+            {% when Option::None %}
+            <span class="upcoming-fallback">🎮</span>
+            {% endmatch %}
+            <span class="upcoming-title">{{ g.title }}</span>
+            <span class="upcoming-date">📅 {{ g.release_date }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
 {# === v2.9.0 — TIẾP TỤC XEM (lịch sử xem game) === #}
 {% if !continue_watching.is_empty() %}
 <section class="content-section">

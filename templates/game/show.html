@@ -381,6 +381,37 @@
         </aside>
     </div>
 
+    {# === v3.0.0 — ĐẾM NGƯỢC PHÁT HÀNH === #}
+    {% match release_countdown_days %}
+    {% when Option::Some with (days) %}
+    <div class="release-countdown">
+        <span class="countdown-icon">🚀</span>
+        <strong>Sắp ra mắt sau {{ days }} ngày nữa</strong>
+        <span>— theo dõi tác giả để nhận thông báo khi game lên sóng!</span>
+    </div>
+    {% when Option::None %}
+    {% endmatch %}
+
+    {# === v3.0.0 — MỜI ĐÁNH GIÁ SAU KHI TẢI === #}
+    {% if invite_rating %}
+    <div class="invite-rating">
+        <span>⭐ Bạn đã tải game này — đánh giá để giúp cộng đồng và kiếm thêm XP!</span>
+        <a href="#reviews" class="btn btn-outline btn-sm">Viết đánh giá</a>
+    </div>
+    {% endif %}
+
+    {# === v3.0.0 — NGƯỜI CHƠI KHÁC CŨNG THÍCH === #}
+    {% if !also_liked.is_empty() %}
+    <section class="related-games also-liked-section">
+        <h2 class="section-heading">👥 Người chơi khác cũng thích</h2>
+        <div class="game-grid">
+            {% for game in also_liked %}
+            {% include "partials/game_card.html" %}
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     {% if !related_games.is_empty() %}
     <section class="related-games">
         <h2 class="section-heading">

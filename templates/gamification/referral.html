@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+
+{% block title %}Giới thiệu bạn bè{% endblock %}
+{% block description %}Mời bạn bè tham gia Louis Space qua mã giới thiệu — cả hai đều nhận 100 XP.{% endblock %}
+
+{% block head_extra %}
+<style>
+.referral-code-box { display: flex; gap: .75rem; align-items: center; margin: 1.25rem 0; flex-wrap: wrap; }
+.referral-code { font-family: monospace; font-size: 1.6rem; font-weight: 700; letter-spacing: .2em;
+  padding: .75rem 1.25rem; border-radius: 12px; background: var(--bg-soft, rgba(59,130,246,.1));
+  border: 2px dashed var(--border-strong, #3b82f6); user-select: all; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+            Giới thiệu bạn bè
+        </h1>
+        <a href="/shop" class="section-more">Cửa hàng →</a>
+    </div>
+
+    <p>Gửi link hoặc mã dưới đây cho bạn bè. Khi họ <strong>đăng nhập lần đầu</strong> qua link của bạn, cả hai đều nhận <strong>🎁 100 XP</strong>!</p>
+
+    <div class="referral-code-box">
+        <span class="referral-code" id="ref-code">{{ info.code }}</span>
+        <button class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText(document.getElementById('ref-link').href || '').then(()=>this.textContent='✓ Đã copy!')">Copy link</button>
+    </div>
+
+    <p class="referral-link-line">Link của bạn: <a id="ref-link" href="/r/{{ info.code }}">https://{{ base_url_host }}/r/{{ info.code }}</a></p>
+
+    <div class="shop-grid">
+        <div class="shop-card">
+            <div class="shop-item-icon">👥</div>
+            <h3 class="shop-item-name">Đã mời</h3>
+            <p class="shop-item-desc">{{ info.invited_count }} người bạn đã tham gia qua mã của bạn</p>
+        </div>
+        <div class="shop-card">
+            <div class="shop-item-icon">💰</div>
+            <h3 class="shop-item-name">XP đã nhận</h3>
+            <p class="shop-item-desc">{{ info.xp_earned }} XP từ chương trình giới thiệu</p>
+        </div>
+    </div>
+
+    <p class="achievements-hint">⚠️ Mỗi tài khoản chỉ được giới thiệu 1 lần và không thể tự giới thiệu chính mình. Gian lận sẽ bị khoá thưởng.</p>
+</section>
+{% endblock %}

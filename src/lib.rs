@@ -50,6 +50,8 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     // GitHub không cập nhật số sao" — trước đây metadata chỉ thay đổi khi
     // chủ repo bấm "Làm mới"/đăng lại thủ công. Detached task.
     tokio::spawn(janitor::run_repo_star_refresh((*state).clone()));
+    // v3.0.0 — weekly digest email (sáng thứ 2 giờ VN)
+    tokio::spawn(janitor::run_weekly_digest((*state).clone()));
 
     let app = routes::build_router(state);
 

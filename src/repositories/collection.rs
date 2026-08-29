@@ -75,6 +75,17 @@ impl CollectionRepo {
     /// Danh sách bộ sưu tập của user (owner xem hết, người khác chỉ public).
     /// # Errors
     /// Trả lỗi khi DB fail.
+    /// v3.0.0 — Đếm bộ sưu tập của user (cho level perk giới hạn).
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn count_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM collections WHERE user_id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
+    }
+
     pub async fn list_for_user(
         pool: &PgPool,
         user_id: Uuid,

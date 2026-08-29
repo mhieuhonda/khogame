@@ -75,6 +75,19 @@ pub async fn create_comment(
         }
     }
     let _id = CommentRepo::create(&state.db, game.id, user.id, parent_id, content).await?;
+    // v3.0.0 — quest comment + onboarding first_comment + heatmap
+    {
+        let db_ret = state.db.clone();
+        let ret_uid = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "comment", 1).await;
+        });
+        let db_ob = state.db.clone();
+        let uid_ob = user.id;
+        tokio::spawn(async move {
+            crate::services::retention::onboarding_step(&db_ob, uid_ob, "first_comment").await;
+        });
+    }
 
     // Mention @username -> thông báo (v2.2.0: batch INSERT thay vì N+1 loop)
     let mentions = CommentRepo::find_mentions(&state.db, content, user.id)

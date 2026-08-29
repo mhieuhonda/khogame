@@ -1,5 +1,7 @@
 use crate::repositories::{NotificationRepo, RepoRepo, SessionRepo, StatsRepo};
 use crate::state::AppState;
+use chrono::Timelike;
+use chrono::Datelike;
 use std::time::Duration;
 
 /// Số ngày giữ notification ĐÃ ĐỌC trước khi xoá. Notification chưa đọc
@@ -9,14 +11,20 @@ const NOTIFICATION_RETENTION_DAYS: i64 = 90;
 /// Số ngày giữ `daily_stats` (chart dashboard chỉ dùng 7 ngày gần nhất).
 const DAILY_STATS_RETENTION_DAYS: i64 = 90;
 
-/// v2.9.3 — Số ngày giữ dòng email_queue ở trạng thái kết thúc
+/// v3.0.0 — Số ngày giữ dòng email_queue ở trạng thái kết thúc
 /// (sent/failed/skipped). Trước đây KHÔNG có job xoá nào → bảng phình
 /// vô hạn (mỗi notification tạo 1 row dù SMTP không chạy).
 const EMAIL_QUEUE_RETENTION_DAYS: i64 = 30;
 
-/// v2.9.3 — Số ngày giữ nhật ký `xp_events` (90 ngày đủ cho activity
-/// feed). Tổng XP không phụ thuộc bảng này (đã cache ở user_xp_totals)
-/// nên xoá an toàn tuyệt đối.
+/// v3.0.0 — Weekly digest gửi sáng thứ 2 giờ VN (tức là duy nhất 1 ngày
+/// trong tuần job này có tác dụng — các ngày khác sleep-through).
+/// Thời điểm chạy trong ngày: 8:00 VN = 01:00 UTC.
+const DIGEST_DAY_MONDAY: u32 = 1; // chrono weekday().number_from_monday() = 1
+const DIGEST_HOUR_VN: u32 = 8;
+
+/// v3.0.0 — Số ngày giữ nhật ký `xp_events` (90 ngày đủ cho activity
+/// feed + leaderboard mùa/tháng + heatmap 90 ngày). Tổng XP không phụ
+/// thuộc bảng này (đã cache ở user_xp_totals) nên xoá an toàn tuyệt đối.
 const XP_EVENTS_RETENTION_DAYS: i64 = 90;
 
 /// Chu kỳ chạy dọn dẹp mặc định (6 giờ). Có thể override qua env
@@ -239,6 +247,85 @@ pub async fn run_janitor(state: AppState) {
 /// chu kỳ ngắn hơn (2 phút) để email đến user nhanh.
 /// Đọc `email_queue` WHERE status='pending' AND next_retry_at <= NOW(),
 /// gửi SMTP, đánh dấu 'sent' hoặc 'failed' (retry 3 lần).
+/// v3.0.0 — Job nền WEEKLY DIGEST: sáng thứ 2 (08:00 giờ VN), gom game
+/// mới + tin mới trong 7 ngày qua gửi email tổng hợp cho user opt-in
+/// (user_notification_prefs.weekly_digest = TRUE). Gửi qua notification
+/// type 'system' → trigger 017 tự enqueue email (tôn trọng nút
+/// email_notifications tổng của user). Idempotent theo tuần: chỉ chạy
+/// khi là thứ 2 và >= 8h VN; xử lý cả tuần hiện tại 1 lần duy nhất
+/// (dedup qua notification content cùng tuần).
+pub async fn run_weekly_digest(state: AppState) {
+    // Chu kỳ check 30 phút — rẻ (1 query time check mỗi 30 phút)
+    let interval = std::time::Duration::from_secs(1800);
+    loop {
+        tokio::time::sleep(interval).await;
+        let now_vn = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).expect("TZ +7"));
+        if now_vn.weekday().number_from_monday() != DIGEST_DAY_MONDAY || now_vn.hour() < DIGEST_HOUR_VN {
+            continue;
+        }
+        if let Err(e) = send_weekly_digest(&state).await {
+            tracing::warn!("Weekly digest fail: {e}");
+        }
+    }
+}
+
+/// Gửi digest 1 tuần (gọi từ run_weekly_digest).
+/// # Errors
+/// Trả lỗi khi DB fail.
+async fn send_weekly_digest(state: &AppState) -> crate::error::AppResult<()> {
+    // Game mới + tin mới 7 ngày qua
+    let new_games: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM games WHERE status = 'published' AND published_at >= NOW() - INTERVAL '7 days'",
+    )
+    .fetch_one(&state.db)
+    .await?;
+    let new_news: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM news WHERE status = 'published' AND published_at >= NOW() - INTERVAL '7 days'",
+    )
+    .fetch_one(&state.db)
+    .await?;
+    if new_games == 0 && new_news == 0 {
+        return Ok(()); // tuần trống — không gửi
+    }
+    let title = format!("📬 Tin tuần Louis Space: {new_games} game mới, {new_news} tin mới");
+    // Chống gửi đôi trong cùng tuần: đếm notification cùng title tuần này
+    let week_start = sqlx::query_scalar::<_, chrono::DateTime<chrono::Utc>>(
+        "SELECT date_trunc('week', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh'",
+    )
+    .fetch_one(&state.db)
+    .await?;
+    let already: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM notifications WHERE type = 'system' AND title = $1 AND created_at >= $2",
+    )
+    .bind(&title)
+    .bind(week_start)
+    .fetch_one(&state.db)
+    .await?;
+    if already > 0 {
+        return Ok(());
+    }
+    // Tạo notification 'system' cho mọi user opt-in digest + có email —
+    // trigger 017 tự enqueue email (nếu email_notifications tổng vẫn bật)
+    let res = sqlx::query(
+        r"INSERT INTO notifications (user_id, type, title, content, link)
+          SELECT u.id, 'system'::notification_type, $1,
+                 'Bạn nhận email này vì đã bật Tổng hợp hằng tuần trong Tùy chọn thông báo. Tắt bất cứ lúc nào.',
+                 '/news'
+          FROM users u
+          JOIN user_notification_prefs p ON p.user_id = u.id AND p.weekly_digest = TRUE
+          WHERE u.is_banned = FALSE AND u.role <> 'ai_agent'
+            AND u.email IS NOT NULL AND u.email <> ''",
+    )
+    .bind(&title)
+    .execute(&state.db)
+    .await?;
+    tracing::info!(
+        "Weekly digest: tạo {} notification/email cho user opt-in",
+        res.rows_affected()
+    );
+    Ok(())
+}
+
 pub async fn run_email_flusher(state: AppState) {
     let interval = Duration::from_secs(
         std::env::var("EMAIL_FLUSH_INTERVAL_SECS")
@@ -311,7 +398,7 @@ async fn do_cleanup(
             tracing::warn!("Janitor: lỗi dọn daily_stats: {}", e);
             0
         });
-    // v2.9.3 — dọn email_queue ở trạng thái kết thúc (sent/failed/skipped):
+    // v3.0.0 — dọn email_queue ở trạng thái kết thúc (sent/failed/skipped):
     // trước đây không job nào xoá → bảng lớn dần vô hạn. Row 'pending'
     // KHÔNG BAO GIỜ bị xoá ở đây (email chưa gửi phải được giữ lại).
     let emails = cleanup_email_queue(&state.db, EMAIL_QUEUE_RETENTION_DAYS)
@@ -320,8 +407,9 @@ async fn do_cleanup(
             tracing::warn!("Janitor: lỗi dọn email_queue: {}", e);
             0
         });
-    // v2.9.3 — dọn xp_events quá 90 ngày: tổng XP sống ở user_xp_totals
-    // (bảng cache tăng dần) nên xoá log cũ không ảnh hưởng số dư.
+    // v3.0.0 — dọn xp_events quá 90 ngày: tổng XP sống ở user_xp_totals
+    // (bảng cache tăng dần) nên xoá log cũ không ảnh hưởng số dư. Giữ 90
+    // ngày đủ cho activity feed, leaderboard mùa/tháng và heatmap.
     let xp_events = cleanup_xp_events(&state.db, XP_EVENTS_RETENTION_DAYS)
         .await
         .unwrap_or_else(|e| {
@@ -383,9 +471,9 @@ mod tests {
         // v2.8.1 — email kẹt 'sending' phải requeue sau thời gian hợp lý
         // (vài phút batch → 10 phút là chắc chắn process đã chết).
         assert!(EMAIL_STUCK_SENDING_SECS >= 300);
-        // v2.9.3 — guards retention mới:
+        // v3.0.0 — guards retention mới:
         assert!(EMAIL_QUEUE_RETENTION_DAYS >= 7); // email log phải sống đủ lâu để audit
-        assert!(XP_EVENTS_RETENTION_DAYS >= 30); // activity feed cần cửa sổ tối thiểu
+        assert!(XP_EVENTS_RETENTION_DAYS >= 30); // heatmap/season cần cửa sổ tối thiểu 30 ngày
         // v2.9.1 — guards cho job refresh repo:
         assert!(REPO_REFRESH_INTERVAL_SECS >= 300); // tránh spam GitHub API
         assert!(REPO_STALE_AFTER_SECS >= 300); // stale "hợp lý", không quét liên tục

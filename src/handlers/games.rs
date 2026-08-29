@@ -4,6 +4,7 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{
+    GamificationRepo,
     CategoryRepo, CollectionRepo, GameRepo, InteractionRepo, NewsRepo, RepoRepo, ReportRepo,
     ReviewRepo, TagRepo, ViewHistoryRepo,
 };
@@ -64,6 +65,10 @@ pub async fn home(
         continue_watching_res,
         recommended_res,
         week_res,
+        gotd_res,
+        upcoming_res,
+        onboarding_res,
+        streak_res,
         unread_res,
     ) = tokio::join!(
         GameRepo::featured(&state.db, 6, 0),
@@ -100,6 +105,58 @@ pub async fn home(
                 .await
                 .unwrap_or_default()
         },
+        // v3.0.0 — "Game của ngày" (deterministic theo ngày VN)
+        async {
+            GameRepo::game_of_the_day(&state.db)
+                .await
+                .unwrap_or_default()
+        },
+        // v3.0.0 — "Sắp ra mắt" (countdown)
+        async {
+            GameRepo::upcoming_releases(&state.db, 6)
+                .await
+                .unwrap_or_default()
+        },
+        // v3.0.0 — onboarding checklist (user mới, chưa xong đủ 5 bước)
+        async {
+            match current_user.as_ref() {
+                Some(u) => {
+                    let steps = crate::repositories::OnboardingRepo::steps_for_user(&state.db, u.id)
+                        .await
+                        .unwrap_or_default();
+                    let done = steps.iter().filter(|s| s.done).count();
+                    // Chỉ hiện khi account < 30 ngày và chưa hoàn thành hết
+                    let is_new = (chrono::Utc::now() - u.created_at).num_days() < 30;
+                    if is_new && done < steps.len() && !steps.is_empty() {
+                        Some(crate::templates::OnboardingWidget { steps, done_count: done })
+                    } else {
+                        None
+                    }
+                }
+                None => None,
+            }
+        },
+        // v3.0.0 — streak warning: có chuỗi nhưng chưa điểm danh hôm nay
+        async {
+            match current_user.as_ref() {
+                Some(u) => {
+                    let checked_in = GamificationRepo::today_checkin(&state.db, u.id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .is_some();
+                    if checked_in {
+                        None
+                    } else {
+                        GamificationRepo::current_streak(&state.db, u.id)
+                            .await
+                            .ok()
+                            .filter(|s| *s > 0)
+                    }
+                }
+                None => None,
+            }
+        },
         unread_for(&state, current_user.as_ref()),
     );
     let featured_games = featured_res.unwrap_or_default();
@@ -120,6 +177,17 @@ pub async fn home(
     let continue_watching = continue_watching_res;
     let recommended_games = recommended_res;
     let week_games = week_res;
+    // v3.0.0 — game của ngày + label DD/MM theo giờ VN
+    let game_of_the_day = gotd_res.map(|card| {
+        let today = crate::utils::today_vn();
+        crate::models::retention::GameOfDay {
+            date_label: today.format("%d/%m").to_string(),
+            card,
+        }
+    });
+    let upcoming_games = upcoming_res;
+    let onboarding = onboarding_res;
+    let streak_warning = streak_res;
 
     // JSON-LD schema.org/WebSite — builder đã chuyển sang
     // `crate::services::json_ld::build_homepage_json_ld` để tái sử dụng +
@@ -145,6 +213,10 @@ pub async fn home(
         continue_watching,
         recommended_games,
         week_games,
+        game_of_the_day,
+        upcoming_games,
+        streak_warning,
+        onboarding,
     })
 }
 
@@ -428,6 +500,11 @@ pub async fn show_game(
             tokio::spawn(async move {
                 let _ = ViewHistoryRepo::record(&db_h, uid, game_id).await;
             });
+            // v3.0.0 — quest view_game + heatmap (fire-and-forget)
+            let db_r = state.db.clone();
+            tokio::spawn(async move {
+                crate::services::retention::on_action(db_r, uid, "view_game", 1).await;
+            });
         }
         tokio::spawn(async move {
             let _ = GameRepo::increment_view_count(&db, game_id).await;
@@ -503,6 +580,16 @@ pub async fn show_game(
     let my_review = my_review_res;
     let my_collections = my_collections_res;
 
+    // v3.0.0 — also_liked + countdown
+    let also_liked = GameRepo::also_liked(&state.db, game.id, 6)
+        .await
+        .unwrap_or_default();
+    let release_countdown_days = game.release_date.and_then(|d| {
+        let n = (d - crate::utils::today_vn()).num_days();
+        // Chỉ đếm ngược khi CÒN ngày (đã ra mắt → None, không hiện banner)
+        (n > 0).then_some(n)
+    });
+
     // v2.6.0 — 4 interaction checks + unread_count chạy SONG SONG —
     // trước đây unread_for await SAU interaction block → cộng thêm 1
     // round-trip. Giờ tất cả 5 futures trong 1 wave.
@@ -548,6 +635,16 @@ pub async fn show_game(
     // trong kết quả tìm kiếm (rich result), tăng CTR đáng kể.
     let breadcrumb_ld = build_breadcrumb_json_ld(&state.config.base_url, &game, category.as_ref());
 
+    // v3.0.0 — invite_rating: đã tải + chưa đánh giá → prompt mời đánh giá
+    let invite_rating = match current_user.as_ref() {
+        Some(u) if user_rating.is_none() => {
+            InteractionRepo::has_downloaded(&state.db, game.id, u.id)
+                .await
+                .unwrap_or(false)
+        }
+        _ => false,
+    };
+
     Ok(GameShowTemplate {
         current_user,
         unread_notifications: unread,
@@ -571,6 +668,9 @@ pub async fn show_game(
         user_rating,
         base_url: state.config.base_url.clone(),
         json_ld: format!("{json_ld}\n{breadcrumb_ld}"),
+        also_liked,
+        release_countdown_days,
+        invite_rating,
     })
 }
 
@@ -710,6 +810,12 @@ pub async fn download_game(
         let user_id = user.id;
         let owner_id = game.user_id;
         let platform_str = platform.as_str().to_string();
+        // v3.0.0 — quest download + heatmap (bên trong spawn sẵn có)
+        let db_ret = db.clone();
+        let ret_uid = user_id;
+        tokio::spawn(async move {
+            crate::services::retention::on_action(db_ret, ret_uid, "download", 1).await;
+        });
         tokio::spawn(async move {
             let _ = InteractionRepo::record_download(
                 &db,
@@ -1232,10 +1338,17 @@ pub async fn share_game(
         let db = state.db.clone();
         let game_id = game.id;
         let platform_str = platform.to_string();
+        // v3.0.0 — quest share + heatmap (clone trước khi db bị move)
+        let db_ret = db.clone();
         tokio::spawn(async move {
             let _ = InteractionRepo::record_share(&db, game_id, user_id, &platform_str).await;
             let _ = GameRepo::increment_share_count(&db, game_id).await;
         });
+        if let Some(ret_uid) = user_id {
+            tokio::spawn(async move {
+                crate::services::retention::on_action(db_ret, ret_uid, "share", 1).await;
+            });
+        }
     }
     Ok(Html("<span></span>".into()))
 }
@@ -1292,7 +1405,7 @@ pub async fn publish_game(
     if game.user_id != user.id && !user.role.is_staff() {
         return Err(AppError::Forbidden("Bạn không có quyền".into()));
     }
-    // v2.9.3 FIX (XP farm): chỉ fire hook XP/notification khi game MỚI
+    // v3.0.0 FIX (XP farm): chỉ fire hook XP/notification khi game MỚI
     // chuyển sang published — re-publish game đã published không cộng XP
     // và không spam followers.
     let newly_published = GameRepo::publish(&state.db, game.id).await?;
