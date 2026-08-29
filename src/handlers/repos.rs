@@ -69,8 +69,9 @@ pub async fn new_form(
 }
 
 // ============= Gọi GitHub API lấy metadata =============
-/// Map [`GithubApiError`] của service GitHub → AppError có thông điệp RÕ
-/// RÀNG cho user. Hàm độc lập để unit test được (regression v2.8.0/v2.9.1).
+/// Map lỗi [`crate::services::github::GithubApiError`] của service GitHub →
+/// AppError có thông điệp RÕ RÀNG cho user. Hàm độc lập để unit test được
+/// (regression v2.8.0/v2.9.1).
 ///
 /// v2.8.0 — FIX "đăng repo liên tục 500": trước đây mọi status ngoài
 /// 200/404/403/401 (điển hình: 429 rate-limit mới của GitHub, 5xx của
