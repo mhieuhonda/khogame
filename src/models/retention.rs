@@ -134,7 +134,7 @@ pub struct TriviaQuestionPublic {
 }
 
 impl TriviaQuestionPublic {
-    /// Các lựa chọn dạng Vec<String> (askama không lặp được Value).
+    /// Các lựa chọn dạng `Vec<String>` (askama không lặp được Value).
     #[must_use]
     pub fn options_list(&self) -> Vec<String> {
         self.options

@@ -51,7 +51,7 @@ pub struct PrefsForm {
 }
 
 /// POST /settings/notifications — lưu tùy chọn (checkbox HTML: có value
-/// khi tick, vắng hoàn toàn khi bỏ tick → Option<String>).
+/// khi tick, vắng hoàn toàn khi bỏ tick → `Option<String>`).
 /// # Errors
 /// Trả lỗi khi DB fail.
 pub async fn save(

@@ -771,7 +771,7 @@ pub mod filters {
         Ok(u::time_ago(dt.with_timezone(&chrono::Utc)))
     }
 
-    /// v2.2.0 — time_ago cho DateTime<Utc> trực tiếp (cho Option<DateTime>).
+    /// v2.2.0 — time_ago cho `DateTime<Utc>` trực tiếp (cho `Option<DateTime>`).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
