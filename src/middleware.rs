@@ -888,11 +888,8 @@ pub async fn rate_limit(
     // fallback, toàn bộ visitor mới chưa có cookie (anon) dồn vào bucket
     // chung "x:anon-unknown" → ~15 visitor đầu tiên là đốt 120/phút → 429
     // trên CSS cho người dùng thật. Healthcheck cũng không nên đốt quota.
-    if (request.method() == axum::http::Method::GET
-        || request.method() == axum::http::Method::HEAD)
-        && (path.starts_with("/static/")
-            || path.starts_with("/uploads/")
-            || path == "/health")
+    if (request.method() == axum::http::Method::GET || request.method() == axum::http::Method::HEAD)
+        && (path.starts_with("/static/") || path.starts_with("/uploads/") || path == "/health")
     {
         return Ok(next.run(request).await);
     }

@@ -184,11 +184,10 @@ impl GamificationRepo {
              WHERE user_id = $1 AND checkin_date = {} - 2",
             crate::utils::SQL_TODAY_VN
         );
-        let Some(prev_streak): Option<i32> =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .fetch_optional(&mut **tx)
-                .await?
+        let Some(prev_streak): Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_optional(&mut **tx)
+            .await?
         else {
             return Ok(None);
         };

@@ -5,8 +5,8 @@
 //! 90 ngày gần nhất; janitor giữ tối đa 180 ngày (dọn phần cũ nếu cần).
 
 use crate::error::AppResult;
-use chrono::Datelike;
 use crate::models::retention::{CalendarDay, HeatmapDay};
+use chrono::Datelike;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -54,7 +54,10 @@ impl ActivityRepo {
     /// Trả về các ngày của tháng hiện tại theo giờ VN kèm trạng thái.
     /// # Errors
     /// Trả lỗi khi DB fail.
-    pub async fn checkin_calendar_month(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<CalendarDay>> {
+    pub async fn checkin_calendar_month(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> AppResult<Vec<CalendarDay>> {
         let today = crate::utils::today_vn();
         let first = format!("{}-01", today.format("%Y-%m"));
         let first_day = chrono::NaiveDate::parse_from_str(&first, "%Y-%m-%d")

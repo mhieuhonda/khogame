@@ -68,7 +68,10 @@ pub async fn create(
             CollectionRepo::count_for_user(&state.db, user.id),
             crate::repositories::GamificationRepo::level_of(&state.db, user.id),
         );
-        (c.unwrap_or(0), l.unwrap_or_else(|_| crate::models::gamification::level_from_xp(0)))
+        (
+            c.unwrap_or(0),
+            l.unwrap_or_else(|_| crate::models::gamification::level_from_xp(0)),
+        )
     };
     let max_collections = collection_limit_for_level(level.level);
     if count >= i64::from(max_collections) {

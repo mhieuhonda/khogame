@@ -212,14 +212,12 @@ impl ReviewRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn delete(pool: &PgPool, id: Uuid, user_id: Uuid, is_staff: bool) -> AppResult<bool> {
-        let res = sqlx::query(
-            "DELETE FROM reviews WHERE id = $1 AND ($3 OR user_id = $2)",
-        )
-        .bind(id)
-        .bind(user_id)
-        .bind(is_staff)
-        .execute(pool)
-        .await?;
+        let res = sqlx::query("DELETE FROM reviews WHERE id = $1 AND ($3 OR user_id = $2)")
+            .bind(id)
+            .bind(user_id)
+            .bind(is_staff)
+            .execute(pool)
+            .await?;
         Ok(res.rows_affected() > 0)
     }
 }

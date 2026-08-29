@@ -92,11 +92,11 @@ pub async fn leaderboard(
         // v3.0.0 — lịch điểm danh tháng của viewer
         async {
             match current_user.as_ref() {
-                Some(u) => crate::repositories::ActivityRepo::checkin_calendar_month(
-                        &state.db, u.id,
-                    )
-                    .await
-                    .ok(),
+                Some(u) => {
+                    crate::repositories::ActivityRepo::checkin_calendar_month(&state.db, u.id)
+                        .await
+                        .ok()
+                }
                 None => None,
             }
         },

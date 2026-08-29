@@ -95,14 +95,46 @@ impl SpinPrize {
     /// Bảng phần thưởng chuẩn. Tổng trọng số = 1000.
     /// Jackpot 500 XP cực hiếm (5/1000 = 0.5%).
     pub const TABLE: &'static [SpinPrize] = &[
-        SpinPrize { xp: 5, weight: 300, tier: "common" },
-        SpinPrize { xp: 10, weight: 250, tier: "common" },
-        SpinPrize { xp: 15, weight: 180, tier: "common" },
-        SpinPrize { xp: 20, weight: 130, tier: "rare" },
-        SpinPrize { xp: 30, weight: 80, tier: "rare" },
-        SpinPrize { xp: 50, weight: 40, tier: "epic" },
-        SpinPrize { xp: 100, weight: 15, tier: "epic" },
-        SpinPrize { xp: 500, weight: 5, tier: "legendary" },
+        SpinPrize {
+            xp: 5,
+            weight: 300,
+            tier: "common",
+        },
+        SpinPrize {
+            xp: 10,
+            weight: 250,
+            tier: "common",
+        },
+        SpinPrize {
+            xp: 15,
+            weight: 180,
+            tier: "common",
+        },
+        SpinPrize {
+            xp: 20,
+            weight: 130,
+            tier: "rare",
+        },
+        SpinPrize {
+            xp: 30,
+            weight: 80,
+            tier: "rare",
+        },
+        SpinPrize {
+            xp: 50,
+            weight: 40,
+            tier: "epic",
+        },
+        SpinPrize {
+            xp: 100,
+            weight: 15,
+            tier: "epic",
+        },
+        SpinPrize {
+            xp: 500,
+            weight: 5,
+            tier: "legendary",
+        },
     ];
 
     /// Chọn phần thưởng theo trọng số. `rand_val` phải trong 0..1000

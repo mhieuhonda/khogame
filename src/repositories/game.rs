@@ -1070,11 +1070,7 @@ impl GameRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn also_liked(
-        pool: &PgPool,
-        game_id: Uuid,
-        limit: i64,
-    ) -> AppResult<Vec<GameCard>> {
+    pub async fn also_liked(pool: &PgPool, game_id: Uuid, limit: i64) -> AppResult<Vec<GameCard>> {
         let cards = sqlx::query_as::<_, GameCard>(
             r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
                 c.name as category_name, c.slug as category_slug,

@@ -5,8 +5,8 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::PrefsRepo;
 use crate::state::AppState;
 use crate::templates::NotifPrefsTemplate;
-use serde::Deserialize;
 use axum::extract::State;
+use serde::Deserialize;
 use std::sync::Arc;
 
 /// GET /settings/notifications — trang tùy chọn (yêu cầu đăng nhập).
@@ -69,5 +69,7 @@ pub async fn save(
         form.weekly_digest.is_some(),
     )
     .await?;
-    Ok(axum::response::Redirect::to("/settings/notifications?saved=1"))
+    Ok(axum::response::Redirect::to(
+        "/settings/notifications?saved=1",
+    ))
 }

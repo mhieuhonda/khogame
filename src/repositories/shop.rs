@@ -49,12 +49,11 @@ impl ShopRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn xp_boost_active(pool: &PgPool, user_id: Uuid) -> AppResult<bool> {
-        let row: Option<chrono::DateTime<chrono::Utc>> = sqlx::query_scalar(
-            "SELECT xp_boost_until FROM user_boosts WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let row: Option<chrono::DateTime<chrono::Utc>> =
+            sqlx::query_scalar("SELECT xp_boost_until FROM user_boosts WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         Ok(row.map(|t| t > chrono::Utc::now()).unwrap_or(false))
     }
 
@@ -99,11 +98,13 @@ impl ShopRepo {
             )));
         };
         // 2) Ghi log chi tiêu (activity feed + audit nhẹ)
-        sqlx::query("INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'shop_spend', $2)")
-            .bind(user_id)
-            .bind(-item.price)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'shop_spend', $2)",
+        )
+        .bind(user_id)
+        .bind(-item.price)
+        .execute(&mut *tx)
+        .await?;
 
         let mut mystery_xp = 0;
         match item.kind.as_str() {
@@ -201,8 +202,7 @@ impl ShopRepo {
 /// rand_val 0..=9999; quy đổi tuyến tính min..max.
 pub fn mystery_xp_for(rand_val: i32) -> i32 {
     let v = rand_val.rem_euclid(10_000);
-    MYSTERY_MIN_XP
-        + (i64::from(v) * i64::from(MYSTERY_MAX_XP - MYSTERY_MIN_XP) / 10_000) as i32
+    MYSTERY_MIN_XP + (i64::from(v) * i64::from(MYSTERY_MAX_XP - MYSTERY_MIN_XP) / 10_000) as i32
 }
 
 #[cfg(test)]

@@ -39,12 +39,11 @@ impl SpinRepo {
             crate::utils::SQL_TODAY_VN
         );
         let mut tx = pool.begin().await?;
-        let inserted: Option<i32> =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .bind(prize.xp)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let inserted: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .bind(prize.xp)
+            .fetch_optional(&mut *tx)
+            .await?;
         let Some(xp) = inserted else {
             return Err(AppError::BadRequest(
                 "Hôm nay bạn đã quay rồi — quay lại vào ngày mai nhé!".into(),

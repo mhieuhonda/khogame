@@ -24,12 +24,11 @@ impl ReferralRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn get_or_create_code(pool: &PgPool, user_id: Uuid) -> AppResult<String> {
-        let existing: Option<String> = sqlx::query_scalar(
-            "SELECT code FROM user_referral_codes WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+        let existing: Option<String> =
+            sqlx::query_scalar("SELECT code FROM user_referral_codes WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
         if let Some(code) = existing {
             return Ok(code);
         }
@@ -65,13 +64,14 @@ impl ReferralRepo {
             }
         }
         // Lần cuối đọc lại (mã trùng 5 lần liên tiếp gần như không thể)
-        let code: String = sqlx::query_scalar(
-            "SELECT code FROM user_referral_codes WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or_else(|| crate::error::AppError::BadRequest("Không sinh được mã giới thiệu".into()))?;
+        let code: String =
+            sqlx::query_scalar("SELECT code FROM user_referral_codes WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| {
+                    crate::error::AppError::BadRequest("Không sinh được mã giới thiệu".into())
+                })?;
         Ok(code)
     }
 
@@ -79,12 +79,11 @@ impl ReferralRepo {
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn resolve_code(pool: &PgPool, code: &str) -> AppResult<Option<Uuid>> {
-        let id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT user_id FROM user_referral_codes WHERE code = $1",
-        )
-        .bind(code)
-        .fetch_optional(pool)
-        .await?;
+        let id: Option<Uuid> =
+            sqlx::query_scalar("SELECT user_id FROM user_referral_codes WHERE code = $1")
+                .bind(code)
+                .fetch_optional(pool)
+                .await?;
         Ok(id)
     }
 

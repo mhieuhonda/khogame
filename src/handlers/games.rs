@@ -4,9 +4,8 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{
-    GamificationRepo,
-    CategoryRepo, CollectionRepo, GameRepo, InteractionRepo, NewsRepo, RepoRepo, ReportRepo,
-    ReviewRepo, TagRepo, ViewHistoryRepo,
+    CategoryRepo, CollectionRepo, GameRepo, GamificationRepo, InteractionRepo, NewsRepo, RepoRepo,
+    ReportRepo, ReviewRepo, TagRepo, ViewHistoryRepo,
 };
 use crate::services::json_ld::{
     build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld,
@@ -121,14 +120,18 @@ pub async fn home(
         async {
             match current_user.as_ref() {
                 Some(u) => {
-                    let steps = crate::repositories::OnboardingRepo::steps_for_user(&state.db, u.id)
-                        .await
-                        .unwrap_or_default();
+                    let steps =
+                        crate::repositories::OnboardingRepo::steps_for_user(&state.db, u.id)
+                            .await
+                            .unwrap_or_default();
                     let done = steps.iter().filter(|s| s.done).count();
                     // Chỉ hiện khi account < 30 ngày và chưa hoàn thành hết
                     let is_new = (chrono::Utc::now() - u.created_at).num_days() < 30;
                     if is_new && done < steps.len() && !steps.is_empty() {
-                        Some(crate::templates::OnboardingWidget { steps, done_count: done })
+                        Some(crate::templates::OnboardingWidget {
+                            steps,
+                            done_count: done,
+                        })
                     } else {
                         None
                     }

@@ -1,7 +1,7 @@
 use crate::repositories::{NotificationRepo, RepoRepo, SessionRepo, StatsRepo};
 use crate::state::AppState;
-use chrono::Timelike;
 use chrono::Datelike;
+use chrono::Timelike;
 use std::time::Duration;
 
 /// Số ngày giữ notification ĐÃ ĐỌC trước khi xoá. Notification chưa đọc
@@ -216,12 +216,7 @@ pub async fn run_janitor(state: AppState) {
         let start = std::time::Instant::now();
         let (sessions, notifications, daily_stats, emails, xp_events) = do_cleanup(&state).await;
         let elapsed = start.elapsed();
-        if sessions > 0
-            || notifications > 0
-            || daily_stats > 0
-            || emails > 0
-            || xp_events > 0
-        {
+        if sessions > 0 || notifications > 0 || daily_stats > 0 || emails > 0 || xp_events > 0 {
             tracing::info!(
                 "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ (mất {:?})",
                 sessions,
@@ -259,8 +254,11 @@ pub async fn run_weekly_digest(state: AppState) {
     let interval = std::time::Duration::from_secs(1800);
     loop {
         tokio::time::sleep(interval).await;
-        let now_vn = chrono::Utc::now().with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).expect("TZ +7"));
-        if now_vn.weekday().number_from_monday() != DIGEST_DAY_MONDAY || now_vn.hour() < DIGEST_HOUR_VN {
+        let now_vn = chrono::Utc::now()
+            .with_timezone(&chrono::FixedOffset::east_opt(7 * 3600).expect("TZ +7"));
+        if now_vn.weekday().number_from_monday() != DIGEST_DAY_MONDAY
+            || now_vn.hour() < DIGEST_HOUR_VN
+        {
             continue;
         }
         if let Err(e) = send_weekly_digest(&state).await {
@@ -376,9 +374,7 @@ pub async fn run_email_flusher(state: AppState) {
 
 /// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`,
 /// email_queue kết thúc, xp_events) đã xoá.
-async fn do_cleanup(
-    state: &AppState,
-) -> (u64, u64, u64, u64, u64) {
+async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
         .await
         .unwrap_or_else(|e| {
@@ -442,10 +438,11 @@ async fn cleanup_email_queue(pool: &sqlx::PgPool, days: i64) -> crate::error::Ap
 ///
 /// Trả lỗi khi DB fail.
 async fn cleanup_xp_events(pool: &sqlx::PgPool, days: i64) -> crate::error::AppResult<u64> {
-    let res = sqlx::query("DELETE FROM xp_events WHERE created_at < NOW() - ($1 || ' days')::INTERVAL")
-        .bind(days.to_string())
-        .execute(pool)
-        .await?;
+    let res =
+        sqlx::query("DELETE FROM xp_events WHERE created_at < NOW() - ($1 || ' days')::INTERVAL")
+            .bind(days.to_string())
+            .execute(pool)
+            .await?;
     Ok(res.rows_affected())
 }
 
@@ -474,7 +471,7 @@ mod tests {
         // v3.0.0 — guards retention mới:
         assert!(EMAIL_QUEUE_RETENTION_DAYS >= 7); // email log phải sống đủ lâu để audit
         assert!(XP_EVENTS_RETENTION_DAYS >= 30); // heatmap/season cần cửa sổ tối thiểu 30 ngày
-        // v2.9.1 — guards cho job refresh repo:
+                                                 // v2.9.1 — guards cho job refresh repo:
         assert!(REPO_REFRESH_INTERVAL_SECS >= 300); // tránh spam GitHub API
         assert!(REPO_STALE_AFTER_SECS >= 300); // stale "hợp lý", không quét liên tục
         assert!(REPO_STALE_AFTER_SECS < REPO_REFRESH_INTERVAL_SECS as i64); // mỗi chu kỳ phải có repo đáng quét

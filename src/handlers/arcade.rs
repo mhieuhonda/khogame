@@ -6,8 +6,8 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::repositories::{SpinRepo, TriviaRepo};
 use crate::state::AppState;
 use crate::templates::{SpinTemplate, TriviaTemplate};
-use serde::Deserialize;
 use axum::extract::State;
+use serde::Deserialize;
 use std::sync::Arc;
 
 // ============================================================
@@ -56,14 +56,17 @@ pub async fn do_spin(
     tokio::spawn(async move {
         crate::services::gamification::check_achievements(&db, uid).await;
     });
-    let celebrate = if jackpot { "spin-result jackpot celebrate" } else { "spin-result" };
+    let celebrate = if jackpot {
+        "spin-result jackpot celebrate"
+    } else {
+        "spin-result"
+    };
     Ok(axum::response::Html(format!(
         "<div class='{celebrate}' data-xp-toast=\"+{xp} XP\">\
            <div class='spin-prize-xp'>+{xp} XP</div>\
            <p class='spin-prize-total'>Tổng XP: <strong>{total}</strong> · Cấp {} — {}</p>\
          </div>",
-        level.level,
-        level.title
+        level.level, level.title
     )))
 }
 
@@ -107,10 +110,15 @@ pub async fn answer_trivia(
     AuthUser(user): AuthUser,
     axum::extract::Form(form): axum::extract::Form<TriviaAnswerForm>,
 ) -> AppResult<axum::response::Html<String>> {
-    let result = TriviaRepo::answer(&state.db, user.id, form.question_id, form.answer_index).await?;
+    let result =
+        TriviaRepo::answer(&state.db, user.id, form.question_id, form.answer_index).await?;
     // Bonus cả 3 câu đúng — thử mỗi lần (idempotent trong repo)
     let bonus = TriviaRepo::maybe_award_all_bonus(&state.db, user.id).await?;
-    let status = if result.is_correct { "correct" } else { "wrong" };
+    let status = if result.is_correct {
+        "correct"
+    } else {
+        "wrong"
+    };
     let xp_note = if result.xp_awarded > 0 {
         format!(" +{} XP", result.xp_awarded)
     } else {
@@ -154,7 +162,11 @@ pub async fn answer_trivia(
            <p class='trivia-explanation'>{}</p>\
          </div>{bonus_note}",
         result.is_correct,
-        if result.is_correct { "✅ Chính xác!" } else { "❌ Chưa đúng" },
+        if result.is_correct {
+            "✅ Chính xác!"
+        } else {
+            "❌ Chưa đúng"
+        },
         xp_note,
         crate::utils::html_escape(&result.explanation)
     )))

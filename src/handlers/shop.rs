@@ -19,7 +19,9 @@ pub async fn shop_page(
         return Err(AppError::Unauthorized);
     };
     let items = ShopRepo::list_for_user(&state.db, user.id).await?;
-    let total_xp = GamificationRepo::total_xp(&state.db, user.id).await.unwrap_or(0);
+    let total_xp = GamificationRepo::total_xp(&state.db, user.id)
+        .await
+        .unwrap_or(0);
     let unread = crate::handlers::auth::unread_count(&state, user.id).await;
     Ok(ShopTemplate {
         current_user: Some(user),
@@ -47,7 +49,10 @@ pub async fn buy_item(
             outcome.mystery_xp, outcome.total_xp
         )
     } else {
-        format!("✅ Mua thành công! Số dư còn <strong>{}</strong> XP", outcome.total_xp)
+        format!(
+            "✅ Mua thành công! Số dư còn <strong>{}</strong> XP",
+            outcome.total_xp
+        )
     };
     Ok(axum::response::Html(format!(
         "<div class='shop-result alert alert-success' data-xp-toast=\"Đã mua vật phẩm\">{msg}</div>"

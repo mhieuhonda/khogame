@@ -145,11 +145,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // === v3.0.0 RETENTION: quests / spin / trivia / shop / referral /
         // prefs + link ngắn referral ===
         .route("/quests", get(handlers::quests::quests_page))
+        .route("/quests/{id}/claim", post(handlers::quests::claim_quest))
         .route(
-            "/quests/{id}/claim",
-            post(handlers::quests::claim_quest),
+            "/spin",
+            get(handlers::arcade::spin_page).post(handlers::arcade::do_spin),
         )
-        .route("/spin", get(handlers::arcade::spin_page).post(handlers::arcade::do_spin))
         .route("/trivia", get(handlers::arcade::trivia_page))
         .route("/trivia/answer", post(handlers::arcade::answer_trivia))
         .route("/shop", get(handlers::shop::shop_page))

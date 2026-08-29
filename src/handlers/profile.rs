@@ -156,7 +156,12 @@ pub async fn show_profile(
     let heatmap = build_heatmap_widget(&heat_rows);
     // v3.0.0 — completeness: avatar (35%) + bio (35%) + socials (30%)
     let mut completeness_pct = 0i32;
-    if user.avatar_url.as_deref().map(|a| !a.is_empty()).unwrap_or(false) {
+    if user
+        .avatar_url
+        .as_deref()
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         completeness_pct += 35;
     }
     if user.bio.as_deref().map(|b| !b.is_empty()).unwrap_or(false) {

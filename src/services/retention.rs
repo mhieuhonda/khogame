@@ -62,14 +62,13 @@ pub async fn onboarding_step(pool: &PgPool, user_id: Uuid, step: &str) {
 /// Kiểm tra hồ sơ (avatar/bio) và đánh dấu onboarding tương ứng.
 /// Gọi sau mỗi lần user lưu hồ sơ — idempotent, chỉ thưởng lần đầu.
 pub async fn check_profile_onboarding(pool: &PgPool, user_id: Uuid) {
-    let row: Option<(Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT avatar_url, bio FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .ok()
-    .flatten();
+    let row: Option<(Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT avatar_url, bio FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await
+            .ok()
+            .flatten();
     if let Some((avatar, bio)) = row {
         if avatar.map(|a| !a.is_empty()).unwrap_or(false) {
             onboarding_step(pool, user_id, "avatar").await;

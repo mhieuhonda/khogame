@@ -83,11 +83,10 @@ impl QuestRepo {
             daily = Self::PERIOD_DAILY,
             weekly = Self::PERIOD_WEEKLY
         );
-        let rows: Vec<QuestProgressRow> =
-            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .fetch_all(pool)
-                .await?;
+        let rows: Vec<QuestProgressRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
         Ok(rows.into_iter().map(|r| r.into_progress()).collect())
     }
 
@@ -96,12 +95,7 @@ impl QuestRepo {
     /// Gọi fire-and-forget từ services/retention (lỗi không fail request).
     /// # Errors
     /// Trả lỗi khi DB fail.
-    pub async fn bump(
-        pool: &PgPool,
-        user_id: Uuid,
-        stat_key: &str,
-        delta: i32,
-    ) -> AppResult<u64> {
+    pub async fn bump(pool: &PgPool, user_id: Uuid, stat_key: &str, delta: i32) -> AppResult<u64> {
         if delta <= 0 {
             return Ok(0);
         }
@@ -177,12 +171,11 @@ impl QuestRepo {
             daily = Self::PERIOD_DAILY,
             weekly = Self::PERIOD_WEEKLY
         );
-        let xp: Option<i32> =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .bind(quest_id)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let xp: Option<i32> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .bind(quest_id)
+            .fetch_optional(&mut *tx)
+            .await?;
         let Some(xp) = xp else {
             return Err(crate::error::AppError::BadRequest(
                 "Nhiệm vụ chưa hoàn thành hoặc đã nhận thưởng".into(),
@@ -213,10 +206,7 @@ impl QuestRepo {
     /// Đếm nhiệm vụ daily đã hoàn thành hôm nay (cho widget homepage).
     /// # Errors
     /// Trả lỗi khi DB fail.
-    pub async fn daily_progress_summary(
-        pool: &PgPool,
-        user_id: Uuid,
-    ) -> AppResult<(i64, i64)> {
+    pub async fn daily_progress_summary(pool: &PgPool, user_id: Uuid) -> AppResult<(i64, i64)> {
         let sql = format!(
             r#"SELECT
                  COUNT(*) FILTER (WHERE uq.completed_at IS NOT NULL),
@@ -227,11 +217,10 @@ impl QuestRepo {
                  AND uq.period_date = {}"#,
             Self::PERIOD_DAILY
         );
-        let (done, total): (i64, i64) =
-            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .fetch_one(pool)
-                .await?;
+        let (done, total): (i64, i64) = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
         Ok((done, total))
     }
 }
@@ -246,21 +235,22 @@ impl OnboardingRepo {
         pool: &PgPool,
         user_id: Uuid,
     ) -> AppResult<Vec<crate::models::retention::OnboardingStepStatus>> {
-        let done: Vec<String> = sqlx::query_scalar(
-            "SELECT step FROM onboarding_steps WHERE user_id = $1",
-        )
-        .bind(user_id)
-        .fetch_all(pool)
-        .await?;
+        let done: Vec<String> =
+            sqlx::query_scalar("SELECT step FROM onboarding_steps WHERE user_id = $1")
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
         Ok(ONBOARDING_STEPS
             .iter()
-            .map(|(code, label, icon, xp)| crate::models::retention::OnboardingStepStatus {
-                code,
-                label,
-                icon,
-                xp: *xp,
-                done: done.iter().any(|d| d == code),
-            })
+            .map(
+                |(code, label, icon, xp)| crate::models::retention::OnboardingStepStatus {
+                    code,
+                    label,
+                    icon,
+                    xp: *xp,
+                    done: done.iter().any(|d| d == code),
+                },
+            )
             .collect())
     }
 
