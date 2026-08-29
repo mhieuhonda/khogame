@@ -283,8 +283,12 @@ mod presence_tests {
         assert!(matches!(p.add(a, 5), PresenceAdd::NewlyOnline(1)));
         assert!(matches!(p.add(b, 5), PresenceAdd::NewlyOnline(2)));
         assert_eq!(p.count(), 2);
+        // Sort CẢ HAI bên — UUID random nên thứ tự sinh không dự đoán được
+        // (trước đây chỉ sort left → flaky 50% trên runner khác).
         let mut ids = p.user_ids();
         ids.sort();
-        assert_eq!(ids, vec![a, b]);
+        let mut expected = vec![a, b];
+        expected.sort();
+        assert_eq!(ids, expected);
     }
 }
