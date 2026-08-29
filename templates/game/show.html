@@ -221,6 +221,9 @@
                 </div>
                 {% endif %}
             </section>
+
+            {# === v2.9.0 — REVIEWS GAME === #}
+            {% include "partials/reviews_section.html" %}
         </div>
 
         <aside class="game-sidebar">
@@ -356,6 +359,24 @@
                     </dd>
                     {% endif %}
                 </dl>
+            </div>
+
+            {# === v2.9.0 — THÊM VÀO BỘ SƯU TẬP === #}
+            {% match current_user %}
+            {% when Option::Some with (u) %}
+            {% if !u.role.is_ai_agent() %}
+            {% include "partials/add_to_collection.html" %}
+            {% endif %}
+            {% when Option::None %}
+            {% endmatch %}
+
+            {# === v2.9.0 — GAME NGẪU NHIÊN — KHÁM PHÁ === #}
+            <div class="sidebar-card random-game-card">
+                <h3 class="sidebar-title">Khám phá</h3>
+                <a href="/games/random" class="btn btn-outline btn-sm btn-block">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    Game ngẫu nhiên
+                </a>
             </div>
         </aside>
     </div>

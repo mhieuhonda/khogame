@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block title %}Huy hiệu của tôi{% endblock %}
+{% block description %}Bộ sưu tập huy hiệu Louis Space — tích XP, lên cấp, mở khóa 25 huy hiệu và ghim huy hiệu yêu thích lên hồ sơ.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/><path d="M9.5 8h5M12 5.5v5"/></svg>
+            Huy hiệu của tôi
+        </h1>
+        <a href="/leaderboard" class="section-more">Bảng xếp hạng →</a>
+    </div>
+
+    <div class="achievements-summary">
+        <div class="ach-summary-item">
+            <span class="level-chip level-chip-lg">Lv.{{ level.level }}</span>
+            <span class="ach-summary-label">{{ level.title }}</span>
+        </div>
+        <div class="ach-summary-item">
+            <span class="ach-summary-value">{{ level.xp }}</span>
+            <span class="ach-summary-label">Tổng XP</span>
+        </div>
+        <div class="ach-summary-item">
+            <span class="ach-summary-value">{{ earned_count }} / {{ achievements.len() }}</span>
+            <span class="ach-summary-label">Huy hiệu đã đạt</span>
+        </div>
+        <div class="ach-summary-item">
+            <span class="ach-summary-value">{% if streak > 0 %}🔥 {{ streak }} ngày{% else %}—{% endif %}</span>
+            <span class="ach-summary-label">Chuỗi điểm danh</span>
+        </div>
+        <div class="ach-summary-item ach-summary-progress">
+            <div class="checkin-xp-bar">
+                <div class="checkin-xp-fill" style="width: {{ level.progress_pct }}%"></div>
+            </div>
+            <span class="ach-summary-label">
+                {% match level.next_level_xp %}{% when Option::Some with (next) %}{{ level.xp }}/{{ next }} XP tới Lv.{{ level.level + 1 }}{% when Option::None %}Cấp tối đa!{% endmatch %}
+            </span>
+        </div>
+    </div>
+
+    <p class="achievements-hint">💡 Ghim tối đa 3 huy hiệu yêu thích — huy hiệu ghim sẽ hiện lên hồ sơ công khai của bạn.</p>
+
+    <div class="achievements-grid">
+        {% for a in achievements %}
+        <div class="achievement-card {% if a.earned_at.is_some() %}achievement-earned{% else %}achievement-locked{% endif %} {% if a.is_showcased %}achievement-showcased{% endif %}">
+            <div class="achievement-icon" aria-hidden="true">{{ a.achievement.icon }}</div>
+            <div class="achievement-body">
+                <h3 class="achievement-title">{{ a.achievement.title }}</h3>
+                <p class="achievement-desc">{{ a.achievement.description }}</p>
+                <div class="achievement-meta">
+                    <span class="achievement-xp">+{{ a.achievement.xp_reward }} XP</span>
+                    {% match a.earned_at %}
+                    {% when Option::Some with (t) %}
+                    <span class="achievement-date">Đạt được {{ t|time_ago_dt }}</span>
+                    {% when Option::None %}
+                    <span class="achievement-locked-label">Chưa mở khóa</span>
+                    {% endmatch %}
+                </div>
+            </div>
+            {% if a.earned_at.is_some() %}
+            <form method="post" action="/achievements/{{ a.achievement.id }}/showcase">
+                <button type="submit" class="btn {% if a.is_showcased %}btn-primary{% else %}btn-outline{% endif %} btn-sm" title="Ghim/bỏ ghim lên hồ sơ">
+                    {% if a.is_showcased %}★ Đang ghim{% else %}☆ Ghim{% endif %}
+                </button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

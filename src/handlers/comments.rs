@@ -87,6 +87,14 @@ pub async fn create_comment(
         .await;
     }
 
+    // v2.9.0 — XP bình luận + huy hiệu (best-effort, không block response)
+    {
+        let db = state.db.clone();
+        let uid = user.id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_comment(&db, uid).await;
+        });
+    }
     // Return the new comment HTML for HTMX prepend
     let comment = crate::repositories::CommentRepo::find_by_id(&state.db, _id, Some(user.id))
         .await?

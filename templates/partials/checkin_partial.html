@@ -1,0 +1,31 @@
+{# Partial kết quả điểm danh (HTMX swap sau POST /checkin) — v2.9.0 #}
+<div class="checkin-card checkin-card-result" id="checkin-card">
+    <div class="checkin-info">
+        {% if already %}
+        <div class="checkin-done-big">✓ Bạn đã điểm danh hôm nay rồi</div>
+        {% else %}
+        <div class="checkin-success">
+            <span class="checkin-success-icon">🎉</span>
+            <div>
+                <div class="checkin-success-title">Điểm danh thành công!</div>
+                <div class="checkin-success-detail">+{{ xp_awarded }} XP {% if streak > 1 %}· chuỗi {{ streak }} ngày 🔥{% endif %}</div>
+            </div>
+        </div>
+        {% endif %}
+        <div class="checkin-level">
+            <span class="level-chip level-chip-lg">Lv.{{ level.level }}</span>
+            <span class="level-title">{{ level.title }}</span>
+        </div>
+        <div class="checkin-xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ level.progress_pct }}" aria-label="Tiến độ cấp độ">
+            <div class="checkin-xp-fill" style="width: {{ level.progress_pct }}%"></div>
+        </div>
+        <div class="checkin-xp-text">
+            {% match level.next_level_xp %}{% when Option::Some with (next) %}{{ level.xp }} / {{ next }} XP{% when Option::None %}{{ level.xp }} XP — cấp tối đa{% endmatch %}
+        </div>
+        <div class="checkin-streak">🔥 Chuỗi {{ streak }} ngày liên tiếp</div>
+    </div>
+    <div class="checkin-action">
+        <span class="checkin-done">✓ Hẹn gặp lại ngày mai!</span>
+    </div>
+</div>
+<div id="checkin-confetti" data-confetti-trigger="1" hidden></div>

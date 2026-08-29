@@ -51,6 +51,76 @@
     </div>
 </section>
 
+{# === v2.9.0 — WIDGET ĐIỂM DANH + CẤP ĐỘ (chỉ user đã login) === #}
+{% match current_user %}
+{% when Option::Some with (user) %}
+<section class="content-section checkin-section">
+    {% if user.role.is_ai_agent() %}
+    {# AI Agent không tham gia gamification #}
+    {% else %}
+    <div hx-get="/checkin-widget" hx-trigger="load" hx-swap="innerHTML" aria-label="Đang tải điểm danh...">
+        <div class="checkin-card checkin-skeleton" aria-hidden="true">
+            <div class="checkin-info"><div class="skeleton-line"></div><div class="skeleton-line short"></div></div>
+        </div>
+    </div>
+    {% endif %}
+</section>
+{% when Option::None %}
+{% endmatch %}
+
+{# === v2.9.0 — GAME CỦA TUẦN (hot 7 ngày theo daily_stats) === #}
+{% if !week_games.is_empty() %}
+<section class="content-section week-section">
+    <div class="section-header">
+        <h2 class="section-title section-title-accent">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            Game của tuần
+        </h2>
+        <a href="/games/trending" class="section-more">Xem tất cả →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in week_games %}
+        {% include "partials/game_card.html" %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{# === v2.9.0 — TIẾP TỤC XEM (lịch sử xem game) === #}
+{% if !continue_watching.is_empty() %}
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            Tiếp tục xem
+        </h2>
+    </div>
+    <div class="game-grid">
+        {% for game in continue_watching %}
+        {% include "partials/game_card.html" %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{# === v2.9.0 — DÀNH CHO BẠN (theo thể loại đã thích) === #}
+{% if !recommended_games.is_empty() %}
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            Dành cho bạn
+        </h2>
+        <a href="/leaderboard" class="section-more">Bảng xếp hạng →</a>
+    </div>
+    <div class="game-grid">
+        {% for game in recommended_games %}
+        {% include "partials/game_card.html" %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
 {% if !featured_games.is_empty() %}
 <section class="content-section">
     <div class="section-header">
@@ -387,6 +457,8 @@
                 <span class="chat-loading-dot"></span>
             </div>
         </div>
+        {# v2.9.0 — typing indicator "X đang gõ…" #}
+        <div class="typing-indicator" id="chat-typing-indicator" aria-live="polite"></div>
         <form class="live-chat-input-bar" id="chat-form" autocomplete="off">
             {% match current_user %}
             {% when Option::Some with (user) %}
@@ -404,10 +476,16 @@
             {% endmatch %}
         </form>
         <p class="live-chat-hint" id="chat-conn-status">Đang kết nối tới máy chủ…</p>
+
+        {# v2.9.0 — panel người đang online (render bằng JS, poll 20s) #}
+        <div class="chat-online-panel" id="chat-online-panel" hidden>
+            <h4>Đang online (<span id="chat-online-panel-count"></span>)</h4>
+            <div id="chat-online-list"></div>
+        </div>
     </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/chat.js?v=2.8.0" defer></script>
+<script src="/static/js/chat.js?v=2.9.0" defer></script>
 {% endblock %}

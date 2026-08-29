@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+
+{% block title %}Bảng xếp hạng{% endblock %}
+{% block description %}Bảng xếp hạng Louis Space — top cấp độ, huy hiệu, game hot trong tuần. Cạnh tranh lành mạnh, cùng nhau lớn mạnh!{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+            Bảng xếp hạng
+        </h1>
+        <a href="/achievements" class="section-more">Huy hiệu của tôi →</a>
+    </div>
+
+    <div class="leaderboard-layout">
+        <div class="leaderboard-main">
+            <h2 class="leaderboard-subtitle">🏆 Top cấp độ</h2>
+            {% if entries.is_empty() %}
+            <div class="empty-state">
+                <p>Chưa có ai lên bảng xếp hạng — hãy là người đầu tiên <a href="/">điểm danh và tích XP!</a></p>
+            </div>
+            {% else %}
+            <ol class="leaderboard-list">
+                {% for entry in entries %}
+                <li class="leaderboard-row {% if loop.index <= 3 %}leaderboard-top-{{ loop.index }}{% endif %}">
+                    <span class="leaderboard-rank">{{ loop.index }}</span>
+                    <a href="/u/{{ entry.username }}" class="leaderboard-user">
+                        {% match entry.avatar_url %}
+                        {% when Option::Some with (url) %}
+                        <img src="{{ url }}" alt="{{ entry.display_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                        {% when Option::None %}
+                        <div class="avatar avatar-sm avatar-fallback">{{ entry.display_name|initials }}</div>
+                        {% endmatch %}
+                        <span class="leaderboard-name">
+                            <span class="leaderboard-display-name">{{ entry.display_name }}</span>
+                            <span class="level-chip">Lv.{{ entry.total_xp|level_for }} · {{ entry.total_xp|title_for }}</span>
+                        </span>
+                    </a>
+                    <span class="leaderboard-stats">
+                        {% if entry.streak > 1 %}<span class="leaderboard-streak" title="Chuỗi điểm danh">🔥 {{ entry.streak }} ngày</span>{% endif %}
+                        <span class="leaderboard-games" title="Số game đã đăng">{{ entry.games_count }} game</span>
+                        <span class="leaderboard-xp">{{ entry.total_xp|fmt_num }} XP</span>
+                    </span>
+                </li>
+                {% endfor %}
+            </ol>
+            {% endif %}
+        </div>
+
+        <aside class="leaderboard-side">
+            <h2 class="leaderboard-subtitle">🔥 Game hot tuần này</h2>
+            {% if hot_games.is_empty() %}
+            <p class="empty-state">Chưa có dữ liệu tuần này.</p>
+            {% else %}
+            <ol class="hotweek-list">
+                {% for game in hot_games %}
+                <li class="hotweek-row">
+                    <span class="hotweek-rank">{{ loop.index }}</span>
+                    <a href="/games/{{ game.slug }}" class="hotweek-title">{{ game.title }}</a>
+                    <span class="hotweek-meta">{{ game.view_count|fmt_num }} lượt xem</span>
+                </li>
+                {% endfor %}
+            </ol>
+            {% endif %}
+            <div class="leaderboard-cta">
+                <p>Cách kiếm XP:</p>
+                <ul class="leaderboard-rules">
+                    <li>Điểm danh hàng ngày: <strong>+5 XP</strong> (thưởng chuỗi tới +7)</li>
+                    <li>Đăng game: <strong>+50 XP</strong></li>
+                    <li>Tin được duyệt: <strong>+40 XP</strong></li>
+                    <li>Viết review: <strong>+15 XP</strong> · Bình luận: <strong>+3 XP</strong></li>
+                    <li>Nhận like / follow / tải về: <strong>+2 / +10 / +1 XP</strong></li>
+                </ul>
+            </div>
+        </aside>
+    </div>
+</section>
+{% endblock %}

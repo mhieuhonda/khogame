@@ -46,6 +46,24 @@
         </div>
         <div class="admin-stat-card">
             <div class="stat-icon-wrap green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{{ checkins_today }}</div>
+                <div class="stat-label">Điểm danh hôm nay</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{{ achievements_today }}</div>
+                <div class="stat-label">Huy hiệu hôm nay</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap green">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </div>
             <div>
@@ -121,6 +139,24 @@
         </div>
         {% endif %}
     </div>
+
+    {% if !top_xp_users.is_empty() %}
+    <section class="admin-section">
+        <div class="section-header"><h2>Top cấp độ (gamification)</h2></div>
+        <div class="admin-games-list">
+            {% for u in top_xp_users %}
+            <div class="admin-game-row">
+                <a href="/u/{{ u.username }}">{{ u.display_name }}</a>
+                <span class="game-meta">
+                    Lv.{{ u.total_xp|level_for }} · {{ u.total_xp }} XP
+                    {% if u.streak > 1 %}· 🔥 {{ u.streak }}d{% endif %}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="muted" style="margin-top:8px"><a href="/admin/achievements">Xem thống kê huy hiệu →</a></p>
+    </section>
+    {% endif %}
 
     {% if !recent_active_users.is_empty() %}
     <section class="admin-section">

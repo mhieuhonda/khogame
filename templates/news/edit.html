@@ -30,7 +30,7 @@
     </div>
     {% endif %}
 
-    <form method="post" action="/news/{{ news.slug }}" class="compact-form-card">
+    <form method="post" action="/news/{{ news.slug }}" class="compact-form-card" data-draft-key="news-edit">
         <div class="field-group">
             <label for="title"><span>Tiêu đề <span class="req">*</span></span></label>
             <input type="text" id="title" name="title" value="{{ news.title }}" maxlength="200" required>
@@ -43,6 +43,8 @@
 
         <div class="field-group">
             <label for="content"><span>Nội dung <span class="req">*</span></span></label>
+            <button type="button" class="btn btn-outline btn-sm" data-preview-source="content" style="margin-bottom:6px">👁 Xem trước</button>
+            <div id="content-preview" class="markdown-body" hidden style="border:1px dashed var(--border-default);border-radius:8px;padding:14px;margin-bottom:8px"></div>
             <textarea id="content" name="content" rows="12" required class="editor">{{ news.content }}</textarea>
         </div>
 

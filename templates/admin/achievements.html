@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% block title %}Huy hiệu{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/><path d="M9.5 8h5M12 5.5v5"/></svg>
+                Huy hiệu &amp; Gamification
+            </h1>
+            <p>{{ earned_today }} huy hiệu được trao hôm nay · {{ checkins_today }} lượt điểm danh hôm nay · {{ total_holders }} lượt trao huy hiệu toàn bộ.</p>
+        </div>
+    </div>
+    {% include "admin/_nav.html" %}
+    <div class="admin-table-wrap">
+        <table class="admin-table">
+            <thead>
+                <tr>
+                    <th>Huy hiệu</th>
+                    <th>Mô tả</th>
+                    <th>Nhóm</th>
+                    <th>XP</th>
+                    <th>Số người đạt</th>
+                    <th>Tỉ lệ</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for a in stats %}
+            <tr>
+                <td><span class="achievement-icon-sm">{{ a.0.icon }}</span> <strong>{{ a.0.title }}</strong></td>
+                <td class="muted">{{ a.0.description }}</td>
+                <td><span class="status-badge">{{ a.0.category }}</span></td>
+                <td>+{{ a.0.xp_reward }}</td>
+                <td>{{ a.1 }}</td>
+                <td>
+                    <div class="ach-holders-bar" title="{{ a.1 }} / {{ total_users }} người dùng">
+                        <div class="ach-holders-fill" style="width: {{ a.1|pct(total_users) }}%"></div>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

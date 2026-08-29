@@ -6,6 +6,8 @@ use uuid::Uuid;
 pub struct ReviewRepo;
 
 impl ReviewRepo {
+    /// Tạo hoặc CẬP NHẬT review của user cho game (1 user = 1 review/game,
+    /// UNIQUE(game_id, user_id)). Notify chủ game (bỏ qua tự review).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -61,35 +63,125 @@ impl ReviewRepo {
         Ok(id)
     }
 
+    /// v2.9.0 — Review của game kèm `is_helpful` của viewer (vote qua
+    /// bảng review_helpful_votes — migration 021) + level người viết
+    /// (JOIN user_xp_totals cho chip cấp độ).
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn list_by_game(
         pool: &PgPool,
         game_id: Uuid,
-        _viewer_id: Option<Uuid>,
+        viewer_id: Option<Uuid>,
         limit: i64,
         offset: i64,
     ) -> AppResult<Vec<ReviewWithUser>> {
-        // Đã bỏ EXISTS subquery vào `review_helpful` — bảng này chưa tồn tại
-        // trong migration hiện tại. Khi wire-up review UI, tạo migration
-        // `011_review_helpful.sql` rồi thêm lại JOIN + field `is_helpful`.
         let reviews = sqlx::query_as::<_, ReviewWithUser>(
             r"SELECT r.id, r.game_id, r.user_id, r.title, r.content, r.rating,
                 r.helpful_count, r.created_at, r.updated_at,
-                u.display_name as user_name, u.avatar_url as user_avatar
+                u.display_name as user_name, u.username as user_username,
+                u.avatar_url as user_avatar,
+                EXISTS(SELECT 1 FROM review_helpful_votes h
+                       WHERE h.review_id = r.id AND h.user_id = $2) AS is_helpful,
+                COALESCE(x.total_xp, 0) AS author_xp
               FROM reviews r
               JOIN users u ON u.id = r.user_id
+              LEFT JOIN user_xp_totals x ON x.user_id = r.user_id
               WHERE r.game_id = $1
               ORDER BY r.helpful_count DESC, r.created_at DESC
-              LIMIT $2 OFFSET $3",
+              LIMIT $3 OFFSET $4",
         )
         .bind(game_id)
+        .bind(viewer_id.unwrap_or_else(Uuid::nil))
         .bind(limit)
         .bind(offset)
         .fetch_all(pool)
         .await?;
         Ok(reviews)
+    }
+
+    /// v2.9.0 — Tổng số review của game.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn count_by_game(pool: &PgPool, game_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reviews WHERE game_id = $1")
+            .bind(game_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(c)
+    }
+
+    /// v2.9.0 — Toggle vote "hữu ích" cho review. Trả về (đã_vote, count_mới).
+    /// Không cho vote review của chính mình.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn toggle_helpful(
+        pool: &PgPool,
+        review_id: Uuid,
+        user_id: Uuid,
+    ) -> AppResult<(bool, i32)> {
+        let mut tx = pool.begin().await?;
+        // Không vote review của chính mình
+        let owner: Uuid = sqlx::query_scalar("SELECT user_id FROM reviews WHERE id = $1")
+            .bind(review_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| crate::error::AppError::NotFound("Review không tồn tại".into()))?;
+        if owner == user_id {
+            return Err(crate::error::AppError::BadRequest(
+                "Không thể vote review của chính mình".into(),
+            ));
+        }
+        // Xoá trước (toggle)
+        let deleted =
+            sqlx::query("DELETE FROM review_helpful_votes WHERE review_id = $1 AND user_id = $2")
+                .bind(review_id)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+        let voted = if deleted.rows_affected() > 0 {
+            false
+        } else {
+            sqlx::query("INSERT INTO review_helpful_votes (review_id, user_id) VALUES ($1, $2)")
+                .bind(review_id)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+            true
+        };
+        let count: i32 = sqlx::query_scalar(
+            "UPDATE reviews SET helpful_count =
+                (SELECT COUNT(*) FROM review_helpful_votes WHERE review_id = $1)
+             WHERE id = $1 RETURNING helpful_count",
+        )
+        .bind(review_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok((voted, count))
+    }
+
+    /// v2.9.0 — Review của viewer cho game (điền form sửa).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn find_own(
+        pool: &PgPool,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> AppResult<Option<crate::models::review::Review>> {
+        let r = sqlx::query_as::<_, crate::models::review::Review>(
+            "SELECT id, game_id, user_id, title, content, rating, helpful_count,
+                    created_at, updated_at
+             FROM reviews WHERE game_id = $1 AND user_id = $2",
+        )
+        .bind(game_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(r)
     }
 
     /// # Errors

@@ -1,0 +1,112 @@
+{# Section review game (v2.9.0) — include trong game/show.html.
+   Context: game (Game), reviews (Vec<ReviewWithUser>), reviews_total (i64),
+   my_review (Option<Review>), current_user (Option<User>). #}
+<section class="reviews-section" id="reviews">
+    <h2 class="reviews-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Đánh giá &amp; Review
+        <span class="reviews-count">({{ reviews_total }})</span>
+    </h2>
+
+    {% match current_user %}
+    {% when Option::Some with (u) %}
+    <div class="review-form-card">
+        {% match my_review %}
+        {% when Option::Some with (r) %}
+        <p class="review-form-note">Bạn đã review game này — chỉnh sửa bên dưới.</p>
+        {% when Option::None %}
+        {% endmatch %}
+        <form method="post" action="/games/{{ game.slug }}/reviews" class="review-form">
+            <div class="review-form-rating">
+                <span class="review-rating-label">Chấm điểm:</span>
+                <div class="rating-input-stars" role="radiogroup" aria-label="Chọn số sao">
+                    <label class="rating-star-label">
+                        <input type="radio" name="rating" value="1" required {% match my_review %}{% when Option::Some with (r) %}{% if r.rating_is(1) %}checked{% endif %}{% when Option::None %}{% endmatch %}>
+                        <span class="rating-star">★</span>
+                    </label>
+                    <label class="rating-star-label">
+                        <input type="radio" name="rating" value="2" required {% match my_review %}{% when Option::Some with (r) %}{% if r.rating_is(2) %}checked{% endif %}{% when Option::None %}{% endmatch %}>
+                        <span class="rating-star">★</span>
+                    </label>
+                    <label class="rating-star-label">
+                        <input type="radio" name="rating" value="3" required {% match my_review %}{% when Option::Some with (r) %}{% if r.rating_is(3) %}checked{% endif %}{% when Option::None %}{% endmatch %}>
+                        <span class="rating-star">★</span>
+                    </label>
+                    <label class="rating-star-label">
+                        <input type="radio" name="rating" value="4" required {% match my_review %}{% when Option::Some with (r) %}{% if r.rating_is(4) %}checked{% endif %}{% when Option::None %}{% endmatch %}>
+                        <span class="rating-star">★</span>
+                    </label>
+                    <label class="rating-star-label">
+                        <input type="radio" name="rating" value="5" required {% match my_review %}{% when Option::Some with (r) %}{% if r.rating_is(5) %}checked{% endif %}{% when Option::None %}checked{% endmatch %}>
+                        <span class="rating-star">★</span>
+                    </label>
+                </div>
+            </div>
+            <input type="text" name="title" placeholder="Tiêu đề review (vd: Game rất đáng chơi!)" maxlength="200" required class="review-title-input"
+                   value="{% match my_review %}{% when Option::Some with (r) %}{{ r.title }}{% when Option::None %}{% endmatch %}">
+            <textarea name="content" rows="4" maxlength="4000" placeholder="Đánh giá chi tiết: điểm mạnh, điểm yếu, trải nghiệm chơi… (hỗ trợ Markdown)"
+                      class="review-content-input" data-autoresize>{% match my_review %}{% when Option::Some with (r) %}{{ r.content_or_default() }}{% when Option::None %}{% endmatch %}</textarea>
+            <div class="review-form-actions">
+                {% match my_review %}
+                {% when Option::Some with (r) %}
+                <button type="submit" class="btn btn-primary btn-sm">Cập nhật review</button>
+                <a href="/reviews/{{ r.id }}/delete" class="btn btn-outline btn-sm btn-danger-outline review-delete-link" data-confirm="Xóa review của bạn?">Xóa</a>
+                {% when Option::None %}
+                <button type="submit" class="btn btn-primary btn-sm">Gửi review (+15 XP)</button>
+                {% endmatch %}
+            </div>
+        </form>
+    </div>
+    {% when Option::None %}
+    <p class="reviews-login-hint"><a href="/login">Đăng nhập</a> để viết review cho game này.</p>
+    {% endmatch %}
+
+    {% if reviews.is_empty() %}
+    <div class="empty-state"><p>Chưa có review nào. Hãy là người đầu tiên!</p></div>
+    {% else %}
+    <div class="reviews-list">
+        {% for r in reviews %}
+        <article class="review-card" id="review-{{ r.id }}">
+            <div class="review-header">
+                <a href="/u/{{ r.user_username }}" class="review-author">
+                    {% match r.user_avatar %}
+                    {% when Option::Some with (url) %}
+                    <img src="{{ url }}" alt="{{ r.user_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy">
+                    {% when Option::None %}
+                    <div class="avatar avatar-sm avatar-fallback">{{ r.user_name|initials }}</div>
+                    {% endmatch %}
+                    <span class="review-author-name">{{ r.user_name }}</span>
+                </a>
+                <span class="level-chip">Lv.{{ r.author_xp|level_for }}</span>
+                <span class="review-stars" aria-label="{{ r.rating }} trên 5 sao">{{ r.stars() }}</span>
+                <span class="review-date">{{ r.created_at|time_ago_dt }}</span>
+            </div>
+            <h3 class="review-title">{{ r.title }}</h3>
+            {% match r.content %}
+            {% when Option::Some with (c) %}
+            {% if !c.is_empty() %}
+            <div class="review-content markdown-body">{{ c|html }}</div>
+            {% endif %}
+            {% when Option::None %}
+            {% endmatch %}
+            <div class="review-footer">
+                {% match current_user %}
+                {% when Option::Some with (u) %}
+                {% if u.id != r.user_id %}
+                <form method="post" action="/reviews/{{ r.id }}/helpful" class="review-helpful-form">
+                    <button type="submit" class="btn {% if r.is_helpful %}btn-primary{% else %}btn-outline{% endif %} btn-sm">
+                        👍 Hữu ích ({{ r.helpful_count }})
+                    </button>
+                </form>
+                {% else %}
+                <span class="review-helpful-count">👍 {{ r.helpful_count }} người thấy hữu ích</span>
+                {% endif %}
+                {% when Option::None %}
+                {% if r.helpful_count > 0 %}<span class="review-helpful-count">👍 {{ r.helpful_count }} người thấy hữu ích</span>{% endif %}
+                {% endmatch %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>

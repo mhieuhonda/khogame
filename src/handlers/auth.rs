@@ -138,12 +138,14 @@ pub async fn google_callback(
     }
 
     // Find or create user
+    let mut is_new_user = false;
     let mut user = match UserRepo::find_by_google_sub(&state.db, &userinfo.sub).await? {
         Some(u) if u.is_banned => {
             return Err(AppError::Forbidden("Tài khoản đã bị cấm".into()));
         }
         Some(u) => u,
         None => {
+            is_new_user = true;
             // Capture IP/UA cho admin truy vết (migration 009)
             let ip_new = crate::middleware::client_ip_from_parts(
                 &headers,
@@ -226,6 +228,21 @@ pub async fn google_callback(
         .as_deref()
         .map(crate::utils::sanitize_redirect)
         .unwrap_or_else(|| "/".to_string());
+
+    // v2.9.0 — Gamification hooks (fire-and-forget, không block redirect):
+    // - User mới: notification chào mừng + hướng dẫn onboarding
+    // - Mọi lần login: kiểm huy hiệu (first_login, onboarding đã đạt)
+    {
+        let db = state.db.clone();
+        let (uid, dname, is_new) = (user.id, user.display_name.clone(), is_new_user);
+        tokio::spawn(async move {
+            if is_new {
+                crate::services::gamification::send_welcome(&db, uid, &dname).await;
+            }
+            crate::services::gamification::on_login(&db, uid).await;
+        });
+    }
+
     Ok((new_jar, Redirect::to(&redirect_target)))
 }
 

@@ -103,6 +103,72 @@ impl SessionRepo {
         Ok(rows)
     }
 
+    /// v2.9.0 — Danh sách phiên còn hạn của 1 user (trang /profile/sessions
+    /// của CHÍNH user). Không SELECT token_hash (không cần, tránh kéo dữ
+    /// liệu nhạy cảm). Khác `list_for_user` (admin, kèm username).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn list_own_sessions(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<SessionOwnRow>> {
+        let rows = sqlx::query_as::<_, SessionOwnRow>(
+            r"SELECT id, user_agent, ip_address, created_at, expires_at
+              FROM sessions
+              WHERE user_id = $1 AND expires_at > NOW()
+              ORDER BY created_at DESC
+              LIMIT 50",
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// v2.9.0 — Tìm id phiên từ token hash (đánh dấu "thiết bị này").
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn find_id_by_token(pool: &PgPool, token_hash: &str) -> AppResult<Option<Uuid>> {
+        let id: Option<Uuid> = sqlx::query_scalar("SELECT id FROM sessions WHERE token_hash = $1")
+            .bind(token_hash)
+            .fetch_optional(pool)
+            .await?;
+        Ok(id)
+    }
+
+    /// v2.9.0 — Xóa 1 phiên ĐÚNG của user đó (chống xóa phiên người khác
+    /// qua /profile/sessions/{id}/revoke của mình).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn delete_for_user(pool: &PgPool, id: Uuid, user_id: Uuid) -> AppResult<bool> {
+        let res = sqlx::query("DELETE FROM sessions WHERE id = $1 AND user_id = $2")
+            .bind(id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// v2.9.0 — Danh sách comment của user (xuất dữ liệu GDPR).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn comments_for_export(
+        pool: &PgPool,
+        user_id: Uuid,
+        limit: i64,
+    ) -> AppResult<Vec<(String, chrono::DateTime<chrono::Utc>)>> {
+        let rows = sqlx::query_as(
+            r"SELECT content, created_at FROM comments WHERE user_id = $1
+              ORDER BY created_at DESC LIMIT $2",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Xoá 1 session theo id (admin thu hồi phiên cụ thể). Chỉ đếm là
     /// thành công khi dòng tồn tại — trả false nếu id không có.
     /// # Errors
@@ -171,4 +237,14 @@ impl SessionRepo {
                 .await?;
         Ok(hash)
     }
+}
+
+/// v2.9.0 — Dòng session cho trang phiên của chính user.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SessionOwnRow {
+    pub id: Uuid,
+    pub user_agent: Option<String>,
+    pub ip_address: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
 }

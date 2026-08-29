@@ -1579,3 +1579,65 @@ mod tests {
         assert!(h1.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }
+
+// ============================================================
+// v2.9.0 — MARKDOWN PREVIEW + LEADERBOARD PUBLIC API
+// ============================================================
+
+#[derive(Deserialize)]
+pub struct PreviewForm {
+    pub text: String,
+}
+
+/// POST /api/preview — render Markdown → HTML cho nút "Xem trước" trong
+/// editor game/news (dùng cùng engine render production → preview đúng
+/// 100% kết quả cuối). Auth + length cap 20k + rate-limit tự nhiên qua
+/// middleware.
+/// # Errors
+///
+/// Trả về lỗi khi text quá dài hoặc render fail.
+pub async fn preview_markdown(
+    State(_state): State<Arc<AppState>>,
+    AuthUser(_user): AuthUser,
+    Form(form): Form<PreviewForm>,
+) -> AppResult<Response> {
+    if form.text.len() > 20_000 {
+        return Err(AppError::BadRequest(
+            "Nội dung xem trước tối đa 20.000 ký tự".into(),
+        ));
+    }
+    let html = crate::services::markdown::render(&form.text);
+    Ok(Json(serde_json::json!({"html": html})).into_response())
+}
+
+/// GET /api/v1/leaderboard — bảng xếp hạng công khai (top 20).
+/// # Errors
+///
+/// Trả về lỗi khi DB fail.
+pub async fn leaderboard_api(State(state): State<Arc<AppState>>) -> AppResult<Response> {
+    let entries = crate::repositories::GamificationRepo::leaderboard_top_xp(&state.db, 20).await?;
+    let data: Vec<serde_json::Value> = entries
+        .iter()
+        .enumerate()
+        .map(|(i, e)| {
+            let level = crate::models::gamification::level_from_xp(e.total_xp);
+            serde_json::json!({
+                "rank": i + 1,
+                "username": e.username,
+                "display_name": e.display_name,
+                "avatar_url": e.avatar_url,
+                "level": level.level,
+                "title": level.title,
+                "total_xp": e.total_xp,
+                "games_count": e.games_count,
+                "streak": e.streak,
+                "profile_url": format!("/u/{}", e.username),
+            })
+        })
+        .collect();
+    Ok((
+        [(header::CACHE_CONTROL, "public, max-age=60")],
+        Json(serde_json::json!({"data": data})),
+    )
+        .into_response())
+}

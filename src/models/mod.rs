@@ -3,6 +3,7 @@ pub mod category;
 pub mod chat;
 pub mod comment;
 pub mod game;
+pub mod gamification;
 pub mod interaction;
 pub mod news;
 pub mod news_category;

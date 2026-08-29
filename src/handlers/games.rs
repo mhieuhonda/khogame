@@ -4,7 +4,8 @@ use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::game::{GameForm, GameStatus, Platform};
 use crate::models::report::ReportReason;
 use crate::repositories::{
-    CategoryRepo, GameRepo, InteractionRepo, NewsRepo, RepoRepo, ReportRepo, TagRepo,
+    CategoryRepo, CollectionRepo, GameRepo, InteractionRepo, NewsRepo, RepoRepo, ReportRepo,
+    ReviewRepo, TagRepo, ViewHistoryRepo,
 };
 use crate::services::json_ld::{
     build_breadcrumb_json_ld, build_game_json_ld, build_homepage_json_ld,
@@ -60,6 +61,9 @@ pub async fn home(
         latest_news_res,
         news_count_res,
         featured_repos_res,
+        continue_watching_res,
+        recommended_res,
+        week_res,
         unread_res,
     ) = tokio::join!(
         GameRepo::featured(&state.db, 6, 0),
@@ -72,6 +76,30 @@ pub async fn home(
         NewsRepo::list_published(&state.db, 1, 3),
         NewsRepo::count_published(&state.db),
         RepoRepo::list_approved(&state.db, 8, 0, "stars"),
+        // v2.9.0 — "Tiếp tục xem" (chỉ user đã login)
+        async {
+            match current_user.as_ref() {
+                Some(u) => ViewHistoryRepo::recent(&state.db, u.id, 6)
+                    .await
+                    .unwrap_or_default(),
+                None => Vec::new(),
+            }
+        },
+        // v2.9.0 — "Dành cho bạn" (game cùng thể loại với game đã like/bookmark)
+        async {
+            match current_user.as_ref() {
+                Some(u) => GameRepo::recommended_for_user(&state.db, u.id, 6)
+                    .await
+                    .unwrap_or_default(),
+                None => Vec::new(),
+            }
+        },
+        // v2.9.0 — "Game của tuần" (hot 7 ngày qua theo daily_stats)
+        async {
+            GameRepo::hot_this_week(&state.db, 3)
+                .await
+                .unwrap_or_default()
+        },
         unread_for(&state, current_user.as_ref()),
     );
     let featured_games = featured_res.unwrap_or_default();
@@ -88,6 +116,10 @@ pub async fn home(
     // phải critical path của homepage.
     let featured_repos = featured_repos_res.unwrap_or_default();
     let unread = unread_res;
+    // v2.9.0 — các section mới
+    let continue_watching = continue_watching_res;
+    let recommended_games = recommended_res;
+    let week_games = week_res;
 
     // JSON-LD schema.org/WebSite — builder đã chuyển sang
     // `crate::services::json_ld::build_homepage_json_ld` để tái sử dụng +
@@ -110,6 +142,9 @@ pub async fn home(
         latest_news,
         total_news,
         featured_repos,
+        continue_watching,
+        recommended_games,
+        week_games,
     })
 }
 
@@ -346,6 +381,16 @@ pub async fn create_game(
     })?;
     tracing::info!("Game created: {} ({})", id, slug);
 
+    // v2.9.0 — XP + huy hiệu + thông báo followers khi publish ngay
+    if form.status.trim() == "published" {
+        let db = state.db.clone();
+        let (uid, gid) = (user.id, id);
+        let (gslug, gtitle) = (slug.clone(), form.title.trim().to_string());
+        tokio::spawn(async move {
+            crate::services::gamification::on_game_published(&db, uid, gid, &gslug, &gtitle).await;
+        });
+    }
+
     Ok(Redirect::to(&format!("/games/{slug}")))
 }
 
@@ -377,6 +422,13 @@ pub async fn show_game(
         // thẳng vào latency TTFB của mọi lượt xem game.
         let db = state.db.clone();
         let game_id = game.id;
+        // v2.9.0 — ghi lịch sử xem cho user đã login ("Tiếp tục xem")
+        if let Some(uid) = current_user.as_ref().map(|u| u.id) {
+            let db_h = state.db.clone();
+            tokio::spawn(async move {
+                let _ = ViewHistoryRepo::record(&db_h, uid, game_id).await;
+            });
+        }
         tokio::spawn(async move {
             let _ = GameRepo::increment_view_count(&db, game_id).await;
             let _ = crate::repositories::StatsRepo::record_view(&db, game_id).await;
@@ -388,7 +440,20 @@ pub async fn show_game(
     // related) chạy SONG SONG — trước đây 5 query song song rồi comments +
     // related tuần tự → cộng thêm 2 round-trip. Giờ tất cả 1 wave.
     let user_id_opt = current_user.as_ref().map(|u| u.id);
-    let (author_res, links_res, screenshots_res, tags_res, category_res, comments_res, comments_total_res, related_res) = tokio::join!(
+    let (
+        author_res,
+        links_res,
+        screenshots_res,
+        tags_res,
+        category_res,
+        comments_res,
+        comments_total_res,
+        related_res,
+        reviews_res,
+        reviews_total_res,
+        my_review_res,
+        my_collections_res,
+    ) = tokio::join!(
         crate::repositories::UserRepo::find_by_id(&state.db, game.user_id),
         GameRepo::get_links(&state.db, game.id),
         GameRepo::get_screenshots(&state.db, game.id),
@@ -404,6 +469,25 @@ pub async fn show_game(
         // đúng số còn lại (comment_count trigger đếm cả replies).
         crate::repositories::CommentRepo::count_top_level(&state.db, game.id),
         GameRepo::related(&state.db, game.id, game.category_id, 6),
+        // v2.9.0 — reviews + collections của viewer
+        ReviewRepo::list_by_game(&state.db, game.id, user_id_opt, 10, 0),
+        ReviewRepo::count_by_game(&state.db, game.id),
+        async {
+            match user_id_opt {
+                Some(uid) => ReviewRepo::find_own(&state.db, game.id, uid)
+                    .await
+                    .unwrap_or(None),
+                None => None,
+            }
+        },
+        async {
+            match user_id_opt {
+                Some(uid) => CollectionRepo::collections_containing_game(&state.db, uid, game.id)
+                    .await
+                    .unwrap_or_default(),
+                None => Vec::new(),
+            }
+        },
     );
     let author = author_res?.ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
     let links = links_res?;
@@ -413,6 +497,11 @@ pub async fn show_game(
     let comments = comments_res?;
     let comments_total = comments_total_res?;
     let related_games = related_res?;
+    // v2.9.0 — reviews + collections (fail-open, unwrap trong async block)
+    let reviews = reviews_res.unwrap_or_default();
+    let reviews_total = reviews_total_res.unwrap_or(0);
+    let my_review = my_review_res;
+    let my_collections = my_collections_res;
 
     // v2.6.0 — 4 interaction checks + unread_count chạy SONG SONG —
     // trước đây unread_for await SAU interaction block → cộng thêm 1
@@ -470,6 +559,10 @@ pub async fn show_game(
         category,
         comments,
         comments_total,
+        reviews,
+        reviews_total,
+        my_review,
+        my_collections,
         related_games,
         is_liked,
         is_bookmarked,
@@ -615,6 +708,7 @@ pub async fn download_game(
         let db = state.db.clone();
         let game_id = game.id;
         let user_id = user.id;
+        let owner_id = game.user_id;
         let platform_str = platform.as_str().to_string();
         tokio::spawn(async move {
             let _ = InteractionRepo::record_download(
@@ -627,6 +721,14 @@ pub async fn download_game(
             .await;
             let _ = GameRepo::increment_download_count(&db, game_id).await;
             let _ = crate::repositories::StatsRepo::record_download(&db, game_id).await;
+            // v2.9.0 — XP cho chủ game khi có người tải
+            let _ = crate::repositories::GamificationRepo::award_xp(
+                &db,
+                owner_id,
+                "received_download",
+                1,
+            )
+            .await;
         });
     }
 
@@ -1191,6 +1293,13 @@ pub async fn publish_game(
         return Err(AppError::Forbidden("Bạn không có quyền".into()));
     }
     GameRepo::publish(&state.db, game.id).await?;
+    // v2.9.0 — XP + huy hiệu + thông báo followers
+    let db = state.db.clone();
+    let (uid, gid) = (user.id, game.id);
+    let (gslug, gtitle) = (game.slug.clone(), game.title.clone());
+    tokio::spawn(async move {
+        crate::services::gamification::on_game_published(&db, uid, gid, &gslug, &gtitle).await;
+    });
     Ok(Html(
         "<div class='alert alert-success'>Đã xuất bản game.</div>".into(),
     ))

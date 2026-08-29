@@ -1,5 +1,5 @@
 // ============================================
-// Louis Space v2.0 — Live Chat frontend
+// Louis Space v2.9 — Live Chat frontend (typing indicator + online users)
 // ============================================
 // WebSocket realtime chat. Falls back gracefully:
 //   - User not logged in → input disabled, "Đăng nhập" button shown
@@ -284,11 +284,19 @@
             }
             if (event.type === 'message') {
                 appendMessage(event.message);
+                // v2.9.0 — nhận message → xóa typing indicator của người gửi
+                clearTypingFor(event.message.user_id);
             } else if (event.type === 'delete') {
                 markMessageDeleted(event.id);
             } else if (event.type === 'presence') {
                 var count = $('chat-online-count');
                 if (count) count.textContent = event.online;
+                // v2.9.0 — refresh danh sách online users
+                fetchOnlineUsers();
+            } else if (event.type === 'typing') {
+                // v2.9.0 — typing indicator (bỏ qua chính mình)
+                if (currentUser && event.user_id === currentUser.id) return;
+                showTyping(event.display_name, event.user_id);
             }
         };
         ws.onclose = function(ev) {
@@ -308,6 +316,90 @@
         ws.onerror = function() {
             // onclose sẽ follow
         };
+    }
+
+    // ============================================
+    // v2.9.0 — TYPING INDICATOR + ONLINE USERS
+    // ============================================
+    var lastTypingSent = 0;
+    var typingUsers = {};   // user_id → {name, timeout}
+    var typingTimers = {};
+
+    function showTyping(displayName, userId) {
+        var indicator = $('chat-typing-indicator');
+        if (!indicator) return;
+        typingUsers[userId] = displayName;
+        renderTypingIndicator();
+        // Tự xóa sau 4s nếu không có activity mới
+        clearTimeout(typingTimers[userId]);
+        typingTimers[userId] = setTimeout(function() {
+            clearTypingFor(userId);
+        }, 4000);
+    }
+
+    function clearTypingFor(userId) {
+        if (!(userId in typingUsers)) return;
+        delete typingUsers[userId];
+        clearTimeout(typingTimers[userId]);
+        renderTypingIndicator();
+    }
+
+    function renderTypingIndicator() {
+        var indicator = $('chat-typing-indicator');
+        if (!indicator) return;
+        var names = Object.keys(typingUsers).map(function(k) { return typingUsers[k]; });
+        if (names.length === 0) {
+            indicator.textContent = '';
+            indicator.classList.remove('typing-dots');
+            return;
+        }
+        var text;
+        if (names.length === 1) text = names[0] + ' đang gõ';
+        else if (names.length === 2) text = names[0] + ' và ' + names[1] + ' đang gõ';
+        else text = names.length + ' người đang gõ';
+        indicator.textContent = text;
+        indicator.classList.add('typing-dots');
+    }
+
+    function fetchOnlineUsers() {
+        fetch('/chat/online-users', { credentials: 'same-origin' })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.users) return;
+                var panel = $('chat-online-panel');
+                var list = $('chat-online-list');
+                var count = $('chat-online-count');
+                var panelCount = $('chat-online-panel-count');
+                if (count) count.textContent = data.online;
+                if (panelCount) panelCount.textContent = data.online;
+                if (!panel || !list) return;
+                list.textContent = '';
+                data.users.slice(0, 30).forEach(function(u) {
+                    var row = el('div', 'online-user-row');
+                    var dot = el('span', 'online-dot');
+                    row.appendChild(dot);
+                    if (u.avatar_url) {
+                        var img = document.createElement('img');
+                        img.className = 'online-avatar';
+                        img.src = u.avatar_url;
+                        img.alt = '';
+                        img.loading = 'lazy';
+                        row.appendChild(img);
+                    } else {
+                        var fb = el('span', 'online-avatar-fallback');
+                        fb.textContent = (u.display_name || '?').slice(0, 1).toUpperCase();
+                        row.appendChild(fb);
+                    }
+                    var name = el('span');
+                    name.textContent = u.display_name;
+                    if (u.role === 'Admin' || u.role === 'admin') name.style.color = '#a855f7';
+                    else if (u.role === 'Moderator' || u.role === 'moderator') name.style.color = '#60a5fa';
+                    row.appendChild(name);
+                    list.appendChild(row);
+                });
+                panel.hidden = false;
+            })
+            .catch(function() { /* panel ẩn nếu fail */ });
     }
 
     function sendMessage(text) {
@@ -377,6 +469,24 @@
                 }
             });
         }
+
+        // v2.9.0 — TYPING INDICATOR: gửi "đang gõ" throttle 3s khi input
+        if (input) {
+            input.addEventListener('input', function() {
+                if (!input.value.trim()) return;
+                var now = Date.now();
+                if (now - lastTypingSent > 3000) {
+                    lastTypingSent = now;
+                    try {
+                        fetch('/chat/typing', { method: 'POST', credentials: 'same-origin' }).catch(function() {});
+                    } catch (e) {}
+                }
+            });
+        }
+
+        // v2.9.0 — Panel người online: poll 20s + ngay khi init
+        fetchOnlineUsers();
+        setInterval(fetchOnlineUsers, 20000);
 
         // Load history trước, rồi connect WS nhận live updates
         loadHistory();

@@ -1,0 +1,30 @@
+{# Form thêm game vào bộ sưu tập (v2.9.0) — include trong game/show.html sidebar.
+   Context: game, my_collections (Vec<(Uuid, String, bool)>) — (id, title, đã_chưa). #}
+<div class="add-to-collection" id="add-to-collection">
+    <h3 class="sidebar-title">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+        Bộ sưu tập
+    </h3>
+    {% if my_collections.is_empty() %}
+    <p class="collection-empty-hint">Chưa có bộ sưu tập.</p>
+    <a href="/collections" class="btn btn-outline btn-sm">Tạo bộ sưu tập</a>
+    {% else %}
+    <form method="post" action="/games/{{ game.slug }}/add-to-collection" class="collection-add-form">
+        <select name="collection_id" aria-label="Chọn bộ sưu tập" required>
+            <option value="">— Chọn bộ sưu tập —</option>
+            {% for c in my_collections %}
+            <option value="{{ c.0 }}">{% if c.2 %}✓ {% endif %}{{ c.1 }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-outline btn-sm">Thêm vào</button>
+    </form>
+    {% for c in my_collections %}
+    {% if c.2 %}
+    <form method="post" action="/games/{{ game.slug }}/remove-from-collection" class="collection-remove-form">
+        <input type="hidden" name="collection_id" value="{{ c.0 }}">
+        <button type="submit" class="collection-remove-btn" title="Xóa khỏi {{ c.1 }}">✓ {{ c.1 }} ✕</button>
+    </form>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+</div>

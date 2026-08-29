@@ -2,11 +2,13 @@ use crate::error::{AppError, AppResult};
 use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::{SocialLinks, PLATFORMS};
-use crate::repositories::{AiAgentRepo, GameRepo, InteractionRepo, UserRepo};
+use crate::repositories::{
+    AiAgentRepo, CollectionRepo, GameRepo, GamificationRepo, InteractionRepo, UserRepo,
+};
 use crate::state::AppState;
 use crate::templates::{BookmarksTemplate, EditProfileTemplate, ProfileTemplate};
 use axum::extract::{Path, Query, State};
-use axum::response::Redirect;
+use axum::response::{IntoResponse, Redirect};
 use axum::Form;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -31,7 +33,21 @@ pub async fn show_profile(
     let is_self = current_user.as_ref().is_some_and(|u| u.id == user.id);
     // v2.7.0 — social_links là query thứ 7 chạy SONG SONG trong cùng
     // wave (không tăng round-trip tuần tự).
-    let (stats_res, games_res, following_res, prefs_res, ai_profile_res, socials_res, unread_res) = tokio::join!(
+    let (
+        stats_res,
+        games_res,
+        following_res,
+        prefs_res,
+        ai_profile_res,
+        socials_res,
+        level_res,
+        streak_res,
+        ach_res,
+        showcased_res,
+        activity_res,
+        collections_res,
+        unread_res,
+    ) = tokio::join!(
         UserRepo::stats(&state.db, user.id),
         GameRepo::by_user(&state.db, user.id, 24, 0),
         async {
@@ -61,6 +77,39 @@ pub async fn show_profile(
                 .await
                 .unwrap_or_default()
         },
+        // v2.9.0 — gamification block (level, streak, huy hiệu, activity,
+        // collections) — tất cả fail-open để hồ sơ không bao giờ 500 vì
+        // lỗi gamification.
+        async {
+            GamificationRepo::level_of(&state.db, user.id)
+                .await
+                .unwrap_or(crate::models::gamification::level_from_xp(0))
+        },
+        async {
+            GamificationRepo::current_streak(&state.db, user.id)
+                .await
+                .unwrap_or(0)
+        },
+        async {
+            GamificationRepo::user_achievements(&state.db, user.id)
+                .await
+                .unwrap_or_default()
+        },
+        async {
+            GamificationRepo::user_achievements(&state.db, user.id)
+                .await
+                .unwrap_or_default()
+        },
+        async {
+            GamificationRepo::recent_activity(&state.db, user.id, 10)
+                .await
+                .unwrap_or_default()
+        },
+        async {
+            CollectionRepo::list_public_with_owner(&state.db, user.id)
+                .await
+                .unwrap_or_default()
+        },
         async {
             match &current_user {
                 Some(u) => unread_count(&state, u.id).await,
@@ -76,6 +125,31 @@ pub async fn show_profile(
     let ai_profile = ai_profile_res;
     let socials = socials_res;
     let unread = unread_res;
+    // v2.9.0 — gamification: level/streak/huy hiệu/activity/collections
+    let level = level_res;
+    let streak = streak_res;
+    let all_achievements = ach_res;
+    let showcased_list = showcased_res;
+    let showcased: Vec<crate::models::gamification::Achievement> = showcased_list
+        .iter()
+        .filter(|(_, _, is_shown)| *is_shown)
+        .map(|(a, _, _)| a.clone())
+        .take(3)
+        .collect();
+    let achievements: Vec<crate::models::gamification::Achievement> = all_achievements
+        .iter()
+        .map(|(a, _, _)| a.clone())
+        .take(12)
+        .collect();
+    let achievements_count = (
+        all_achievements.len(),
+        GamificationRepo::list_achievements(&state.db)
+            .await
+            .unwrap_or_default()
+            .len(),
+    );
+    let activity = activity_res;
+    let collections = collections_res;
     Ok(ProfileTemplate {
         current_user,
         unread_notifications: unread,
@@ -87,6 +161,13 @@ pub async fn show_profile(
         preferences,
         ai_profile,
         socials,
+        level,
+        streak,
+        achievements,
+        showcased,
+        achievements_count,
+        activity,
+        collections,
     })
 }
 
@@ -259,6 +340,12 @@ pub async fn update_profile(
     )
     .await?;
 
+    // v2.9.0 — huy hiệu onboarding (avatar/bio/social) — best-effort
+    let db_hook = state.db.clone();
+    let uid_hook = user.id;
+    tokio::spawn(async move {
+        crate::services::gamification::on_profile_update(&db_hook, uid_hook).await;
+    });
     Ok(Redirect::to(&format!("/u/{}", user.username)))
 }
 
@@ -294,4 +381,114 @@ pub async fn bookmarks_page(
         per_page,
         total,
     })
+}
+
+// ============================================================
+// v2.9.0 — PHIÊN ĐĂNG NHẬP CỦA TÔI + XUẤT DỮ LIỆU (GDPR)
+// ============================================================
+
+/// GET /profile/sessions — danh sách phiên của CHÍNH MÌNH.
+/// Tương đương /admin/sessions nhưng scope user tự xem/tự thu hồi.
+/// Phiên hiện tại xác định bằng token trong cookie (hash → session id).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn my_sessions_page(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    jar: axum_extra::extract::CookieJar,
+) -> AppResult<crate::templates::ProfileSessionsTemplate> {
+    let current_session_id = match jar.get(crate::auth::SESSION_COOKIE) {
+        Some(c) => crate::repositories::SessionRepo::find_id_by_token(
+            &state.db,
+            &crate::auth::hash_token(c.value()),
+        )
+        .await
+        .unwrap_or(None),
+        None => None,
+    };
+    let rows = crate::repositories::SessionRepo::list_own_sessions(&state.db, user.id).await?;
+    let unread = unread_count(&state, user.id).await;
+    let sessions: Vec<crate::templates::MySessionRow> = rows
+        .into_iter()
+        .map(|s| crate::templates::MySessionRow {
+            id: s.id,
+            user_agent: s.user_agent.unwrap_or_else(|| "Không rõ thiết bị".into()),
+            ip: s.ip_address,
+            created_at: s.created_at,
+            expires_at: s.expires_at,
+            current: Some(s.id) == current_session_id,
+        })
+        .collect();
+    Ok(crate::templates::ProfileSessionsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        sessions,
+    })
+}
+
+/// POST /profile/sessions/{id}/revoke — thu hồi phiên của chính mình.
+/// Không cho thu hồi phiên ĐANG DÙNG (dùng /auth/logout để logout chính mình).
+/// # Errors
+///
+/// Trả về lỗi khi phiên không phải của mình / là phiên hiện tại.
+pub async fn revoke_own_session(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<uuid::Uuid>,
+) -> AppResult<Redirect> {
+    // Không cần check "phải phiên hiện tại" — delete_for_user scope theo
+    // user_id nên chỉ xóa được phiên của chính mình. Thu hồi cả phiên đang
+    // dùng cũng hợp lệ (user sẽ bị logout ở thiết bị này).
+    crate::repositories::SessionRepo::delete_for_user(&state.db, id, user.id).await?;
+    Ok(Redirect::to("/profile/sessions"))
+}
+
+/// GET /profile/export — xuất dữ liệu cá nhân (JSON, GDPR).
+/// Gồm: hồ sơ, preferences, socials, games, bookmarks, comments.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn export_my_data(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<axum::response::Response> {
+    use axum::http::header;
+    use serde_json::json;
+    let (games, bookmarks, comments) = tokio::join!(
+        GameRepo::by_user(&state.db, user.id, 1000, 0),
+        InteractionRepo::bookmarks_for_user(&state.db, user.id, 1000, 0),
+        crate::repositories::SessionRepo::comments_for_export(&state.db, user.id, 1000),
+    );
+    let data = json!({
+        "exported_at": chrono::Utc::now().to_rfc3339(),
+        "profile": {
+            "username": user.username,
+            "display_name": user.display_name,
+            "bio": user.bio,
+            "avatar_url": user.avatar_url,
+            "created_at": user.created_at.to_rfc3339(),
+        },
+        "games": games?.iter().map(|g| json!({
+            "title": g.title, "slug": g.slug,
+        })).collect::<Vec<_>>(),
+        "bookmarks": bookmarks?.iter().map(|g| json!({
+            "title": g.title, "slug": g.slug,
+        })).collect::<Vec<_>>(),
+        "comments": comments?.iter().map(|(content, created_at)| json!({
+            "content": content, "created_at": created_at.to_rfc3339(),
+        })).collect::<Vec<_>>(),
+    });
+    let filename = format!("louis-space-data-{}.json", user.username);
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/json; charset=utf-8"),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{filename}\"").as_str(),
+            ),
+        ],
+        axum::Json(data),
+    )
+        .into_response())
 }

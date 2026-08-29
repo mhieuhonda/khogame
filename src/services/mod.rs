@@ -14,6 +14,7 @@
 pub mod audit;
 #[cfg(feature = "email")]
 pub mod email;
+pub mod gamification;
 pub mod json_ld;
 pub mod markdown;
 pub mod storage;

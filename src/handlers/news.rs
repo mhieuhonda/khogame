@@ -744,6 +744,14 @@ pub async fn create_comment(
         .await;
     }
 
+    // v2.9.0 — XP bình luận (news comment cũng tính) — best-effort
+    {
+        let db = state.db.clone();
+        let uid = user.id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_comment(&db, uid).await;
+        });
+    }
     // Redirect về trang + anchor comment mới
     Ok(Redirect::to(&format!("/news/{}#comments", news.slug)).into_response())
 }

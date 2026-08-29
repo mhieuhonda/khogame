@@ -638,6 +638,133 @@ impl GameRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    /// v2.9.0 — Game hot trong 7 ngày qua (từ daily_stats — view + download
+    /// có trọng số). Dùng cho "Game của tuần" + tab leaderboard.
+    /// Fallback về view_count tổng nếu daily_stats trống (site mới).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn hot_this_week(pool: &PgPool, limit: i64) -> AppResult<Vec<GameCard>> {
+        let cards = sqlx::query_as::<_, GameCard>(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                      c.name as category_name, c.slug as category_slug,
+                      u.display_name as author_name, u.avatar_url as author_avatar,
+                      g.view_count, g.download_count, g.like_count, g.comment_count,
+                      g.rating_avg, g.rating_count,
+                      COALESCE(
+                        (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                        ARRAY[]::text[]
+                      ) as platforms,
+                      g.published_at
+              FROM games g
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.status = 'published'
+                AND EXISTS (
+                    SELECT 1 FROM daily_stats ds
+                    WHERE ds.game_id = g.id AND ds.day >= CURRENT_DATE - 7
+                )
+              ORDER BY (
+                    SELECT COALESCE(SUM(ds.views + 2 * ds.downloads), 0)
+                    FROM daily_stats ds
+                    WHERE ds.game_id = g.id AND ds.day >= CURRENT_DATE - 7
+                  ) DESC, g.view_count DESC
+              LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        if !cards.is_empty() {
+            return Ok(cards);
+        }
+        // Fallback: site chưa có daily_stats — dùng view_count tổng
+        Self::list_published(pool, limit, 0, "trending").await
+    }
+
+    /// v2.9.0 — Game NGẪU NHIÊN cho mục khám phá (sidebar / nút random).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn random_published(pool: &PgPool, limit: i64) -> AppResult<Vec<GameCard>> {
+        let cards = sqlx::query_as::<_, GameCard>(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                      c.name as category_name, c.slug as category_slug,
+                      u.display_name as author_name, u.avatar_url as author_avatar,
+                      g.view_count, g.download_count, g.like_count, g.comment_count,
+                      g.rating_avg, g.rating_count,
+                      COALESCE(
+                        (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                        ARRAY[]::text[]
+                      ) as platforms,
+                      g.published_at
+              FROM games g
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.status = 'published'
+              ORDER BY random()
+              LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(cards)
+    }
+
+    /// v2.9.0 — "Dành cho bạn": game published cùng thể loại với các game
+    /// user đã like/bookmark, loại game đã xem. Dựa trên sở thích thực tế.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn recommended_for_user(
+        pool: &PgPool,
+        user_id: Uuid,
+        limit: i64,
+    ) -> AppResult<Vec<GameCard>> {
+        let cards = sqlx::query_as::<_, GameCard>(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                      c.name as category_name, c.slug as category_slug,
+                      u.display_name as author_name, u.avatar_url as author_avatar,
+                      g.view_count, g.download_count, g.like_count, g.comment_count,
+                      g.rating_avg, g.rating_count,
+                      COALESCE(
+                        (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                        ARRAY[]::text[]
+                      ) as platforms,
+                      g.published_at
+              FROM games g
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE g.status = 'published'
+                AND g.user_id <> $1
+                AND g.category_id IS NOT NULL
+                AND g.category_id IN (
+                    -- Thể loại user tương tác (like hoặc bookmark)
+                    SELECT DISTINCT g2.category_id FROM games g2
+                    WHERE g2.category_id IS NOT NULL AND (
+                        EXISTS (SELECT 1 FROM likes l
+                                WHERE l.game_id = g2.id AND l.user_id = $1)
+                        OR EXISTS (SELECT 1 FROM bookmarks b
+                                   WHERE b.game_id = g2.id AND b.user_id = $1)
+                    )
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM view_history vh
+                    WHERE vh.game_id = g.id AND vh.user_id = $1
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM likes l2
+                    WHERE l2.game_id = g.id AND l2.user_id = $1
+                )
+              ORDER BY g.rating_avg DESC, g.view_count DESC
+              LIMIT $2",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .fetch_all(pool)
+        .await?;
+        Ok(cards)
+    }
+
     pub async fn related(
         pool: &PgPool,
         game_id: Uuid,

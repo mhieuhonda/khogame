@@ -68,6 +68,14 @@ impl_template_response!(
     AdminUserDetailTemplate,
     // v1.4.0 — admin news categories (CRUD)
     AdminNewsCategoriesTemplate,
+    // v2.9.0 — gamification + collections + following + sessions
+    LeaderboardTemplate,
+    AchievementsTemplate,
+    FollowingTemplate,
+    MyCollectionsTemplate,
+    CollectionShowTemplate,
+    ProfileSessionsTemplate,
+    AdminAchievementsTemplate,
 );
 
 /// Home page
@@ -97,6 +105,12 @@ pub struct IndexTemplate {
     /// không có repo nào approved → section tự ẩn (template dùng
     /// `{% if !featured_repos.is_empty() %}`).
     pub featured_repos: Vec<repo::GithubRepoCard>,
+    /// v2.9.0 — "Tiếp tục xem" (rỗng nếu chưa login / chưa xem game nào).
+    pub continue_watching: Vec<GameCard>,
+    /// v2.9.0 — "Dành cho bạn" (theo thể loại game đã like/bookmark).
+    pub recommended_games: Vec<GameCard>,
+    /// v2.9.0 — "Game của tuần" (hot theo daily_stats 7 ngày).
+    pub week_games: Vec<GameCard>,
 }
 
 /// Login page
@@ -179,6 +193,14 @@ pub struct GameShowTemplate {
     /// trong handler. Tránh phải lặp logic ở template (askama không có
     /// filter `json_encode` builtin ở 0.16).
     pub json_ld: String,
+    /// v2.9.0 — Reviews của game (kèm is_helpful + level tác giả).
+    pub reviews: Vec<crate::models::review::ReviewWithUser>,
+    /// v2.9.0 — Tổng số review.
+    pub reviews_total: i64,
+    /// v2.9.0 — Review của viewer (điền form sửa) — None nếu chưa review.
+    pub my_review: Option<crate::models::review::Review>,
+    /// v2.9.0 — Bộ sưu tập của viewer kèm cờ đã chứa game này hay chưa.
+    pub my_collections: Vec<(uuid::Uuid, String, bool)>,
 }
 
 /// Search results
@@ -237,6 +259,20 @@ pub struct ProfileTemplate {
     pub ai_profile: Option<ai_agent::AiAgentProfile>,
     /// v2.7.0 — Mạng xã hội của user (10 nền tảng, chỉ render link đã đặt).
     pub socials: SocialLinks,
+    /// v2.9.0 — Cấp độ/XP của user hồ sơ (chip Lv + thanh tiến độ).
+    pub level: crate::models::gamification::LevelInfo,
+    /// v2.9.0 — Chuỗi điểm danh hiện tại.
+    pub streak: i32,
+    /// v2.9.0 — Huy hiệu đã đạt (showcase trước).
+    pub achievements: Vec<crate::models::gamification::Achievement>,
+    /// v2.9.0 — Huy hiệu đang ghim (is_showcased) — hiện to trên hồ sơ.
+    pub showcased: Vec<crate::models::gamification::Achievement>,
+    /// v2.9.0 — Tổng số huy hiệu đã đạt / tổng catalog.
+    pub achievements_count: (usize, usize),
+    /// v2.9.0 — Hoạt động gần đây (activity feed từ xp_events).
+    pub activity: Vec<crate::models::gamification::ActivityEvent>,
+    /// v2.9.0 — Bộ sưu tập công khai của user.
+    pub collections: Vec<crate::repositories::collection::CollectionWithOwner>,
 }
 
 /// Edit profile
@@ -320,6 +356,12 @@ pub struct AdminTemplate {
     pub total_comments: i64,
     /// v1.4.0 — tổng view (SUM view_count trên games)
     pub total_views: i64,
+    /// v2.9.0 — retention stats: điểm danh hôm nay
+    pub checkins_today: i64,
+    /// v2.9.0 — retention stats: huy hiệu trao hôm nay
+    pub achievements_today: i64,
+    /// v2.9.0 — retention stats: top 5 user theo XP
+    pub top_xp_users: Vec<crate::models::gamification::LeaderboardEntry>,
 }
 
 /// Admin reports
@@ -718,6 +760,48 @@ pub mod filters {
         let raw = n.to_string();
         let v: f64 = raw.trim().parse().unwrap_or(0.0);
         Ok(format!("{v:.1}"))
+    }
+
+    /// v2.9.0 — Số cấp độ từ tổng XP (dùng trong template leaderboard/review).
+    /// # Errors
+    ///
+    /// Trả lỗi khi input không parse được số.
+    #[askama::filter_fn]
+    pub fn level_for(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
+        let raw = n.to_string();
+        let v: i32 = raw.trim().parse().unwrap_or(0);
+        Ok(crate::models::gamification::level_from_xp(v)
+            .level
+            .to_string())
+    }
+
+    /// v2.9.0 — Danh hiệu từ tổng XP.
+    /// # Errors
+    ///
+    /// Trả lỗi khi input không parse được số.
+    #[askama::filter_fn]
+    pub fn title_for(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
+        let raw = n.to_string();
+        let v: i32 = raw.trim().parse().unwrap_or(0);
+        Ok(crate::models::gamification::level_from_xp(v)
+            .title
+            .to_string())
+    }
+
+    /// v2.9.0 — Percent (0-100) của `count` so với `total` (tham số thứ 2)
+    /// — thanh tiến độ admin achievements: `{{ a.1|pct(total_users) }}`.
+    /// total = 0 → 0%.
+    /// # Errors
+    ///
+    /// Trả lỗi khi thao tác thất bại.
+    #[askama::filter_fn]
+    pub fn pct(n: impl Display, _: &dyn Values, total: &i64) -> ::askama::Result<String> {
+        let raw = n.to_string();
+        let v: i64 = raw.trim().parse().unwrap_or(0);
+        if *total <= 0 {
+            return Ok("0".to_string());
+        }
+        Ok(((v * 100) / *total).clamp(0, 100).to_string())
     }
 
     /// Markdown an toàn -> HTML (không escape lần 2)
@@ -1190,4 +1274,105 @@ pub struct AdminUserDetailTemplate {
     pub sessions: Vec<crate::models::settings::SessionRow>,
     pub is_self: bool,                      // true nếu admin đang xem chính mình
     pub now: chrono::DateTime<chrono::Utc>, // cho check session expires_at > now
+}
+
+// ============================================================
+// v2.9.0 — GAMIFICATION + COLLECTIONS + FOLLOWING + SESSIONS
+// ============================================================
+
+/// Bảng xếp hạng (/leaderboard)
+#[derive(Template)]
+#[template(path = "gamification/leaderboard.html")]
+pub struct LeaderboardTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub entries: Vec<crate::models::gamification::LeaderboardEntry>,
+    pub hot_games: Vec<GameCard>,
+}
+
+/// Trang huy hiệu cá nhân (/achievements)
+#[derive(Template)]
+#[template(path = "gamification/achievements.html")]
+pub struct AchievementsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub achievements: Vec<crate::models::gamification::AchievementWithStatus>,
+    pub level: crate::models::gamification::LevelInfo,
+    pub streak: i32,
+    pub earned_count: usize,
+}
+
+/// Feed game từ người theo dõi (/following)
+#[derive(Template)]
+#[template(path = "following/index.html")]
+pub struct FollowingTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub games: Vec<GameCard>,
+    pub page: i64,
+    pub total_pages: i64,
+    pub total: i64,
+}
+
+/// Bộ sưu tập của tôi (/collections)
+#[derive(Template)]
+#[template(path = "collections/index.html")]
+pub struct MyCollectionsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub collections: Vec<crate::repositories::collection::Collection>,
+}
+
+/// Xem 1 bộ sưu tập (/collections/{id})
+#[derive(Template)]
+#[template(path = "collections/show.html")]
+pub struct CollectionShowTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub collection: crate::repositories::collection::Collection,
+    pub games: Vec<GameCard>,
+    pub owner_name: String,
+    pub owner_username: String,
+    pub owner_avatar: Option<String>,
+}
+
+/// Phiên đăng nhập của user (/profile/sessions)
+#[derive(Template)]
+#[template(path = "profile/sessions.html")]
+pub struct ProfileSessionsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub sessions: Vec<MySessionRow>,
+}
+
+/// Dòng session phiên bản user (không lộ token hash).
+#[derive(Debug, Clone)]
+pub struct MySessionRow {
+    pub id: uuid::Uuid,
+    pub user_agent: String,
+    pub ip: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub current: bool,
+}
+
+impl MySessionRow {
+    /// IP hiển thị ("—" nếu không có) — askama không render Option trực tiếp.
+    #[must_use]
+    pub fn ip_display(&self) -> &str {
+        self.ip.as_deref().unwrap_or("—")
+    }
+}
+
+/// Admin: thống kê huy hiệu (/admin/achievements)
+#[derive(Template)]
+#[template(path = "admin/achievements.html")]
+pub struct AdminAchievementsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub stats: Vec<(crate::models::gamification::Achievement, i64)>,
+    pub total_users: i64,
+    pub total_holders: i64,
+    pub earned_today: i64,
+    pub checkins_today: i64,
 }

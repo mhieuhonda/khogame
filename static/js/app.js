@@ -224,6 +224,31 @@
             wrap.appendChild(suggestBox);
         }
 
+        // v2.9.0 — Focus vào input rỗng → hiện lịch sử tìm kiếm gần đây
+        searchInput.addEventListener('focus', function() {
+            if (searchInput.value.trim().length >= 2) return;
+            var history = getSearchHistory ? getSearchHistory() : [];
+            if (!history.length) return;
+            hideSuggestions();
+            suggestBox = document.createElement('div');
+            suggestBox.className = 'search-suggest';
+            suggestBox.setAttribute('role', 'listbox');
+            suggestBox.setAttribute('aria-label', 'Tìm kiếm gần đây');
+            var heading = document.createElement('div');
+            heading.className = 'search-suggest-heading';
+            heading.textContent = 'Tìm kiếm gần đây';
+            suggestBox.appendChild(heading);
+            history.forEach(function(q) {
+                var a = document.createElement('a');
+                a.className = 'search-suggest-item';
+                a.href = '/search?q=' + encodeURIComponent(q);
+                a.setAttribute('role', 'option');
+                a.textContent = '🕘 ' + q;
+                suggestBox.appendChild(a);
+            });
+            wrap.appendChild(suggestBox);
+        });
+
         searchInput.addEventListener('input', function() {
             clearTimeout(suggestTimer);
             var v = this.value.trim();
@@ -743,7 +768,7 @@
         // skipWaiting → clients.claim để update apply ngay lập tức.
         window.addEventListener('load', function() {
             navigator.serviceWorker
-                .register('/static/js/sw.js?v=2.8.0', { scope: '/' })
+                .register('/static/js/sw.js?v=2.9.0', { scope: '/' })
                 .then(function(reg) {
                     if (reg && typeof reg.update === 'function') {
                         // Trigger update check sau 60s nếu user keep tab mở
@@ -756,6 +781,258 @@
                         console.warn('SW registration failed:', err);
                     }
                 });
+        });
+    }
+
+    // ==========================================
+    // v2.9.0 — CONFETTI (điểm danh / huy hiệu)
+    // ==========================================
+    // window.lsConfetti(n) — n mảnh giấy rơi từ trên đầu viewport.
+    // Dùng CSS animation (rẻ, không lib). Tự dọn sau 3.5s.
+    window.lsConfetti = function(count) {
+        try {
+            if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+            var n = count || 40;
+            var colors = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#a855f7', '#ec4899'];
+            var frag = document.createDocumentFragment();
+            for (var i = 0; i < n; i++) {
+                var piece = document.createElement('div');
+                piece.className = 'confetti-piece';
+                piece.style.left = (Math.random() * 100) + 'vw';
+                piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+                piece.style.animationDuration = (1.8 + Math.random() * 1.4) + 's';
+                piece.style.animationDelay = (Math.random() * 0.4) + 's';
+                if (Math.random() > 0.5) piece.style.borderRadius = '50%';
+                frag.appendChild(piece);
+            }
+            document.body.appendChild(frag);
+            setTimeout(function() {
+                frag.querySelectorAll('.confetti-piece').forEach(function(el) { el.remove(); });
+            }, 3600);
+        } catch (e) { /* fail-safe */ }
+    };
+
+    // Confetti khi checkin partial có marker
+    document.addEventListener('htmx:afterSwap', function(ev) {
+        var marker = ev.detail && ev.detail.target && ev.detail.target.querySelector
+            ? ev.detail.target.querySelector('[data-confetti-trigger]')
+            : null;
+        if (marker) {
+            window.lsConfetti(45);
+            marker.remove();
+        }
+    });
+
+    // ==========================================
+    // v2.9.0 — DRAFT AUTOSAVE (form game/news)
+    // ==========================================
+    // Form có data-draft-key="..." sẽ tự lưu nội dung vào localStorage
+    // mỗi 5s (khi thay đổi) và gợi ý khôi phục khi quay lại sau refresh.
+    // Submit thành công → tự xóa nháp.
+    function initDraftAutosave() {
+        var forms = document.querySelectorAll('form[data-draft-key]');
+        if (!forms.length) return;
+        forms.forEach(function(form) {
+            var key = 'ls-draft-' + form.getAttribute('data-draft-key');
+            var fields = form.querySelectorAll('input[type="text"], input[type="url"], input[type="date"], textarea, select');
+
+            // Khôi phục nháp nếu có (chỉ khi form đang trống)
+            try {
+                var saved = localStorage.getItem(key);
+                if (saved && fields.length) {
+                    var data = JSON.parse(saved);
+                    var isEmpty = !fields[0].value;
+                    if (isEmpty && data && Object.keys(data).length) {
+                        if (window.confirm('Có bản nháp chưa gửi từ lần trước. Khôi phục nội dung?')) {
+                            fields.forEach(function(f) {
+                                if (f.name && data[f.name] !== undefined) f.value = data[f.name];
+                            });
+                            window.lsToast('Đã khôi phục bản nháp', 'success');
+                        } else {
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+            } catch (e) {}
+
+            // Autosave throttle 5s
+            var timer = null;
+            var dirty = false;
+            form.addEventListener('input', function() { dirty = true; });
+            setInterval(function() {
+                if (!dirty) return;
+                dirty = false;
+                try {
+                    var data = {};
+                    fields.forEach(function(f) {
+                        if (f.name && f.value) data[f.name] = f.value;
+                    });
+                    localStorage.setItem(key, JSON.stringify(data));
+                } catch (e) {}
+            }, 5000);
+
+            // Xóa nháp khi submit
+            form.addEventListener('submit', function() {
+                try { localStorage.removeItem(key); } catch (e) {}
+            });
+        });
+    }
+
+    // ==========================================
+    // v2.9.0 — LỊCH SỬ TÌM KIẾM (localStorage, max 8)
+    // ==========================================
+    function getSearchHistory() {
+        try {
+            return JSON.parse(localStorage.getItem('ls-search-history') || '[]');
+        } catch (e) { return []; }
+    }
+    function pushSearchHistory(q) {
+        if (!q || q.length < 2) return;
+        try {
+            var list = getSearchHistory().filter(function(x) { return x !== q; });
+            list.unshift(q);
+            localStorage.setItem('ls-search-history', JSON.stringify(list.slice(0, 8)));
+        } catch (e) {}
+    }
+    function initSearchHistory() {
+        var form = document.querySelector('form.search-bar[action="/search"]');
+        if (!form) return;
+        var input = form.querySelector('input[name="q"]');
+        if (!input) return;
+        form.addEventListener('submit', function() {
+            pushSearchHistory(input.value.trim());
+        });
+    }
+
+    // ==========================================
+    // v2.9.0 — HỘP THOẠI PHÍM TẮT (? để mở)
+    // ==========================================
+    function initKeyboardHelp() {
+        document.addEventListener('keydown', function(e) {
+            // Bỏ qua khi đang gõ trong input/textarea
+            var tag = (e.target && e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (e.key === '?' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                e.preventDefault();
+                toggleKbdHelp(true);
+            } else if (e.key === 'Escape') {
+                toggleKbdHelp(false);
+            }
+        });
+    }
+    function toggleKbdHelp(show) {
+        var existing = document.getElementById('ls-kbd-help');
+        if (!show) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) { existing.remove(); return; }
+        var overlay = document.createElement('div');
+        overlay.className = 'kbd-help-overlay';
+        overlay.id = 'ls-kbd-help';
+        overlay.innerHTML = '<div class="kbd-help-dialog" role="dialog" aria-label="Phím tắt">'
+            + '<h3>Phím tắt</h3>'
+            + '<div class="kbd-row"><span>Tìm kiếm</span><kbd class="kbd-key">/</kbd></div>'
+            + '<div class="kbd-row"><span>Trợ giúp phím tắt</span><kbd class="kbd-key">?</kbd></div>'
+            + '<div class="kbd-row"><span>Đóng hộp thoại này</span><kbd class="kbd-key">Esc</kbd></div>'
+            + '<div class="kbd-row"><span>Trang chủ</span><kbd class="kbd-key">g</kbd> <kbd class="kbd-key">h</kbd></div>'
+            + '<div class="kbd-row"><span>Bảng xếp hạng</span><kbd class="kbd-key">g</kbd> <kbd class="kbd-key">l</kbd></div>'
+            + '<div class="kbd-row"><span>Game ngẫu nhiên</span><kbd class="kbd-key">g</kbd> <kbd class="kbd-key">r</kbd></div>'
+            + '<p style="margin:14px 0 0;font-size:.8rem;color:var(--fg-muted)">Gõ 2 phím liên tiếp (g rồi h).</p>'
+            + '</div>';
+        overlay.addEventListener('click', function(ev) {
+            if (ev.target === overlay) overlay.remove();
+        });
+        document.body.appendChild(overlay);
+    }
+    // Go-to sequences: g→h (home), g→l (leaderboard), g→r (random)
+    function initGoToSequences() {
+        var pendingG = false;
+        var pendingTimer = null;
+        document.addEventListener('keydown', function(e) {
+            var tag = (e.target && e.target.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (e.ctrlKey || e.metaKey || e.altKey) return;
+            if (e.key === 'g' && !pendingG) {
+                pendingG = true;
+                clearTimeout(pendingTimer);
+                pendingTimer = setTimeout(function() { pendingG = false; }, 1200);
+                return;
+            }
+            if (pendingG) {
+                if (e.key === 'h') { window.location.href = '/'; }
+                else if (e.key === 'l') { window.location.href = '/leaderboard'; }
+                else if (e.key === 'r') { window.location.href = '/games/random'; }
+                pendingG = false;
+                clearTimeout(pendingTimer);
+            }
+        });
+    }
+
+    // ==========================================
+    // v2.9.0 — NÚT CÀI PWA (beforeinstallprompt)
+    // ==========================================
+    var deferredInstallPrompt = null;
+    function initPwaInstall() {
+        window.addEventListener('beforeinstallprompt', function(e) {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            // Hiện menu item "Cài đặt ứng dụng" nếu có slot
+            var slot = document.getElementById('pwa-install-slot');
+            if (slot) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'menu-link';
+                btn.innerHTML = '<span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Cài đặt ứng dụng';
+                btn.addEventListener('click', function() {
+                    if (!deferredInstallPrompt) return;
+                    deferredInstallPrompt.prompt();
+                    deferredInstallPrompt.userChoice.then(function() {
+                        deferredInstallPrompt = null;
+                        btn.remove();
+                    });
+                });
+                slot.appendChild(btn);
+            }
+        });
+    }
+
+    // ==========================================
+    // v2.9.0 — MARKDOWN PREVIEW (editor game/news)
+    // ==========================================
+    function initMarkdownPreview() {
+        document.querySelectorAll('[data-preview-source]').forEach(function(toggleBtn) {
+            toggleBtn.addEventListener('click', function() {
+                var srcId = toggleBtn.getAttribute('data-preview-source');
+                var src = document.getElementById(srcId);
+                var target = document.getElementById(srcId + '-preview');
+                if (!src || !target) return;
+                if (target.hidden) {
+                    // Render preview
+                    var body = new URLSearchParams();
+                    body.append('text', src.value.slice(0, 20000));
+                    fetch('/api/preview', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: body.toString()
+                    })
+                        .then(function(r) { return r.ok ? r.json() : Promise.reject(); })
+                        .then(function(d) {
+                            target.innerHTML = d.html || '<p class="muted">(trống)</p>';
+                            target.hidden = false;
+                            src.style.display = 'none';
+                            toggleBtn.textContent = '✏️ Sửa';
+                        })
+                        .catch(function() {
+                            window.lsToast('Không tải được bản xem trước', 'error');
+                        });
+                } else {
+                    target.hidden = true;
+                    src.style.display = '';
+                    toggleBtn.textContent = '👁 Xem trước';
+                }
+            });
         });
     }
 
@@ -776,6 +1053,13 @@
         initNewsSearchAutocomplete();
         initCopyCodeButtons();
         initServiceWorker();
+        // v2.9.0
+        initDraftAutosave();
+        initSearchHistory();
+        initKeyboardHelp();
+        initGoToSequences();
+        initPwaInstall();
+        initMarkdownPreview();
 
         // Duplicate check — game form (#f-title) + news form (#title)
         // v2.0 FIX: bản cũ chỉ check #title (id của form news) nên

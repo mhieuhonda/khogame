@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+
+{% block title %}Phiên đăng nhập{% endblock %}
+{% block description %}Quản lý phiên đăng nhập của bạn trên Louis Space — xem thiết bị đang đăng nhập và thu hồi phiên đáng ngờ.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Phiên đăng nhập của tôi
+        </h1>
+        <a href="/profile/edit" class="section-more">← Sửa hồ sơ</a>
+    </div>
+
+    <div class="alert alert-info">
+        Đây là các thiết bị đang đăng nhập vào tài khoản của bạn. Nếu thấy phiên lạ,
+        bấm <strong>Thu hồi</strong> để đăng xuất thiết bị đó ngay lập tức.
+    </div>
+
+    {% if sessions.is_empty() %}
+    <div class="empty-state"><p>Không có phiên nào.</p></div>
+    {% else %}
+    <div class="sessions-list">
+        {% for s in sessions %}
+        <div class="session-row {% if s.current %}session-current{% endif %}">
+            <div class="session-info">
+                <div class="session-ua">{{ s.user_agent }}</div>
+                <div class="session-meta">
+                    {% if s.current %}<span class="session-current-badge">Thiết bị này</span>{% endif %}
+                    <span>IP: {{ s.ip_display() }}</span>
+                    <span>Đăng nhập {{ s.created_at|time_ago_dt }}</span>
+                    <span>Hết hạn {{ s.expires_at|time_ago_dt }} nữa</span>
+                </div>
+            </div>
+            {% if !s.current %}
+            <form method="post" action="/profile/sessions/{{ s.id }}/revoke" class="session-revoke-form">
+                <button type="submit" class="btn btn-outline btn-sm btn-danger-outline" data-confirm="Thu hồi phiên này?">Thu hồi</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

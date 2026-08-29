@@ -1,0 +1,30 @@
+{# Widget điểm danh + tiến độ cấp độ (v2.9.0).
+   Include ở trang chủ khi user đã đăng nhập.
+   Context: current_user, checked_in_today, current_streak, level (LevelInfo). #}
+<div class="checkin-card" id="checkin-card">
+    <div class="checkin-info">
+        <div class="checkin-level">
+            <span class="level-chip level-chip-lg">Lv.{{ level.level }}</span>
+            <span class="level-title">{{ level.title }}</span>
+        </div>
+        <div class="checkin-xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ level.progress_pct }}" aria-label="Tiến độ cấp độ">
+            <div class="checkin-xp-fill" style="width: {{ level.progress_pct }}%"></div>
+        </div>
+        <div class="checkin-xp-text">
+            {% match level.next_level_xp %}{% when Option::Some with (next) %}{{ level.xp }} / {{ next }} XP{% when Option::None %}{{ level.xp }} XP — cấp tối đa{% endmatch %}
+        </div>
+        {% if current_streak > 0 %}
+        <div class="checkin-streak">🔥 Chuỗi {{ current_streak }} ngày liên tiếp</div>
+        {% endif %}
+    </div>
+    <div class="checkin-action" id="checkin-action">
+        {% if !checked_in_today %}
+        <button class="btn btn-primary checkin-btn"
+                hx-post="/checkin"
+                hx-target="#checkin-card"
+                hx-swap="outerHTML">Điểm danh hôm nay</button>
+        {% else %}
+        <span class="checkin-done">✓ Đã điểm danh hôm nay</span>
+        {% endif %}
+    </div>
+</div>

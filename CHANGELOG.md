@@ -5,6 +5,187 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0] — 2026-08-29 — GAMIFICATION ENGINE: 50 tính năng giữ chân người dùng
+
+Bản phát hành lớn nhất lịch sử dự án: **gamification engine hoàn chỉnh**
+(XP + cấp độ + chuỗi điểm danh + 25 huy hiệu + bảng xếp hạng) cùng 50 tính
+năng/chức năng/logic mới tập trung vào một mục tiêu — **giữ chân người
+dùng** (retention): cho họ lý quay lại mỗi ngày, lý do tương tác, cảm giác
+tiến bộ và thuộc về cộng đồng.
+
+### 🎮 Gamification Engine (nền tảng 1-12)
+
+1. **Hệ thống XP** — tích lũy qua mọi hoạt động (điểm danh +5, đăng game
+   +50, tin được duyệt +40, review +15, bình luận +3, repo +20, nhận
+   like +2, nhận follow +10, nhận download +1). Anti-farm: cap XP/ngày
+   cho các hành vi dễ spam (bình luận 10, chat 20, like nhận 50).
+2. **Hệ thống 12 cấp độ** với danh hiệu tiếng Việt (Tân Binh → Tập Sự →
+   Thám Hiểm → Chiến Binh → Cao Thủ → Đấu Sĩ → Kỳ Lão → Bậc Thầy → Đại
+   Sư → Huyền Thoại → Vinh Quang → Bất Tử). Cấp độ là hàm thuần của XP —
+   đổi ngưỡng toàn site tự cập nhật.
+3. **Điểm danh hàng ngày (daily check-in)** — nút điểm danh trên trang
+   chủ (HTMX partial), idempotent, nhận XP ngay.
+4. **Chuỗi ngày liên tiếp (streak)** + hệ số thưởng tăng dần (min(streak-1, 7)
+   XP thưởng mỗi ngày) — động lực quay lại liên tục.
+5. **Thông báo + chúc mừng khi lên cấp** (notification tự động).
+6. **Thanh tiến độ cấp độ** hiển thị mọi nơi (widget trang chủ, hồ sơ,
+   trang huy hiệu) — % tới cấp kế.
+7. **25 huy hiệu (achievements)** tự động trao: onboarding (đăng nhập,
+   avatar, bio, social), nội dung (bình luận, review), sáng tạo (đăng
+   game, repo, tin), discovery (like, bookmark), social (follower,
+   chat), chuỗi (3/7/30 ngày), cấp độ (5/10). Kiểm tra bằng 1 query
+   tổng hợp duy nhất (không N+1).
+8. **Thông báo mở khóa huy hiệu** + XP thưởng cho từng huy hiệu.
+9. **Trang huy hiệu cá nhân `/achievements`** — tổng quan tiến độ, huy
+   hiệu đã đạt/chưa đạt, ghim huy hiệu.
+10. **Ghim tối đa 3 huy hiệu showcase** lên hồ sơ công khai.
+11. **Bảng xếp hạng `/leaderboard`** — Top 20 cấp độ + Game hot tuần
+    (theo daily_stats có trọng số views + 2×downloads).
+12. **Chip cấp độ cạnh tên** trong review + bảng xếp hạng — nhận diện
+    nhanh "cao thủ" của cộng đồng.
+
+### 📝 Nội dung & Social (13-22)
+
+13. **Hệ thống review game hoàn chỉnh** (wire-up bảng `reviews` có sẵn
+    từ v0.1 nhưng chưa từng có route): form review với chấm sao 1-5,
+    tiêu đề + nội dung Markdown, 1 user = 1 review/game (upsert).
+14. **Vote "Hữu ích" cho review** — bảng `review_helpful_votes` mới
+    chống double-vote, không vote review của chính mình, counter an toàn.
+15. **Review hiển thị trên trang game** — section riêng dưới bình luận,
+    sort theo helpful, chip cấp độ người review.
+16. **Feed "Đang theo dõi" `/following`** — game mới nhất từ những người
+    user follow (retention: lý do follow có giá trị thực).
+17. **Thông báo "người bạn theo dõi vừa đăng game"** cho mọi follower
+    khi publish (type `new_game` có sẵn trong DB enum).
+18. **Bộ sưu tập game (collections)** — tạo/tối đa 20/user, mô tả,
+    công khai/riêng tư, counter game_count an toàn transaction.
+19. **Thêm/xóa game vào bộ sưu tập ngay trên trang game** (sidebar).
+20. **Bộ sưu tập công khai hiển thị trên hồ sơ** + trang riêng
+    `/collections/{id}` với breadcrumb + SEO meta.
+21. **Trang quản lý bộ sưu tập `/collections`** — tạo nhanh, xóa với
+    confirm.
+22. **Thông báo chào mừng thành viên mới** — hướng dẫn onboarding (hoàn
+    thiện hồ sơ, điểm danh, khám phá game).
+
+### 🔍 Khám phá & Discovery (23-30)
+
+23. **"Tiếp tục xem"** trên trang chủ — lịch sử xem game (bảng
+    `view_history`, giữ tối đa 60 game/user, tự loại game ẩn).
+24. **"Dành cho bạn"** — gợi ý game theo thể loại user đã like/bookmark,
+    loại game đã xem.
+25. **"Game của tuần"** — spotlight tự động theo lượt xem/tải 7 ngày
+    (daily_stats), fallback trending khi site mới.
+26. **Nút "Game ngẫu nhiên"** `/games/random` — khám phá bất ngờ
+    (sidebar + menu + phím tắt g→r).
+27. **Tag xu hướng** trên trang chủ (top 20 theo usage_count).
+28. **Gợi ý tag khi tạo game** — top tags phổ biến.
+29. **Lịch sử tìm kiếm cá nhân** — 8 tìm kiếm gần đây hiện khi focus ô
+    search (localStorage, không cần DB).
+30. **Sitemap mở rộng** — bổ sung categories + tags (SEO discovery).
+
+### ⌨️ Trải nghiệm soạn thảo & UI (31-38)
+
+31. **Xem trước Markdown trực tiếp** — POST `/api/preview` dùng ĐÚNG
+    engine render production (comrak + syntect + callouts + mention), nút
+    "👁 Xem trước" trên editor game + news.
+32. **Tự động lưu nháp** — form game/news lưu localStorage mỗi 5s, gợi ý
+    khôi phục sau refresh, tự xóa khi submit.
+33. **Đếm ký tự + giới hạn hiển thị** trên các trường dài (đã có nền,
+    hoàn thiện cho review).
+34. **Hộp thoại phím tắt `?`** — danh sách phím tắt toàn site.
+35. **Phím tắt điều hướng `g`** — g→h trang chủ, g→l bảng xếp hạng,
+    g→r game ngẫu nhiên (giống GitHub).
+36. **Typing indicator trong chat** — "X đang gõ…" realtime qua broadcast
+    channel (không ghi DB), throttle 3s, rate-limit 20/phút.
+37. **Danh sách người đang online trong chat** — panel poll 20s, avatar
+    + tên + màu theo role.
+38. **Hiệu ứng confetti** khi điểm danh thành công (CSS animation, tôn
+    trọng prefers-reduced-motion).
+
+### 👤 Cá nhân hóa & Kiểm soát tài khoản (39-45)
+
+39. **Trang phiên đăng nhập của riêng user** `/profile/sessions` — xem
+    thiết bị/IP/thời gian, tự thu hồi phiên đáng ngờ.
+40. **Thu hồi phiên chỉ scope chính mình** (SQL WHERE user_id — không thể
+    thu hồi phiên người khác).
+41. **Xuất dữ liệu cá nhân JSON** `/profile/export` (GDPR) — hồ sơ +
+    games + bookmarks + comments.
+42. **Khối gamification trên hồ sơ** — chip cấp độ, danh hiệu, streak,
+    thanh XP, "cần N XP nữa để lên cấp".
+43. **Hoạt động gần đây trên hồ sơ** — activity feed render từ xp_events
+    (điểm danh, đăng game, review, nhận like…).
+44. **Widget điểm danh lazy-load** trên trang chủ (HTMX + skeleton
+    shimmer, không block TTFB).
+45. **Reminder điểm danh** — widget hiện trạng thái "chưa điểm danh
+    hôm nay" ngay trang chủ.
+
+### 🛠️ Admin & Vận hành (46-50)
+
+46. **Dashboard admin: chỉ số retention** — điểm danh hôm nay, huy hiệu
+    trao hôm nay, panel Top 5 cấp độ.
+47. **Trang admin `/admin/achievements`** — catalog 25 huy hiệu + số
+    người đạt + thanh tỉ lệ đạt/h tổng user.
+48. **Public API `/api/v1/leaderboard`** — JSON top 20 (rank, level,
+    title, XP, streak) cho tích hợp bên ngoài.
+49. **Hoàn thiện chat WS** — level chip + role màu trong panel online,
+    presence refresh danh sách.
+50. **Cache-bust v2.9.0 toàn diện** — style.css/app.js/sw.js/chat.js +
+    SW CACHE_VERSION (deploy an toàn không stale asset).
+
+### 🐛 FIX BUGS (tìm thấy khi audit toàn diện trước khi code tính năng)
+
+- **[CRITICAL] Trigger email queue sai tên enum** (bug có từ v2.2.0,
+  migration 017): `fn_enqueue_email_for_notification` CASE dùng
+  `'news_approval'`/`'news_rejection'` nhưng enum thật là
+  `news_approved`/`news_rejected` → MỌI notification loại system/review/
+  reply/rating/report_status/news_approved… cho user có email đều ERROR
+  runtime → INSERT notification bị ROLLBACK ÂM THẦM (app nuốt lỗi bằng
+  `let _ =`). Người dùng không bao giờ nhận thông báo "tin đã được duyệt",
+  "mở khóa huy hiệu", review mới… Fix: migration 022 recreate function
+  với đúng enum + CAST ::text cho CASE (thêm enum mới không phải sửa
+  trigger).
+- **[HIGH] Cache-Control sai tên cookie**: middleware check `ls_session`
+  nhưng cookie thật là `kg_session` → mọi trang đã login bị gắn
+  `public, max-age=60` → CDN/browser cache nội dung riêng tư + nút Back
+  sau logout vẫn hiện trang đã login.
+- **[MEDIUM] Nút like bình luận không đổi trạng thái**: `find_by_id`
+  hardcode `FALSE as is_liked` → partial sau khi like luôn render "chưa
+  like". Thêm viewer_id + EXISTS subquery.
+- **[MEDIUM] "Tải thêm bình luận" sai số + treo vĩnh viễn**:
+  `comment_count` (trigger đếm CẢ replies) dùng cho phân trang chỉ list
+  comment gốc → "còn N" thổi phồng + khi hết comment gốc nút vẫn treo.
+  Thêm `count_top_level` + fix cả API total.
+- **[MEDIUM] Email kẹt 'sending' mất vĩnh viễn**: process crash/redeploy
+  giữa batch SMTP → row 'sending' không bao giờ được claim lại. Janitor
+  giờ requeue row kẹt >10 phút.
+- **[MEDIUM] Spam notification qua toggle like/follow**: re-follow/re-like
+  lặp vô hạn đẩy notification + email ~60 lần/phút. Dedup: bỏ qua khi đã
+  có thông báo cùng (actor, type, target) chưa đọc (cả Rust lẫn trigger).
+- **[MEDIUM] OFFSET overflow**: `(page-1)*per_page` với page ~4e17 tràn
+  i64 → OFFSET âm → 500/panic. Chuyển 17 call sites sang saturating_mul
+  + clamp page [1, 10.000].
+- **[LOW] Log rò rỉ password DB**: redact giữ nhầm `postgres://user:PASS`
+  và vứt host. Viết lại `redact_db_credentials` (giữ host, xóa userinfo,
+  UTF-8 safe) + unit test.
+- **[LOW] Service worker cache trang private**: `/profile`, `/admin`…
+  được cache offline → sau logout có thể rỉ nội dung riêng tư. Route
+  private giờ network-only trong SW.
+- **UI theo yêu cầu**: bỏ icon lửa khỏi khung chức vụ admin — badge chỉ
+  còn chữ "Quản Trị Viên", giữ hiệu ứng rainbow (chữ rainbow + viền đổi
+  sang gradient rainbow).
+
+### 🔧 Kỹ thuật
+
+- Migration 021 (gamification: 8 bảng mới + seed 25 huy hiệu) + 022 (fix
+  trigger enum) — cả hai idempotent, đã verify chạy sạch trên PostgreSQL 17.
+- Mọi hook gamification đều **best-effort fire-and-forget** (tokio::spawn):
+  lỗi gamification không bao giờ làm fail hành động chính của user.
+- Anti-farm XP caps, rate limit typing indicator, giới hạn 20 collections,
+  60 view history, helpful votes chặn self-vote.
+- Full smoke test đã chạy trên server thật (boot + 22 migrations + 30+
+  endpoint + flow checkin → XP → huy hiệu → notification → review →
+  collection → leaderboard).
+
 ## [2.8.0] — 2026-08-28 — FIX hồ sơ admin (avatar + hiệu ứng) + FIX đăng repo 500
 
 Bản phát hành fix 2 nhóm lỗi theo báo cáo thực tế trên prod: (1) hiệu ứng

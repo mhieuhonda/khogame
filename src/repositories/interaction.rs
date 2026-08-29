@@ -145,6 +145,61 @@ impl InteractionRepo {
         Ok(c)
     }
 
+    /// v2.9.0 — Game published mới nhất từ những người user theo dõi
+    /// (feed /following).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn followed_games(
+        pool: &PgPool,
+        user_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> AppResult<Vec<crate::models::GameCard>> {
+        use crate::models::GameCard;
+        let cards = sqlx::query_as::<_, GameCard>(
+            r"SELECT g.id, g.slug, g.title, g.excerpt, g.cover_image,
+                      c.name as category_name, c.slug as category_slug,
+                      u.display_name as author_name, u.avatar_url as author_avatar,
+                      g.view_count, g.download_count, g.like_count, g.comment_count,
+                      g.rating_avg, g.rating_count,
+                      COALESCE(
+                        (SELECT array_agg(DISTINCT platform::text) FROM game_links WHERE game_id = g.id),
+                        ARRAY[]::text[]
+                      ) as platforms,
+                      g.published_at
+              FROM follows f
+              JOIN games g ON g.user_id = f.followee_id
+              LEFT JOIN users u ON u.id = g.user_id
+              LEFT JOIN categories c ON c.id = g.category_id
+              WHERE f.follower_id = $1 AND g.status = 'published'
+              ORDER BY g.published_at DESC NULLS LAST
+              LIMIT $2 OFFSET $3",
+        )
+        .bind(user_id)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+        Ok(cards)
+    }
+
+    /// v2.9.0 — Tổng game published của những người user theo dõi.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn count_followed_games(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let c: i64 = sqlx::query_scalar(
+            r"SELECT COUNT(*) FROM follows f
+              JOIN games g ON g.user_id = f.followee_id
+              WHERE f.follower_id = $1 AND g.status = 'published'",
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(c)
+    }
+
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).

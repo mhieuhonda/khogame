@@ -1,0 +1,41 @@
+{% extends "layout.html" %}
+
+{% block title %}Đang theo dõi{% endblock %}
+{% block description %}Game mới nhất từ những người bạn theo dõi trên Louis Space.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m22 21-2.4-2.4"/><path d="M16.5 11a3.5 3.5 0 0 0 0-7"/></svg>
+            Đang theo dõi
+        </h1>
+        <span class="section-more">{{ total|fmt_num }} game từ người bạn theo dõi</span>
+    </div>
+
+    {% if games.is_empty() %}
+    <div class="empty-state">
+        <p>Chưa có game mới nào từ người bạn theo dõi.</p>
+        <p><a href="/games/trending" class="btn btn-primary btn-sm">Khám phá game thịnh hành</a> hoặc <a href="/leaderboard" class="btn btn-outline btn-sm">Xem bảng xếp hạng</a> để tìm nhà sáng tạo thú vị.</p>
+    </div>
+    {% else %}
+    <div class="game-grid">
+        {% for game in games %}
+        {% include "partials/game_card.html" %}
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <nav class="pagination" aria-label="Phân trang">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="page-link">← Trước</a>
+        {% endif %}
+        <span class="page-info">Trang {{ page }} / {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}" class="page-link">Sau →</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

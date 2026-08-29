@@ -22,6 +22,9 @@ pub enum ChatEvent {
     Delete { id: Uuid },
     /// Cập nhật số user đang online — client hiển thị ở header chat card.
     Presence { online: usize },
+    /// v2.9.0 — Typing indicator: ai đó đang gõ. Broadcast qua channel
+    /// (không ghi DB — ephemeral). Client hiển thị "X đang gõ..." 4s.
+    Typing { user_id: Uuid, display_name: String },
 }
 
 #[derive(Clone)]
@@ -147,5 +150,13 @@ impl AppState {
     /// Số user đang online (cho HTTP GET /chat/history trả về cùng lúc).
     pub fn presence_count(&self) -> usize {
         self.chat_online.lock().map_or(0, |s| s.len())
+    }
+
+    /// v2.9.0 — Danh sách UUID user đang online (panel chat / online-users).
+    pub fn online_user_ids(&self) -> Vec<Uuid> {
+        self.chat_online
+            .lock()
+            .map(|s| s.iter().copied().collect())
+            .unwrap_or_default()
     }
 }

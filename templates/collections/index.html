@@ -1,0 +1,52 @@
+{% extends "layout.html" %}
+
+{% block title %}Bộ sưu tập của tôi{% endblock %}
+{% block description %}Quản lý bộ sưu tập game của bạn trên Louis Space — gom game yêu thích thành list chia sẻ công khai.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            Bộ sưu tập của tôi
+        </h1>
+    </div>
+
+    <form method="post" action="/collections" class="collection-create-form">
+        <div class="form-row">
+            <input type="text" name="title" placeholder="Tên bộ sưu tập (vd: Game Việt đáng chơi)" maxlength="100" required aria-label="Tên bộ sưu tập">
+            <input type="text" name="description" placeholder="Mô tả ngắn (không bắt buộc)" maxlength="300" aria-label="Mô tả">
+            <label class="form-check-inline">
+                <input type="checkbox" name="is_public" value="1" checked> Công khai
+            </label>
+            <button type="submit" class="btn btn-primary">Tạo bộ sưu tập</button>
+        </div>
+        <small class="form-hint">Tối đa 20 bộ sưu tập. Thêm game vào bộ sưu tập từ trang chi tiết game.</small>
+    </form>
+
+    {% if collections.is_empty() %}
+    <div class="empty-state">
+        <p>Bạn chưa có bộ sưu tập nào. Tạo bộ sưu tập đầu tiên rồi ghé trang game bấm <strong>"Thêm vào bộ sưu tập"</strong>!</p>
+    </div>
+    {% else %}
+    <div class="collections-grid">
+        {% for c in collections %}
+        <div class="collection-card">
+            <a href="/collections/{{ c.id }}" class="collection-card-link">
+                <h3 class="collection-title">{{ c.title }}</h3>
+                <p class="collection-desc">{{ c.description }}</p>
+                <div class="collection-meta">
+                    <span>{{ c.game_count }} game</span>
+                    <span class="collection-visibility">{% if c.is_public %}🌍 Công khai{% else %}🔒 Riêng tư{% endif %}</span>
+                    <span>Cập nhật {{ c.updated_at|time_ago_dt }}</span>
+                </div>
+            </a>
+            <form method="post" action="/collections/{{ c.id }}/delete" class="collection-delete-form" data-confirm="Xóa bộ sưu tập "{{ c.title }}"?">
+                <button type="submit" class="btn btn-outline btn-sm btn-danger-outline">Xóa</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

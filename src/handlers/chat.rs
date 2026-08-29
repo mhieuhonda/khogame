@@ -248,6 +248,11 @@ async fn send_message(state: &AppState, user_id: Uuid, content: &str) {
     match ChatRepo::create(&state.db, user_id, content, None, None).await {
         Ok(message) => {
             let _ = state.chat_tx.send(ChatEvent::Message { message });
+            // v2.9.0 — XP chat + huy hiệu chat đầu tiên (best-effort)
+            let db = state.db.clone();
+            tokio::spawn(async move {
+                crate::services::gamification::on_chat_message(&db, user_id).await;
+            });
         }
         Err(e) => tracing::error!("Chat create DB error: {e}"),
     }
@@ -315,4 +320,52 @@ pub async fn auth_check(
 #[derive(Deserialize)]
 pub struct SuggestParams {
     pub q: Option<String>,
+}
+
+// ============================================================
+// v2.9.0 — TYPING INDICATOR + ONLINE USERS LIST
+// ============================================================
+
+/// POST /chat/typing — broadcast "đang gõ" (không ghi DB).
+/// Client gọi throttle 3s/lần khi user gõ. AuthUser chống spam mạo danh.
+/// # Errors
+///
+/// Trả về lỗi khi chưa đăng nhập.
+pub async fn typing(
+    State(state): State<Arc<AppState>>,
+    crate::middleware::AuthUser(user): crate::middleware::AuthUser,
+) -> StatusCode {
+    // Rate-limit: mỗi user tối đa 20 typing event/phút (client throttle
+    // 3s = 20/min, kẻ xấu gọi liên tục sẽ bị chặn).
+    let key = format!("chat-typing:{}", user.id);
+    if !state.rate_limiter.check(&key, 20, 60) {
+        return StatusCode::TOO_MANY_REQUESTS;
+    }
+    let _ = state.chat_tx.send(ChatEvent::Typing {
+        user_id: user.id,
+        display_name: user.display_name,
+    });
+    StatusCode::OK
+}
+
+/// GET /chat/online-users — danh sách user đang online (panel chat).
+/// Trả về JSON {online: n, users: [{username, display_name, avatar_url, role}]}.
+/// # Errors
+///
+/// Trả về lỗi khi DB fail.
+pub async fn online_users(
+    State(state): State<Arc<AppState>>,
+) -> AppResult<axum::Json<OnlineUsersResponse>> {
+    let ids = state.online_user_ids();
+    let users = crate::repositories::collection::online_users_info(&state.db, &ids).await?;
+    Ok(axum::Json(OnlineUsersResponse {
+        online: ids.len(),
+        users,
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct OnlineUsersResponse {
+    pub online: usize,
+    pub users: Vec<crate::repositories::collection::OnlineUser>,
 }

@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ collection.title }} — Bộ sưu tập{% endblock %}
+{% block description %}{{ collection.description }} — bộ sưu tập game của {{ owner_name }} trên Louis Space.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <nav class="breadcrumb" aria-label="Breadcrumb">
+        <a href="/">Trang chủ</a> <span>›</span> <a href="/u/{{ owner_username }}">Hồ sơ {{ owner_name }}</a> <span>›</span> <span>Bộ sưu tập</span>
+    </nav>
+
+    <div class="section-header">
+        <div>
+            <h1 class="section-title">{{ collection.title }}</h1>
+            {% if !collection.description.is_empty() %}
+            <p class="collection-page-desc">{{ collection.description }}</p>
+            {% endif %}
+            <div class="collection-meta collection-meta-page">
+                <span>{{ collection.game_count }} game</span>
+                <span class="collection-visibility">{% if collection.is_public %}🌍 Công khai{% else %}🔒 Riêng tư{% endif %}</span>
+                <span>Cập nhật {{ collection.updated_at|time_ago_dt }}</span>
+            </div>
+        </div>
+        <a href="/u/{{ owner_username }}" class="collection-owner">
+            {% match owner_avatar %}
+            {% when Option::Some with (url) %}
+            <img src="{{ url }}" alt="{{ owner_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy">
+            {% when Option::None %}
+            <div class="avatar avatar-sm avatar-fallback">{{ owner_name|initials }}</div>
+            {% endmatch %}
+            <span>bởi <strong>{{ owner_name }}</strong></span>
+        </a>
+    </div>
+
+    {% if games.is_empty() %}
+    <div class="empty-state">
+        <p>Bộ sưu tập này chưa có game nào.</p>
+    </div>
+    {% else %}
+    <div class="game-grid">
+        {% for game in games %}
+        {% include "partials/game_card.html" %}
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

@@ -161,6 +161,34 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                     Tham gia: {{ user.created_at|format_datetime_vn }}
                 </p>
+
+                {# === v2.9.0 — CẤP ĐỘ + XP + STREAK === #}
+                <div class="profile-level-block">
+                    <div class="profile-level-line">
+                        <span class="level-chip level-chip-lg">Lv.{{ level.level }}</span>
+                        <span class="level-title">{{ level.title }}</span>
+                        {% if streak > 0 %}<span class="profile-streak" title="Chuỗi điểm danh">🔥 {{ streak }} ngày</span>{% endif %}
+                    </div>
+                    <div class="checkin-xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ level.progress_pct }}" aria-label="Tiến độ cấp độ {{ level.level }}">
+                        <div class="checkin-xp-fill" style="width: {{ level.progress_pct }}%"></div>
+                    </div>
+                    <div class="profile-xp-text">
+                        {{ level.xp }} XP
+                        {% match level.next_level_xp %}{% when Option::Some with (next) %}· cần {{ next - level.xp }} XP nữa để lên Lv.{{ level.level + 1 }}{% when Option::None %}· cấp tối đa{% endmatch %}
+                    </div>
+                </div>
+
+                {# === v2.9.0 — HUY HIỆU SHOWCASE (tối đa 3, ghim qua /achievements) === #}
+                {% if !showcased.is_empty() %}
+                <div class="profile-showcase" aria-label="Huy hiệu nổi bật">
+                    {% for a in showcased %}
+                    <span class="showcase-badge" title="{{ a.title }} — {{ a.description }}">
+                        <span class="showcase-icon">{{ a.icon }}</span>
+                        <span class="showcase-name">{{ a.title }}</span>
+                    </span>
+                    {% endfor %}
+                </div>
+                {% endif %}
             </div>
             <div class="profile-actions">
                 {% if !is_self %}
@@ -194,6 +222,10 @@
             <div class="profile-stat">
                 <span class="stat-value">{{ stats.games_count }}</span>
                 <span class="stat-label">Game</span>
+            </div>
+            <div class="profile-stat">
+                <span class="stat-value">{{ achievements_count.0 }}</span>
+                <span class="stat-label">Huy hiệu</span>
             </div>
             <div class="profile-stat">
                 <span class="stat-value">{{ stats.followers_count }}</span>
@@ -274,4 +306,75 @@
         </div>
     </div>
 </section>
+
+
+{# === v2.9.0 — BỘ SƯU TẬP CÔNG KHAI === #}
+{% if !collections.is_empty() %}
+<div class="profile-content" id="collections" style="margin-top:32px">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            Bộ sưu tập
+        </h2>
+        {% if is_self %}<a href="/collections" class="section-more">Quản lý →</a>{% endif %}
+    </div>
+    <div class="collections-grid">
+        {% for c in collections %}
+        <div class="collection-card">
+            <a href="/collections/{{ c.id }}" class="collection-card-link">
+                <h3 class="collection-title">{{ c.title }}</h3>
+                <p class="collection-desc">{{ c.description }}</p>
+                <div class="collection-meta">
+                    <span>{{ c.game_count }} game</span>
+                    <span>Cập nhật {{ c.updated_at|time_ago_dt }}</span>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# === v2.9.0 — HUY HIỆU ĐÃ ĐẠT === #}
+{% if !achievements.is_empty() %}
+<div class="profile-content" id="achievements" style="margin-top:32px">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
+            Huy hiệu
+            <span class="reviews-count">({{ achievements_count.0 }}/{{ achievements_count.1 }})</span>
+        </h2>
+        {% if is_self %}<a href="/achievements" class="section-more">Xem tất cả →</a>{% endif %}
+    </div>
+    <div class="profile-achievements-row">
+        {% for a in achievements %}
+        <span class="mini-achievement" title="{{ a.title }} — {{ a.description }}">
+            <span class="mini-achievement-icon">{{ a.icon }}</span>
+            <span class="mini-achievement-name">{{ a.title }}</span>
+        </span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{# === v2.9.0 — HOẠT ĐỘNG GẦN ĐÂY === #}
+{% if !activity.is_empty() %}
+<div class="profile-content" id="activity" style="margin-top:32px">
+    <div class="section-header">
+        <h2 class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Hoạt động gần đây
+        </h2>
+    </div>
+    <ul class="activity-list">
+        {% for ev in activity %}
+        <li class="activity-item">
+            <span class="activity-text"><strong>{{ user.display_name }}</strong> {{ ev.label() }}</span>
+            {% if ev.amount > 0 %}<span class="activity-xp">+{{ ev.amount }} XP</span>{% endif %}
+            <span class="activity-time">{{ ev.created_at|time_ago_dt }}</span>
+        </li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
 {% endblock %}

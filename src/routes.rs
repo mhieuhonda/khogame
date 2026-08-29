@@ -125,6 +125,64 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(handlers::ai_agent::edit_profile_form),
         )
         .route("/bookmarks", get(handlers::profile::bookmarks_page))
+        // === v2.9.0 Gamification + Collections + Following ===
+        .route("/checkin", post(handlers::gamification::do_checkin))
+        .route(
+            "/checkin-widget",
+            get(handlers::gamification::checkin_widget),
+        )
+        .route("/leaderboard", get(handlers::gamification::leaderboard))
+        .route(
+            "/achievements",
+            get(handlers::gamification::achievements_page),
+        )
+        .route(
+            "/achievements/{id}/showcase",
+            post(handlers::gamification::toggle_showcase),
+        )
+        .route("/following", get(handlers::gamification::following_feed))
+        .route("/games/random", get(handlers::gamification::random_game))
+        // Collections
+        .route(
+            "/collections",
+            get(handlers::collections::my_collections).post(handlers::collections::create),
+        )
+        .route("/collections/{id}", get(handlers::collections::show))
+        .route(
+            "/collections/{id}/delete",
+            post(handlers::collections::delete),
+        )
+        .route(
+            "/games/{slug}/add-to-collection",
+            post(handlers::collections::add_game),
+        )
+        .route(
+            "/games/{slug}/remove-from-collection",
+            post(handlers::collections::remove_game),
+        )
+        // Reviews (wire-up bảng reviews có từ 001)
+        .route(
+            "/games/{slug}/reviews",
+            post(handlers::reviews::submit_review),
+        )
+        .route(
+            "/reviews/{id}/helpful",
+            post(handlers::reviews::toggle_helpful),
+        )
+        .route(
+            "/reviews/{id}/delete",
+            post(handlers::reviews::delete_review),
+        )
+        // Phiên đăng nhập của chính mình + xuất dữ liệu
+        .route(
+            "/profile/sessions",
+            get(handlers::profile::my_sessions_page),
+        )
+        .route(
+            "/profile/sessions/{id}/revoke",
+            post(handlers::profile::revoke_own_session),
+        )
+        .route("/profile/export", get(handlers::profile::export_my_data))
         .route("/notifications", get(handlers::notifications::list))
         .route(
             "/notifications/{id}/read",
@@ -178,7 +236,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // HTTP fallback: load 50 tin gần nhất + count online + count today
         .route("/chat/history", get(handlers::chat::history))
         .route("/chat/online", get(handlers::chat::online))
+        // v2.9.0 — danh sách user đang online (panel chat, JSON công khai)
+        .route("/chat/online-users", get(handlers::chat::online_users))
         .route("/chat/auth", get(handlers::chat::auth_check))
+        // v2.9.0 — typing indicator (broadcast qua chat_tx, không ghi DB)
+        .route("/chat/typing", post(handlers::chat::typing))
         .route(
             "/chat/{id}/delete",
             post(handlers::chat::http_delete).delete(handlers::chat::http_delete),
@@ -213,7 +275,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health", get(handlers::api::health_detail))
         // News API
         .route("/news", get(handlers::api::news_list))
-        .route("/news/{slug}", get(handlers::api::news_detail));
+        .route("/news/{slug}", get(handlers::api::news_detail))
+        // v2.9.0 — leaderboard public API
+        .route("/leaderboard", get(handlers::api::leaderboard_api));
 
     // Nội bộ (htmx fetch)
     let internal_routes = Router::new()
@@ -225,7 +289,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/suggest", get(handlers::api::games_suggest))
         .route("/news-suggest", get(handlers::api::news_suggest))
-        .route("/preferences/theme", post(handlers::api::set_theme));
+        .route("/preferences/theme", post(handlers::api::set_theme))
+        // v2.9.0 — Markdown preview (editor game/news)
+        .route("/preview", post(handlers::api::preview_markdown))
+        // v2.9.0 — trạng thái điểm danh JSON
+        .route(
+            "/checkin-status",
+            get(handlers::gamification::checkin_status_api),
+        );
 
     // === AI Agent internal routes: yêu cầu AI Agent auth ===
     // (Bearer token trong header hoặc session cookie của AI Agent)
@@ -243,6 +314,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     let admin_routes = Router::new()
         .route("/admin", get(handlers::admin::dashboard))
+        // v2.9.0 — admin gamification stats
+        .route(
+            "/admin/achievements",
+            get(handlers::admin::achievements_admin),
+        )
         .route("/admin/reports", get(handlers::admin::reports))
         .route(
             "/admin/reports/{id}/resolve",

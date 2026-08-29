@@ -44,6 +44,14 @@ pub async fn toggle_like(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
     let is_liked = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
+    // v2.9.0 — XP cho chủ game + huy hiệu discovery (best-effort)
+    if is_liked {
+        let db = state.db.clone();
+        let (actor, owner) = (user.id, game.user_id);
+        tokio::spawn(async move {
+            crate::services::gamification::on_like(&db, actor, owner).await;
+        });
+    }
     // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
     let like_count = GameRepo::find_by_id(&state.db, game.id)
         .await?
@@ -70,6 +78,14 @@ pub async fn toggle_bookmark(
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
     let is_bookmarked = InteractionRepo::toggle_bookmark(&state.db, game.id, user.id).await?;
+    // v2.9.0 — huy hiệu discovery khi bookmark (best-effort)
+    if is_bookmarked {
+        let db = state.db.clone();
+        let uid = user.id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_bookmark(&db, uid).await;
+        });
+    }
     let partial = BookmarkButtonPartial {
         game_id: game.id,
         slug: slug.clone(),
@@ -131,6 +147,14 @@ pub async fn toggle_follow(
         ));
     }
     let is_following = InteractionRepo::toggle_follow(&state.db, user.id, target.id).await?;
+    // v2.9.0 — XP cho người ĐƯỢC theo dõi (best-effort)
+    if is_following {
+        let db = state.db.clone();
+        let followee = target.id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_follow(&db, followee).await;
+        });
+    }
     let partial = FollowButtonPartial {
         target_user_id: target.id,
         target_username: username.clone(),

@@ -1,6 +1,41 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v2.9.0-gamification
+Agent: Super Z (main)
+Task: Super-fix toàn bộ lỗi + thêm 50 tính năng giữ chân người dùng + bỏ icon lửa khung chức vụ admin. Rust 1.98, production-ready, tạo releases.
+
+Work Log:
+- Audit toàn diện (cargo check/clippy/test + review thủ công ~34k dòng) → 9 bug thật:
+  1. [CRITICAL] Trigger email queue (017) sai enum news_approval/news_rejection
+     → mọi notification system/review/reply... cho user có email đều rollback âm thầm
+     từ v2.2.0. Fix migration 022.
+  2. [HIGH] cache_control_html check 'ls_session' nhưng cookie thật 'kg_session'
+     → trang đã login bị cache public. Fix dùng SESSION_COOKIE.
+  3. [MEDIUM] like comment partial luôn hiện "chưa like" (FALSE as is_liked hardcode).
+  4. [MEDIUM] load-more comments trộn counter replies/gốc → nút treo vĩnh viễn.
+  5. [MEDIUM] email_queue kẹt 'sending' sau crash — thêm requeue_stuck_sending.
+  6. [MEDIUM] spam notification toggle like/follow — dedup unread same (actor,type,target).
+  7. [MEDIUM] OFFSET overflow 17 call sites — saturating_mul + clamp.
+  8. [LOW] db.rs redact credential giữ nhầm password — viết lại + test.
+  9. [LOW] sw.js cache trang private — route private network-only.
+- Bỏ icon lửa SVG khỏi khung chức vụ admin (giữ chữ rainbow, viền đổi rainbow).
+- Migration 021 (gamification, 8 bảng + seed 25 huy hiệu) + 020 (notif dedup
+  trigger) + 022 (fix trigger enum).
+- Gamification engine: models + repo + services (XP/level/streak/achievements/
+  leaderboard) + hooks tại 9 handler — toàn bộ best-effort fire-and-forget.
+- 50 tính năng: xem danh sách đầy đủ trong CHANGELOG [2.9.0].
+- Verify tích hợp trên PostgreSQL 17 portable (port 5433): 22 migrations sạch,
+  boot server thật, smoke test 30+ endpoints, flow end-to-end checkin → XP
+  (+5) → 3 huy hiệu → notification → review (+15 XP) → collection →
+  leaderboard → level 2 "Tập Sự".
+
+Stage Summary:
+- 303 unit tests pass, clippy clean, 0 warning.
+- Toàn bộ endpoints mới đã verify HTTP 200/303/400 đúng kỳ vọng.
+- Sẵn sàng release v2.8.1 (bugfix) + v2.9.0 (gamification).
+
+---
 Task ID: v2.4.0-upgrade
 Agent: Super Z (main)
 Task: Upgrade Markdown support (xịn hơn nữa, mạnh hơn nữa) + fix web load cực lâu / hang forever + make site cực nhanh/mượt. KHÔNG thay đổi giao diện. Rust 1.98.

@@ -205,9 +205,7 @@ mod tests {
         );
         // URL xuất hiện 2 lần trong message — cả hai đều được redact
         assert_eq!(
-            redact_db_credentials(
-                "fail: postgres://u:p@a/db rồi lại postgres://u2:p2@b/db"
-            ),
+            redact_db_credentials("fail: postgres://u:p@a/db rồi lại postgres://u2:p2@b/db"),
             "fail: postgres://***@a/db rồi lại postgres://***@b/db"
         );
         // Chuỗi không liên quan đến URL → nguyên văn (kể cả email)

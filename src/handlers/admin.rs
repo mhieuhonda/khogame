@@ -63,6 +63,9 @@ pub async fn dashboard(
         banned_users,
         total_comments,
         total_views,
+        checkins_today,
+        achievements_today,
+        top_xp_users,
     ) = tokio::join!(
         GameRepo::count_published(db),
         UserRepo::count_all(db),
@@ -135,6 +138,24 @@ pub async fn dashboard(
                 .await
                 .unwrap_or(0)
         },
+        // v2.9.0: retention — checkin hôm nay.
+        async {
+            crate::repositories::GamificationRepo::checkins_today_count(db)
+                .await
+                .unwrap_or(0)
+        },
+        // v2.9.0: retention — huy hiệu trao hôm nay.
+        async {
+            crate::repositories::GamificationRepo::achievements_today_count(db)
+                .await
+                .unwrap_or(0)
+        },
+        // v2.9.0: retention — top 5 user XP.
+        async {
+            crate::repositories::GamificationRepo::leaderboard_top_xp(db, 5)
+                .await
+                .unwrap_or_default()
+        },
     );
     let total_games = total_games.unwrap_or(0);
     let total_users = total_users.unwrap_or(0);
@@ -175,6 +196,9 @@ pub async fn dashboard(
     Ok(AdminTemplate {
         current_user: Some(user),
         unread_notifications: unread,
+        checkins_today,
+        achievements_today,
+        top_xp_users,
         total_games,
         total_users,
         total_downloads,
@@ -1871,6 +1895,14 @@ pub async fn news_approve(
         &format!("Approved: {}", news.title),
     )
     .await;
+    // v2.9.0 — XP cho tác giả khi tin được duyệt (best-effort)
+    {
+        let db = state.db.clone();
+        let author_id = news.user_id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_news_approved(&db, author_id).await;
+        });
+    }
     Ok(Redirect::to("/admin/news/pending").into_response())
 }
 
@@ -2016,4 +2048,40 @@ pub async fn news_delete(
     )
     .await;
     Ok(Redirect::to("/admin/news/all").into_response())
+}
+
+// ============================================================
+// v2.9.0 — ADMIN: THỐNG KÊ HUY HIỆU / GAMIFICATION
+// ============================================================
+
+/// GET /admin/achievements — catalog huy hiệu + số người đạt + tỉ lệ.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn achievements_admin(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<crate::templates::AdminAchievementsTemplate> {
+    if !user.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let (stats_res, total_users_res, earned_today, checkins_today) = tokio::join!(
+        crate::repositories::GamificationRepo::achievement_stats(&state.db),
+        UserRepo::count_all(&state.db),
+        crate::repositories::GamificationRepo::achievements_today_count(&state.db),
+        crate::repositories::GamificationRepo::checkins_today_count(&state.db),
+    );
+    let stats = stats_res?;
+    let total_users = total_users_res.unwrap_or(0);
+    let total_holders: i64 = stats.iter().map(|(_, c)| c).sum();
+    let unread = unread_count(&state, user.id).await;
+    Ok(crate::templates::AdminAchievementsTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        stats,
+        total_users,
+        total_holders,
+        earned_today: earned_today.unwrap_or(0),
+        checkins_today: checkins_today.unwrap_or(0),
+    })
 }

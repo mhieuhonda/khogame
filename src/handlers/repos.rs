@@ -342,6 +342,14 @@ pub async fn create(
         user.username,
         repo_id
     );
+    // v2.9.0 — XP + huy hiệu repo đầu tiên (best-effort)
+    {
+        let db = state.db.clone();
+        let uid = user.id;
+        tokio::spawn(async move {
+            crate::services::gamification::on_repo(&db, uid).await;
+        });
+    }
     Ok(Redirect::to("/repos"))
 }
 
