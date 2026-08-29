@@ -1,6 +1,42 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v2.9.1-deploy-verify
+Agent: Super Z (main)
+Task: Deploy verify + incident recovery sau release v2.9.1.
+
+Work Log:
+- Push main (9b51d20) → CI fail ở 2 job: Rustdoc (broken intra-doc link
+  [`GithubApiError`] — type không import vào scope) + cargo audit (3
+  advisory transitive deps của syntect: bincode/yaml-rust unmaintained +
+  chacha20 yanked — KHÔNG do thay đổi dependency, RustSec DB mới cập
+  nhật; job audit có continue-on-error nên không block).
+- Fix rustdoc link → commit 99117b2 "fix(ci): rustdoc broken intra-doc
+  link GithubApiError — CD gate fail". Local verify: RUSTDOCFLAGS="-D
+  warnings" cargo doc --no-deps --document-private-items → clean.
+- Re-push → CI SUCCESS. CD build + push image ghcr.io@sha256:2b4acf...
+  + PATCH compose OK + trigger deploy OK. NHƯNG: 2 CD chạy đồng thời
+  (main + tag v2.9.1) race cùng 1 service Coolify → stack kẹt
+  "starting:unknown", web 503 ~25 phút, bước "Chờ stack healthy" timeout.
+- Recovery: trigger 1 deploy sạch qua Coolify API (POST /deploy?uuid=...
+  &force=true) → 2 phút sau stack "running:healthy", web 200.
+- Verify prod: HTML có ?v=2.9.1 (cache-bust mới), /health 200, / 200,
+  /repos 200, /login 200; image digest đang chạy == digest CD build
+  (2b4acfc4...) — deploy đúng bản v2.9.1.
+- Release v2.9.1 trên GitHub: workflow Release tự tạo từ CHANGELOG,
+  đã rename title khớp convention ("v2.9.1 — Fix hồ sơ desktop, menu
+  mobile, số sao GitHub + 8 bug audit").
+
+Stage Summary:
+- Prod louis.vangioitutien.com CHẠY v2.9.1 healthy — verified end-to-end.
+- BÀI HỌC: tránh push main + tag cùng lúc (CD race). Lần sau: push main,
+  đợi CD main xong rồi mới tag. CD step "wait healthy" có thể thêm
+  retry/re-trigger deploy tự động khi timeout.
+- Cargo audit advisory (syntect transitive deps) — theo dõi, chờ syntect
+  release bản thay thế yaml-rust/bincode; không action ngay (chỉ
+  unmaintained warning, không có CVE thực tế).
+
+---
 Task ID: v2.9.1-ui-bugfixes
 Agent: Super Z (main)
 Task: Fix tên hiển thị lệch trên desktop + menu ba gạch tràn mobile + số sao GitHub không cập nhật + quét codebase lần 2 fix tuyệt đối mọi lỗi. Rust 1.98, prod-ready, tạo release.
