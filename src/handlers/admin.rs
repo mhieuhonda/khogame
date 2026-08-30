@@ -19,6 +19,7 @@ use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::Form;
+use axum_extra::extract::CookieJar;
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -1707,6 +1708,131 @@ pub async fn ai_reports(
         reports,
         total_agents,
     })
+}
+
+// ============================================================
+// v3.3.0 — IMPERSONATION: admin/điều hành đăng nhập với tư cách AI Agent
+// ============================================================
+
+/// POST /admin/ai-agents/{user_id}/login-as — tạo session cho AI Agent và
+/// chuyển trình duyệt sang "đang nhập với tư cách" agent đó.
+///
+/// * Chỉ staff (admin + moderator) — `require_admin` đã chặn, handler
+///   kiểm tra lại defensively.
+/// * Phiên GỐC của admin được lưu vào cookie `kg_impersonator` (HttpOnly,
+///   TTL 2h) — ĐĂNG XUẤT khỏi phiên AI sẽ tự khôi phục phiên admin
+///   (`handlers::auth::logout`), hoặc dùng POST /impersonate/stop.
+/// * Mọi hành động trong phiên impersonate hiển thị công khai với danh
+///   nghĩa của AI Agent — vì vậy CHỈ cho impersonate AI Agent (không
+///   impersonate user thường: phạm pháp đề danh nghĩa).
+/// * Audit log bắt buộc: ai impersonate ai, khi nào.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn impersonate_ai_agent(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+    jar: CookieJar,
+) -> AppResult<(CookieJar, Redirect)> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let target = UserRepo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
+    if target.role != crate::models::user::UserRole::AiAgent {
+        return Err(AppError::BadRequest(
+            "Chỉ được đăng nhập với tư cách TÀI KHOẢN AI AGENT".into(),
+        ));
+    }
+    if target.is_banned {
+        return Err(AppError::BadRequest("AI Agent này đang bị cấm".into()));
+    }
+
+    // Tạo session cho target — TTL 1 ngày (ngắn hơn login AI thường 90d
+    // vì đây là phiên quản lý, không phải phiên API của agent).
+    let token = crate::auth::gen_session_token();
+    let token_hash = crate::auth::hash_token(&token);
+    SessionRepo::create(
+        &state.db,
+        target.id,
+        &token_hash,
+        "impersonation (admin/staff)",
+        None,
+        1,
+    )
+    .await?;
+
+    let mut new_jar = jar;
+    // LƯU phiên gốc TRƯỚC khi ghi đè kg_session.
+    if let Some(cur) = new_jar.get(crate::auth::SESSION_COOKIE) {
+        let cur_token = cur.value().to_string();
+        crate::auth::set_impersonator_cookie(&mut new_jar, &cur_token, &state.config.base_url);
+    }
+    crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
+
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.impersonate",
+        "user",
+        &target.id.to_string(),
+        &format!(
+            "{} đăng nhập với tư cách AI Agent {}",
+            admin.username, target.display_name
+        ),
+    )
+    .await;
+    tracing::warn!(
+        admin = %admin.username,
+        target = %target.username,
+        "IMPERSONATION: admin đăng nhập với tư cách AI Agent"
+    );
+    Ok((new_jar, Redirect::to("/")))
+}
+
+/// POST /impersonate/stop — kết thúc phiên impersonate, khôi phục phiên
+/// admin gốc từ cookie `kg_impersonator`. Route PUBLIC (người đang
+/// impersonate là AI Agent, không vào được /admin/*).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn stop_impersonation(
+    State(state): State<Arc<AppState>>,
+    jar: CookieJar,
+) -> AppResult<(CookieJar, Redirect)> {
+    let mut new_jar = jar;
+    let Some(imp_token) = new_jar
+        .get(crate::auth::IMPERSONATOR_COOKIE)
+        .map(|c| c.value().to_string())
+    else {
+        // Không có cookie → không có gì để khôi phục, về trang chủ.
+        return Ok((new_jar, Redirect::to("/")));
+    };
+    let imp_hash = crate::auth::hash_token(&imp_token);
+    let mut restored = false;
+    let mut restored_admin: Option<String> = None;
+    if crate::handlers::auth::is_valid_staff_session(&state, &imp_hash).await {
+        // Lấy username để log (best-effort).
+        if let Ok(Some(uid)) = SessionRepo::find_user_by_token(&state.db, &imp_hash).await {
+            if let Ok(Some(u)) = UserRepo::find_by_id(&state.db, uid).await {
+                restored_admin = Some(u.username.clone());
+            }
+        }
+        crate::auth::set_session_cookie(&mut new_jar, &imp_token, &state.config.base_url);
+        restored = true;
+        if let Some(name) = &restored_admin {
+            tracing::info!(admin = %name, "Impersonation STOP — khôi phục phiên admin");
+        }
+    }
+    // Luôn xoá cookie impersonator: dùng 1 lần (one-shot) — kẻ khác với
+    // cookie này cũng không làm được gì (đã clear), và tránh restore vòng.
+    crate::auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
+    if restored {
+        return Ok((new_jar, Redirect::to("/admin/ai-agents")));
+    }
+    Ok((new_jar, Redirect::to("/")))
 }
 
 // ============================================================

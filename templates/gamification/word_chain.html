@@ -1,12 +1,11 @@
 {% extends "layout.html" %}
 
 {% block title %}Nối từ tiếng Việt{% endblock %}
-{% block description %}Game nối từ tiếng Việt — gõ 1 từ hợp lệ, bot sẽ nối tiếp bằng từ bắt đầu bằng chữ cuối của bạn. +3 XP mỗi từ hợp lệ.{% endblock %}
+{% block description %}Game nối từ tiếng Việt PvP — ghép đấu với người chơi ngẫu nhiên, nối từ bắt đầu bằng chữ cuối của đối thủ. Không có ai thì GLM 5.3 vào sân!{% endblock %}
 
 {% block head_extra %}
 <style>
 .wc-wrap { display: flex; flex-direction: column; gap: 1.5rem; margin: 2rem 0; max-width: 640px; margin-left: auto; margin-right: auto; }
-.wc-form { display: flex; gap: .5rem; flex-wrap: wrap; }
 .wc-input {
     flex: 1;
     padding: .85rem 1rem;
@@ -22,9 +21,6 @@
 .wc-result.wc-valid { background: rgba(34,197,94,.08); border: 1px solid #22c55e; }
 .wc-result.wc-invalid { background: rgba(239,68,68,.08); border: 1px solid #ef4444; }
 .wc-status { font-size: 1.2rem; font-weight: 700; margin: 0 0 .5rem; }
-.wc-user-word, .wc-bot-response { margin: .25rem 0; }
-.wc-bot-word { color: var(--accent, #0ea5e9); font-size: 1.15rem; }
-.wc-reason { color: var(--text-dim, #94a3b8); font-style: italic; }
 .wc-stats { color: var(--text-dim, #94a3b8); font-size: .9rem; margin-top: .75rem; }
 .wc-info { background: var(--bg-soft, #f8fafc); border-radius: 12px; padding: 1rem 1.5rem; }
 .wc-info dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin: 0; }
@@ -32,6 +28,27 @@
 .wc-info dd { margin: 0; font-weight: 700; font-size: 1.1rem; }
 @keyframes pop-in { 0% { transform: scale(.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 .wc-suggest { font-size: .85rem; color: var(--text-dim, #94a3b8); margin-top: .5rem; }
+
+/* v3.3.0 — PvP state */
+.wc-state { position: relative; padding: 1.25rem; border-radius: 12px; background: var(--bg-soft, #f8fafc); border: 1px solid var(--border, #e2e8f0); animation: pop-in .3s ease; }
+.wc-state.wc-waiting { text-align: center; border-style: dashed; border-color: var(--accent, #0ea5e9); }
+.wc-wait-title { font-size: 1.1rem; font-weight: 700; margin: .5rem 0 .25rem; }
+.wc-wait-sub { color: var(--text-dim, #94a3b8); font-size: .9rem; margin: 0; }
+.wc-spinner { width: 34px; height: 34px; margin: 0 auto; border: 3px solid var(--border, #e2e8f0); border-top-color: var(--accent, #0ea5e9); border-radius: 50%; animation: wc-spin .8s linear infinite; }
+@keyframes wc-spin { to { transform: rotate(360deg); } }
+.wc-opponent { font-size: 1rem; margin-bottom: .5rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wc-ai-badge { display: inline-block; background: linear-gradient(135deg, #0ea5e9, #7c3aed); color: #fff; border-radius: 999px; font-size: .72rem; font-weight: 700; padding: 2px 9px; }
+.wc-my-turn { color: #16a34a; font-weight: 700; font-size: .85rem; }
+.wc-letter { margin: .5rem 0; font-size: 1rem; }
+.wc-letter-ch { display: inline-grid; place-items: center; min-width: 34px; height: 34px; padding: 0 8px; border-radius: 8px; background: var(--accent, #0ea5e9); color: #fff; font-size: 1.15rem; }
+.wc-chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: .6rem 0; }
+.wc-word { background: var(--bg, #fff); border: 1px solid var(--border, #e2e8f0); border-radius: 999px; padding: 3px 12px; font-weight: 600; font-size: .92rem; }
+.wc-chain-arrow { color: var(--text-dim, #94a3b8); }
+.wc-deadline { color: #f59e0b; font-size: .85rem; font-weight: 600; }
+.wc-notice { background: rgba(245,158,11,.1); border: 1px solid #f59e0b; border-radius: 8px; padding: .5rem .8rem; font-size: .9rem; margin: .5rem 0; }
+.wc-turn-wait { color: var(--text-dim, #94a3b8); font-size: .95rem; }
+.wc-form { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: .6rem; }
+.wc-cancelled { text-align: center; }
 </style>
 {% endblock %}
 
@@ -59,15 +76,16 @@
     </div>
 
     <div class="wc-wrap">
-        <p class="wc-stats">Gõ 1 từ tiếng Việt (không dấu) hợp lệ → bot nối tiếp bằng từ bắt đầu bằng chữ cuối của bạn. +3 XP mỗi từ hợp lệ.</p>
-        <form class="wc-form" hx-post="/word-chain/play" hx-target="#wc-result" hx-swap="innerHTML" hx-disabled-elt="button.wc-submit">
-            <input type="text" name="word" class="wc-input" placeholder="Ví dụ: yeu, anh, hoc, troi, mai, ..." autocomplete="off" required maxlength="100" />
-            <button type="submit" class="btn btn-primary wc-submit">Nối từ!</button>
-        </form>
-        <div id="wc-result" aria-live="polite"></div>
+        <p class="wc-stats">⚡ PvP: ghép đấu với <strong>người chơi ngẫu nhiên thật</strong>. Luật: từ mới bắt đầu bằng chữ cuối của từ đối thủ vừa nối, không lặp từ trong trận, hết 90s không đánh = thua. Không ghép được ai sau ~120s, <strong>GLM 5.3</strong> vào sân. +3 XP/từ hợp lệ, thắng trận +4 XP.</p>
+        <div id="wc-area">
+            <button class="btn btn-primary" hx-post="/word-chain/match" hx-target="#wc-state" hx-swap="outerHTML" hx-disabled-elt="this">
+                🔍 Tìm đối thủ ngẫu nhiên
+            </button>
+            <div id="wc-state" aria-live="polite" style="margin-top: 1rem;"></div>
+        </div>
     </div>
 
-    <p class="wc-suggest"><strong>Quy tắc:</strong> từ phải có trong từ điển embedded (~370 từ phổ biến, không dấu) — thử các từ đơn giản như: anh, ba, ban, bao, be, ca, con, di, em, ga, hay, hoc, khong, lam, mot, nguoi, nha, que, sach, troi, yeu...</p>
+    <p class="wc-suggest"><strong>Quy tắc:</strong> từ phải có trong từ điển (~270 từ phổ biến, không dấu — gõ có dấu vẫn được chấp nhận) — thử: anh, ba, ban, bao, be, ca, con, di, dong, em, ga, hay, hoc, khong, lam, nguoi, nha, que, sach, troi, yeu...</p>
     <p class="achievements-hint">🏆 Huy hiệu: 1 từ hợp lệ → <strong>Nối Từ Đầu Tiên</strong>; 10 từ → <strong>Mười Từ Nối</strong>; 500 từ → <strong>Bậc Thầy Nối Từ</strong>.</p>
 </section>
 {% endblock %}

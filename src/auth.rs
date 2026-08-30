@@ -198,6 +198,43 @@ pub fn clear_session_cookie(jar: &mut CookieJar, base_url: &str) {
     *jar = std::mem::take(jar).add(cookie);
 }
 
+// ============================================================
+// v3.3.0 — IMPERSONATION (admin/điều hành đăng nhập với tư cách AI Agent)
+// ============================================================
+
+/// Cookie lưu phiên GỐC của admin khi đang impersonate một AI Agent.
+/// Chỉ HttpOnly + SameSite=Lax + Secure như session thường — trình duyệt
+/// KHÔNG đọc được, JS không leak. Sống 2 giờ: quá 2h phải impersonate lại.
+pub const IMPERSONATOR_COOKIE: &str = "kg_impersonator";
+/// TTL cookie impersonator.
+pub const IMPERSONATION_TTL_HOURS: i64 = 2;
+
+/// Đặt cookie lưu phiên gốc của admin (gọi TRƯỚC khi ghi đè kg_session).
+pub fn set_impersonator_cookie(jar: &mut CookieJar, admin_token: &str, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((IMPERSONATOR_COOKIE, admin_token.to_string()))
+        .path("/")
+        .http_only(true)
+        .secure(should_secure_cookie(base_url))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::hours(IMPERSONATION_TTL_HOURS))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
+/// Xoá cookie impersonator (khi đã khôi phục phiên / đăng xuất hẳn).
+pub fn clear_impersonator_cookie(jar: &mut CookieJar, base_url: &str) {
+    use axum_extra::extract::cookie::{Cookie, SameSite};
+    let cookie = Cookie::build((IMPERSONATOR_COOKIE, ""))
+        .path("/")
+        .http_only(true)
+        .secure(should_secure_cookie(base_url))
+        .same_site(SameSite::Lax)
+        .max_age(time::Duration::seconds(0))
+        .build();
+    *jar = std::mem::take(jar).add(cookie);
+}
+
 /// Đặt cookie OAuth state (CSRF token) - sống 10 phút, `HttpOnly` + SameSite=Lax.
 pub fn set_oauth_state_cookie(jar: &mut CookieJar, state: &str, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};

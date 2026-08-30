@@ -338,6 +338,15 @@ mod tests {
     }
 
     #[test]
+    fn test_last_char_str() {
+        // v3.3.0 — dùng cho luân phiên chữ nối PvP
+        assert_eq!(last_char_str("xinh"), "h");
+        assert_eq!(last_char_str("yeu"), "u");
+        assert_eq!(last_char_str("di"), "i");
+        assert_eq!(last_char_str(""), ""); // từ rỗng → chuỗi rỗng (validate chặn trước)
+    }
+
+    #[test]
     fn test_vocab_deduped_and_sorted() {
         // v3.2.0 — từ điển đã dedupe: trùng lặp cũ ("anh"×2, "ban"×3...)
         // làm lệch xác suất chọn từ của bot và phình binary.
@@ -353,4 +362,758 @@ mod tests {
         assert!(WORD_CHAIN_XP_PER_VALID > 0);
         assert!(WORD_CHAIN_MAX_LEN > 10);
     };
+}
+
+// ============================================================
+// v3.3.0 — PvP MATCHMAKING: Nối từ đấu với NGƯỜI DÙNG NGẪU NHIÊN.
+//
+// Luộc luật chơi chuẩn Nối từ:
+// - 2 người lần lượt nối từ: từ mới PHẢI bắt đầu bằng chữ cái cuối của
+//   từ vừa nối, KHÔNG được tái sử dụng từ trong trận (words_used chặn
+//   vòng lặp "anh"↔"hoa" vô hạn).
+// - Nước đầu: đánh từ bất kỳ trong từ điển.
+// - Hết 90s không đánh → THUA (thực thi server-side khi poll status —
+//   client không tự quyết kết quả).
+// - Từ không hợp lệ → KHÔNG thua ngay (chống gõ nháy mất trận), được
+//   đánh lại trong thời gian còn lại; từ invalid vẫn ghi play row.
+// - Không ghép được ai sau 120s → tự ghép GLM 5.3 (AI Agent mặc định).
+//   GLM đánh NGAY trong request của bạn (không cần poll thêm).
+// - Người thắng trận nhận +4 XP (reward match). Mỗi từ hợp lệ vẫn +3 XP
+//   như bot mode. Daily cap 20 từ/ngày giữ nguyên.
+// ============================================================
+
+use chrono::{DateTime, Utc};
+
+/// Thời gian chờ ghép người (giây) trước khi fallback AI.
+pub const WORD_CHAIN_PVP_WAIT_SECS: i64 = 120;
+/// Thời gian 1 nước đánh (giây) — quá = thua.
+pub const WORD_CHAIN_MOVE_SECS: i64 = 90;
+/// XP thưởng cho NGƯỜI THẮNG trận.
+pub const WORD_CHAIN_PVP_XP_WIN: i32 = 4;
+/// Số từ hiển thị trong "chuỗi nối" trên UI.
+const WORDS_TAIL: usize = 10;
+
+/// Hàng `word_chain_matches`.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct WordChainMatchRow {
+    pub id: i64,
+    pub player1_id: Uuid,
+    pub player2_id: Option<Uuid>,
+    pub status: String,
+    pub winner_id: Option<Uuid>,
+    pub turn_user_id: Option<Uuid>,
+    pub current_letter: Option<String>,
+    pub words_used: Vec<String>,
+    pub move_deadline: Option<DateTime<Utc>>,
+    pub is_ai_fallback: bool,
+}
+
+/// Đối thủ (cho UI).
+#[derive(Debug, Clone)]
+pub struct WcOpponent {
+    pub user_id: Uuid,
+    pub username: String,
+    pub display_name: String,
+    pub is_ai: bool,
+}
+
+/// Trạng thái trận Nối từ cho handler render partial.
+#[derive(Debug)]
+pub enum WordChainPvpStatus {
+    Waiting {
+        match_id: i64,
+        wait_secs: i64,
+    },
+    Active {
+        match_id: i64,
+        my_turn: bool,
+        letter: Option<char>,
+        words: Vec<String>,
+        opponent: WcOpponent,
+        is_ai: bool,
+        deadline_secs: Option<i64>,
+        plays_today: i64,
+        valid_lifetime: i64,
+        total_xp: i64,
+        level: LevelInfo,
+        notice: Option<String>,
+    },
+    Finished {
+        match_id: i64,
+        winner_is_me: bool,
+        reason: String,
+        words: Vec<String>,
+        opponent: WcOpponent,
+        is_ai: bool,
+        total_xp: i64,
+        level: LevelInfo,
+        plays_today: i64,
+        valid_lifetime: i64,
+    },
+    Cancelled,
+}
+
+impl WordChainRepo {
+    /// POST /word-chain/match — join match chờ của người khác, hoặc tạo
+    /// hàng chờ mới; nếu đang có trận active → trả lại trận (resume).
+    ///
+    /// # Errors
+    ///
+    /// Trả lỗi khi DB fail.
+    pub async fn pvp_join_or_create(pool: &PgPool, user_id: Uuid) -> AppResult<WordChainPvpStatus> {
+        // 1) Đang có trận active → resume.
+        if let Some(m) = Self::my_active_match(pool, user_id).await? {
+            return Self::build_active(pool, user_id, m, None).await;
+        }
+
+        // 2) Huỷ hàng chờ cũ của tôi.
+        sqlx::query(
+            "UPDATE word_chain_matches SET status = 'cancelled', updated_at = NOW()
+             WHERE player1_id = $1 AND status = 'waiting'",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+        // 3) Join match waiting của người khác (FIFO, SKIP LOCKED).
+        for _ in 0..3 {
+            let candidate: Option<i64> = sqlx::query_scalar(
+                r#"SELECT id FROM word_chain_matches
+                   WHERE status = 'waiting'
+                     AND player1_id <> $1
+                     AND created_at > NOW() - make_interval(secs => $2)
+                   ORDER BY created_at ASC
+                   LIMIT 1
+                   FOR UPDATE SKIP LOCKED"#,
+            )
+            .bind(user_id)
+            .bind(WORD_CHAIN_PVP_WAIT_SECS)
+            .fetch_optional(pool)
+            .await?;
+            let Some(match_id) = candidate else { break };
+            let updated = sqlx::query(
+                r#"UPDATE word_chain_matches SET player2_id = $1, status = 'active',
+                       turn_user_id = player1_id, current_letter = NULL,
+                       move_deadline = NOW() + make_interval(secs => $2), updated_at = NOW()
+                   WHERE id = $3 AND status = 'waiting'"#,
+            )
+            .bind(user_id)
+            .bind(WORD_CHAIN_MOVE_SECS)
+            .bind(match_id)
+            .execute(pool)
+            .await?;
+            if updated.rows_affected() == 0 {
+                continue;
+            }
+            let m = Self::load_match(pool, match_id)
+                .await?
+                .ok_or_else(|| AppError::NotFound("Match biến mất sau khi join".into()))?;
+            return Self::build_active(
+                pool,
+                user_id,
+                m,
+                Some("🎯 Ghép được đối thủ! Đối thủ đánh trước — bạn chờ nước đầu.".into()),
+            )
+            .await;
+        }
+
+        // 4) Tạo hàng chờ mới.
+        let match_id: i64 = sqlx::query_scalar(
+            r#"INSERT INTO word_chain_matches (player1_id, status)
+               VALUES ($1, 'waiting') RETURNING id"#,
+        )
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+        Ok(WordChainPvpStatus::Waiting {
+            match_id,
+            wait_secs: WORD_CHAIN_PVP_WAIT_SECS,
+        })
+    }
+
+    /// POST /word-chain/move — đánh 1 từ trong trận active.
+    ///
+    /// # Errors
+    ///
+    /// Trả lỗi khi không có trận / chưa đến lượt / quá daily cap / DB fail.
+    pub async fn pvp_move(
+        pool: &PgPool,
+        user_id: Uuid,
+        raw_word: &str,
+    ) -> AppResult<WordChainPvpStatus> {
+        let Some(m) = Self::my_active_match(pool, user_id).await? else {
+            return Err(AppError::BadRequest(
+                "Bạn chưa có trận nào đang chạy — bấm \"Tìm đối thủ\" trước!".into(),
+            ));
+        };
+        if m.turn_user_id != Some(user_id) {
+            return Err(AppError::BadRequest("Chưa đến lượt của bạn!".into()));
+        }
+
+        // Daily cap (chống farm XP bằng bot gõ hộ).
+        let plays_today = Self::plays_today_count(pool, user_id).await?;
+        if plays_today >= WORD_CHAIN_DAILY_CAP {
+            return Err(AppError::BadRequest(format!(
+                "Bạn đã nối {WORD_CHAIN_DAILY_CAP} lượt hôm nay — quay lại vào ngày mai!"
+            )));
+        }
+
+        let opponent_id = if m.player1_id == user_id {
+            m.player2_id
+        } else {
+            Some(m.player1_id)
+        };
+        let Some(opponent_id) = opponent_id else {
+            return Err(AppError::BadRequest("Trận chưa đủ 2 người chơi".into()));
+        };
+
+        // Timeout: quá hạn mà vẫn nhấn (deadline đã qua khi request tới)
+        // → thua. (Poll status thường xử lý trước khi tới đây.)
+        if let Some(dl) = m.move_deadline {
+            if Utc::now() > dl {
+                Self::finish_by_timeout(pool, &m, user_id).await?;
+                return Self::build_finished(
+                    pool,
+                    user_id,
+                    m.id,
+                    false,
+                    format!("⏰ Hết {WORD_CHAIN_MOVE_SECS} giây không đánh được — đối thủ thắng!"),
+                )
+                .await;
+            }
+        }
+
+        // Validate từ.
+        let word = normalize_word(raw_word);
+        let mut notice: Option<String> = None;
+        let base_invalid = validate_word(&word);
+        if let Some(reason) = base_invalid {
+            notice = Some(reason);
+        } else if let Some(letter) = &m.current_letter {
+            if !word.starts_with(letter.as_str()) {
+                notice = Some(format!(
+                    "Từ phải bắt đầu bằng chữ \"{letter}\" (luật nối từ)"
+                ));
+            }
+        }
+        if notice.is_none() && m.words_used.iter().any(|w| w == &word) {
+            notice = Some("Từ này đã dùng trong trận — chọn từ khác!".into());
+        }
+
+        if let Some(reason) = notice {
+            // Ghi play invalid (giống bot mode — có lịch sử) KHÔNG trừ/thua.
+            sqlx::query(
+                r#"INSERT INTO word_chain_plays (user_id, word, is_valid, bot_word, xp_awarded)
+                   VALUES ($1, $2, FALSE, NULL, 0)"#,
+            )
+            .bind(user_id)
+            .bind(&word)
+            .execute(pool)
+            .await?;
+            return Self::build_active(pool, user_id, m, Some(reason)).await;
+        }
+
+        // === Nước đi HỢP LỆ ===
+        let mut new_words = m.words_used.clone();
+        new_words.push(word.clone());
+        let new_letter = last_char_str(&word);
+        sqlx::query(
+            r#"UPDATE word_chain_matches SET words_used = $1, current_letter = $2,
+                   turn_user_id = $3, move_deadline = NOW() + make_interval(secs => $4),
+                   updated_at = NOW()
+               WHERE id = $5"#,
+        )
+        .bind(&new_words)
+        .bind(&new_letter)
+        .bind(opponent_id)
+        .bind(WORD_CHAIN_MOVE_SECS)
+        .bind(m.id)
+        .execute(pool)
+        .await?;
+
+        // XP cho từ hợp lệ + play row.
+        let mut tx = pool.begin().await?;
+        sqlx::query(
+            r#"INSERT INTO word_chain_plays (user_id, word, is_valid, bot_word, xp_awarded)
+               VALUES ($1, $2, TRUE, NULL, $3)"#,
+        )
+        .bind(user_id)
+        .bind(&word)
+        .bind(WORD_CHAIN_XP_PER_VALID)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain', $2)",
+        )
+        .bind(user_id)
+        .bind(WORD_CHAIN_XP_PER_VALID)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"INSERT INTO user_xp_totals (user_id, total_xp)
+               VALUES ($1, $2)
+               ON CONFLICT (user_id)
+               DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
+        )
+        .bind(user_id)
+        .bind(i64::from(WORD_CHAIN_XP_PER_VALID))
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+
+        // Đối thủ là AI? → AI đánh NGAY trong request này.
+        let opp_is_ai = Self::is_ai_agent(pool, opponent_id).await?;
+        if opp_is_ai {
+            return Self::ai_move(pool, user_id, opponent_id, m.id, new_words).await;
+        }
+
+        let m2 = Self::load_match(pool, m.id).await?.unwrap_or(m);
+        Self::build_active(
+            pool,
+            user_id,
+            m2,
+            Some(format!("✅ Đã nối \"{word}\" — chờ đối thủ...")),
+        )
+        .await
+    }
+
+    /// GET /word-chain/match/{id}/status — poll + thực thi timeout/fallback.
+    ///
+    /// # Errors
+    ///
+    /// Trả lỗi khi không thuộc match / DB fail.
+    pub async fn pvp_status(
+        pool: &PgPool,
+        user_id: Uuid,
+        match_id: i64,
+    ) -> AppResult<WordChainPvpStatus> {
+        let Some(m) = Self::load_match(pool, match_id).await? else {
+            return Err(AppError::NotFound("Không tìm thấy match".into()));
+        };
+        if m.player1_id != user_id && m.player2_id != Some(user_id) {
+            return Err(AppError::Forbidden("Bạn không thuộc match này".into()));
+        }
+        match m.status.as_str() {
+            "finished" => {
+                let winner_is_me = m.winner_id == Some(user_id);
+                let reason = if winner_is_me {
+                    "🎉 Bạn thắng!".into()
+                } else {
+                    "Bạn thua trận này — thử lại nhé!".into()
+                };
+                Self::build_finished(pool, user_id, m.id, winner_is_me, reason).await
+            }
+            "cancelled" => Ok(WordChainPvpStatus::Cancelled),
+            "waiting" => {
+                // Chỉ P1 poll được match waiting (P2 chưa tồn tại).
+                if m.player1_id == user_id {
+                    let age_secs: f64 = sqlx::query_scalar(
+                        "SELECT EXTRACT(EPOCH FROM (NOW() - created_at))::float8
+                         FROM word_chain_matches WHERE id = $1",
+                    )
+                    .bind(match_id)
+                    .fetch_one(pool)
+                    .await?;
+                    if age_secs >= WORD_CHAIN_PVP_WAIT_SECS as f64 {
+                        // Fallback AI: active với GLM 5.3, tôi đi trước.
+                        let ai_id =
+                            crate::repositories::AiAgentRepo::default_agent_user_id(pool).await?;
+                        sqlx::query(
+                            r#"UPDATE word_chain_matches SET player2_id = $1, status = 'active',
+                                   turn_user_id = $2, current_letter = NULL,
+                                   move_deadline = NOW() + make_interval(secs => $3),
+                                   is_ai_fallback = TRUE, updated_at = NOW()
+                               WHERE id = $4"#,
+                        )
+                        .bind(ai_id)
+                        .bind(user_id)
+                        .bind(WORD_CHAIN_MOVE_SECS)
+                        .bind(match_id)
+                        .execute(pool)
+                        .await?;
+                        let m2 = Self::load_match(pool, match_id).await?.unwrap_or(m);
+                        return Self::build_active(
+                            pool,
+                            user_id,
+                            m2,
+                            Some(
+                                "🤖 Không tìm được người chơi — GLM 5.3 vào sân! Bạn đánh trước."
+                                    .into(),
+                            ),
+                        )
+                        .await;
+                    }
+                    return Ok(WordChainPvpStatus::Waiting {
+                        match_id,
+                        wait_secs: WORD_CHAIN_PVP_WAIT_SECS - age_secs as i64,
+                    });
+                }
+                Ok(WordChainPvpStatus::Cancelled)
+            }
+            _ => {
+                // active — thực thi timeout nếu quá hạn (server-side).
+                if let Some(turn) = m.turn_user_id {
+                    if let Some(dl) = m.move_deadline {
+                        if Utc::now() > dl {
+                            let loser_is_me = turn == user_id;
+                            let winner = if loser_is_me {
+                                if m.player1_id == user_id {
+                                    m.player2_id
+                                } else {
+                                    Some(m.player1_id)
+                                }
+                            } else {
+                                Some(turn)
+                            };
+                            sqlx::query(
+                                "UPDATE word_chain_matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2",
+                            )
+                            .bind(winner)
+                            .bind(m.id)
+                            .execute(pool)
+                            .await?;
+                            // +4 XP cho người thắng (nếu là người thật).
+                            if let Some(w) = winner {
+                                let ai = Self::is_ai_agent(pool, w).await?;
+                                if !ai {
+                                    let mut tx = pool.begin().await?;
+                                    sqlx::query(
+                                        "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain_win', $2)",
+                                    )
+                                    .bind(w)
+                                    .bind(WORD_CHAIN_PVP_XP_WIN)
+                                    .execute(&mut *tx)
+                                    .await?;
+                                    sqlx::query(
+                                        r#"INSERT INTO user_xp_totals (user_id, total_xp)
+                                           VALUES ($1, $2)
+                                           ON CONFLICT (user_id)
+                                           DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
+                                    )
+                                    .bind(w)
+                                    .bind(i64::from(WORD_CHAIN_PVP_XP_WIN))
+                                    .execute(&mut *tx)
+                                    .await?;
+                                    tx.commit().await?;
+                                }
+                            }
+                            let reason = if loser_is_me {
+                                format!("⏰ Hết {WORD_CHAIN_MOVE_SECS} giây không đánh — bạn thua!")
+                            } else {
+                                "⏰ Đối thủ hết giờ không đánh — BẠN THẮNG!".into()
+                            };
+                            return Self::build_finished(pool, user_id, m.id, !loser_is_me, reason)
+                                .await;
+                        }
+                    }
+                }
+                Self::build_active(pool, user_id, m, None).await
+            }
+        }
+    }
+
+    /// Nước đi của AI (GLM 5.3) ngay trong request của người chơi.
+    async fn ai_move(
+        pool: &PgPool,
+        me: Uuid,
+        ai_id: Uuid,
+        match_id: i64,
+        mut words: Vec<String>,
+    ) -> AppResult<WordChainPvpStatus> {
+        let m = Self::load_match(pool, match_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Match không tồn tại".into()))?;
+        let Some(letter) = m.current_letter.clone() else {
+            return Self::build_active(pool, me, m, None).await;
+        };
+        let candidates: Vec<&str> = VI_VOCAB
+            .iter()
+            .copied()
+            .filter(|w| w.starts_with(letter.as_str()) && !words.contains(&(*w).to_string()))
+            .collect();
+        if candidates.is_empty() {
+            // AI hết từ → người chơi thắng.
+            let mut tx = pool.begin().await?;
+            sqlx::query(
+                "UPDATE word_chain_matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2",
+            )
+            .bind(me)
+            .bind(match_id)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain_win', $2)",
+            )
+            .bind(me)
+            .bind(WORD_CHAIN_PVP_XP_WIN)
+            .execute(&mut *tx)
+            .await?;
+            sqlx::query(
+                r#"INSERT INTO user_xp_totals (user_id, total_xp)
+                   VALUES ($1, $2)
+                   ON CONFLICT (user_id)
+                   DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
+            )
+            .bind(me)
+            .bind(i64::from(WORD_CHAIN_PVP_XP_WIN))
+            .execute(&mut *tx)
+            .await?;
+            tx.commit().await?;
+            return Self::build_finished(
+                pool,
+                me,
+                match_id,
+                true,
+                format!("🏆 GLM 5.3 không tìm được từ bắt đầu bằng \"{letter}\" — BẠN THẮNG!"),
+            )
+            .await;
+        }
+        let rand_val: i32 = {
+            use rand::RngExt;
+            rand::rng().random_range(0..1000)
+        };
+        let ai_word = candidates
+            [usize::try_from(rand_val.rem_euclid(candidates.len() as i32)).unwrap_or(0)]
+        .to_string();
+        words.push(ai_word.clone());
+        let new_letter = last_char_str(&ai_word);
+        sqlx::query(
+            r#"UPDATE word_chain_matches SET words_used = $1, current_letter = $2,
+                   turn_user_id = $3, move_deadline = NOW() + make_interval(secs => $4),
+                   updated_at = NOW()
+               WHERE id = $5"#,
+        )
+        .bind(&words)
+        .bind(&new_letter)
+        .bind(me)
+        .bind(WORD_CHAIN_MOVE_SECS)
+        .bind(match_id)
+        .execute(pool)
+        .await?;
+        // AI ghi play row hợp lệ (KHÔNG cộng XP — AI không cần XP, giữ
+        // bảng xếp hạng sạch; AI cũng bị loại khỏi leaderboard sẵn).
+        sqlx::query(
+            r#"INSERT INTO word_chain_plays (user_id, word, is_valid, bot_word, xp_awarded)
+               VALUES ($1, $2, TRUE, NULL, 0)"#,
+        )
+        .bind(ai_id)
+        .bind(&ai_word)
+        .execute(pool)
+        .await?;
+
+        let m2 = Self::load_match(pool, match_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Match không tồn tại".into()))?;
+        Self::build_active(
+            pool,
+            me,
+            m2,
+            Some(format!("🤖 GLM 5.3 nối \"{ai_word}\" — tới lượt bạn!")),
+        )
+        .await
+    }
+
+    /// Kết thúc trận do người thua timeout tại request move của chính họ.
+    async fn finish_by_timeout(pool: &PgPool, m: &WordChainMatchRow, loser: Uuid) -> AppResult<()> {
+        let winner = if m.player1_id == loser {
+            m.player2_id
+        } else {
+            Some(m.player1_id)
+        };
+        sqlx::query(
+            "UPDATE word_chain_matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2",
+        )
+        .bind(winner)
+        .bind(m.id)
+        .execute(pool)
+        .await?;
+        if let Some(w) = winner {
+            let ai = Self::is_ai_agent(pool, w).await?;
+            if !ai {
+                let mut tx = pool.begin().await?;
+                sqlx::query(
+                    "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain_win', $2)",
+                )
+                .bind(w)
+                .bind(WORD_CHAIN_PVP_XP_WIN)
+                .execute(&mut *tx)
+                .await?;
+                sqlx::query(
+                    r#"INSERT INTO user_xp_totals (user_id, total_xp)
+                       VALUES ($1, $2)
+                       ON CONFLICT (user_id)
+                       DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
+                )
+                .bind(w)
+                .bind(i64::from(WORD_CHAIN_PVP_XP_WIN))
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Trận active của tôi (FOR UPDATE).
+    async fn my_active_match(pool: &PgPool, user_id: Uuid) -> AppResult<Option<WordChainMatchRow>> {
+        sqlx::query_as::<_, WordChainMatchRow>(
+            r#"SELECT id, player1_id, player2_id, status, winner_id, turn_user_id,
+                      current_letter, words_used, move_deadline, is_ai_fallback
+               FROM word_chain_matches
+               WHERE status = 'active' AND (player1_id = $1 OR player2_id = $1)
+               ORDER BY updated_at DESC
+               LIMIT 1
+               FOR UPDATE"#,
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn load_match(pool: &PgPool, id: i64) -> AppResult<Option<WordChainMatchRow>> {
+        sqlx::query_as::<_, WordChainMatchRow>(
+            r#"SELECT id, player1_id, player2_id, status, winner_id, turn_user_id,
+                      current_letter, words_used, move_deadline, is_ai_fallback
+               FROM word_chain_matches WHERE id = $1"#,
+        )
+        .bind(id)
+        .fetch_optional(pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn is_ai_agent(pool: &PgPool, user_id: Uuid) -> AppResult<bool> {
+        let role: String = sqlx::query_scalar("SELECT role::text FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        Ok(role == "ai_agent")
+    }
+
+    /// Build trạng thái Active (kèm stats + notice cho UI).
+    #[allow(clippy::too_many_arguments)]
+    async fn build_active(
+        pool: &PgPool,
+        user_id: Uuid,
+        m: WordChainMatchRow,
+        notice: Option<String>,
+    ) -> AppResult<WordChainPvpStatus> {
+        let Some(opp_id) = (if m.player1_id == user_id {
+            m.player2_id
+        } else {
+            Some(m.player1_id)
+        }) else {
+            return Ok(WordChainPvpStatus::Waiting {
+                match_id: m.id,
+                wait_secs: WORD_CHAIN_PVP_WAIT_SECS,
+            });
+        };
+        let opp_is_ai = Self::is_ai_agent(pool, opp_id).await?;
+        let (username, display_name): (String, String) =
+            sqlx::query_as("SELECT username, display_name FROM users WHERE id = $1")
+                .bind(opp_id)
+                .fetch_one(pool)
+                .await?;
+        let words: Vec<String> = m
+            .words_used
+            .iter()
+            .rev()
+            .take(WORDS_TAIL)
+            .rev()
+            .cloned()
+            .collect();
+        let deadline_secs = m.move_deadline.map(|dl| {
+            (dl - Utc::now())
+                .num_seconds()
+                .clamp(0, WORD_CHAIN_MOVE_SECS)
+        });
+        let total_xp = crate::repositories::GamificationRepo::total_xp(pool, user_id)
+            .await
+            .unwrap_or(0);
+        let plays_today = Self::plays_today_count(pool, user_id).await.unwrap_or(0);
+        let valid_lifetime = Self::valid_lifetime_count(pool, user_id).await.unwrap_or(0);
+        Ok(WordChainPvpStatus::Active {
+            match_id: m.id,
+            my_turn: m.turn_user_id == Some(user_id),
+            letter: m.current_letter.and_then(|l| l.chars().next()),
+            words,
+            opponent: WcOpponent {
+                user_id: opp_id,
+                username,
+                display_name,
+                is_ai: opp_is_ai,
+            },
+            is_ai: opp_is_ai,
+            deadline_secs,
+            plays_today,
+            valid_lifetime,
+            total_xp,
+            level: crate::models::gamification::level_from_xp(total_xp),
+            notice,
+        })
+    }
+
+    async fn build_finished(
+        pool: &PgPool,
+        user_id: Uuid,
+        match_id: i64,
+        winner_is_me: bool,
+        reason: String,
+    ) -> AppResult<WordChainPvpStatus> {
+        let m = Self::load_match(pool, match_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Match không tồn tại".into()))?;
+        let opp_id = (if m.player1_id == user_id {
+            m.player2_id
+        } else {
+            Some(m.player1_id)
+        })
+        .ok_or_else(|| AppError::NotFound("Match thiếu đối thủ".into()))?;
+        let opp_is_ai = Self::is_ai_agent(pool, opp_id).await?;
+        let (username, display_name): (String, String) =
+            sqlx::query_as("SELECT username, display_name FROM users WHERE id = $1")
+                .bind(opp_id)
+                .fetch_one(pool)
+                .await?;
+        let words: Vec<String> = m
+            .words_used
+            .iter()
+            .rev()
+            .take(WORDS_TAIL)
+            .rev()
+            .cloned()
+            .collect();
+        let total_xp = crate::repositories::GamificationRepo::total_xp(pool, user_id)
+            .await
+            .unwrap_or(0);
+        let plays_today = Self::plays_today_count(pool, user_id).await.unwrap_or(0);
+        let valid_lifetime = Self::valid_lifetime_count(pool, user_id).await.unwrap_or(0);
+        Ok(WordChainPvpStatus::Finished {
+            match_id,
+            winner_is_me,
+            reason,
+            words,
+            opponent: WcOpponent {
+                user_id: opp_id,
+                username,
+                display_name,
+                is_ai: opp_is_ai,
+            },
+            is_ai: opp_is_ai,
+            total_xp,
+            level: crate::models::gamification::level_from_xp(total_xp),
+            plays_today,
+            valid_lifetime,
+        })
+    }
+}
+
+/// Ký tự cuối của từ (lowercase ASCII sau normalize) → String 1 ký tự.
+#[must_use]
+pub fn last_char_str(word: &str) -> String {
+    word.chars()
+        .last()
+        .map(|c| c.to_string())
+        .unwrap_or_default()
 }

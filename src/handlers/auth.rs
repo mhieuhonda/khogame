@@ -312,6 +312,22 @@ pub async fn logout(
     let mut new_jar = jar;
     auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
     let _ = current_user;
+
+    // v3.3.0 — đang IMPERSONATE AI Agent → đăng xuất khỏi phiên AI là
+    // QUAY LẠI phiên admin gốc (nếu cookie impersonator còn hạn và phiên
+    // admin còn hợp lệ). Không phải login lại từ đầu.
+    if let Some(imp_token) = new_jar
+        .get(auth::IMPERSONATOR_COOKIE)
+        .map(|c| c.value().to_string())
+    {
+        let imp_hash = auth::hash_token(&imp_token);
+        if is_valid_staff_session(&state, &imp_hash).await {
+            auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
+            auth::set_session_cookie(&mut new_jar, &imp_token, &state.config.base_url);
+            return Ok((new_jar, Redirect::to("/admin/ai-agents")));
+        }
+    }
+    auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
     Ok((new_jar, Redirect::to("/")))
 }
 
@@ -349,4 +365,16 @@ pub async fn unread_count(state: &AppState, user_id: uuid::Uuid) -> i64 {
     crate::repositories::NotificationRepo::unread_count(&state.db, user_id)
         .await
         .unwrap_or(0)
+}
+
+/// v3.3.0 — Token hash có phải là session HỢP LỆ của staff (admin/mod,
+/// không bị ban)? Dùng chung cho khôi phục phiên sau impersonation.
+pub(crate) async fn is_valid_staff_session(state: &AppState, token_hash: &str) -> bool {
+    let Ok(Some(uid)) = SessionRepo::find_user_by_token(&state.db, token_hash).await else {
+        return false;
+    };
+    let Ok(Some(u)) = UserRepo::find_by_id(&state.db, uid).await else {
+        return false;
+    };
+    u.role.is_staff() && !u.is_banned
 }

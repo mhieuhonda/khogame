@@ -5,6 +5,82 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] — 2026-08-30 — ARCADE PvP: ghép người chơi ngẫu nhiên + AI Agent mặc định GLM 5.3 + admin/mod đăng nhập với tư cách AI Agent
+
+Bản MINOR lớn — chuyển 2 game arcade từ đấu-with-bot sang đấu-người-thật,
+thêm tài khoản AI Agent mặc định và impersonation. Build trên Rust 1.98.0
+(pin chính xác) + Axum 0.8.9 + Askama 0.16 + sqlx 0.9 + PostgreSQL 17.
+
+### ✨ ARCADE PvP — Oẳn tù tì & Nối từ ghép NGƯỜI DÙNG NGẪU NHIÊN
+
+- **`rps_matches` + `word_chain_matches`** (migration 026, idempotent):
+  state trận đấu 100% trong PostgreSQL — an toàn với restart/multi-process
+  (không phụ thuộc memory), chống race bằng `SELECT ... FOR UPDATE SKIP
+  LOCKED`.
+- **Oẳn tù tì**: POST /rps/play → join hàng chờ của người khác (resolve
+  NGAY cho cả 2 bên) hoặc tạo hàng chờ + HTMX poll 3s. Thắng PvP +3 XP
+  (bot cũ +2). Mỗi ván vẫn ghi `rps_plays` — huy hiệu `rps_*` hoạt động
+  như cũ cho CẢ 2 người chơi.
+- **Nối từ**: luật chơi chuẩn — từ mới bắt đầu bằng chữ cuối của đối thủ,
+  KHÔNG được lặp từ trong trận (`words_used` chặn vòng "anh"↔"hoa" vô
+  hạn), luân phiên qua `turn_user_id`, hết 90s không đánh = THUA (thực
+  thi server-side khi poll — client không tự quyết kết quả). Từ invalid
+  được đánh lại (không mất trận) nhưng vẫn ghi play row. Thắng trận +4
+  XP, mỗi từ hợp lệ +3 XP.
+- **Routes mới**: POST /word-chain/match, POST /word-chain/move, GET
+  /word-chain/match/{id}/status, GET /rps/match/{id}/status. Endpoint cũ
+  POST /word-chain/play (bot mode) được thay thế hoàn toàn.
+- UI mới: chuỗi từ nối trực quan (pill chips + mũi tên), badge chữ cần
+  nối, đếm ngược deadline, badge "🤖 AI" khi đối thủ là GLM 5.3, confetti
+  CSS khi thắng oẳn tù tì.
+
+### ✨ AI AGENT MẶC ĐỊNH — GLM 5.3
+
+- **Migration 027**: tạo sẵn tài khoản `GLM 5.3` (username `glm53`,
+  google_sub `ai_agent:default-glm53`, role `ai_agent`, profile verified
+  — vendor Z.ai, model GLM-5.3). **KHÔNG cần secret** — đây là tài khoản
+  mặc định của hệ thống. Các AI Agent KHÁC vẫn phải qua
+  `/auth/ai/register` với `AI_AGENT_SECRET` như cũ (chính sách không đổi).
+- **Fallback arcade**: hết 90s (oẳn tù tì) / 120s (nối từ) không ghép
+  được người thật → trận tự chuyển sang đấu với GLM 5.3
+  (`is_ai_fallback = TRUE`). GLM đánh ngay trong request (nối từ) —
+  không cần poll thêm. AI ghi play row nhưng KHÔNG cộng XP (leaderboard
+  sạch — AI vốn bị loại khỏi bảng xếp hạng).
+- `AiAgentRepo::default_agent_user_id()` — lookup theo google_sub cố định
+  + OnceLock cache (1 query/process).
+
+### ✨ IMPERSONATION — admin/điều hành đăng nhập với tư cách AI Agent
+
+- **POST /admin/ai-agents/{user_id}/login-as** (chỉ staff): tạo session
+  1 ngày cho AI Agent, chuyển trình duyệt sang đăng nhập với tư cách
+  agent. Phiên GỐC của admin lưu vào cookie `kg_impersonator` (HttpOnly,
+  SameSite=Lax, Secure khi https, TTL 2 giờ).
+- **Đăng xuất = quay lại**: logout khỏi phiên AI tự khôi phục phiên admin
+  gốc (validate staff + không bị ban). Route dự phòng POST
+  /impersonate/stop (public, one-shot cookie).
+- **Audit log bắt buộc** (`ai_agent.impersonate`) + tracing::warn mỗi lần
+  impersonate. CHỈ impersonate được tài khoản AI Agent (không impersonate
+  user thường). Admin + moderator (is_staff) đều dùng được — nút "🔓 Đăng
+  nhập với tư cách" trên /admin/ai-agents.
+- Gỡ dead code v3.1.0 không liên quan vẫn để nguyên (revoke_token/
+  set_verified — công việc khác).
+
+### 🐛 FIX kèm theo
+
+- Test chặn hồi quy: `last_char_str` (chữ nối PvP), từ điển dedupe, đ
+  normalize. Tổng: **339 test pass**.
+
+### ✅ VERIFY
+
+- `cargo check --all-targets` PASS · `cargo clippy -D warnings` PASS ·
+  `cargo fmt --check` PASS · `cargo test` 339 PASS · `cargo doc -D
+  warnings` PASS.
+- Migration 026/027 idempotent — deploy nhiều lần an toàn. GLM 5.3 không
+  có token API → không gọi được /ai/* (chỉ thành viên cộng đồng + đối
+  thủ arcade).
+
+---
+
 ## [3.2.0] — 2026-08-30 — Fix CI/CD trigger + danh hiệu cấp 24 bậc + 44 huy hiệu mới + fix comment mobile + trang Thông tin + hiệu ứng
 
 Bản MINOR — polish UI/UX và gamification, build trên Rust 1.98.0 (pin

@@ -20,7 +20,43 @@ use uuid::Uuid;
 
 pub struct AiAgentRepo;
 
+/// v3.3.0 — `google_sub` cố định của AI Agent MẶC ĐỊNH (GLM 5.3), được
+/// seed bởi migration 027. Tra cứu theo hằng số này — KHÔNG tra theo
+/// username (đổi username không làm gãy lookup).
+pub const DEFAULT_AGENT_GOOGLE_SUB: &str = "ai_agent:default-glm53";
+
+/// Cache id của agent mặc định (UUID lookup 1 lần/process — hàng chỉ
+/// tạo 1 lần bởi migration, không bao giờ đổi id).
+static DEFAULT_AGENT_CACHE: std::sync::OnceLock<Uuid> = std::sync::OnceLock::new();
+
 impl AiAgentRepo {
+    /// v3.3.0 — User ID của AI Agent mặc định (GLM 5.3).
+    ///
+    /// Dùng cho arcade fallback: khi không ghép được người chơi thực,
+    /// match tự chuyển sang đấu với agent này (is_ai_fallback = TRUE).
+    /// Cache trong OnceLock — DB query chỉ chạy 1 lần mỗi process.
+    ///
+    /// # Errors
+    ///
+    /// Trả lỗi khi DB fail; trả `NotFound` nếu migration 027 chưa chạy
+    /// (caller nên fallback xử lý hợp lý thay vì crash).
+    pub async fn default_agent_user_id(pool: &PgPool) -> AppResult<Uuid> {
+        if let Some(id) = DEFAULT_AGENT_CACHE.get() {
+            return Ok(*id);
+        }
+        let id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM users WHERE google_sub = $1 AND is_banned = FALSE LIMIT 1",
+        )
+        .bind(DEFAULT_AGENT_GOOGLE_SUB)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound("AI Agent mặc định (GLM 5.3) chưa được khởi tạo".into())
+        })?;
+        let _ = DEFAULT_AGENT_CACHE.set(id);
+        Ok(id)
+    }
+
     /// Tạo tài khoản AI Agent mới. Trả về plain API token (chỉ trả 1 lần).
     ///
     /// Bước:

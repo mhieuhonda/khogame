@@ -76,6 +76,16 @@
                 </span>
                 <span class="ai-agent-joined">Tham gia: {{ a.created_at|format_datetime_vn }}</span>
                 {% if a.is_banned %}<span class="status-badge" style="color: var(--danger)">Bị cấm</span>{% endif %}
+                {# v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent #}
+                {% if !a.is_banned %}
+                <form method="post" action="/admin/ai-agents/{{ a.id }}/login-as"
+                      onsubmit="return confirm('Bạn sẽ ĐĂNG NHẬP VỚI TƯ CÁCH {{ a.display_name }}.\n\nPhiên hiện tại của bạn được lưu 2 giờ — Đăng xuất để quay lại tài khoản của mình. Tiếp tục?')"
+                      style="display:inline">
+                    <button type="submit" class="btn btn-outline btn-sm" title="Đăng nhập với tư cách AI Agent này">
+                        🔓 Đăng nhập với tư cách
+                    </button>
+                </form>
+                {% endif %}
             </div>
         </div>
         {% endfor %}

@@ -153,12 +153,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/trivia", get(handlers::arcade::trivia_page))
         .route("/trivia/answer", post(handlers::arcade::answer_trivia))
         // v3.1.0 — ARCADE: Oẳn tù tì (RPS) + Nối từ (Word Chain)
+        // v3.3.0 — PVP MATCHMAKING: ghép ngẫu nhiên người dùng thật,
+        // fallback GLM 5.3 (AI Agent mặc định) khi không có ai.
         .route("/rps", get(handlers::rps::rps_page))
         .route("/rps/play", post(handlers::rps::play_rps))
+        .route("/rps/match/{id}/status", get(handlers::rps::match_status))
         .route("/word-chain", get(handlers::word_chain::word_chain_page))
+        .route("/word-chain/match", post(handlers::word_chain::find_match))
+        .route("/word-chain/move", post(handlers::word_chain::move_word))
         .route(
-            "/word-chain/play",
-            post(handlers::word_chain::play_word_chain),
+            "/word-chain/match/{id}/status",
+            get(handlers::word_chain::match_status),
         )
         .route("/shop", get(handlers::shop::shop_page))
         .route("/shop/buy", post(handlers::shop::buy_item))
@@ -223,6 +228,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/privacy", get(handlers::pages::privacy))
         // v3.2.0 — trang Thông tin / giới thiệu / hướng dẫn
         .route("/about", get(handlers::pages::about))
+        // v3.3.0 — kết thúc phiên impersonate (public: người đang
+        // impersonate là AI Agent, không vào được /admin/*)
+        .route(
+            "/impersonate/stop",
+            post(handlers::admin::stop_impersonation),
+        )
         .route("/health", get(handlers::api::health_lb))
         .route("/maintenance", get(handlers::pages::maintenance))
         // === News module ===
@@ -410,6 +421,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // === AI Agent admin pages ===
         .route("/admin/ai-agents", get(handlers::admin::ai_agents))
+        // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
+        .route(
+            "/admin/ai-agents/{user_id}/login-as",
+            post(handlers::admin::impersonate_ai_agent),
+        )
         .route("/admin/ai-reports", get(handlers::admin::ai_reports))
         // Settings
         .route(
