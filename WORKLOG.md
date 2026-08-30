@@ -584,3 +584,33 @@ Stage Summary:
 - ✅ 337 test pass + 0 clippy warning + cargo fmt sạch.
 - ✅ cargo build --release thành công — binary production-ready.
 - ⏭️ Commit + push + tag v3.1.0 → GitHub Release → Coolify deploy.
+
+---
+Task ID: v3.1.1-hotfix-prod-migration
+Agent: Super Z (main)
+Task: HOTFIX v3.1.0 — container restart-loop trên prod do migration 024 fail.
+
+Work Log:
+- Push v3.1.0 → CD workflow triggered → CI gate + Docker build OK nhưng
+  Coolify deploy fail (stack degraded:unhealthy, app restarting:unknown).
+- Investigate: container image digest = 3524843d (v3.1.0 image, NOT old).
+- Inspect migration 024 INSERT values — phát hiện xp_reward của
+  level_max = 5_000_000_000 (5 tỷ), PostgreSQL INT max = 2,147,483,647
+  (~2.1 tỷ) → INSERT fail với "integer out of range" → toàn bộ migration
+  rollback → schema không update (rps_plays/word_chain_plays không tồn
+  tại) → app crash ngay startup "Migration failed".
+- Fix: thay xp_reward của level_max từ 5_000_000_000 → 2_000_000_000
+  (trong khoảng INT an toàn, vẫn là phần thưởng lớn nhất hệ thống).
+- Bump version 3.1.0 → 3.1.1; CHANGELOG.md thêm entry v3.1.1.
+- Push main + tag v3.1.1 → CD workflow auto-trigger → build + deploy.
+- Wait ~10 phút cho CD pipeline (CI gate + Docker build + Coolify deploy
+  + verify healthy) → workflow SUCCESS.
+
+Stage Summary:
+- ✅ Migration 024 giờ apply thành công trên prod (DB đã có BIGINT total_xp,
+  125 danh hiệu trong catalog, rps_plays + word_chain_plays tồn tại).
+- ✅ Container healthy, web live tại https://louis.vangioitutien.com.
+- ✅ /health trả {"status":"ok","version":"3.1.1"}.
+- ✅ /api/v1/health trả {database:up, pool:4, version:3.1.1}.
+- ✅ Route /rps và /word-chain trả 303 (redirect login, đúng behavior).
+- ⏭️ User test đăng nhập và thử 2 game mới + xem 100 danh hiệu mới.
