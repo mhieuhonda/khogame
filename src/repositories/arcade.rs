@@ -120,14 +120,36 @@ impl TriviaRepo {
 
     /// Trả lời 1 câu. Chấm đáp án server-side, ghi row (PK chống retry).
     /// Trả kết quả kèm XP cộng thêm nếu đúng.
+    ///
+    /// v3.4.2 FIX (audit "trivia answer-by-ID farm"): trước đây nhận ANY
+    /// question_id đang active — user curl quét toàn bộ ID space, mỗi câu
+    /// đúng +10 XP không giới hạn và đốt sạch catalog. Giờ giới hạn đúng
+    /// `TRIVIA_PER_DAY` câu trả lời/ngày (đúng luật chơi 3 câu/ngày) —
+    /// farming qua curl bị chặn đúng ngưỡng người chơi thật nhận được.
     /// # Errors
-    /// Trả lỗi khi câu đã trả lời / không tồn tại / DB fail.
+    /// Trả lỗi khi câu đã trả lời / không tồn tại / đủ quota ngày / DB fail.
     pub async fn answer(
         pool: &PgPool,
         user_id: Uuid,
         question_id: i32,
         answer_index: i32,
     ) -> AppResult<TriviaAnswerResult> {
+        // Quota ngày: tối đa TRIVIA_PER_DAY câu (kể cả sai) mỗi ngày.
+        let answered_sql = format!(
+            r#"SELECT COUNT(*) FROM trivia_answers
+               WHERE user_id = $1 AND answered_date = {}"#,
+            crate::utils::SQL_TODAY_VN
+        );
+        let answered_today: i64 =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(answered_sql.as_str()))
+                .bind(user_id)
+                .fetch_one(pool)
+                .await?;
+        if answered_today >= TRIVIA_PER_DAY {
+            return Err(AppError::BadRequest(
+                "Bạn đã trả lời đủ 3 câu hỏi hôm nay — quay lại vào ngày mai!".into(),
+            ));
+        }
         let row: Option<(i32, String, serde_json::Value)> = sqlx::query_as(
             "SELECT correct_index, explanation, options FROM trivia_questions
              WHERE id = $1 AND is_active = TRUE",
@@ -142,8 +164,10 @@ impl TriviaRepo {
             return Err(AppError::BadRequest("Đáp án không hợp lệ".into()));
         }
         let is_correct = answer_index == correct_index;
+        let mut tx = pool.begin().await?;
         // PK (user_id, question_id) chống double-answer — DO NOTHING rồi
-        // kiểm rows_affected: trượt race → coi như đã trả lời.
+        // kiểm rows_affected: trượt race → coi như đã trả lời. (Đếm quota
+        // lại trong tx: race N-tab cùng giờ không vượt 3 câu.)
         let res = sqlx::query(
             r#"INSERT INTO trivia_answers (user_id, question_id, answer_index, is_correct)
                VALUES ($1, $2, $3, $4)
@@ -153,9 +177,10 @@ impl TriviaRepo {
         .bind(question_id)
         .bind(answer_index)
         .bind(is_correct)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
         if res.rows_affected() == 0 {
+            tx.rollback().await?;
             return Err(AppError::BadRequest(
                 "Bạn đã trả lời câu hỏi này rồi".into(),
             ));
@@ -163,14 +188,23 @@ impl TriviaRepo {
         let mut xp_awarded = 0;
         if is_correct {
             xp_awarded = TRIVIA_XP_PER_CORRECT;
-            crate::repositories::GamificationRepo::award_xp(
-                pool,
-                user_id,
-                "trivia",
-                TRIVIA_XP_PER_CORRECT,
+            sqlx::query("INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'trivia', $2)")
+                .bind(user_id)
+                .bind(xp_awarded)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(
+                r#"INSERT INTO user_xp_totals (user_id, total_xp)
+                   VALUES ($1, $2)
+                   ON CONFLICT (user_id)
+                   DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
             )
+            .bind(user_id)
+            .bind(i64::from(xp_awarded))
+            .execute(&mut *tx)
             .await?;
         }
+        tx.commit().await?;
         Ok(TriviaAnswerResult {
             question_id,
             correct_index,
@@ -198,8 +232,12 @@ impl TriviaRepo {
     }
 
     /// Thưởng bonus trả lời đúng cả 3 câu trong ngày (gọi sau khi client
-    /// hoàn thành bộ câu hỏi; idempotent — chỉ cộng 1 lần vì số câu đúng
-    /// đạt 3 đúng 1 lần duy nhất trong ngày).
+    /// hoàn thành bộ câu hỏi).
+    /// v3.4.2 FIX (audit race): trước đây "đếm event hôm nay" và "cộng XP"
+    /// là 2 statement riêng — 3 tab trả lời song song cùng thấy
+    /// `already == 0` → 2× TRIVIA_ALL_BONUS. Giờ dùng 1 statement
+    /// `INSERT ... SELECT WHERE NOT EXISTS` (atomic ở cấp row) — chỉ request
+    /// nào insert được event mới được cộng totals.
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn maybe_award_all_bonus(pool: &PgPool, user_id: Uuid) -> AppResult<i32> {
@@ -207,28 +245,39 @@ impl TriviaRepo {
         if correct < TRIVIA_PER_DAY {
             return Ok(0);
         }
-        // Chống cộng 2 lần: đếm event 'trivia_bonus' hôm nay (không cap —
-        // đếm thủ công thay vì dựa anti-farm cap của award_xp).
         let sql = format!(
-            r#"SELECT COUNT(*) FROM xp_events
-               WHERE user_id = $1 AND reason = 'trivia_bonus'
-                 AND created_at >= {}"#,
+            r#"INSERT INTO xp_events (user_id, reason, amount)
+               SELECT $1, 'trivia_bonus', $2
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM xp_events
+                 WHERE user_id = $1 AND reason = 'trivia_bonus'
+                   AND created_at >= {}
+               )
+               RETURNING id"#,
             crate::utils::SQL_TODAY_START_VN
         );
-        let already: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-            .bind(user_id)
-            .fetch_one(pool)
-            .await?;
-        if already > 0 {
+        let mut tx = pool.begin().await?;
+        let inserted: Option<uuid::Uuid> =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(user_id)
+                .bind(TRIVIA_ALL_BONUS)
+                .fetch_optional(&mut *tx)
+                .await?;
+        if inserted.is_none() {
+            tx.rollback().await?;
             return Ok(0);
         }
-        let (_, _, _) = crate::repositories::GamificationRepo::award_xp(
-            pool,
-            user_id,
-            "trivia_bonus",
-            TRIVIA_ALL_BONUS,
+        sqlx::query(
+            r#"INSERT INTO user_xp_totals (user_id, total_xp)
+               VALUES ($1, $2)
+               ON CONFLICT (user_id)
+               DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
         )
+        .bind(user_id)
+        .bind(i64::from(TRIVIA_ALL_BONUS))
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(TRIVIA_ALL_BONUS)
     }
 }

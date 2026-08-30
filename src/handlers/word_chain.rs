@@ -117,6 +117,10 @@ pub async fn move_word(
 
 /// GET /word-chain/match/{id}/status — HTMX poll (mỗi 3s khi chờ luân
 /// phiên). Thực thi timeout + fallback AI server-side.
+/// v3.4.2 FIX (audit): status poll CÓ TÁC DỤNG PHỤ (fallback AI, finish
+/// match theo timeout, +4 XP winner) nhưng trước đây KHÔNG bị gate
+/// ARCADE_UNDER_REVIEW — farm được qua poll trên trận dở. Giờ gate ngang
+/// với move/find_match.
 /// # Errors
 /// Trả lỗi khi chưa đăng nhập / không thuộc match / DB fail.
 pub async fn match_status(
@@ -124,6 +128,12 @@ pub async fn match_status(
     AuthUser(user): AuthUser,
     Path(match_id): Path<i64>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.4.2 — embargo arcade áp cho cả status poll (endpoint mutate).
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        return Err(AppError::Forbidden(
+            "Tính năng đang được Hieu Louis xem xét — sẽ sớm quay lại với bản cập nhật fix lỗi và tính năng mới!".into(),
+        ));
+    }
     let status = WordChainRepo::pvp_status(&state.db, user.id, match_id).await?;
     if matches!(status, WordChainPvpStatus::Finished { .. }) {
         // Kết thúc trận — check huy hiệu (word_chain_win không có tier

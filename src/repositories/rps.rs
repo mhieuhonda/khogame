@@ -569,6 +569,27 @@ impl RpsRepo {
                 tx.rollback().await?;
                 continue;
             }
+            // v3.4.2 FIX (audit "daily cap ngoài tx"): đếm lại TRONG tx sau
+            // khi giành được match — N request đồng thời đều vượt pre-check
+            // ngoài đời (cùng đọc plays_today < cap) giờ chỉ những request
+            // serialize sau INSERT mới thấy count tăng dần; request vượt
+            // cap bị rollback. (P1 được resolve kèm theo khi có người join —
+            // overshoot tối đa 1 ván/ngày, chấp nhận.)
+            let sql_cap = format!(
+                "SELECT COUNT(*) FROM rps_plays
+                 WHERE user_id = $1 AND created_at >= {}",
+                crate::utils::SQL_TODAY_START_VN
+            );
+            let my_plays: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql_cap.as_str()))
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            if my_plays >= RPS_DAILY_CAP {
+                tx.rollback().await?;
+                return Err(AppError::BadRequest(format!(
+                    "Bạn đã chơi {RPS_DAILY_CAP} ván hôm nay — quay lại vào ngày mai!"
+                )));
+            }
             // Plays cho cả 2 (góc nhìn riêng từng bên).
             insert_play_tx(
                 &mut tx,
@@ -745,11 +766,18 @@ impl RpsRepo {
             my_xp,
             0,
         );
-        sqlx::query(
+        // v3.4.2 FIX (audit race A/B): guard `AND status = 'waiting'` —
+        // hai tab poll đồng thời sau 90s đều đọc status='waiting' trước khi
+        // fallback chạy → cả hai resolve match → double `rps_plays` + double
+        // XP; hoặc người chơi thật vừa JOIN giữa lúc đọc và ghi → fallback
+        // GHI ĐÈ player2_id, đá người thật khỏi match. Chỉ request nào
+        // chuyển được status mới được resolve; request thua → rollback và
+        // đọc lại trạng thái thật của match.
+        let updated = sqlx::query(
             r#"UPDATE rps_matches SET player2_id = $1, player2_choice = $2,
                    status = 'finished', winner_id = $3, is_ai_fallback = TRUE,
                    xp1 = $4, xp2 = $5, updated_at = NOW()
-               WHERE id = $6"#,
+               WHERE id = $6 AND status = 'waiting'"#,
         )
         .bind(ai_id)
         .bind(&p2_choice)
@@ -759,33 +787,72 @@ impl RpsRepo {
         .bind(m.id)
         .execute(&mut *tx)
         .await?;
-        insert_play_tx(
-            &mut tx,
-            p1_id,
-            &p1_choice,
-            &p2_choice,
-            RpsOutcome::determine(
-                RpsChoice::from_form(&p1_choice).unwrap_or(my_choice),
-                RpsChoice::from_form(&p2_choice).unwrap_or(ai_choice),
+        if updated.rows_affected() == 0 {
+            // Match không còn waiting (người thật đã join / tab khác đã
+            // resolve) — không cộng XP, không ghi plays; đọc lại match.
+            tx.rollback().await?;
+            let fresh = sqlx::query_as::<_, RpsMatchRow>(
+                r#"SELECT id, player1_id, player2_id, player1_choice, player2_choice,
+                          status, winner_id, is_ai_fallback, xp1, xp2
+                   FROM rps_matches WHERE id = $1"#,
             )
-            .db_str(),
-            xp1,
-        )
-        .await?;
-        insert_play_tx(
-            &mut tx,
-            ai_id,
-            &p2_choice,
-            &p1_choice,
-            RpsOutcome::determine(
-                RpsChoice::from_form(&p2_choice).unwrap_or(ai_choice),
-                RpsChoice::from_form(&p1_choice).unwrap_or(my_choice),
+            .bind(m.id)
+            .fetch_optional(pool)
+            .await?;
+            return match fresh {
+                Some(f) if f.status == "finished" => {
+                    Self::resolved_from_row(pool, user_id, RpsSide::P1, f).await
+                }
+                _ => Ok(RpsPvpStatus::Waiting {
+                    match_id: m.id,
+                    wait_secs: RPS_PVP_WAIT_SECS,
+                }),
+            };
+        }
+        // v3.4.2 FIX (audit cap): fallback resolve match kể cả khi user đã
+        // chạm cap (match phải có kết thúc), nhưng KHÔNG ghi plays/XP thêm —
+        // chống farm XP bằng cách để match timeout rồi poll fallback.
+        let sql_cap = format!(
+            "SELECT COUNT(*) FROM rps_plays
+             WHERE user_id = $1 AND created_at >= {}",
+            crate::utils::SQL_TODAY_START_VN
+        );
+        let under_cap: bool = sqlx::query_scalar(sqlx::AssertSqlSafe(sql_cap.as_str()))
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map(|c: i64| c < RPS_DAILY_CAP)
+            .unwrap_or(false);
+        let awarded_xp = if under_cap { my_xp } else { 0 };
+        if under_cap {
+            insert_play_tx(
+                &mut tx,
+                p1_id,
+                &p1_choice,
+                &p2_choice,
+                RpsOutcome::determine(
+                    RpsChoice::from_form(&p1_choice).unwrap_or(my_choice),
+                    RpsChoice::from_form(&p2_choice).unwrap_or(ai_choice),
+                )
+                .db_str(),
+                xp1,
             )
-            .db_str(),
-            xp2,
-        )
-        .await?;
-        award_xp_tx(&mut tx, user_id, my_xp).await?;
+            .await?;
+            insert_play_tx(
+                &mut tx,
+                ai_id,
+                &p2_choice,
+                &p1_choice,
+                RpsOutcome::determine(
+                    RpsChoice::from_form(&p2_choice).unwrap_or(ai_choice),
+                    RpsChoice::from_form(&p1_choice).unwrap_or(my_choice),
+                )
+                .db_str(),
+                xp2,
+            )
+            .await?;
+            award_xp_tx(&mut tx, user_id, my_xp).await?;
+        }
         tx.commit().await?;
 
         let opponent = RpsOpponent {
@@ -804,7 +871,7 @@ impl RpsRepo {
             my_choice,
             opponent_choice: ai_choice,
             outcome,
-            xp_awarded: my_xp,
+            xp_awarded: awarded_xp,
             total_xp,
             level,
             plays_today,

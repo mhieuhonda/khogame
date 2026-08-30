@@ -27,15 +27,22 @@ impl InteractionRepo {
             tx.commit().await?;
             Ok(false)
         } else {
-            sqlx::query(
+            // v3.4.2 FIX (audit race): 2 request đồng thời cùng thấy
+            // deleted=0 → cùng INSERT (DO NOTHING) → cùng trả Ok(true) →
+            // handler spawn on_like 2 lần (owner nhận 2 XP event cho 1 like).
+            // Giờ kiểm tra rows_affected của INSERT: request nào KHÔNG insert
+            // được (row đã do request kia tạo) trả false — đúng 1 request
+            // báo "đã like".
+            let inserted = sqlx::query(
                 "INSERT INTO likes (game_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             )
             .bind(game_id)
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
+            let liked = inserted.rows_affected() > 0;
             tx.commit().await?;
-            Ok(true)
+            Ok(liked)
         }
     }
 

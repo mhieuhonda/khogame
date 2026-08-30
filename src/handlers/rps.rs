@@ -95,6 +95,10 @@ pub async fn play_rps(
 }
 
 /// GET /rps/match/{id}/status — HTMX poll (mỗi 3s khi đang chờ ghép).
+/// v3.4.2 FIX (audit): endpoint này CÓ TÁC DỤNG PHỤ (trigger AI fallback,
+/// resolve match, cộng XP) nhưng trước đây KHÔNG bị gate
+/// ARCADE_UNDER_REVIEW — trận dở tạo trước thời điểm đóng băng vẫn bị
+/// farm qua poll. Giờ gate như mọi endpoint play khác.
 /// # Errors
 /// Trả lỗi khi không thuộc match / DB fail.
 pub async fn match_status(
@@ -102,6 +106,13 @@ pub async fn match_status(
     AuthUser(user): AuthUser,
     Path(match_id): Path<i64>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.4.2 — status poll cũng phải tuân theo embargo arcade (endpoint
+    // mutate: fallback AI + resolve + XP khi hết 90s chờ).
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        return Err(AppError::Forbidden(
+            "Tính năng đang được Hieu Louis xem xét — sẽ sớm quay lại với bản cập nhật fix lỗi và tính năng mới!".into(),
+        ));
+    }
     let status = RpsRepo::pvp_status(&state.db, user.id, match_id).await?;
     if matches!(status, RpsPvpStatus::Resolved { .. }) {
         spawn_achievement_checks(&state, user.id, &status);
