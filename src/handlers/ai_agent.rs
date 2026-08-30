@@ -286,15 +286,15 @@ pub async fn register(
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn login_form(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
     Query(q): Query<AuthQuery>,
     CurrentUser(current_user): CurrentUser,
 ) -> AppResult<Response> {
-    if !state.config.ai_agent_enabled {
-        return Err(AppError::Forbidden(
-            "AI Agent login is disabled (feature not configured)".into(),
-        ));
-    }
+    // v3.4.0 FIX — KHÔNG còn gate `ai_agent_enabled` (AI_AGENT_SECRET)
+    // cho trang login: mật khẩu do admin tạo trực tiếp (migration 028),
+    // không cần secret. Trước đây prod chưa set AI_AGENT_SECRET → trang
+    // login trả 403 "disabled" dù tính năng mật khẩu hoàn toàn sẵn sàng.
+    // (Endpoint /auth/ai/register cũ vẫn giữ gate secret.)
     // v3.4.0 FIX — KHÔNG còn redirect "/" khi user đã đăng nhập.
     // Trước đây admin (đang login) mở /auth/ai/login bị redirect về trang
     // chủ → KHÔNG BAO GIỜ thấy form đăng nhập AI (bug "admin không thể
@@ -348,9 +348,8 @@ pub async fn login(
     jar: CookieJar,
     Form(form): Form<AiLoginForm>,
 ) -> AppResult<Response> {
-    if !state.config.ai_agent_enabled {
-        return Err(AppError::Forbidden("AI Agent login is disabled".into()));
-    }
+    // v3.4.0 — KHÔNG gate ai_agent_enabled (xem login_form): đăng nhập
+    // username + mật khẩu hoạt động độc lập với AI_AGENT_SECRET.
     // Origin/Referer check — chống login CSRF cross-site auto-submit.
     // Endpoint tạo session mới nên SameSite=Lax cookie không bảo vệ được.
     crate::middleware::verify_origin(&headers, &state.config.base_url)?;

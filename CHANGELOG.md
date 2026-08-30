@@ -5,6 +5,17 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1] — 2026-08-30 — HOTFIX: /auth/ai/login 403 trên prod (gate AI_AGENT_SECRET)
+
+Trang + endpoint đăng nhập AI Agent (username + mật khẩu) còn bị gate
+`ai_agent_enabled` (chỉ bật khi env `AI_AGENT_SECRET` được set) — kế thừa
+từ hệ thống token cũ. Prod chưa set secret → trang login trả 403 "AI
+Agent login is disabled" dù v3.4.0 đăng nhập bằng mật khẩu admin tạo,
+HOÀN TOÀN KHÔNG cần secret.
+
+Fix: bỏ gate ở `login_form` + `login` (endpoint `/auth/ai/register` cũ
+vẫn giữ gate secret như cũ — đúng semantics backward-compatible).
+
 ## [3.4.0] — 2026-08-30 — Feedback system + AI Agent login rework (username + mật khẩu có thời hạn) + fix UI mobile + arcade pause
 
 Bản tập trung trải nghiệm người dùng & kiểm soát admin, được audit độc lập 2 vòng
