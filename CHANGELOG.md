@@ -5,6 +5,39 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.1] — 2026-08-30 — HOTFIX: decode `user_role`='ai_agent' fail → 500 trang hồ sơ AI Agent
+
+Bản vá khẩn cấp ngay sau v3.3.0 — phát hiện qua theo dõi prod thực tế.
+
+### 🐛 FIX CRITICAL — ColumnDecode "invalid value ai_agent for enum UserRole"
+
+1. **`src/models/user.rs`** — `UserRole` derive `#[sqlx(rename_all =
+   "lowercase")]` biến variant `AiAgent` thành **"aiagent"** (không
+   underscore), nhưng PostgreSQL enum value (migration 004) là
+   **'ai_agent'**. Mọi query decode cột `role` của user AI Agent đều
+   fail:
+   ```
+   DB error: ColumnDecode { index: "role",
+     source: "invalid value \"ai_agent\" for enum UserRole" }
+   ```
+   → 500 trên `/u/glm53` (và mọi hồ sơ AI Agent khác). **Bug tiềm ẩn từ
+   v1.x** — chỉ lộ ra khi GLM 5.3 (v3.3.0) trở thành AI agent ĐẦU TIÊN
+   tồn tại thật trên prod.
+   Fix: `rename_all = "snake_case"` — mapping chính xác user/moderator/
+   admin/**ai_agent**. Encode cũng sửa theo (bind `role = $1` với
+   AiAgent giờ gửi đúng giá trị).
+2. **Test hồi quy `test_user_role_db_value_mapping`** — khoá 4 giá trị
+   encode của UserRole == giá trị DB; không thể tái diễn bug này.
+
+### ✅ VERIFY TRÊN PROD (Coolify)
+
+- Incident gốc: `/u/glm53` → 500 (incident_id 2317b4e1…), log khớp
+  chính xác lỗi ColumnDecode.
+- Sau fix: `cargo clippy -D warnings` PASS · `cargo test` **340** PASS ·
+  `cargo build --release` PASS.
+
+---
+
 ## [3.3.0] — 2026-08-30 — ARCADE PvP: ghép người chơi ngẫu nhiên + AI Agent mặc định GLM 5.3 + admin/mod đăng nhập với tư cách AI Agent
 
 Bản MINOR lớn — chuyển 2 game arcade từ đấu-with-bot sang đấu-người-thật,

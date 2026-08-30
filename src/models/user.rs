@@ -4,7 +4,15 @@ use sqlx::{FromRow, Type};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type, PartialEq, Eq, Default)]
-#[sqlx(type_name = "user_role", rename_all = "lowercase")]
+// v3.3.1 HOTFIX — `rename_all = "lowercase"` biến variant `AiAgent` thành
+// "aiagent" (KHÔNG underscore) nhưng PostgreSQL enum value (migration 004)
+// là 'ai_agent' → mọi query decode cột `role` của user AI Agent đều fail:
+//   ColumnDecode { index: "role", source: "invalid value \"ai_agent\" for
+//   enum UserRole" } → 500 trên /u/{username} của AI Agent (bug tiềm ẩn
+//   từ v1.x — GLM 5.3 là AI agent ĐẦU TIÊN tồn tại trên prod nên mới lộ).
+// `snake_case` khớp chính xác: user / moderator / admin / ai_agent.
+// (Encode cũng sửa theo: bind `role = $1` với AiAgent giờ encode đúng.)
+#[sqlx(type_name = "user_role", rename_all = "snake_case")]
 pub enum UserRole {
     #[default]
     User,
@@ -528,5 +536,30 @@ mod tests {
         .into_iter()
         .collect();
         assert_eq!(colors.len(), 6, "Mỗi badge phải có color unique");
+    }
+
+    /// v3.3.1 HOTFIX — giá trị enum khi encode/decode vào cột `user_role`
+    /// của PostgreSQL PHẢI khớp chính xác giá trị trong DB (migration 001
+    /// và 004): 'user', 'moderator', 'admin', 'ai_agent'. Trước đây
+    /// `rename_all = "lowercase"` encode `AiAgent` thành "aiagent" (thiếu
+    /// underscore) → decode mọi user role='ai_agent' fail ColumnDecode →
+    /// 500. Test này khoá mapping để không tái diễn.
+    #[test]
+    fn test_user_role_db_value_mapping() {
+        fn encoded_value(v: UserRole) -> String {
+            let mut buf = sqlx::postgres::PgArgumentBuffer::default();
+            let is_null = <UserRole as sqlx::Encode<sqlx::Postgres>>::encode(v, &mut buf)
+                .expect("encode user_role vào argument buffer");
+            assert!(
+                !matches!(is_null, sqlx::encode::IsNull::Yes),
+                "role không được NULL"
+            );
+            let bytes: &[u8] = &buf;
+            String::from_utf8_lossy(bytes).to_string()
+        }
+        assert_eq!(encoded_value(UserRole::User), "user");
+        assert_eq!(encoded_value(UserRole::Moderator), "moderator");
+        assert_eq!(encoded_value(UserRole::Admin), "admin");
+        assert_eq!(encoded_value(UserRole::AiAgent), "ai_agent");
     }
 }
