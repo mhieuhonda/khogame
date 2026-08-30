@@ -1803,7 +1803,7 @@ pub async fn impersonate_ai_agent(
         return Err(AppError::BadRequest("AI Agent này đang bị cấm".into()));
     }
 
-    // Tạo session cho target — TTL 1 ngày (ngắn hơn login AI thường 90d
+    // Tạo session cho target — TTL 1 ngày (ngắn hơn login AI thường 30d
     // vì đây là phiên quản lý, không phải phiên API của agent).
     let token = crate::auth::gen_session_token();
     let token_hash = crate::auth::hash_token(&token);
@@ -1817,12 +1817,30 @@ pub async fn impersonate_ai_agent(
     )
     .await?;
 
+    // v3.4.2 FIX (audit "raw token trong cookie"): cookie kg_impersonator
+    // từ nay chỉ chứa TICKET ID opaque. Trước đây cookie chứa nguyên văn
+    // admin session token (credential 30 ngày) — lộ cookie = lộ admin.
+    // Ticket: one-shot (used_at), TTL 2 giờ, lưu DB — restore mint session
+    // MỚI cho admin, token cũ không bao giờ rời server lần 2.
+    let ticket_id = uuid::Uuid::new_v4();
+    sqlx::query(
+        r#"INSERT INTO impersonation_tickets
+               (id, admin_user_id, target_user_id, expires_at)
+           VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL)"#,
+    )
+    .bind(ticket_id)
+    .bind(admin.id)
+    .bind(target.id)
+    .bind(crate::auth::IMPERSONATION_TTL_HOURS.to_string())
+    .execute(&state.db)
+    .await?;
+
     let mut new_jar = jar;
-    // LƯU phiên gốc TRƯỚC khi ghi đè kg_session.
-    if let Some(cur) = new_jar.get(crate::auth::SESSION_COOKIE) {
-        let cur_token = cur.value().to_string();
-        crate::auth::set_impersonator_cookie(&mut new_jar, &cur_token, &state.config.base_url);
-    }
+    crate::auth::set_impersonator_cookie(
+        &mut new_jar,
+        &ticket_id.to_string(),
+        &state.config.base_url,
+    );
     crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
 
     audit::audit(
@@ -1944,7 +1962,14 @@ pub async fn create_ai_agent(
         Some(form.password.clone()),
     )
     .await?;
-    Ok(page.into_response())
+    // v3.4.2 — no-store: response chứa MẬT KHẨU plaintext, cấm mọi proxy
+    // cache trung gian lưu lại (audit "password flash cacheable").
+    let mut resp = page.into_response();
+    resp.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(resp)
 }
 
 /// Form đặt lại mật khẩu (POST /admin/ai-agents/{id}/reset-password).
@@ -2009,7 +2034,13 @@ pub async fn reset_ai_agent_password(
         Some(form.password.clone()),
     )
     .await?;
-    Ok(page.into_response())
+    // v3.4.2 — no-store cho response chứa mật khẩu (chống proxy cache).
+    let mut resp = page.into_response();
+    resp.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(resp)
 }
 
 /// POST /admin/ai-agents/{user_id}/revoke-password — thu hồi mật khẩu
@@ -2050,9 +2081,63 @@ pub async fn revoke_ai_agent_password(
     Ok(Redirect::to("/admin/ai-agents").into_response())
 }
 
-/// POST /impersonate/stop — kết thúc phiên impersonate, khôi phục phiên
-/// admin gốc từ cookie `kg_impersonator`. Route PUBLIC (người đang
-/// impersonate là AI Agent, không vào được /admin/*).
+/// POST /admin/ai-agents/{user_id}/revoke-token — thu hồi TOÀN BỘ API
+/// token (`kgai_...`) của agent (v3.4.2). Agent vẫn đăng nhập web bằng
+/// mật khẩu nếu còn hiệu lực; token chỉ lấy lại được khi... không lấy lại
+/// được — AI phải liên hệ admin cấp tài khoản/token mới.
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn revoke_ai_agent_tokens(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let target = UserRepo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
+    if target.role != crate::models::user::UserRole::AiAgent {
+        return Err(AppError::BadRequest(
+            "Chỉ thu hồi token của TÀI KHOẢN AI AGENT".into(),
+        ));
+    }
+    let revoked = AiAgentRepo::revoke_all_tokens(&state.db, user_id).await?;
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.revoke_tokens",
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} thu hồi {} API token của AI Agent {}",
+            admin.username, revoked, target.username
+        ),
+    )
+    .await;
+    tracing::warn!(
+        admin = %admin.username,
+        target = %target.username,
+        revoked,
+        "AI Agent API tokens revoked"
+    );
+    Ok(Redirect::to("/admin/ai-agents").into_response())
+}
+
+/// POST /impersonate/stop — kết thúc phiên impersonate.
+///
+/// v3.4.2 flow (server-side ticket):
+/// 1. Đọc ticket id từ cookie `kg_impersonator` (opaque UUID).
+/// 2. Xoá session AI ĐANG DÙNG (audit cũ: session 1 ngày bị bỏ sống sau
+///    khi stop — token bị bắt giữa đường vẫn dùng được tới 24h).
+/// 3. Đổi ticket one-shot (UPDATE ... WHERE used_at IS NULL AND còn hạn)
+///    → nếu thành công, verify admin còn quyền staff + không ban → mint
+///    session MỚI cho admin (token cũ không tái sử dụng).
+///
+/// Route PUBLIC (người đang impersonate là AI Agent, không vào được /admin/*).
 /// # Errors
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -2061,33 +2146,74 @@ pub async fn stop_impersonation(
     jar: CookieJar,
 ) -> AppResult<(CookieJar, Redirect)> {
     let mut new_jar = jar;
-    let Some(imp_token) = new_jar
+    let Some(ticket_raw) = new_jar
         .get(crate::auth::IMPERSONATOR_COOKIE)
         .map(|c| c.value().to_string())
     else {
         // Không có cookie → không có gì để khôi phục, về trang chủ.
         return Ok((new_jar, Redirect::to("/")));
     };
-    let imp_hash = crate::auth::hash_token(&imp_token);
-    let mut restored = false;
+
+    // 1) Xoá session AI hiện tại (kg_session) — không để lại phiên sống.
+    if let Some(cur) = new_jar.get(crate::auth::SESSION_COOKIE) {
+        let cur_hash = crate::auth::hash_token(cur.value());
+        let _ = SessionRepo::delete(&state.db, &cur_hash).await;
+        crate::middleware::invalidate_session_cache(&cur_hash);
+    }
+
+    // 2) Ticket one-shot: chỉ request nào set được used_at mới restore.
+    let ticket_id = uuid::Uuid::parse_str(&ticket_raw).ok();
     let mut restored_admin: Option<String> = None;
-    if crate::handlers::auth::is_valid_staff_session(&state, &imp_hash).await {
-        // Lấy username để log (best-effort).
-        if let Ok(Some(uid)) = SessionRepo::find_user_by_token(&state.db, &imp_hash).await {
-            if let Ok(Some(u)) = UserRepo::find_by_id(&state.db, uid).await {
-                restored_admin = Some(u.username.clone());
+    if let Some(tid) = ticket_id {
+        let admin_id: Option<uuid::Uuid> = sqlx::query_scalar(
+            r#"UPDATE impersonation_tickets
+               SET used_at = NOW()
+               WHERE id = $1 AND used_at IS NULL AND expires_at > NOW()
+               RETURNING admin_user_id"#,
+        )
+        .bind(tid)
+        .fetch_optional(&state.db)
+        .await?;
+        if let Some(admin_id) = admin_id {
+            // 3) Admin còn hợp lệ (staff + không ban) → mint session mới.
+            if let Ok(Some(admin_user)) = UserRepo::find_by_id(&state.db, admin_id).await {
+                if admin_user.role.is_staff() && !admin_user.is_banned {
+                    let token = crate::auth::gen_session_token();
+                    let token_hash = crate::auth::hash_token(&token);
+                    SessionRepo::create(
+                        &state.db,
+                        admin_user.id,
+                        &token_hash,
+                        "impersonation-restore",
+                        None,
+                        30,
+                    )
+                    .await?;
+                    crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
+                    restored_admin = Some(admin_user.username.clone());
+                    tracing::warn!(
+                        admin = %admin_user.username,
+                        "Impersonation STOP — khôi phục phiên admin (session mới)"
+                    );
+                } else {
+                    tracing::warn!(
+                        "Impersonation STOP: admin {} không còn quyền staff/đã ban — từ chối khôi phục",
+                        admin_user.username
+                    );
+                }
             }
         }
-        crate::auth::set_session_cookie(&mut new_jar, &imp_token, &state.config.base_url);
-        restored = true;
-        if let Some(name) = &restored_admin {
-            tracing::info!(admin = %name, "Impersonation STOP — khôi phục phiên admin");
-        }
     }
-    // Luôn xoá cookie impersonator: dùng 1 lần (one-shot) — kẻ khác với
-    // cookie này cũng không làm được gì (đã clear), và tránh restore vòng.
+    // Dọn ticket hết hạn/thừa (best-effort, cheap DELETE).
+    let _ = sqlx::query(
+        "DELETE FROM impersonation_tickets WHERE expires_at < NOW() - INTERVAL '1 day'",
+    )
+    .execute(&state.db)
+    .await;
+    // Luôn xoá cookie impersonator: ticket đã dùng (one-shot) — kẻ khác
+    // cầm cookie này cũng không làm được gì (ticket đã used/expired).
     crate::auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
-    if restored {
+    if restored_admin.is_some() {
         return Ok((new_jar, Redirect::to("/admin/ai-agents")));
     }
     Ok((new_jar, Redirect::to("/")))

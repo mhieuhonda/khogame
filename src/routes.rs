@@ -441,6 +441,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/ai-agents/{user_id}/revoke-password",
             post(handlers::admin::revoke_ai_agent_password),
         )
+        // v3.4.2 — thu hồi TOÀN BỘ API token của agent (trước đây chỉ xoá
+        // được bằng SQL tay — audit "token không có đường thu hồi")
+        .route(
+            "/admin/ai-agents/{user_id}/revoke-token",
+            post(handlers::admin::revoke_ai_agent_tokens),
+        )
         // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
         .route(
             "/admin/ai-agents/{user_id}/login-as",

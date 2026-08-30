@@ -960,6 +960,13 @@ pub async fn rate_limit(
     // - /comments:         10 / phút
     let (max, window) = if path.starts_with("/auth/ai/register") {
         (5, 600)
+    } else if path.starts_with("/uploads/") && request.method() == axum::http::Method::POST {
+        // v3.4.2 — POST upload (avatar/cover game/tin tức/repo): mỗi request
+        // đọc VÀO RAM tới 12MB (DefaultBodyLimit) rồi ghi disk. Trước đây rơi
+        // vào bucket mặc định 120/phút → user đơn độc ghi ~1.2GB/phút sustained
+        // = disk-fill DoS làm sập toàn site (janitor không có sweep upload).
+        // 6 upload/phút là dư sức cho UI thật (mỗi form 1 ảnh).
+        (6, 60)
     } else if path.starts_with("/auth/ai/login") && request.method() == axum::http::Method::POST {
         // v3.4.0 — CHỈ giới hạn POST (submit đăng nhập): 10 lần/10 phút.
         // Trước đây GET form cũng ăn bucket này → user sai mật khẩu 5 lần
@@ -1182,8 +1189,12 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
     //   qua https://localhost → chết toàn bộ dev environment.
     headers.insert(
         "content-security-policy",
+        // v3.4.2: connect-src bỏ plain `ws:` — chỉ giữ wss: cho WebSocket
+        // Live Chat (prod là TLS; ws: plain cho phép exfil qua WS không mã
+        // hoá tới host bất kỳ). 'self' đã cover same-origin (kể cả wss cùng
+        // host qua upgrade).
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'"
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'",
         ),
     );
     response

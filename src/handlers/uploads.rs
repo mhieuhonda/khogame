@@ -27,6 +27,52 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use std::sync::Arc;
 
+/// v3.4.2 — Quota upload/ngày/user (chống disk-fill DoS). Upsert atomically
+/// số byte đã dùng; trả Err khi vượt quota. Giữ quota check + save + ghi
+/// usage trong 1 flow: quota check TRƯỚC khi ghi disk (nhanh fail), usage
+/// cộng SAU khi save thành công (đếm đúng bytes thật sự ghi).
+async fn enforce_and_record_quota(
+    state: &AppState,
+    user_id: uuid::Uuid,
+    bytes: usize,
+    record: bool,
+) -> AppResult<()> {
+    let quota_bytes = state.config.upload_daily_quota_mb * 1024 * 1024;
+    let today = crate::utils::SQL_TODAY_VN;
+    let used: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(
+        format!(
+            r"SELECT bytes_used FROM upload_usage
+           WHERE user_id = $1 AND usage_date = {today}"
+        )
+        .as_str(),
+    ))
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .unwrap_or(0);
+    if used + (bytes as i64) > quota_bytes {
+        return Err(AppError::BadRequest(format!(
+            "Bạn đã dùng {used} / {quota_bytes} bytes quota upload hôm nay — quay lại vào ngày mai."
+        )));
+    }
+    if record {
+        sqlx::query(sqlx::AssertSqlSafe(
+            format!(
+                r"INSERT INTO upload_usage (user_id, usage_date, bytes_used)
+               VALUES ($1, {today}, $2)
+               ON CONFLICT (user_id, usage_date)
+               DO UPDATE SET bytes_used = upload_usage.bytes_used + $2"
+            )
+            .as_str(),
+        ))
+        .bind(user_id)
+        .bind(bytes as i64)
+        .execute(&state.db)
+        .await?;
+    }
+    Ok(())
+}
+
 /// Response JSON cho upload thành công.
 #[derive(Debug, Serialize)]
 pub struct UploadResponse {
@@ -57,12 +103,12 @@ impl From<AppError> for UploadErrorResponse {
 /// theo `kind` đã cho. Trả về `UploadResponse` JSON.
 async fn handle_upload(
     State(state): State<Arc<AppState>>,
-    AuthUser(_user): AuthUser,
+    AuthUser(user): AuthUser,
     mut multipart: Multipart,
     kind: UploadKind,
 ) -> AppResult<UploadResponse> {
-    let _ = &state; // state dùng cho rate-limit / audit sau này
-                    // Iterate multipart fields — chỉ quan tâm field tên `file`.
+    let _ = &state;
+    // Iterate multipart fields — chỉ quan tâm field tên `file`.
     while let Some(field) = multipart
         .next_field()
         .await
@@ -86,8 +132,15 @@ async fn handle_upload(
             .await
             .map_err(|e| AppError::BadRequest(format!("Đọc file upload lỗi: {e}")))?;
 
+        // v3.4.2 — quota/ngày: chặn TRƯỚC khi ghi disk (disk-fill DoS:
+        // trước đây user ghi ~1.2GB/phút tới khi đầy volume = sập site).
+        enforce_and_record_quota(&state, user.id, bytes.len(), false).await?;
+
         let url = storage::save_upload(kind, filename.as_deref(), content_type.as_deref(), &bytes)
             .await?;
+
+        // Ghi usage sau khi save thành công (đếm đúng bytes thật).
+        enforce_and_record_quota(&state, user.id, bytes.len(), true).await?;
 
         return Ok(UploadResponse {
             url,

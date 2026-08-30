@@ -286,16 +286,21 @@ async fn send_weekly_digest(state: &AppState) -> crate::error::AppResult<()> {
         return Ok(()); // tuần trống — không gửi
     }
     let title = format!("📬 Tin tuần Louis Space: {new_games} game mới, {new_news} tin mới");
-    // Chống gửi đôi trong cùng tuần: đếm notification cùng title tuần này
+    // Chống gửi đôi trong cùng tuần (v3.4.2 FIX): dedup theo (type='system',
+    // nội dung BẤT BIẾN chứa link /news + created_at >= đầu tuần). Bản cũ
+    // dedup theo title — title nhúng số đếm game/tin, publish thêm 1 tin
+    // sau digest → title khác → gửi digest thứ 2 trong cùng tuần.
     let week_start = sqlx::query_scalar::<_, chrono::DateTime<chrono::Utc>>(
         "SELECT date_trunc('week', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh'",
     )
     .fetch_one(&state.db)
     .await?;
     let already: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM notifications WHERE type = 'system' AND title = $1 AND created_at >= $2",
+        r#"SELECT COUNT(*) FROM notifications
+           WHERE type = 'system' AND link = '/news'
+             AND content LIKE 'Bạn nhận email này vì đã bật Tổng hợp hằng tuần%'
+             AND created_at >= $1"#,
     )
-    .bind(&title)
     .bind(week_start)
     .fetch_one(&state.db)
     .await?;

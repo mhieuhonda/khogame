@@ -125,10 +125,17 @@ pub async fn google_callback(
             // OK - state khớp
         }
         _ => {
+            // v3.4.2 FIX (audit "token trong log"): KHÔNG log nguyên giá trị
+            // state (log aggregation thường có readership rộng hơn app) —
+            // chỉ log 8 ký tự đầu để correlate + độ dài để debug.
+            let g_prefix = q.state.as_deref().map(|s| &s[..s.len().min(8)]);
+            let c_prefix = cookie_state.as_deref().map(|s| &s[..s.len().min(8)]);
             tracing::warn!(
-                "OAuth state mismatch: google={:?} cookie={:?} - từ chối callback (CSRF)",
-                q.state,
-                cookie_state
+                google_prefix = ?g_prefix,
+                cookie_prefix = ?c_prefix,
+                google_len = q.state.as_deref().map_or(0, str::len),
+                cookie_len = cookie_state.as_deref().map_or(0, str::len),
+                "OAuth state mismatch — từ chối callback (CSRF)"
             );
             return Err(AppError::BadRequest(
                 "OAuth state không khớp - có thể bị CSRF. Vui lòng đăng nhập lại.".into(),
@@ -186,8 +193,16 @@ pub async fn google_callback(
         }
     };
 
-    // Tự động cấp admin cho ADMIN_EMAIL (mặc định khongdich.admin@gmail.com)
-    if userinfo
+    // Tự động cấp admin cho ADMIN_EMAIL (bootstrap siêu-admin).
+    // v3.4.2 FIX (audit "default superuser"): ADMIN_EMAIL không set →
+    // TỪ CHỐI auto-grant (config trả chuỗi rỗng, không còn fallback Gmail
+    // cố định). Log error một lần để operator phát hiện ngay khi deploy.
+    if state.config.admin_email.is_empty() {
+        tracing::error!(
+            "ADMIN_EMAIL chưa được set — TỪ CHỐI tự cấp quyền admin. \
+             Set ADMIN_EMAIL trong env để bootstrap tài khoản quản trị."
+        );
+    } else if userinfo
         .email
         .eq_ignore_ascii_case(&state.config.admin_email)
         && !user.role.is_admin()

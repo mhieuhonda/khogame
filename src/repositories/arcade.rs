@@ -140,11 +140,10 @@ impl TriviaRepo {
                WHERE user_id = $1 AND answered_date = {}"#,
             crate::utils::SQL_TODAY_VN
         );
-        let answered_today: i64 =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(answered_sql.as_str()))
-                .bind(user_id)
-                .fetch_one(pool)
-                .await?;
+        let answered_today: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(answered_sql.as_str()))
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
         if answered_today >= TRIVIA_PER_DAY {
             return Err(AppError::BadRequest(
                 "Bạn đã trả lời đủ 3 câu hỏi hôm nay — quay lại vào ngày mai!".into(),
@@ -188,11 +187,13 @@ impl TriviaRepo {
         let mut xp_awarded = 0;
         if is_correct {
             xp_awarded = TRIVIA_XP_PER_CORRECT;
-            sqlx::query("INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'trivia', $2)")
-                .bind(user_id)
-                .bind(xp_awarded)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(
+                "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'trivia', $2)",
+            )
+            .bind(user_id)
+            .bind(xp_awarded)
+            .execute(&mut *tx)
+            .await?;
             sqlx::query(
                 r#"INSERT INTO user_xp_totals (user_id, total_xp)
                    VALUES ($1, $2)
@@ -257,12 +258,11 @@ impl TriviaRepo {
             crate::utils::SQL_TODAY_START_VN
         );
         let mut tx = pool.begin().await?;
-        let inserted: Option<uuid::Uuid> =
-            sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-                .bind(user_id)
-                .bind(TRIVIA_ALL_BONUS)
-                .fetch_optional(&mut *tx)
-                .await?;
+        let inserted: Option<uuid::Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .bind(TRIVIA_ALL_BONUS)
+            .fetch_optional(&mut *tx)
+            .await?;
         if inserted.is_none() {
             tx.rollback().await?;
             return Ok(0);

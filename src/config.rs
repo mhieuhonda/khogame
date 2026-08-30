@@ -14,7 +14,11 @@ pub struct AppConfig {
     pub google_client_id: String,
     pub google_client_secret: String,
     pub google_redirect_uri: String,
-    /// Email của quản trị viên tối cao (tự động lên admin khi đăng nhập)
+    /// Email của quản trị viên tối cao (tự động lên admin khi đăng nhập).
+    /// v3.4.2 FIX (audit "default superuser"): rỗng khi không set env —
+    /// KHÔNG còn fallback cứng về Gmail cố định (fork/redeploy quên
+    /// ADMIN_EMAIL = bất kỳ ai chiếm email đó cũng tự lên admin). Rỗng → bỏ qua
+    /// auto-grant + error log một lần ở handler login.
     pub admin_email: String,
     /// GitHub token (optional) - tăng rate limit khi gọi GitHub API
     pub github_token: Option<String>,
@@ -26,8 +30,18 @@ pub struct AppConfig {
     pub ai_agent_secret: String,
     /// Có bật tính năng AI Agent không? Bật tự động khi `ai_agent_secret` được set.
     pub ai_agent_enabled: bool,
-    /// Số ngày sống của phiên AI Agent (mặc định 90).
+    /// Số ngày sống của phiên AI Agent (mặc định 30).
+    /// v3.4.2: giảm 90 → 30 — phiên web của AI không cần dài như trước
+    /// (API token có TTL riêng), thu hẹp cửa sổ truy cập sau khi mật khẩu
+    /// bị lộ/thu hồi (OWASP: credential revocation phải cắt được phiên).
     pub ai_agent_session_ttl_days: i64,
+    /// Số ngày sống của API token `kgai_...` cấp khi /auth/ai/register
+    /// (mặc định 365, tối đa 3650). v3.4.2: token không còn "sống mãi
+    /// mãi" — audit: token lộ chỉ xoá được bằng SQL tay.
+    pub ai_agent_token_ttl_days: i64,
+    /// Quota upload (MB/ngày/user, mặc định 50). v3.4.2 — chống disk-fill
+    /// DoS: trước đây không có quota, 4 endpoint upload ghi ~1.2GB/phút.
+    pub upload_daily_quota_mb: i64,
     /// Có tin headers proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP)
     /// khi xác định IP client không? Mặc định BẬT vì prod chạy sau
     /// Traefik/Coolify. Tắt khi expose trực tiếp internet — nếu không
@@ -145,8 +159,9 @@ impl AppConfig {
             google_redirect_uri,
             admin_email: env::var("ADMIN_EMAIL")
                 .ok()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| "khongdich.admin@gmail.com".into()),
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| s.trim().to_ascii_lowercase())
+                .unwrap_or_default(),
             github_token: env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty()),
             ai_agent_secret,
             ai_agent_enabled,
@@ -158,7 +173,18 @@ impl AppConfig {
                 // user set giá trị i64::MAX qua env, đồng thời tránh phiên
                 // AI Agent sống quá lâu (vô hiệu hoá chính sách xoay vòng).
                 .map(|d| d.min(365))
-                .unwrap_or(90),
+                .unwrap_or(30),
+            ai_agent_token_ttl_days: env::var("AI_AGENT_TOKEN_TTL_DAYS")
+                .ok()
+                .and_then(|d| d.parse::<i64>().ok())
+                .filter(|d| *d > 0)
+                .map(|d| d.min(3650))
+                .unwrap_or(365),
+            upload_daily_quota_mb: env::var("UPLOAD_DAILY_QUOTA_MB")
+                .ok()
+                .and_then(|d| d.parse::<i64>().ok())
+                .filter(|d| *d > 0 && *d <= 10_000)
+                .unwrap_or(50),
             trust_proxy_headers: {
                 let v = env::var("TRUST_PROXY_HEADERS").ok().is_none_or(|v| {
                     let v = v.trim().to_ascii_lowercase();

@@ -776,17 +776,17 @@ impl WordChainRepo {
                             // khác đã fallback) — đọc lại trạng thái thật.
                             let fresh = Self::load_match(pool, match_id).await?.unwrap_or(m);
                             return match fresh.status.as_str() {
-                                "active" => {
-                                    Self::build_active(pool, user_id, fresh, None).await
+                                "active" => Self::build_active(pool, user_id, fresh, None).await,
+                                "finished" => {
+                                    Self::build_finished(
+                                        pool,
+                                        user_id,
+                                        fresh.id,
+                                        fresh.winner_id == Some(user_id),
+                                        "Trận đã kết thúc.".into(),
+                                    )
+                                    .await
                                 }
-                                "finished" => Self::build_finished(
-                                    pool,
-                                    user_id,
-                                    fresh.id,
-                                    fresh.winner_id == Some(user_id),
-                                    "Trận đã kết thúc.".into(),
-                                )
-                                .await,
                                 _ => Ok(WordChainPvpStatus::Cancelled),
                             };
                         }

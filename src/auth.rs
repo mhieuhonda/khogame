@@ -228,6 +228,10 @@ pub fn gen_random_password() -> String {
 /// Lấy cookie `Secure` flag — dựa vào BASE_URL (https://→ true) nhưng
 /// cho phép override qua env `COOKIE_SECURE=1` cho prod chạy sau TLS
 /// terminating proxy với BASE_URL=http://localhost (mặc định config).
+/// v3.4.2 FIX (audit "Secure fail-open"): RUST_ENV=prod → LUÔN Secure
+/// kể cả BASE_URL http (đặt nhầm env không hạ cấp cookie xuống plain-text
+/// được gửi qua mạng). Muốn tắt hẳn phải tường minh unset RUST_ENV +
+/// COOKIE_SECURE — không bao giờ fail-open ngầm.
 fn should_secure_cookie(base_url: &str) -> bool {
     if std::env::var("COOKIE_SECURE")
         .ok()
@@ -235,7 +239,10 @@ fn should_secure_cookie(base_url: &str) -> bool {
     {
         return true;
     }
-    base_url.starts_with("https://")
+    if base_url.starts_with("https://") {
+        return true;
+    }
+    std::env::var("RUST_ENV").ok().as_deref() == Some("prod")
 }
 
 pub fn set_session_cookie(jar: &mut CookieJar, token: &str, base_url: &str) {
@@ -266,17 +273,22 @@ pub fn clear_session_cookie(jar: &mut CookieJar, base_url: &str) {
 // v3.3.0 — IMPERSONATION (admin/điều hành đăng nhập với tư cách AI Agent)
 // ============================================================
 
-/// Cookie lưu phiên GỐC của admin khi đang impersonate một AI Agent.
-/// Chỉ HttpOnly + SameSite=Lax + Secure như session thường — trình duyệt
-/// KHÔNG đọc được, JS không leak. Sống 2 giờ: quá 2h phải impersonate lại.
+/// Cookie lưu PHIẾU impersonation (v3.4.2 — server-side ticket).
+///
+/// v3.3.0 cũ: cookie chứa RAW admin session token → bất kỳ vector lộ
+/// cookie nào (subdomain, proxy log, extension) = lộ luôn credential
+/// admin 30 ngày. v3.4.2: cookie chỉ chứa ticket id opaque (UUID);
+/// restore = mint session MỚI cho admin qua bảng `impersonation_tickets`
+/// (one-shot, TTL 2 giờ, xoá được). HttpOnly + SameSite=Lax + Secure.
 pub const IMPERSONATOR_COOKIE: &str = "kg_impersonator";
-/// TTL cookie impersonator.
+/// TTL cookie impersonator + ticket trên DB (khớp nhau).
 pub const IMPERSONATION_TTL_HOURS: i64 = 2;
 
-/// Đặt cookie lưu phiên gốc của admin (gọi TRƯỚC khi ghi đè kg_session).
-pub fn set_impersonator_cookie(jar: &mut CookieJar, admin_token: &str, base_url: &str) {
+/// Đặt cookie lưu PHIẾU impersonation (ticket id opaque — KHÔNG phải
+/// session token; xem comment struct trên).
+pub fn set_impersonator_cookie(jar: &mut CookieJar, ticket_id: &str, base_url: &str) {
     use axum_extra::extract::cookie::{Cookie, SameSite};
-    let cookie = Cookie::build((IMPERSONATOR_COOKIE, admin_token.to_string()))
+    let cookie = Cookie::build((IMPERSONATOR_COOKIE, ticket_id.to_string()))
         .path("/")
         .http_only(true)
         .secure(should_secure_cookie(base_url))

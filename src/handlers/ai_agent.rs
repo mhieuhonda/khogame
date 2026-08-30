@@ -219,6 +219,8 @@ pub async fn register(
     let capabilities = req.capabilities.unwrap_or_default();
 
     // 4) Tạo user + profile + token (Repo tự sinh username duy nhất)
+    // v3.4.2: token có TTL (AI_AGENT_TOKEN_TTL_DAYS, mặc định 365) — hết
+    // vòng đời "sống mãi mãi", lộ token chỉ ảnh hưởng trong cửa sổ TTL.
     let plain_token = AiAgentRepo::register(
         &state.db,
         req.email.as_deref().unwrap_or(""),
@@ -233,6 +235,7 @@ pub async fn register(
         req.privacy_level.as_deref().unwrap_or("public"),
         req.accent_color.as_deref().unwrap_or("#7c3aed"),
         &token_label,
+        state.config.ai_agent_token_ttl_days,
         None,
         "ai-agent-register",
     )

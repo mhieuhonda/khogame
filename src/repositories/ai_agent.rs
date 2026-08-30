@@ -84,6 +84,10 @@ impl AiAgentRepo {
         privacy_level: &str,
         accent_color: &str,
         token_label: &str,
+        // TTL của API token (ngày). v3.4.2 — token không còn "vô thời
+        // hạn": mặc định 365 ngày (config AI_AGENT_TOKEN_TTL_DAYS), admin
+        // xoay vòng bằng nút thu hồi token.
+        token_ttl_days: i64,
         ip_address: Option<&str>,
         user_agent: &str,
     ) -> AppResult<String> {
@@ -216,12 +220,16 @@ impl AiAgentRepo {
         .await;
 
         // 4) Sinh token dài hạn (48 bytes = 96 hex chars). Plain token chỉ trả 1 lần.
+        // v3.4.2: set expires_at theo TTL — token lộ không còn "sống mãi
+        // mãi", xoay vòng bắt buộc theo chu kỳ (OWASP API token lifecycle).
         let plain_token = crate::auth::gen_ai_agent_token();
         let token_hash = crate::auth::hash_token(&plain_token);
+        let ttl = token_ttl_days.clamp(1, 3650).to_string();
 
         let _token: AiAgentToken = sqlx::query_as::<_, AiAgentToken>(
-            r"INSERT INTO ai_agent_tokens (user_id, token_hash, label, ip_address, user_agent)
-              VALUES ($1, $2, $3, $4, $5)
+            r"INSERT INTO ai_agent_tokens
+                    (user_id, token_hash, label, ip_address, user_agent, expires_at)
+              VALUES ($1, $2, $3, $4, $5, NOW() + ($6 || ' days')::INTERVAL)
               RETURNING id, user_id, token_hash, label, revoked, last_used_at,
                 expires_at, ip_address, user_agent, created_at",
         )
@@ -230,6 +238,7 @@ impl AiAgentRepo {
         .bind(token_label)
         .bind(ip_address)
         .bind(user_agent)
+        .bind(ttl)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -547,6 +556,23 @@ impl AiAgentRepo {
         Ok(())
     }
 
+    /// v3.4.2 — Admin thu hồi TOÀN BỘ API token của 1 agent (nút
+    /// "Thu hồi token" ở trang /admin/ai-agents). Trước đây
+    /// `revoke_token` là dead-code: token lộ chỉ xoá được bằng SQL tay.
+    /// Trả về số token đã thu hồi.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn revoke_all_tokens(pool: &PgPool, user_id: Uuid) -> AppResult<u64> {
+        let res = sqlx::query(
+            "UPDATE ai_agent_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected())
+    }
+
     /// Admin đặt trạng thái verified cho AI Agent (hoặc bỏ verified).
     /// # Errors
     ///
@@ -718,6 +744,7 @@ impl AiAgentRepo {
         let expires_days = Self::validate_expiry_days(expires_days)?;
         let password_hash = crate::auth::hash_password(password)?;
         let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_days);
+        let mut tx = pool.begin().await?;
         sqlx::query(
             r"INSERT INTO ai_agent_credentials
                 (user_id, password_hash, password_expires_at, updated_by)
@@ -734,8 +761,18 @@ impl AiAgentRepo {
         .bind(&password_hash)
         .bind(expires_at)
         .bind(admin_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+        // v3.4.2 FIX (audit "revoke không cắt phiên"): OWASP — reset
+        // credential PHẢI thu hồi phiên hiện có. Trước đây attacker giữ
+        // session cookie cũ (TTL 90d) vẫn vào được tài khoản sau khi admin
+        // đặt lại mật khẩu. Xoá mọi phiên + flush cache middleware.
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        crate::middleware::invalidate_session_cache_for_user(user_id);
         Ok(())
     }
 
@@ -746,10 +783,20 @@ impl AiAgentRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn admin_revoke_password(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
+        let mut tx = pool.begin().await?;
         sqlx::query("DELETE FROM ai_agent_credentials WHERE user_id = $1")
             .bind(user_id)
-            .execute(pool)
+            .execute(&mut *tx)
             .await?;
+        // v3.4.2 FIX: thu hồi mật khẩu phải cắt cả phiên web đang sống
+        // (bản cũ chỉ xoá credentials — phiên 90 ngày vẫn vào được bình
+        // thường tới khi hết hạn tự nhiên).
+        sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        crate::middleware::invalidate_session_cache_for_user(user_id);
         Ok(())
     }
 
@@ -840,7 +887,6 @@ impl AiAgentRepo {
         const GENERIC_ERR: &str = "Tên đăng nhập hoặc mật khẩu không đúng";
         const LOCKED_ERR: &str =
             "Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau 15 phút.";
-        const EXPIRED_ERR: &str = "Mật khẩu đã hết hạn. Liên hệ quản trị viên để được đặt lại.";
 
         let Some(user) = user else {
             // Username công khai (/u/{username}) nhưng vẫn chạy 1 lần Argon2
@@ -928,9 +974,17 @@ impl AiAgentRepo {
         }
 
         // 5) Kiểm tra hạn mật khẩu (SAU khi verify đúng — tránh lộ thông tin
-        //    "tài khoản tồn tại" cho attacker chưa có mật khẩu)
+        //    "tài khoản tồn tại" cho attacker chưa có mật khẩu).
+        // v3.4.2 FIX (audit "password-validity oracle"): hết hạn trả
+        // GENERIC_ERR — trước đây EXPIRED_ERR khác biệt cho phép attacker
+        // xác nhận CHÍNH XÁC mật khẩu đúng (dù chưa dùng được). Log phía
+        // server vẫn ghi rõ lý do để admin/support đối chiếu.
         if cred.password_expires_at <= Utc::now() {
-            return Err(AppError::Forbidden(EXPIRED_ERR.into()));
+            tracing::warn!(
+                username = %user.username,
+                "AI Agent login: mật khẩu ĐÚNG nhưng đã hết hạn — trả lỗi chung"
+            );
+            return Err(AppError::Forbidden(GENERIC_ERR.into()));
         }
 
         // 6) Thành công: reset bộ đếm + cập nhật last_login_at + last_active

@@ -584,6 +584,7 @@ pub fn render_bio(input: &str) -> String {
     let mut out = harden_links(&html);
     out = convert_spoiler_inline(&out);
     out = lazy_images(&out);
+    out = harden_img_src(&out);
     out = mark_external_links(&out);
     out = linkify_mentions_hashtags(&out);
     out
@@ -600,6 +601,9 @@ fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
     out = convert_callouts(&out);
     out = embed_youtube(&out);
     out = lazy_images(&out);
+    // v3.4.2 — lọc scheme img src SAU lazy_images (pass cuối cùng sinh
+    // <img src>) để mọi ảnh trong output đều http(s)/relative an toàn.
+    out = harden_img_src(&out);
     out = wrap_image_figures(&out);
     out = mark_external_links(&out);
     // v2.5.0 — line numbers PHẢI chạy trước khi wrap copy-button (pass
@@ -625,7 +629,15 @@ fn harden_links(html: &str) -> String {
     let bytes = html.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'<' && i + 1 < bytes.len() && (bytes[i + 1] == b'a' || bytes[i + 1] == b'A')
+        // v3.4.2 FIX (audit): matcher cũ chỉ kiểm tra bytes[i+1]=='a' → match
+        // cả <article>/<audio>/<abbr>/<address> rồi nhét rel/target vào các
+        // thẻ không phải anchor (HTML méo mó). Giờ yêu cầu byte sau `<a` là
+        // delimiter (space/'>'/tab/newline/'/') mới tính là anchor.
+        if bytes[i] == b'<'
+            && i + 1 < bytes.len()
+            && (bytes[i + 1] == b'a' || bytes[i + 1] == b'A')
+            && i + 2 < bytes.len()
+            && matches!(bytes[i + 2], b' ' | b'>' | b'\t' | b'\n' | b'\r' | b'/')
         {
             // Tìm `>` đóng tag mở (không xử lý attribute quoting phức tạp
             // vì comrak output dạng well-formed: <a href="..." class="...">)
@@ -695,6 +707,53 @@ fn is_safe_url_scheme(url: &str) -> bool {
         || url.starts_with("tel:")
         || url.starts_with('/')
         || url.starts_with('#')
+}
+
+/// v3.4.2 — Lọc scheme của `<img src>` trong HTML output markdown.
+///
+/// Audit: `harden_links` chỉ lọc `<a href>`; ảnh markdown
+/// `![x](javascript:...)` / `![x](data:image/svg+xml;base64,...)` đi qua
+/// nguyên vẹn, trong khi CSP cho phép `img-src ... data:` — SVG tải qua
+/// <img> tuy không chạy script nhưng là vector tracking/phishing và trái
+/// với cam kết tài liệu module ("ảnh chỉ http(s)"). Pass này rewrite
+/// `src` thành `#` khi scheme không an toàn (giữ thẻ, giữ alt).
+fn harden_img_src(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'<' && html[i..].starts_with("<img") {
+            if let Some(end) = find_byte(bytes, b'>', i) {
+                let tag = &html[i..=end];
+                let lower = tag.to_ascii_lowercase();
+                if let Some(src_start) = lower.find("src=\"") {
+                    let v_start = src_start + 5;
+                    if let Some(v_end_rel) = lower[v_start..].find('"') {
+                        let v_end = v_start + v_end_rel;
+                        let src = &tag[v_start..v_end];
+                        if is_safe_url_scheme(src) {
+                            out.push_str(tag);
+                        } else {
+                            // Replace giá trị src bằng "#" — giữ nguyên phần còn lại.
+                            out.push_str(&tag[..v_start]);
+                            out.push('#');
+                            out.push_str(&tag[v_end..]);
+                        }
+                        i = end + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        let ch = html[i..].chars().next().unwrap_or(' ');
+        out.push(ch);
+        if ch.len_utf8() == 0 {
+            i += 1;
+        } else {
+            i += ch.len_utf8();
+        }
+    }
+    out
 }
 
 fn find_byte(bytes: &[u8], target: u8, from: usize) -> Option<usize> {

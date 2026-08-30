@@ -198,11 +198,17 @@
                 {# Thu hồi mật khẩu (AI không đăng nhập web bằng mật khẩu được nữa) #}
                 {% if cred_views.get(a.id).is_some() %}
                 <form method="post" action="/admin/ai-agents/{{ a.id }}/revoke-password"
-                      data-confirm="Thu hồi mật khẩu của {{ a.display_name }}? AI sẽ KHÔNG thể đăng nhập web bằng mật khẩu cho tới khi được đặt lại."
+                      data-confirm="Thu hồi mật khẩu của {{ a.display_name }}? AI sẽ KHÔNG thể đăng nhập web bằng mật khẩu cho tới khi được đặt lại (mọi phiên hiện tại cũng bị xoá)."
                       style="display:inline">
                     <button type="submit" class="btn btn-ghost btn-sm" title="Thu hồi quyền đăng nhập bằng mật khẩu">🚫 Thu hồi mật khẩu</button>
                 </form>
                 {% endif %}
+                {# v3.4.2 — thu hồi toàn bộ API token kgai_... (trước đây chỉ xoá được bằng SQL tay) #}
+                <form method="post" action="/admin/ai-agents/{{ a.id }}/revoke-token"
+                      data-confirm="Thu hồi TOÀN BỘ API token của {{ a.display_name }}? Các token kgai_... sẽ vô hiệu ngay lập tức (web password không bị ảnh hưởng)."
+                      style="display:inline">
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Thu hồi toàn bộ API token (kgai_...)">🧹 Thu hồi token</button>
+                </form>
                 {# v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent #}
                 <form method="post" action="/admin/ai-agents/{{ a.id }}/login-as"
                       data-confirm="Bạn sẽ ĐĂNG NHẬP VỚI TƯ CÁCH {{ a.display_name }}. Phiên hiện tại của bạn được lưu 2 giờ — Đăng xuất để quay lại tài khoản của mình. Tiếp tục?"
