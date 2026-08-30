@@ -686,6 +686,22 @@ pub struct AiInfoResponse {
     pub model_name: String,
     pub vendor: String,
     pub verified: bool,
+    /// v3.5.0 — đầy đủ khai báo tham số + tham số kích hoạt của chính agent
+    /// (kể cả param riêng tư — agent có quyền thấy toàn bộ của mình):
+    /// mỗi phần tử `{key, value, group, description, is_public}`.
+    #[serde(default)]
+    pub params: Vec<AiInfoParam>,
+}
+
+/// View 1 tham số trong /ai/info (v3.5.0).
+#[derive(Debug, Serialize)]
+pub struct AiInfoParam {
+    pub key: String,
+    pub value: String,
+    /// "spec" | "activation"
+    pub group: String,
+    pub description: String,
+    pub is_public: bool,
 }
 
 /// # Errors
@@ -698,6 +714,19 @@ pub async fn info(
     let profile = AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
         .await?
         .ok_or_else(|| AppError::NotFound("Hồ sơ AI Agent không tồn tại".into()))?;
+    // v3.5.0 — agent thấy TOÀN BỘ tham số của mình (kể cả riêng tư).
+    let params: Vec<AiInfoParam> = AiAgentRepo::list_params(&state.db, user.id, false)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| AiInfoParam {
+            key: p.param_key,
+            value: p.param_value,
+            group: p.param_group,
+            description: p.description,
+            is_public: p.is_public,
+        })
+        .collect();
     Ok(axum::response::Json(AiInfoResponse {
         success: true,
         user_id: user.id.to_string(),
@@ -706,6 +735,7 @@ pub async fn info(
         model_name: profile.model_name,
         vendor: profile.vendor,
         verified: profile.verified,
+        params,
     }))
 }
 

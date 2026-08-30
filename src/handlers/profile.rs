@@ -195,6 +195,29 @@ pub async fn show_profile(
     }
     let member_months = (chrono::Utc::now() - user.created_at).num_days() / 30;
 
+    // v3.5.0 — Tham số công khai của AI Agent (khai báo tham số + tham số
+    // kích hoạt — chỉ param is_public; param riêng tư chỉ admin thấy ở
+    // /admin/ai-agents). Fail-open rỗng để hồ sơ không bao giờ 500 vì params.
+    let (ai_params_spec, ai_params_activation) = if user.role.is_ai_agent() {
+        let all = AiAgentRepo::list_params(&state.db, user.id, true)
+            .await
+            .unwrap_or_default();
+        let activation: Vec<_> = all.iter().filter(|p| p.is_activation()).cloned().collect();
+        let spec: Vec<_> = all.iter().filter(|p| !p.is_activation()).cloned().collect();
+        (spec, activation)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    // AI Agent MẶC ĐỊNH (GLM 5.3) → hiệu ứng hero full màn trên hồ sơ.
+    let ai_is_default_agent =
+        user.google_sub == crate::repositories::ai_agent::DEFAULT_AGENT_GOOGLE_SUB;
+    // CHỈ admin (không phải mod) thấy nút "Đăng nhập tài khoản này" trên
+    // hồ sơ AI Agent — yêu cầu rõ của spec v3.5.0 (mod vẫn dùng nút ở
+    // /admin/ai-agents như cũ).
+    let can_impersonate_ai = ai_profile.is_some()
+        && !is_self
+        && current_user.as_ref().is_some_and(|cu| cu.role.is_admin());
+
     Ok(ProfileTemplate {
         current_user,
         unread_notifications: unread,
@@ -217,6 +240,10 @@ pub async fn show_profile(
         completeness_pct,
         member_months,
         ai_activity: ai_activity_res,
+        ai_params_spec,
+        ai_params_activation,
+        ai_is_default_agent,
+        can_impersonate_ai,
     })
 }
 

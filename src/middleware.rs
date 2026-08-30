@@ -743,6 +743,12 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         "save",
         "status",
         "revoke",
+        // v3.4.2/v3.5.0 — action segments của /admin/ai-agents/*
+        "revoke-password",
+        "revoke-token",
+        "reset-password",
+        "login-as",
+        "params",
         // danh sách đặc biệt
         "latest",
         "trending",

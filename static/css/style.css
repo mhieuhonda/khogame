@@ -9317,3 +9317,398 @@ code.ai-agent-username {
 }
 
 .feedback-security-note svg { color: #f59e0b; flex-shrink: 0; }
+
+/* ============================================================
+   v3.5.0 — AI AGENT HERO FX FULL MÀN (GLM 5.3 mặc định)
+   Lớp fixed toàn viewport nằm DƯỚI nội dung (z-index 0), thuần CSS,
+   không JS/ảnh ngoài; tôn trọng prefers-reduced-motion.
+   ============================================================ */
+
+/* Container: fixed full màn, pointer-events none để không chặn click */
+.ai-hero-fx {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    --fx1: color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent);
+    --fx2: color-mix(in srgb, #7c3aed 40%, transparent);
+    --fx3: color-mix(in srgb, #10b981 32%, transparent);
+}
+
+/* Nền canvas tối hơn chút để hiệu ứng nổi (chỉ ở trang hồ sơ hero) */
+.profile-page-ai-hero {
+    position: relative;
+    z-index: 1;
+    background:
+        radial-gradient(1000px 500px at 50% -10%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent), transparent 70%),
+        var(--bg-canvas);
+}
+
+/* 1) AURORA — 3 dải sáng cực cuộn chậm qua lại */
+.ai-hero-fx-aurora {
+    position: absolute;
+    inset: -40%;
+    background:
+        radial-gradient(38% 30% at 22% 28%, var(--fx1), transparent 68%),
+        radial-gradient(34% 26% at 78% 20%, var(--fx2), transparent 66%),
+        radial-gradient(40% 34% at 55% 82%, var(--fx3), transparent 70%);
+    filter: blur(52px) saturate(135%);
+    opacity: 0.5;
+    animation: ai-fx-aurora-drift 26s ease-in-out infinite alternate;
+}
+@keyframes ai-fx-aurora-drift {
+    0%   { transform: translate3d(-4%, -2%, 0) rotate(-3deg) scale(1); }
+    50%  { transform: translate3d(3%, 3%, 0) rotate(2deg) scale(1.08); }
+    100% { transform: translate3d(-2%, 4%, 0) rotate(-1deg) scale(1.03); }
+}
+
+/* 2) HẠT SAO — 2 lớp box-shadow chấm sáng trôi ngược chiều */
+.ai-hero-fx-stars {
+    position: absolute;
+    inset: 0;
+}
+.ai-hero-fx-stars::before,
+.ai-hero-fx-stars::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: transparent;
+}
+.ai-hero-fx-stars::before {
+    width: 2px; height: 2px;
+    box-shadow:
+        8vw 12vh 0 0 var(--fx1), 20vw 68vh 0 -0.5px #fff5,
+        32vw 34vh 0 0 var(--fx2), 44vw 82vh 0 -0.5px var(--fx1),
+        56vw 18vh 0 0 #fff4, 66vw 54vh 0 0 var(--fx3),
+        76vw 30vh 0 -0.5px var(--fx1), 88vw 74vh 0 0 #fff5,
+        14vw 88vh 0 0 var(--fx2), 38vw 8vh 0 -0.5px #fff6,
+        62vw 92vh 0 0 var(--fx1), 92vw 12vh 0 0 var(--fx3),
+        4vw 46vh 0 -0.5px #fff4, 48vw 44vh 0 0 var(--fx2),
+        70vw 66vh 0 -0.5px #fff5, 26vw 56vh 0 0 var(--fx1),
+        84vw 48vh 0 0 #fff4, 58vw 76vh 0 -0.5px var(--fx3);
+    animation: ai-fx-stars-rise 60s linear infinite;
+    opacity: 0.85;
+}
+.ai-hero-fx-stars::after {
+    width: 3px; height: 3px;
+    box-shadow:
+        12vw 24vh 0 0 #fff3, 28vw 78vh 0 0 var(--fx1),
+        40vw 40vh 0 0 #fff4, 52vw 86vh 0 0 var(--fx2),
+        64vw 22vh 0 0 #fff3, 80vw 58vh 0 0 var(--fx1),
+        94vw 36vh 0 0 #fff4, 6vw 64vh 0 0 var(--fx3),
+        34vw 16vh 0 0 #fff5, 72vw 90vh 0 0 var(--fx1);
+    animation: ai-fx-stars-rise 90s linear infinite;
+    animation-delay: -30s;
+    opacity: 0.6;
+}
+@keyframes ai-fx-stars-rise {
+    from { transform: translate3d(0, 12vh, 0); }
+    to   { transform: translate3d(-6vw, -110vh, 0); }
+}
+
+/* 3) LƯỚI NEURON — perspective grid chạy về phía sau */
+.ai-hero-fx-grid {
+    position: absolute;
+    inset: auto -60% -22% -60%;
+    height: 62%;
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 1px, transparent 1px);
+    background-size: 56px 56px;
+    transform: perspective(520px) rotateX(58deg);
+    transform-origin: 50% 0;
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
+    animation: ai-fx-grid-run 9s linear infinite;
+    opacity: 0.5;
+}
+@keyframes ai-fx-grid-run {
+    from { background-position: 0 0, 0 0; }
+    to   { background-position: 0 56px, 56px 0; }
+}
+
+/* 4) ORB — 3 quả cầu sáng bay quỹ đạo lệch nhau */
+.ai-hero-fx-orbs i {
+    position: absolute;
+    display: block;
+    border-radius: 50%;
+    filter: blur(2px);
+    opacity: 0.75;
+}
+.ai-hero-fx-orbs i:nth-child(1) {
+    width: 10px; height: 10px;
+    background: radial-gradient(circle, #fff, var(--fx1));
+    box-shadow: 0 0 18px 6px color-mix(in srgb, var(--ai-accent, #0ea5e9) 45%, transparent);
+    animation: ai-fx-orb-a 17s ease-in-out infinite alternate;
+}
+.ai-hero-fx-orbs i:nth-child(2) {
+    width: 7px; height: 7px;
+    background: radial-gradient(circle, #fff, var(--fx2));
+    box-shadow: 0 0 14px 5px #7c3aed66;
+    animation: ai-fx-orb-b 23s ease-in-out infinite alternate;
+}
+.ai-hero-fx-orbs i:nth-child(3) {
+    width: 12px; height: 12px;
+    background: radial-gradient(circle, #fff, var(--fx3));
+    box-shadow: 0 0 22px 8px #10b98155;
+    animation: ai-fx-orb-c 29s ease-in-out infinite alternate;
+}
+@keyframes ai-fx-orb-a {
+    0%   { top: 16%; left: 6%;  transform: translate(0, 0); }
+    50%  { top: 64%; left: 44%; transform: translate(30px, -40px) scale(1.25); }
+    100% { top: 30%; left: 86%; transform: translate(-20px, 30px) scale(0.9); }
+}
+@keyframes ai-fx-orb-b {
+    0%   { top: 76%; left: 14%; transform: translate(0, 0) scale(0.85); }
+    50%  { top: 22%; left: 58%; transform: translate(-40px, 26px); }
+    100% { top: 58%; left: 90%; transform: translate(16px, -22px) scale(1.3); }
+}
+@keyframes ai-fx-orb-c {
+    0%   { top: 40%; left: 92%; transform: translate(0, 0); }
+    50%  { top: 80%; left: 38%; transform: translate(34px, 24px) scale(0.8); }
+    100% { top: 12%; left: 10%; transform: translate(-26px, -14px); }
+}
+
+/* 5) TIA QUÉT — dải sáng mỏng lướt dọc màn hình mỗi 8s */
+.ai-hero-fx-scan {
+    position: absolute;
+    inset-inline: 0;
+    top: -14%;
+    height: 13%;
+    background: linear-gradient(to bottom,
+        transparent,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 42%,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 50%,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 58%,
+        transparent);
+    opacity: 0;
+    animation: ai-fx-scan-sweep 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes ai-fx-scan-sweep {
+    0%   { top: -16%; opacity: 0; }
+    8%   { opacity: 0.9; }
+    55%  { opacity: 0.65; }
+    100% { top: 108%; opacity: 0; }
+}
+
+/* 6) VIGNETTE — hào quang biên màn hình thở nhẹ */
+.ai-hero-fx-vignette {
+    position: absolute;
+    inset: 0;
+    box-shadow:
+        inset 0 0 140px 44px color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent),
+        inset 0 0 42px 10px color-mix(in srgb, #7c3aed 9%, transparent);
+    animation: ai-fx-vignette-breathe 7s ease-in-out infinite alternate;
+}
+@keyframes ai-fx-vignette-breathe {
+    from { opacity: 0.55; }
+    to   { opacity: 1; }
+}
+
+/* Hero: tăng cấp avatar + tên cho GLM 5.3 */
+.profile-page-ai-hero .profile-meta h1 {
+    text-shadow:
+        0 0 22px color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent),
+        0 0 60px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+}
+.profile-page-ai-hero .profile-avatar .avatar,
+.profile-page-ai-hero .profile-avatar img.avatar {
+    box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent),
+        0 0 26px color-mix(in srgb, var(--ai-accent, #0ea5e9) 48%, transparent),
+        0 0 70px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+}
+
+/* Mobile: giảm opacity tiết kiệm pin/GPU */
+@media (max-width: 640px) {
+    .ai-hero-fx { opacity: 0.7; }
+    .ai-hero-fx-grid { height: 40%; opacity: 0.35; }
+    .ai-hero-fx-aurora { filter: blur(38px) saturate(125%); opacity: 0.42; }
+}
+
+/* Người dùng bật giảm chuyển động: đứng yên, chỉ còn gradient tĩnh */
+@media (prefers-reduced-motion: reduce) {
+    .ai-hero-fx-aurora,
+    .ai-hero-fx-stars::before,
+    .ai-hero-fx-stars::after,
+    .ai-hero-fx-grid,
+    .ai-hero-fx-orbs i,
+    .ai-hero-fx-scan,
+    .ai-hero-fx-vignette {
+        animation: none !important;
+    }
+    .ai-hero-fx-scan { display: none; }
+}
+
+/* ============================================================
+   v3.5.0 — CARD THÔNG SỐ CHI TIẾT (hồ sơ AI công khai)
+   ============================================================ */
+.ai-params-card {
+    margin-top: 14px;
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+    border-radius: 12px;
+    background:
+        linear-gradient(160deg,
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, var(--bg-card, #141a24)),
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 3%, var(--bg-card, #141a24)));
+    padding: 12px 14px;
+    text-align: left;
+    max-width: 560px;
+}
+.ai-params-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 90%, var(--fg-default, #eee));
+    margin-bottom: 8px;
+}
+.ai-params-total {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-muted, #9aa4b2);
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent);
+    border-radius: 999px;
+    padding: 1px 10px;
+}
+.ai-params-group-head {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted, #9aa4b2);
+    margin: 10px 0 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, transparent);
+}
+.ai-params-group-head.is-activation {
+    color: color-mix(in srgb, #f59e0b 80%, var(--fg-default, #eee));
+    border-bottom-color: #f59e0b44;
+}
+.ai-params-table { margin: 0; }
+.ai-params-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 4px 0;
+    font-size: 13px;
+    border-bottom: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, transparent);
+    cursor: help;
+}
+.ai-params-row:last-child { border-bottom: 0; }
+.ai-params-row dt {
+    flex: 0 0 42%;
+    color: var(--fg-muted, #9aa4b2);
+    font-weight: 600;
+}
+.ai-params-row dd {
+    margin: 0;
+    flex: 1;
+    color: var(--fg-default, #e5e9f0);
+    font-family: var(--font-mono, monospace);
+    overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   v3.5.0 — PANEL THAM SỐ (trang /admin/ai-agents)
+   ============================================================ */
+.ai-params-panel {
+    margin-top: 10px;
+    border: 1px solid var(--border, #2a3242);
+    border-radius: 10px;
+    background: var(--bg-card, #141a24);
+    padding: 8px 12px;
+}
+.ai-params-panel summary {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--fg-muted, #9aa4b2);
+    user-select: none;
+}
+.ai-params-panel summary:hover { color: var(--fg-default, #eee); }
+.ai-params-count {
+    margin-left: auto;
+    font-size: 11px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent);
+    border-radius: 999px;
+    padding: 1px 8px;
+}
+.ai-params-list { margin: 10px 0 8px; }
+.ai-param-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 5px 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 5%, transparent);
+    margin-bottom: 4px;
+}
+.ai-param-row.ai-param-activation {
+    background: color-mix(in srgb, #f59e0b 7%, transparent);
+}
+.ai-param-group-tag {
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 1px 6px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent);
+    color: var(--ai-accent, #0ea5e9);
+    white-space: nowrap;
+}
+.ai-param-activation .ai-param-group-tag {
+    background: #f59e0b22;
+    color: #f59e0b;
+}
+.ai-param-key { font-weight: 700; color: var(--fg-default, #eee); }
+.ai-param-sep { color: var(--fg-muted, #9aa4b2); }
+.ai-param-value {
+    font-family: var(--font-mono, monospace);
+    color: var(--fg-muted, #c3ccd9);
+    overflow-wrap: anywhere;
+}
+.ai-param-private { font-size: 10px; color: #ef4444; }
+.ai-param-add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.ai-param-add-grid {
+    display: grid;
+    grid-template-columns: 1.1fr 1.4fr 0.9fr 0.5fr;
+    gap: 8px;
+}
+.ai-param-public-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--fg-muted, #9aa4b2);
+}
+@media (max-width: 720px) {
+    .ai-param-add-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ============================================================
+   v3.5.0 — NÚT "ĐĂNG NHẬP TÀI KHOẢN NÀY" (admin trên hồ sơ AI)
+   ============================================================ */
+.profile-impersonate-form { display: inline-flex; }
+.btn-impersonate-ai {
+    background: linear-gradient(135deg, var(--ai-accent, #0ea5e9), #7c3aed) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--ai-accent, #0ea5e9) 45%, transparent);
+    animation: ai-impersonate-pulse 2.6s ease-in-out infinite;
+}
+@keyframes ai-impersonate-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ai-accent, #0ea5e9) 42%, transparent); }
+    50%      { box-shadow: 0 0 0 7px color-mix(in srgb, var(--ai-accent, #0ea5e9) 6%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .btn-impersonate-ai { animation: none !important; }
+}

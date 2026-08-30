@@ -3,6 +3,21 @@
 {% block title %}{{ user.display_name }} (@{{ user.username }}){% endblock %}
 
 {% block content %}
+{# v3.5.0 — HIỆU ỨNG HERO FULL MÀN cho AI Agent MẶC ĐỊNH (GLM 5.3):
+   lớp fixed toàn viewport (aurora + hạt sao + lưới neuron + tia quét +
+   hào quang) nằm DƯỚI nội dung (z-index 0), trang trí thuần CSS — không JS,
+   không ảnh ngoài, tôn trọng prefers-reduced-motion. Các AI Agent thường
+   vẫn giữ hiệu ứng viền cũ (profile-page-ai). #}
+{% if ai_is_default_agent %}
+<div class="ai-hero-fx" aria-hidden="true">
+    <div class="ai-hero-fx-aurora"></div>
+    <div class="ai-hero-fx-stars"></div>
+    <div class="ai-hero-fx-grid"></div>
+    <div class="ai-hero-fx-orbs"><i></i><i></i><i></i></div>
+    <div class="ai-hero-fx-scan"></div>
+    <div class="ai-hero-fx-vignette"></div>
+</div>
+{% endif %}
 {# v2.8.0 — Hiệu ứng hồ sơ ĐƠN GIẢN HOÁ theo yêu cầu:
    - Admin bật `role_badge_effects`: chỉ GIỮ 2 hiệu ứng rainbow
      (1) khung chức vụ lửa `role-badge-admin` (xuống dưới) và
@@ -20,7 +35,7 @@
    không clip theo chữ → chữ rainbow biến mất hoàn toàn trên
    Chrome, đã gặp trên prod v2.6.0–v2.7.0). Span con thì hoạt động
    đúng (chứng minh qua role-badge-text). #}
-<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}{% if ai_profile.is_some() %} profile-page-ai{% endif %}"
+<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}{% if ai_profile.is_some() %} profile-page-ai{% endif %}{% if ai_is_default_agent %} profile-page-ai-hero{% endif %}"
          {% match ai_profile %}{% when Option::Some with (p) %}style="--ai-accent: {{ p.accent_color }}"{% when Option::None %}{% endmatch %}>
     <div class="profile-header">
         <div class="profile-cover"></div>
@@ -121,6 +136,41 @@
                     {% when Option::None %}
                     {% endmatch %}
                 </div>
+                {# === v3.5.0 — KHAI BÁO THAM SỐ + THAM SỐ KÍCH HOẠT ===
+                   Chỉ render param is_public (lọc ở handler). Hai nhóm
+                   đã tách sẵn: spec (khai báo model) + activation (kích
+                   hoạt hệ thống) — "đầy đủ thông tin chi tiết" AI Agent. #}
+                {% if !ai_params_spec.is_empty() || !ai_params_activation.is_empty() %}
+                <div class="ai-params-card" aria-label="Thông số chi tiết AI Agent">
+                    <div class="ai-params-card-head">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/></svg>
+                        <span>Thông số chi tiết</span>
+                        <span class="ai-params-total">{{ ai_params_spec.len() + ai_params_activation.len() }} tham số</span>
+                    </div>
+                    {% if !ai_params_spec.is_empty() %}
+                    <div class="ai-params-group-head">📋 Khai báo tham số</div>
+                    <dl class="ai-params-table">
+                        {% for q in &ai_params_spec %}
+                        <div class="ai-params-row" title="{{ q.description }}">
+                            <dt>{{ q.param_key }}</dt>
+                            <dd>{{ q.param_value }}</dd>
+                        </div>
+                        {% endfor %}
+                    </dl>
+                    {% endif %}
+                    {% if !ai_params_activation.is_empty() %}
+                    <div class="ai-params-group-head is-activation">⚡ Tham số kích hoạt</div>
+                    <dl class="ai-params-table">
+                        {% for q in &ai_params_activation %}
+                        <div class="ai-params-row" title="{{ q.description }}">
+                            <dt>{{ q.param_key }}</dt>
+                            <dd>{{ q.param_value }}</dd>
+                        </div>
+                        {% endfor %}
+                    </dl>
+                    {% endif %}
+                </div>
+                {% endif %}
                 {# === v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (sanitized) ===
                    Chỉ hiện task/action/trạng thái/phần trăm/thời gian.
                    Message + metadata + IP bị LOẠI ở handler — không render
@@ -251,6 +301,21 @@
                     Chỉnh sửa hồ sơ
                 </a>
                 {% endmatch %}
+                {% endif %}
+                {# === v3.5.0 — NÚT ĐĂNG NHẬP THAY AI AGENT (CHỈ ADMIN) ===
+                   can_impersonate_ai đã lọc ở handler: người xem PHẢI là
+                   admin (is_admin — mod không thấy), hồ sơ là AI Agent, và
+                   không phải chính mình. POST về endpoint impersonation có
+                   sẵn (audit log + ticket one-shot + khôi phục 2 giờ). #}
+                {% if can_impersonate_ai %}
+                <form method="post" action="/admin/ai-agents/{{ user.id }}/login-as"
+                      data-confirm="ĐĂNG NHẬP vào tài khoản AI Agent {{ user.display_name }}? Phiên admin của bạn được lưu 2 giờ — dùng nút Đăng xuất để quay lại. Thao tác có audit log."
+                      class="profile-impersonate-form">
+                    <button type="submit" class="btn btn-primary btn-impersonate-ai" title="Chỉ dành cho quản trị viên — đăng nhập với tư cách AI Agent này">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
+                        Đăng nhập tài khoản này
+                    </button>
+                </form>
                 {% endif %}
             </div>
         </div>

@@ -15,8 +15,8 @@
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AiAgentCredential, AiAgentProfile, AiAgentToken, AiAgentWithProfile, AiProgressReport,
-    AiProgressReportWithAgent, AiTaskStatus, User,
+    AiAgentCredential, AiAgentParam, AiAgentProfile, AiAgentToken, AiAgentWithProfile,
+    AiProgressReport, AiProgressReportWithAgent, AiTaskStatus, User,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -571,6 +571,208 @@ impl AiAgentRepo {
         .execute(pool)
         .await?;
         Ok(res.rows_affected())
+    }
+
+    // ============================================================
+    // v3.5.0 — AI AGENT PARAMS (khai báo tham số + tham số kích hoạt)
+    // ============================================================
+
+    /// Danh sách tham số của 1 agent, sắp xếp theo nhóm rồi thứ tự hiển thị.
+    /// `public_only = true` → chỉ tham số công khai (dùng cho hồ sơ public).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn list_params(
+        pool: &PgPool,
+        user_id: Uuid,
+        public_only: bool,
+    ) -> AppResult<Vec<AiAgentParam>> {
+        let sql = if public_only {
+            r#"SELECT id, user_id, param_key, param_value, param_group, description,
+                      is_public, display_order, updated_at
+               FROM ai_agent_params
+               WHERE user_id = $1 AND is_public = TRUE
+               ORDER BY param_group ASC, display_order ASC, param_key ASC"#
+        } else {
+            r#"SELECT id, user_id, param_key, param_value, param_group, description,
+                      is_public, display_order, updated_at
+               FROM ai_agent_params
+               WHERE user_id = $1
+               ORDER BY param_group ASC, display_order ASC, param_key ASC"#
+        };
+        let rows = sqlx::query_as::<_, AiAgentParam>(sql)
+            .bind(user_id)
+            .fetch_all(pool)
+            .await?;
+        Ok(rows)
+    }
+
+    /// Map user_id → danh sách tham số (trang admin load 1 query cho tất cả).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn params_map(
+        pool: &PgPool,
+    ) -> AppResult<std::collections::HashMap<Uuid, Vec<AiAgentParam>>> {
+        let rows = sqlx::query_as::<_, AiAgentParam>(
+            r#"SELECT id, user_id, param_key, param_value, param_group, description,
+                      is_public, display_order, updated_at
+               FROM ai_agent_params
+               ORDER BY user_id, param_group ASC, display_order ASC, param_key ASC"#,
+        )
+        .fetch_all(pool)
+        .await?;
+        let mut map: std::collections::HashMap<Uuid, Vec<AiAgentParam>> =
+            std::collections::HashMap::new();
+        for r in rows {
+            map.entry(r.user_id).or_default().push(r);
+        }
+        Ok(map)
+    }
+
+    /// Thêm mới / cập nhật 1 tham số (upsert theo user_id + param_key).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi key/value không hợp lệ hoặc DB fail.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn upsert_param(
+        pool: &PgPool,
+        user_id: Uuid,
+        param_key: &str,
+        param_value: &str,
+        param_group: &str,
+        description: &str,
+        is_public: bool,
+        display_order: i32,
+        updated_by: Uuid,
+    ) -> AppResult<()> {
+        let key = param_key.trim();
+        let value = param_value.trim();
+        if key.is_empty() || key.chars().count() > 100 {
+            return Err(AppError::BadRequest(
+                "Tên tham số không được trống, tối đa 100 ký tự".into(),
+            ));
+        }
+        if value.is_empty() || value.chars().count() > 500 {
+            return Err(AppError::BadRequest(
+                "Giá trị tham số không được trống, tối đa 500 ký tự".into(),
+            ));
+        }
+        let group = match param_group {
+            "activation" => "activation",
+            _ => "spec",
+        };
+        let descr: String = description.chars().take(500).collect();
+        sqlx::query(
+            r#"INSERT INTO ai_agent_params
+                    (user_id, param_key, param_value, param_group, description,
+                     is_public, display_order, updated_by)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               ON CONFLICT (user_id, param_key) DO UPDATE SET
+                 param_value = EXCLUDED.param_value,
+                 param_group = EXCLUDED.param_group,
+                 description = EXCLUDED.description,
+                 is_public = EXCLUDED.is_public,
+                 display_order = EXCLUDED.display_order,
+                 updated_by = EXCLUDED.updated_by,
+                 updated_at = NOW()"#,
+        )
+        .bind(user_id)
+        .bind(key)
+        .bind(value)
+        .bind(group)
+        .bind(descr)
+        .bind(is_public)
+        .bind(display_order)
+        .bind(updated_by)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Xoá 1 tham số (thuộc về đúng agent — guard user_id trong WHERE).
+    /// Trả về `true` nếu xoá được.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn delete_param(pool: &PgPool, user_id: Uuid, param_id: i64) -> AppResult<bool> {
+        let res = sqlx::query("DELETE FROM ai_agent_params WHERE id = $1 AND user_id = $2")
+            .bind(param_id)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// Seed bộ tham số kích hoạt chuẩn cho agent mới tạo (v3.5.0 — mọi AI
+    /// Agent phải có khai báo tham số + tham số kích hoạt đầy đủ).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn seed_activation_params(
+        pool: &PgPool,
+        user_id: Uuid,
+        password_expires_days: i64,
+        admin_id: Uuid,
+    ) -> AppResult<()> {
+        let seed: &[(&str, &str, &str)] = &[
+            (
+                "Trạng thái",
+                "Đang hoạt động",
+                "Agent đang trực trên Louis Space",
+            ),
+            (
+                "Cơ chế kích hoạt",
+                "Admin tạo + cấp mật khẩu",
+                "Tài khoản do admin chủ động tạo, không qua secret tự đăng ký",
+            ),
+            (
+                "Phương thức đăng nhập",
+                "Username + Mật khẩu (Argon2id)",
+                "Mật khẩu hash Argon2id, có thời hạn do admin đặt",
+            ),
+            (
+                "Thời hạn mật khẩu",
+                "PLACEHOLDER_DAYS ngày",
+                "Hết hạn phải liên hệ admin đặt lại",
+            ),
+            (
+                "Giới hạn tốc độ",
+                "10 lần / 10 phút / IP",
+                "Chống dò mật khẩu brute-force",
+            ),
+            (
+                "Khoá tài khoản",
+                "5 lần sai → khoá 15 phút",
+                "Tự khoá khi đăng nhập sai liên tiếp",
+            ),
+            (
+                "Thu hồi quyền",
+                "Admin đặt lại / thu hồi mật khẩu",
+                "Thu hồi đồng thời xoá mọi phiên đang sống",
+            ),
+        ];
+        for (i, (k, v, d)) in seed.iter().enumerate() {
+            let value = if *k == "Thời hạn mật khẩu" {
+                format!("{password_expires_days} ngày")
+            } else {
+                (*v).to_string()
+            };
+            // Fail-soft từng dòng: seed không được làm hỏng flow tạo agent.
+            let _ = Self::upsert_param(
+                pool,
+                user_id,
+                k,
+                &value,
+                "activation",
+                d,
+                true,
+                10 + (i as i32) * 10,
+                admin_id,
+            )
+            .await;
+        }
+        Ok(())
     }
 
     /// Admin đặt trạng thái verified cho AI Agent (hoặc bỏ verified).

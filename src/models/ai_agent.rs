@@ -49,6 +49,43 @@ impl AiTaskStatus {
     }
 }
 
+/// Một tham số của AI Agent (v3.5.0 — bảng `ai_agent_params`).
+///
+/// Hai nhóm:
+/// - `"spec"` — **khai báo tham số**: thông số kỹ thuật model (context
+///   window, temperature, kiến trúc...) hiển thị trên hồ sơ công khai.
+/// - `"activation"` — **tham số kích hoạt**: điều kiện/trạng thái để agent
+///   hoạt động trong hệ thống (cơ chế cấp quyền, rate-limit, TTL phiên...).
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgentParam {
+    pub id: i64,
+    pub user_id: Uuid,
+    pub param_key: String,
+    pub param_value: String,
+    pub param_group: String,
+    pub description: String,
+    pub is_public: bool,
+    pub display_order: i32,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl AiAgentParam {
+    /// Nhãn tiếng Việt của nhóm tham số.
+    #[must_use]
+    pub fn group_label(&self) -> &'static str {
+        match self.param_group.as_str() {
+            "activation" => "Tham số kích hoạt",
+            _ => "Khai báo tham số",
+        }
+    }
+
+    /// `true` nếu là tham số kích hoạt.
+    #[must_use]
+    pub fn is_activation(&self) -> bool {
+        self.param_group == "activation"
+    }
+}
+
 /// Hồ sơ AI Agent (1-1 với `users`).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AiAgentProfile {
