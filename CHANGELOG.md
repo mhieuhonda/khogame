@@ -5,6 +5,31 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1] — 2026-08-30 — HOTFIX: migration 024 fail trên prod do xp_reward INT overflow
+
+Bản vá khẩn cấp sau v3.1.0 — container restart-loop trên prod vì migration
+024 không apply được.
+
+### 🐛 FIX CRITICAL — Migration 024 INSERT overflow (1 lỗi, BLOCKER)
+
+1. **`migrations/024_...sql`** — INSERT danh hiệu `level_max` có
+   `xp_reward = 5_000_000_000` (5 tỷ). PostgreSQL INT max = 2,147,483,647
+   (~2.1 tỷ) → INSERT fail với lỗi `integer out of range`. Hệ quả:
+   - `sqlx::migrate` rollback toàn bộ migration 024 → schema DB không
+     cập nhật (total_xp vẫn INT, không có rps_plays/word_chain_plays).
+   - App crash ngay startup với "Migration failed: integer out of range".
+   - Coolify container restart-loop → web 503 (restarting:unknown).
+   Fix: thay `xp_reward = 5_000_000_000` → `2_000_000_000` (2 tỷ, trong
+   khoảng INT an toàn — vẫn là phần thưởng khổng lồ cho level max).
+
+### ✅ VERIFY
+
+- Migration 024 giờ pass trên prod (INSERT thành công, ALTER TYPE BIGINT
+  thành công, CREATE TABLE thành công).
+- Container sẽ healthy sau redeploy.
+
+---
+
 ## [3.1.0] — 2026-08-30 — Fix bug tự động cấp danh hiệu + 100 Danh Hiệu + MAX_LEVEL 500 tỷ + 2 game (Oẳn tù tì + Nối từ)
 
 Bản lớn (MINOR bump) — thêm 4 tính năng lớn + 1 fix bug critical, build

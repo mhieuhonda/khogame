@@ -51,7 +51,7 @@ INSERT INTO achievements (id, title, description, icon, xp_reward, category, sor
     ('level_10000',    'Vô Ảnh',            'Đạt cấp độ 10.000',                            '🌑', 250000,'level', 860),
     ('level_100000',   'Vô Hình',            'Đạt cấp độ 100.000',                           '⬛', 500000,'level', 870),
     ('level_1m',       'Thái Cực',          'Đạt cấp độ 1.000.000 (một triệu)',             '⚪', 1000000,'level', 880),
-    ('level_max',      'Vô Biên',           'Đạt cấp độ tối đa — 500 TỶ!',                  '♾️', 5000000000,'level', 890),
+    ('level_max',      'Vô Biên',           'Đạt cấp độ tối đa — 500 TỶ!',                  '♾️', 2000000000,'level', 890),
 
     -- === STREAK TIERS (5) — chuỗi điểm danh dài hơn ===
     ('streak_50',      'Sắt Thép',          'Điểm danh 50 ngày liên tiếp',                   '🛡️', 400,   'streak', 900),
