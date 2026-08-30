@@ -98,6 +98,22 @@ impl TriviaRepo {
         pool: &PgPool,
         user_id: Uuid,
     ) -> AppResult<Vec<TriviaQuestionPublic>> {
+        // v3.4.2 — giới hạn theo quota còn lại hôm nay: đã trả lời đủ 3 câu
+        // → không trả câu nào (trước đây vẫn render 3 câu mới + form, submit
+        // mới bị chặn “đủ 3 câu” — UX mâu thuẫn với cap mới).
+        let answered_sql = format!(
+            r#"SELECT COUNT(*) FROM trivia_answers
+               WHERE user_id = $1 AND answered_date = {}"#,
+            crate::utils::SQL_TODAY_VN
+        );
+        let answered_today: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(answered_sql.as_str()))
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+        let remaining = (TRIVIA_PER_DAY - answered_today).max(0);
+        if remaining == 0 {
+            return Ok(Vec::new());
+        }
         let sql = format!(
             r#"SELECT q.id, q.question, q.options
                FROM trivia_questions q
@@ -107,9 +123,8 @@ impl TriviaRepo {
                    WHERE a.question_id = q.id AND a.user_id = $1
                  )
                ORDER BY hashtext($1::text || q.id::text || {}::text)
-               LIMIT {}"#,
-            crate::utils::SQL_TODAY_VN,
-            TRIVIA_PER_DAY
+               LIMIT {remaining}"#,
+            crate::utils::SQL_TODAY_VN
         );
         let rows = sqlx::query_as::<_, TriviaQuestionPublic>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(user_id)
@@ -164,9 +179,31 @@ impl TriviaRepo {
         }
         let is_correct = answer_index == correct_index;
         let mut tx = pool.begin().await?;
+        // v3.4.2 (audit vòng 4): advisory lock theo user + đếm lại quota
+        // TRONG tx — N request song song trả N câu khác nhau cùng lúc đều
+        // vượt pre-check ngoài đời (mỗi câu +10 XP). Lock cấp user serialize
+        // các answer của CHÍNH user đó (kẻ farm), không ảnh hưởng user khác.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('trivia:' || $1::text))")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        let answered_sql = format!(
+            r#"SELECT COUNT(*) FROM trivia_answers
+               WHERE user_id = $1 AND answered_date = {}"#,
+            crate::utils::SQL_TODAY_VN
+        );
+        let answered_today: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(answered_sql.as_str()))
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if answered_today >= TRIVIA_PER_DAY {
+            tx.rollback().await?;
+            return Err(AppError::BadRequest(
+                "Bạn đã trả lời đủ 3 câu hỏi hôm nay — quay lại vào ngày mai!".into(),
+            ));
+        }
         // PK (user_id, question_id) chống double-answer — DO NOTHING rồi
-        // kiểm rows_affected: trượt race → coi như đã trả lời. (Đếm quota
-        // lại trong tx: race N-tab cùng giờ không vượt 3 câu.)
+        // kiểm rows_affected: trượt race → coi như đã trả lời.
         let res = sqlx::query(
             r#"INSERT INTO trivia_answers (user_id, question_id, answer_index, is_correct)
                VALUES ($1, $2, $3, $4)
@@ -247,26 +284,35 @@ impl TriviaRepo {
             return Ok(0);
         }
         let sql = format!(
-            r#"INSERT INTO xp_events (user_id, reason, amount)
-               SELECT $1, 'trivia_bonus', $2
-               WHERE NOT EXISTS (
-                 SELECT 1 FROM xp_events
-                 WHERE user_id = $1 AND reason = 'trivia_bonus'
-                   AND created_at >= {}
-               )
-               RETURNING id"#,
+            r#"SELECT COUNT(*) FROM xp_events
+               WHERE user_id = $1 AND reason = 'trivia_bonus'
+                 AND created_at >= {}"#,
             crate::utils::SQL_TODAY_START_VN
         );
+        // v3.4.2 (audit vòng 4): INSERT..SELECT WHERE NOT EXISTS KHÔNG atomic
+        // dưới READ COMMITTED khi cột không có unique constraint — 2 tx cùng
+        // thấy NOT EXISTS → cùng insert → 2× bonus. Giờ dùng advisory lock
+        // theo user (giống answer) serialize check-then-insert trong 1 tx.
         let mut tx = pool.begin().await?;
-        let inserted: Option<uuid::Uuid> = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
-            .bind(user_id)
-            .bind(TRIVIA_ALL_BONUS)
-            .fetch_optional(&mut *tx)
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('trivia:' || $1::text))")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
             .await?;
-        if inserted.is_none() {
+        let already: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(user_id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if already > 0 {
             tx.rollback().await?;
             return Ok(0);
         }
+        sqlx::query(
+            "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'trivia_bonus', $2)",
+        )
+        .bind(user_id)
+        .bind(TRIVIA_ALL_BONUS)
+        .execute(&mut *tx)
+        .await?;
         sqlx::query(
             r#"INSERT INTO user_xp_totals (user_id, total_xp)
                VALUES ($1, $2)

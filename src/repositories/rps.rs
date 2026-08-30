@@ -824,6 +824,15 @@ impl RpsRepo {
             .map(|c: i64| c < RPS_DAILY_CAP)
             .unwrap_or(false);
         let awarded_xp = if under_cap { my_xp } else { 0 };
+        if !under_cap {
+            // v3.4.2 (audit vòng 4): match đã resolve với xp1=my_xp trước khi
+            // biết user vượt cap — sửa lại xp1=0 để poll sau (resolved_from_row)
+            // không hiển thị XP chưa được cộng (bookkeeping nhất quán).
+            sqlx::query("UPDATE rps_matches SET xp1 = 0 WHERE id = $1")
+                .bind(m.id)
+                .execute(&mut *tx)
+                .await?;
+        }
         if under_cap {
             insert_play_tx(
                 &mut tx,

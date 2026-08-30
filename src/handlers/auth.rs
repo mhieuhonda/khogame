@@ -195,16 +195,12 @@ pub async fn google_callback(
 
     // Tự động cấp admin cho ADMIN_EMAIL (bootstrap siêu-admin).
     // v3.4.2 FIX (audit "default superuser"): ADMIN_EMAIL không set →
-    // TỪ CHỐI auto-grant (config trả chuỗi rỗng, không còn fallback Gmail
-    // cố định). Log error một lần để operator phát hiện ngay khi deploy.
-    if state.config.admin_email.is_empty() {
-        tracing::error!(
-            "ADMIN_EMAIL chưa được set — TỪ CHỐI tự cấp quyền admin. \
-             Set ADMIN_EMAIL trong env để bootstrap tài khoản quản trị."
-        );
-    } else if userinfo
-        .email
-        .eq_ignore_ascii_case(&state.config.admin_email)
+    // config trả chuỗi rỗng → TỪ CHỐI auto-grant (log error 1 lần ở
+    // startup). Không còn fallback Gmail cố định trên fork/redeploy.
+    if !state.config.admin_email.is_empty()
+        && userinfo
+            .email
+            .eq_ignore_ascii_case(&state.config.admin_email)
         && !user.role.is_admin()
     {
         UserRepo::set_role(&state.db, user.id, "admin").await?;
@@ -328,18 +324,49 @@ pub async fn logout(
     auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
     let _ = current_user;
 
-    // v3.3.0 — đang IMPERSONATE AI Agent → đăng xuất khỏi phiên AI là
-    // QUAY LẠI phiên admin gốc (nếu cookie impersonator còn hạn và phiên
-    // admin còn hợp lệ). Không phải login lại từ đầu.
-    if let Some(imp_token) = new_jar
+    // v3.5.0 FIX (audit vòng 5) — đang IMPERSONATE AI Agent → đăng xuất
+    // khỏi phiên AI là TIÊU THỤ ticket one-shot (đánh dấu used_at) rồi QUAY
+    // LẠI phiên admin bằng cách mint session MỚI. Bản v3.3.0 cũ hash ticket
+    // UUID rồi tra sessions → không bao giờ khớp (ticket không phải token)
+    // → admin bị đăng xuất hẳn MÀ ticket vẫn còn sống 2h (lộ = mở lại được).
+    if let Some(imp_raw) = new_jar
         .get(auth::IMPERSONATOR_COOKIE)
         .map(|c| c.value().to_string())
     {
-        let imp_hash = auth::hash_token(&imp_token);
-        if is_valid_staff_session(&state, &imp_hash).await {
-            auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
-            auth::set_session_cookie(&mut new_jar, &imp_token, &state.config.base_url);
-            return Ok((new_jar, Redirect::to("/admin/ai-agents")));
+        if let Ok(tid) = uuid::Uuid::parse_str(&imp_raw) {
+            let admin_id: Option<uuid::Uuid> = sqlx::query_scalar(
+                r#"UPDATE impersonation_tickets
+                   SET used_at = NOW()
+                   WHERE id = $1 AND used_at IS NULL AND expires_at > NOW()
+                   RETURNING admin_user_id"#,
+            )
+            .bind(tid)
+            .fetch_optional(&state.db)
+            .await?;
+            if let Some(admin_id) = admin_id {
+                if let Ok(Some(admin_user)) = UserRepo::find_by_id(&state.db, admin_id).await {
+                    if admin_user.role.is_staff() && !admin_user.is_banned {
+                        let token = auth::gen_session_token();
+                        let token_hash = auth::hash_token(&token);
+                        SessionRepo::create(
+                            &state.db,
+                            admin_user.id,
+                            &token_hash,
+                            "impersonation-restore",
+                            None,
+                            30,
+                        )
+                        .await?;
+                        tracing::warn!(
+                            admin = %admin_user.username,
+                            "Impersonation LOGOUT — tiêu thụ ticket, khôi phục phiên admin"
+                        );
+                        auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
+                        auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
+                        return Ok((new_jar, Redirect::to("/admin/ai-agents")));
+                    }
+                }
+            }
         }
     }
     auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
@@ -380,16 +407,4 @@ pub async fn unread_count(state: &AppState, user_id: uuid::Uuid) -> i64 {
     crate::repositories::NotificationRepo::unread_count(&state.db, user_id)
         .await
         .unwrap_or(0)
-}
-
-/// v3.3.0 — Token hash có phải là session HỢP LỆ của staff (admin/mod,
-/// không bị ban)? Dùng chung cho khôi phục phiên sau impersonation.
-pub(crate) async fn is_valid_staff_session(state: &AppState, token_hash: &str) -> bool {
-    let Ok(Some(uid)) = SessionRepo::find_user_by_token(&state.db, token_hash).await else {
-        return false;
-    };
-    let Ok(Some(u)) = UserRepo::find_by_id(&state.db, uid).await else {
-        return false;
-    };
-    u.role.is_staff() && !u.is_banned
 }

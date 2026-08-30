@@ -63,7 +63,9 @@ impl InteractionRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn toggle_bookmark(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
-        // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race)
+        // DELETE-first atomic — cùng mẫu toggle_like (chống double-click race).
+        // v3.4.2: check rows_affected INSERT — request thua race trả false
+        // (đúng 1 request báo "đã bookmark", tránh double event phía trên).
         let mut tx = pool.begin().await?;
         let deleted = sqlx::query("DELETE FROM bookmarks WHERE game_id = $1 AND user_id = $2")
             .bind(game_id)
@@ -74,15 +76,16 @@ impl InteractionRepo {
             tx.commit().await?;
             Ok(false)
         } else {
-            sqlx::query(
+            let inserted = sqlx::query(
                 "INSERT INTO bookmarks (game_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             )
             .bind(game_id)
             .bind(user_id)
             .execute(&mut *tx)
             .await?;
+            let bookmarked = inserted.rows_affected() > 0;
             tx.commit().await?;
-            Ok(true)
+            Ok(bookmarked)
         }
     }
 

@@ -2339,20 +2339,26 @@ pub async fn stop_impersonation(
     jar: CookieJar,
 ) -> AppResult<(CookieJar, Redirect)> {
     let mut new_jar = jar;
-    let Some(ticket_raw) = new_jar
-        .get(crate::auth::IMPERSONATOR_COOKIE)
-        .map(|c| c.value().to_string())
-    else {
-        // Không có cookie → không có gì để khôi phục, về trang chủ.
-        return Ok((new_jar, Redirect::to("/")));
-    };
-
-    // 1) Xoá session AI hiện tại (kg_session) — không để lại phiên sống.
+    // 1) Luôn xoá session AI ĐANG DÙNG (kg_session) — kể cả khi ticket đã
+    // hết hạn 2h (audit vòng 5: cookie ticket TTL 2h < session AI 24h —
+    // sau 2h stop là no-op, phiên AI sống thêm 22h vô nghĩa). Người gọi
+    // endpoint này chính là chủ cookie (SameSite=Lax chặn cross-site),
+    // xoá session của chính mình là an toàn.
     if let Some(cur) = new_jar.get(crate::auth::SESSION_COOKIE) {
         let cur_hash = crate::auth::hash_token(cur.value());
         let _ = SessionRepo::delete(&state.db, &cur_hash).await;
         crate::middleware::invalidate_session_cache(&cur_hash);
     }
+    let Some(ticket_raw) = new_jar
+        .get(crate::auth::IMPERSONATOR_COOKIE)
+        .map(|c| c.value().to_string())
+    else {
+        // Không có ticket → session AI đã xoá ở trên, clear cookie stripe
+        // về trang chủ với trạng thái đăng xuất.
+        crate::auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
+        crate::auth::clear_impersonator_cookie(&mut new_jar, &state.config.base_url);
+        return Ok((new_jar, Redirect::to("/")));
+    };
 
     // 2) Ticket one-shot: chỉ request nào set được used_at mới restore.
     let ticket_id = uuid::Uuid::parse_str(&ticket_raw).ok();

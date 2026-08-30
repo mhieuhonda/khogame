@@ -157,11 +157,22 @@ impl AppConfig {
             google_client_secret: env::var("GOOGLE_CLIENT_SECRET")
                 .map_err(|_| anyhow::anyhow!("GOOGLE_CLIENT_SECRET is required"))?,
             google_redirect_uri,
-            admin_email: env::var("ADMIN_EMAIL")
-                .ok()
-                .filter(|s| !s.trim().is_empty())
-                .map(|s| s.trim().to_ascii_lowercase())
-                .unwrap_or_default(),
+            admin_email: {
+                let e = env::var("ADMIN_EMAIL")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .unwrap_or_default();
+                if e.is_empty() {
+                    // Log MỘT LẦN ở startup (thay vì mỗi lần login như bản
+                    // đầu v3.4.2 — audit vòng 5: log noise).
+                    tracing::error!(
+                        "ADMIN_EMAIL chưa được set — TỪ CHỐI tự cấp quyền admin \
+                         khi Google login. Set ADMIN_EMAIL để bootstrap quản trị viên."
+                    );
+                }
+                e
+            },
             github_token: env::var("GITHUB_TOKEN").ok().filter(|s| !s.is_empty()),
             ai_agent_secret,
             ai_agent_enabled,

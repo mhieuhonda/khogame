@@ -815,6 +815,11 @@ impl WordChainRepo {
                     if let Some(dl) = m.move_deadline {
                         if Utc::now() > dl {
                             let loser_is_me = turn == user_id;
+                            // v3.4.2 FIX (audit vòng 4 — BUG ĐẢO WINNER):
+                            // nhánh cũ `Some(turn)` gán winner = người VỪA
+                            // HẾT GIỜ (= loser) khi ĐỐI THỦ poll trước —
+                            // sai kết quả + trả +4 XP cho người thua. Người
+                            // còn lại (không phải turn) mới là winner.
                             let winner = if loser_is_me {
                                 if m.player1_id == user_id {
                                     m.player2_id
@@ -822,7 +827,7 @@ impl WordChainRepo {
                                     Some(m.player1_id)
                                 }
                             } else {
-                                Some(turn)
+                                Some(user_id)
                             };
                             // v3.4.2 FIX (audit HIGH "timeout double-XP"):
                             // guard `AND status = 'active'` + check
@@ -928,23 +933,36 @@ impl WordChainRepo {
             .execute(&mut *tx)
             .await?;
             if finished.rows_affected() > 0 {
-                sqlx::query(
-                    "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain_win', $2)",
+                // v3.4.2 (audit vòng 4): cap thắng/ngày cho đường AI-hết-từ —
+                // đồng bộ với 2 đường timeout (chống farm trận AI lặp lại).
+                let wins_today: i64 = sqlx::query_scalar(
+                    r#"SELECT COUNT(*) FROM word_chain_matches
+                       WHERE winner_id = $1 AND status = 'finished'
+                         AND updated_at >= date_trunc('day', NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh') AT TIME ZONE 'Asia/Ho_Chi_Minh'"#,
                 )
                 .bind(me)
-                .bind(WORD_CHAIN_PVP_XP_WIN)
-                .execute(&mut *tx)
-                .await?;
-                sqlx::query(
-                    r#"INSERT INTO user_xp_totals (user_id, total_xp)
-                       VALUES ($1, $2)
-                       ON CONFLICT (user_id)
-                       DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
-                )
-                .bind(me)
-                .bind(i64::from(WORD_CHAIN_PVP_XP_WIN))
-                .execute(&mut *tx)
-                .await?;
+                .fetch_one(&mut *tx)
+                .await
+                .unwrap_or(0);
+                if wins_today <= WORD_CHAIN_DAILY_CAP {
+                    sqlx::query(
+                        "INSERT INTO xp_events (user_id, reason, amount) VALUES ($1, 'word_chain_win', $2)",
+                    )
+                    .bind(me)
+                    .bind(WORD_CHAIN_PVP_XP_WIN)
+                    .execute(&mut *tx)
+                    .await?;
+                    sqlx::query(
+                        r#"INSERT INTO user_xp_totals (user_id, total_xp)
+                           VALUES ($1, $2)
+                           ON CONFLICT (user_id)
+                           DO UPDATE SET total_xp = user_xp_totals.total_xp + $2, updated_at = NOW()"#,
+                    )
+                    .bind(me)
+                    .bind(i64::from(WORD_CHAIN_PVP_XP_WIN))
+                    .execute(&mut *tx)
+                    .await?;
+                }
             }
             tx.commit().await?;
             return Self::build_finished(

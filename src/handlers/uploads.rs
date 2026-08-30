@@ -27,49 +27,51 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use std::sync::Arc;
 
-/// v3.4.2 — Quota upload/ngày/user (chống disk-fill DoS). Upsert atomically
-/// số byte đã dùng; trả Err khi vượt quota. Giữ quota check + save + ghi
-/// usage trong 1 flow: quota check TRƯỚC khi ghi disk (nhanh fail), usage
-/// cộng SAU khi save thành công (đếm đúng bytes thật sự ghi).
-async fn enforce_and_record_quota(
+/// v3.4.2 — Quota upload/ngày/user (chống disk-fill DoS).
+/// - `check_only`: đọc used, chặn khi vượt quota (gọi TRƯỚC khi ghi disk).
+/// - `!check_only`: CHỈ ghi nhận bytes (INSERT upsert, không re-check) —
+///   gọi SAU khi save thành công. Tách 2 vai trò vì audit vòng 6: bản cũ
+///   re-check sau save → file đã ghi mà bị 400 + bytes không được ghi nhận.
+async fn quota_flow(
     state: &AppState,
     user_id: uuid::Uuid,
     bytes: usize,
-    record: bool,
+    check_only: bool,
 ) -> AppResult<()> {
     let quota_bytes = state.config.upload_daily_quota_mb * 1024 * 1024;
     let today = crate::utils::SQL_TODAY_VN;
-    let used: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(
-        format!(
-            r"SELECT bytes_used FROM upload_usage
-           WHERE user_id = $1 AND usage_date = {today}"
-        )
-        .as_str(),
-    ))
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await?
-    .unwrap_or(0);
-    if used + (bytes as i64) > quota_bytes {
-        return Err(AppError::BadRequest(format!(
-            "Bạn đã dùng {used} / {quota_bytes} bytes quota upload hôm nay — quay lại vào ngày mai."
-        )));
-    }
-    if record {
-        sqlx::query(sqlx::AssertSqlSafe(
+    if check_only {
+        let used: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(
             format!(
-                r"INSERT INTO upload_usage (user_id, usage_date, bytes_used)
-               VALUES ($1, {today}, $2)
-               ON CONFLICT (user_id, usage_date)
-               DO UPDATE SET bytes_used = upload_usage.bytes_used + $2"
+                r"SELECT bytes_used FROM upload_usage
+           WHERE user_id = $1 AND usage_date = {today}"
             )
             .as_str(),
         ))
         .bind(user_id)
-        .bind(bytes as i64)
-        .execute(&state.db)
-        .await?;
+        .fetch_optional(&state.db)
+        .await?
+        .unwrap_or(0);
+        if used + (bytes as i64) > quota_bytes {
+            return Err(AppError::BadRequest(format!(
+                "Bạn đã dùng {used} / {quota_bytes} bytes quota upload hôm nay — quay lại vào ngày mai."
+            )));
+        }
+        return Ok(());
     }
+    sqlx::query(sqlx::AssertSqlSafe(
+        format!(
+            r"INSERT INTO upload_usage (user_id, usage_date, bytes_used)
+               VALUES ($1, {today}, $2)
+               ON CONFLICT (user_id, usage_date)
+               DO UPDATE SET bytes_used = upload_usage.bytes_used + $2"
+        )
+        .as_str(),
+    ))
+    .bind(user_id)
+    .bind(bytes as i64)
+    .execute(&state.db)
+    .await?;
     Ok(())
 }
 
@@ -134,13 +136,14 @@ async fn handle_upload(
 
         // v3.4.2 — quota/ngày: chặn TRƯỚC khi ghi disk (disk-fill DoS:
         // trước đây user ghi ~1.2GB/phút tới khi đầy volume = sập site).
-        enforce_and_record_quota(&state, user.id, bytes.len(), false).await?;
+        quota_flow(&state, user.id, bytes.len(), true).await?;
 
         let url = storage::save_upload(kind, filename.as_deref(), content_type.as_deref(), &bytes)
             .await?;
 
-        // Ghi usage sau khi save thành công (đếm đúng bytes thật).
-        enforce_and_record_quota(&state, user.id, bytes.len(), true).await?;
+        // Ghi usage sau khi save thành công (chỉ record, không re-check —
+        // file đã ghi thì phải được tính vào quota).
+        quota_flow(&state, user.id, bytes.len(), false).await?;
 
         return Ok(UploadResponse {
             url,

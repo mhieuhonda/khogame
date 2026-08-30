@@ -747,11 +747,7 @@ fn harden_img_src(html: &str) -> String {
         }
         let ch = html[i..].chars().next().unwrap_or(' ');
         out.push(ch);
-        if ch.len_utf8() == 0 {
-            i += 1;
-        } else {
-            i += ch.len_utf8();
-        }
+        i += ch.len_utf8();
     }
     out
 }
