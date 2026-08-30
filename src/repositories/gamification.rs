@@ -854,6 +854,20 @@ impl GamificationRepo {
                 "word_chain_50" => s.word_chain_valid >= 50,
                 "word_chain_100" => s.word_chain_valid >= 100,
                 "word_chain_500" => s.word_chain_valid >= 500,
+                // v3.2.0 — Fallback GENERIC cho huy hiệu cấp độ mới dạng
+                // `level_N` (N là số — migration 027 seed thêm ~45 ngưỡng
+                // mịn: level_2, level_3, ..., level_1500, ...). Không cần
+                // thêm arm tường minh cho từng ID nữa — pattern
+                // `id.strip_prefix("level_")` parse N rồi so sánh.
+                // Đặt SAU tất cả arm tường minh (kể cả level_1m / level_max
+                // có hậu tố chữ) và TRƯỚC `_ => false`.
+                _ if id
+                    .strip_prefix("level_")
+                    .and_then(|n| n.parse::<i64>().ok())
+                    .is_some_and(|n| level >= n) =>
+                {
+                    true
+                }
                 // (Future IDs từ migration sau → return false — rõ ràng chưa hỗ trợ)
                 _ => false,
             }

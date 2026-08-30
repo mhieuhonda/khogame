@@ -1,7 +1,7 @@
 use crate::error::AppResult;
 use crate::middleware::CurrentUser;
 use crate::state::AppState;
-use crate::templates::{ErrorTemplate, PrivacyPageTemplate, TermsPageTemplate};
+use crate::templates::{AboutPageTemplate, ErrorTemplate, PrivacyPageTemplate, TermsPageTemplate};
 use askama::Template;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -17,6 +17,21 @@ pub async fn terms(
 ) -> AppResult<TermsPageTemplate> {
     // Trang đầy đủ layout (header/footer) thay vì HTML rời trước đây
     Ok(TermsPageTemplate {
+        current_user,
+        unread_notifications: 0,
+    })
+}
+
+/// v3.2.0 — Trang Thông tin (/about): giới thiệu Louis Space, tác giả
+/// Hieu Louis, hướng dẫn sử dụng, hướng dẫn viết README, FAQ.
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn about(
+    State(_state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+) -> AppResult<AboutPageTemplate> {
+    Ok(AboutPageTemplate {
         current_user,
         unread_notifications: 0,
     })

@@ -221,6 +221,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Static pages
         .route("/terms", get(handlers::pages::terms))
         .route("/privacy", get(handlers::pages::privacy))
+        // v3.2.0 — trang Thông tin / giới thiệu / hướng dẫn
+        .route("/about", get(handlers::pages::about))
         .route("/health", get(handlers::api::health_lb))
         .route("/maintenance", get(handlers::pages::maintenance))
         // === News module ===

@@ -1,7 +1,7 @@
 # Dependabot: tự kiểm tra cập nhật dependency
 # - cargo: Rust crates (axum, sqlx, tokio...) — nhóm lại 1 PR/tuần
 #   để không spam PR riêng lẻ từng crate.
-# - github-actions: pin lại các action chính (checkout v4, buildx v3...)
+# - github-actions: pin lại các action chính (checkout v5, buildx v3...)
 # - docker: base image rust:1.98-slim / debian:bookworm-slim
 #
 # Sau khi Dependabot mở PR, CI (`.github/workflows/ci.yml`) chạy cargo

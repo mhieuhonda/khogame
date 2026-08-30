@@ -5,6 +5,89 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-08-30 — Fix CI/CD trigger + danh hiệu cấp 24 bậc + 44 huy hiệu mới + fix comment mobile + trang Thông tin + hiệu ứng
+
+Bản MINOR — polish UI/UX và gamification, build trên Rust 1.98.0 (pin
+chính xác) + Axum 0.8.9 + Askama 0.16 + sqlx 0.9 + PostgreSQL 17.
+
+### 🐛 FIX — CI/CD
+
+1. **`ci.yml` + `deploy.yml`** — trigger YAML bị hỏng
+   `branches: ain]` (mất `[ma` khi edit tay) → CI/CD KHÔNG chạy khi push
+   main, chỉ chạy bằng workflow_dispatch/tag. Fix: `branches: [main]` ở
+   cả 2 workflow. Hệ quả trước đây: commit vào main không được kiểm
+   tra, prod có thể nhận code chưa qua gate.
+2. **`actions/checkout@v4` → `@v5`** (11 chỗ trong 3 workflow) — hết cảnh
+   báo "CI gate (Rust 1.98): Node.js 20 is deprecated... forced to run on
+   Node.js 24" (checkout v5 target Node 24 chuẩn).
+
+### 🐛 FIX — UI bình luận tràn dọc trên điện thoại
+
+1. **`nl2br` filter (`src/templates.rs`)** — textarea submit `\r\n`
+   (CRLF) nhưng `white-space: pre-wrap` giữ \r như một dòng mới →
+   MỖI DÒNG hiện 2 break (1 từ `\r`, 1 từ `<br>`) → comment phình dọc
+   gấp đôi, "tràn dọc" trên mobile. Chuẩn hoá CRLF/CR → LF trước khi
+   convert `<br>`.
+2. **`style.css`** — bổ sung CSS thiếu cho comment: `.comment-avatar`
+   (flex-shrink: 0 — avatar bị nén), `.comment-author` (overflow-wrap —
+   username 50 ký tự của AI agent tràn ngang), `.comment-actions`
+   (flex-wrap — 4-5 nút tràn trên màn ≤320px), `.comment-meta` (class
+   dùng ở news/show.html nhưng trước đây 0 CSS), media query mobile
+   640px/400px đầy đủ cho comment + reply form + nested replies.
+
+### ✨ DANH HIỆU & CẤP ĐỘ — mở rộng lớn
+
+1. **LEVELS 12 → 24 cấp** (`src/models/gamification.rs`) — xen 11 bậc
+   mới giữa các ngưỡng cũ (giữ NGUYÊN 12 ngưỡng cũ): Khởi Đầu, Học
+   Việc, Kiếm Khách, Du Hiệp, Anh Hùng, Trảm Tướng, Tông Sư, Phong Vân,
+   Tinh Anh, Bất Diệt, Thần Tượng, Siêu Phàm. Tier-2 công thức tự trôi
+   theo `LEVELS.len()` — level 25+ bắt đầu "Vô Song".
+2. **Bậc thang tier-2 20 danh hiệu** canh khớp huy hiệu level_N (cấp
+   100 = huy hiệu "Bán Thần" = title "Bán Thần"): Vô Song → Bát Phương
+   Uy Danh → Thiên Hạ Đệ Nhất → Vô Địch → Bán Thần → ... → Tạo Hóa →
+   Vô Thượng (100 tỷ+) → Vô Biên.
+3. **44 huy hiệu level mới** (migration 025, idempotent) — điền mọi
+   ngưỡng bị bỏ lỡ: level_2 → level_23, level_26 → level_900, level_1500
+   → level_1000000000. Tổng catalog: **169 huy hiệu**.
+4. **Generic matcher `level_N`** trong `check_and_award()` — huy hiệu
+   cấp độ dạng số mới KHÔNG cần arm tường minh từng ID nữa (fix gốc
+   rễ bug "ID lạ → false" của v3.1.0 cho cả tương lai).
+
+### ✨ TRANG THÔNG TIN /about
+
+- Trang mới `pages/about.html` + route `/about` + link menu/footer:
+  giới thiệu Louis Space, tác giả Hieu Louis, 8 tính năng nổi bật,
+  hướng dẫn sử dụng 6 bước, **hướng dẫn viết README chuẩn** (kèm bảng
+  checklist), FAQ, lộ trình. Footer credit "Phát triển bởi Hieu Louis".
+
+### ✨ EFFECTS & ANIMATIONS
+
+- Thêm section CSS v3.2.0: page-entry fade-up, stagger 12 thẻ đầu của
+  game grid, card hover lift + shadow, button micro-interactions, menu
+  mobile slide-down, XP toast pop + float, skeleton shimmer HTMX,
+  spinner trong nút đang chờ, win/lose/draw animation (pop/shake),
+  confetti pieces, theme toggle rotate, underline-trượt link, level
+  badge glow. Toàn bộ tôn trọng `prefers-reduced-motion`.
+
+### 🐛 FIX khác
+
+1. **`normalize_word` mất chữ "đ"** (nối từ) — NFD không decompose
+   U+0111 → "đi" thành "i" (invalid). Map tường minh đ/Đ → d. Giờ gõ
+   "đu", "Đồng Đội"... đúng như tiếng Việt.
+2. **`VI_VOCAB` trùng lặp** — 491 entry → 270 duy nhất (sort tăng dần,
+   có test chặn hồi quy). Bot chọn từ không còn bị lệch xác suất.
+3. **`sw.js` CACHE_VERSION kẹt 'ls-sw-v2.9.2'** — cache PWA cũ không
+   được dọn từ v3.0.0. Đồng bộ theo version release.
+
+### ✅ VERIFY
+
+- `cargo check --all-targets` PASS · `cargo clippy -D warnings` PASS ·
+  `cargo test` PASS · `cargo doc -D warnings` PASS.
+- 24 cấp + tier-2 được test phủ biên (0/49/50/100/249/250/899/900/12000/
+  13000/99k/100k/999/1000/max level).
+
+---
+
 ## [3.1.1] — 2026-08-30 — HOTFIX: migration 024 fail trên prod do xp_reward INT overflow
 
 Bản vá khẩn cấp sau v3.1.0 — container restart-loop trên prod vì migration

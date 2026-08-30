@@ -60,7 +60,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Cần token có write permission để commit ngược về branch.
           # GITHUB_TOKEN mặc định đã có contents:write khi trigger push main.
@@ -121,7 +121,7 @@ jobs:
     timeout-minutes: 15
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         # Re-checkout để lấy auto-format commit nếu autofmt đã push.
         # GITHUB_TOKEN auto-invalidate cache khi có push mới.
 
@@ -150,7 +150,7 @@ jobs:
     timeout-minutes: 10
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cài Rust 1.98 (exact pin)
         uses: dtolnay/rust-toolchain@master
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 15
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cài Rust 1.98 (exact pin)
         uses: dtolnay/rust-toolchain@master
@@ -193,7 +193,7 @@ jobs:
     timeout-minutes: 20
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cài Rust 1.98 (exact pin)
         uses: dtolnay/rust-toolchain@master
@@ -217,7 +217,7 @@ jobs:
     timeout-minutes: 15
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cài Rust 1.98 (exact pin)
         uses: dtolnay/rust-toolchain@master
@@ -245,7 +245,7 @@ jobs:
     continue-on-error: true
     needs: autofmt
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Cài cargo-audit
         uses: taiki-e/install-action@v2

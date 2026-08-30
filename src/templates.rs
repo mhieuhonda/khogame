@@ -56,6 +56,8 @@ impl_template_response!(
     CategoriesPageTemplate,
     TermsPageTemplate,
     PrivacyPageTemplate,
+    // v3.2.0 — trang Thông tin / giới thiệu
+    AboutPageTemplate,
     // News module
     NewsListTemplate,
     NewsShowTemplate,
@@ -648,6 +650,15 @@ pub struct PrivacyPageTemplate {
     pub unread_notifications: i64,
 }
 
+/// v3.2.0 — Trang Thông tin (About): giới thiệu Louis Space, tác giả
+/// Hieu Louis, hướng dẫn sử dụng đầy đủ + hướng dẫn viết README.
+#[derive(Template)]
+#[template(path = "pages/about.html")]
+pub struct AboutPageTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+}
+
 // ============= HTMX partials =============
 
 #[derive(Template)]
@@ -899,7 +910,14 @@ pub mod filters {
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     #[askama::filter_fn]
     pub fn nl2br(s: impl AsRef<str>, _: &dyn Values) -> ::askama::Result<Safe<String>> {
-        Ok(Safe(u::html_escape(s.as_ref()).replace('\n', "<br>")))
+        // v3.2.0 FIX — comment "tràn dọc" trên mobile: textarea submit "\r\n"
+        // (CRLF), html_escape không đụng \r, và `.comment-content` có
+        // `white-space: pre-wrap` → \r được HTML parser hiểu như \r + \n
+        // từ replace() tạo ra 2 break thay vì 1 → mỗi dòng trông như có
+        // 1 dòng trống ở giữa → comment phình dọc gấp đôi. Chuẩn hoá
+        // CRLF/CR → LF TRƯỚC khi replace \n → <br>.
+        let normalized = s.as_ref().replace("\r\n", "\n").replace('\r', "\n");
+        Ok(Safe(u::html_escape(&normalized).replace('\n', "<br>")))
     }
 
     /// Chữ cái đầu của tên (avatar fallback)

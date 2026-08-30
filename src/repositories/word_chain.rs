@@ -27,68 +27,49 @@ pub const WORD_CHAIN_XP_PER_VALID: i32 = 3;
 /// Độ dài tối đa từ user gõ (DB VARCHAR(100)).
 pub const WORD_CHAIN_MAX_LEN: usize = 100;
 
-/// Từ điển tiếng Việt KHÔNG DẤU (~370 từ phổ biến).
-/// Mỗi entry lowercase. Matching: user nhập → lowercase + strip dấu →
-/// check contains.
+/// Từ điển tiếng Việt KHÔNG DẤU (~270 từ duy nhất — v3.2.0 đã dedupe
+/// từ bản 491 entry trùng lặp). Mỗi entry lowercase, sort tăng dần.
+/// Matching: user nhập → normalize_word() → check contains.
 ///
 /// (Lưu ý: cấu trúc data nhỏ, embedded thẳng trong binary — không cần
 /// load từ file external, app đơn giản hoá deploy.)
 pub const VI_VOCAB: &[&str] = &[
     // A
-    "ai", "anh", "ao", "anh", "ay", // B
-    "ba", "ban", "bao", "be", "ben", "bia", "bim", "binh", "bo", "bon", "bua", "buc", "banh",
-    "bang", "ban", "bet", "banh", "bao", "bo", "buom", "buon", "buoc", "bua", "bun", "bo", "bay",
-    "benh", "bien", "bi", "bat", "buu", "binh", "bich", "ban", "bop", "bong", "bup", "beo", "beo",
-    "bep", "boc", "boc", // C
-    "ca", "can", "cap", "cao", "con", "coi", "co", "com", "cop", "cot", "cu", "cuc", "cung",
-    "cong", "cung", "con", "cau", "cao", "cay", "co", "cot", "cau", "con", "cam", "cung", "cuoi",
-    "cuop", "cung", "cao", "cung", "cong", "ca", "cao", "cau", "can", "co", "con", "cam", "cung",
-    "cua", "cuu", "canh", "canh", "ca", "can", // D
-    "da", "di", "den", "do", "duoc", "duong", "dua", "doi", "dung", "da", "di", "den", "do",
-    "duoi", "dat", "duyet", "diem", "dong", "danh", "doc", "duy", "do", "di", "dem", "doi", "doi",
-    "dua", "dau", "dau", "de", "de", "di", "di", "di", "duy", "duong", "dong", "danh", "do", "di",
-    // Đ
-    "do", "di", "den", "do", "duong", "diem", "danh", "do", "di", "den", "di", "da", "di", "di",
-    "do", // E
-    "em", "eo", "em", // G
-    "ga", "gan", "gang", "gao", "gai", "gam", "giong", "go", "gom", "got", "guom", "gung", "gai",
-    "gam", "go", "gap", "gan", "giong", "go", "gio", "ga", "giao", "gioi", "gia", // H
-    "hai", "hang", "hay", "hen", "het", "hien", "hoi", "ho", "hoc", "hoi", "hom", "hot", "hut",
-    "huong", "ha", "han", "hien", "hinh", "ho", "hoc", "hoi", "hom", "hut", "huong", "hoc", "hop",
-    "hoi", "hue", "huy", "hoi", "hau", "hanh", "hoan", "hoa", "ho", "ha", "ho", "hai", "hao",
-    "ham", "hay", "hay", "hen", "hen", "hoi", "huong", // I
+    "ai", "anh", "ao", "ay", // B
+    "ba", "ban", "bang", "banh", "bao", "bat", "bay", "be", "ben", "benh", "beo", "bep", "bet",
+    "bi", "bia", "bich", "bien", "bim", "binh", "bo", "boc", "bon", "bong", "bop", "bua", "buc",
+    "bun", "buoc", "buom", "buon", "bup", "buu", // C
+    "ca", "cam", "can", "canh", "cao", "cap", "cau", "cay", "co", "coi", "com", "con", "cong",
+    "cop", "cot", "cu", "cua", "cuc", "cung", "cuoi", "cuop", "cuu", // D
+    "da", "danh", "dat", "dau", "de", "dem", "den", "di", "diem", "do", "doc", "doi", "dong",
+    "dua", "dung", "duoc", "duoi", "duong", "duy", "duyet", // E
+    "em", "eo", // G
+    "ga", "gai", "gam", "gan", "gang", "gao", "gap", "gia", "giao", "gio", "gioi", "giong", "go",
+    "gom", "got", "gung", "guom", // H
+    "ha", "hai", "ham", "han", "hang", "hanh", "hao", "hau", "hay", "hen", "het", "hien", "hinh",
+    "ho", "hoa", "hoan", "hoc", "hoi", "hom", "hop", "hot", "hue", "huong", "hut", "huy",
     // K
-    "ka", "kem", "keo", "khi", "khong", "kien", "kinh", "khac", "kha", "khe", "kho", "khoi", "khoc",
-    "khop", "kieu", "khi", "khong", "kem", "keo", "ke", "kieu", "kien", "kinh", "khue", "khe",
-    "kho", // L
-    "la", "lan", "lay", "len", "lien", "loi", "loi", "lon", "lua", "luoi", "luc", "lan", "le",
-    "loi", "lam", "lang", "long", "lanh", "lien", "le", "la", "lam", "len", "lon", "lua", "luoi",
-    "loi", "le", "loi", "lan", "loi", "lay", "lay", "loi", "lam", "le", "lua", "lam", "lan",
-    // M
-    "ma", "mai", "mang", "me", "mien", "minh", "moi", "mo", "mon", "muon", "muoi", "mua", "mang",
-    "mua", "may", "may", "mua", "mua", "muon", "muoi", "minh", "mang", "moi", "mo", "mon", "mau",
-    "mau", "may", // N
-    "na", "nam", "nen", "ngay", "nghe", "ngu", "ngua", "nguoi", "nha", "nhan", "nhe", "nhieu",
-    "nho", "nho", "nhoi", "nhan", "nhe", "nhieu", "nho", "nhot", "nha", "nhat", "nhi", "nhip",
-    "nhoc", "nhoi", "nho", "nhom", "nhot", "nam", "nan", "nan", "nen", "ne", "no", "nong", "noi",
-    "noi", "noi", "nuoc", "nuoc", "nao", "nam", "nay", // O
-    "o", "oe", "oi", // P (foreign loan)
-    // Q
-    "qua", "quat", "que", "quyen", "quat", "quoc", "quay", "quay", "qua", "qua", "que", "quen",
-    // R
-    "reo", "ran", // S
-    "sach", "sang", "sao", "say", "so", "soi", "song", "sap", "sep", "su", "sau", "sau", "san",
-    "sach", "sao", "say", "so", "song", "su", "su", "sau", "san", "san", "sang", // T
-    "ta", "tam", "tan", "tay", "ten", "thi", "thi", "thich", "tho", "thoi", "tien", "tim", "tin",
-    "to", "toi", "toi", "tro", "troi", "tuy", "tuy", "tu", "tuc", "tung", "tay", "tam", "tan",
-    "ten", "thi", "thich", "tho", "thoi", "tien", "tim", "tin", "toi", "tro", "troi", "tuan",
-    "tung", "tu", "tuc", "tien", "toa", "tong", "toi", "tinh", "toan", "toc", "to", "toi", "tro",
-    "tinh", // U
+    "ka", "ke", "kem", "keo", "kha", "khac", "khe", "khi", "kho", "khoc", "khoi", "khong", "khop",
+    "khue", "kien", "kieu", "kinh", // L
+    "la", "lam", "lan", "lang", "lanh", "lay", "le", "len", "lien", "loi", "lon", "long", "lua",
+    "luc", "luoi", // M
+    "ma", "mai", "mang", "mau", "may", "me", "mien", "minh", "mo", "moi", "mon", "mua", "muoi",
+    "muon", // N
+    "na", "nam", "nan", "nao", "nay", "ne", "nen", "ngay", "nghe", "ngu", "ngua", "nguoi", "nha",
+    "nhan", "nhat", "nhe", "nhi", "nhieu", "nhip", "nho", "nhoc", "nhoi", "nhom", "nhot", "no",
+    "noi", "nong", "nuoc", // O
+    "o", "oe", "oi", // Q
+    "qua", "quat", "quay", "que", "quen", "quoc", "quyen", // R
+    "ran", "reo", // S
+    "sach", "san", "sang", "sao", "sap", "sau", "say", "sep", "so", "soi", "song", "su",
+    // T
+    "ta", "tam", "tan", "tay", "ten", "thi", "thich", "tho", "thoi", "tien", "tim", "tin", "tinh",
+    "to", "toa", "toan", "toc", "toi", "tong", "tro", "troi", "tu", "tuan", "tuc", "tung", "tuy",
+    // U
     "ung", "uot", // V
-    "va", "van", "vay", "ve", "viet", "vi", "vien", "viet", "vay", "vao", "ve", "vi", "van", "vay",
-    "vao", "ve", "vui", "ve", "vay", "viet", "vo", "vo", "van", "vi", "vi", "vai", "veo",
+    "va", "vai", "van", "vao", "vay", "ve", "veo", "vi", "vien", "viet", "vo", "vui",
     // X
-    "xa", "xa", "xac", "xanh", "xay", "xe", "xe", "xinh", "xong", "xuong", // Y
+    "xa", "xac", "xanh", "xay", "xe", "xinh", "xong", "xuong", // Y
     "y", "yeu",
 ];
 
@@ -249,15 +230,19 @@ impl WordChainRepo {
     }
 }
 
-/// Normalize user input: lowercase + NFD decompose (tách dấu tiếng Việt) +
-/// chỉ giữ ASCII a-z. Ví dụ "Cà Phê" → "caphê" → NFD → "caphe\u0302" →
-/// filter ASCII → "cape" (sau đó "ca" + "ph" + "ê"→"e" = "cape").
-/// (NFD tách "ê" = "e" + U+0302 — ký tự combine bị filter bỏ.)
+/// Normalize user input: lowercase + map đ/Đ → d (v3.2.0 FIX) + NFD
+/// decompose (tách dấu tiếng Việt) + chỉ giữ ASCII a-z.
+/// Ví dụ "Cà Phê" → "cà phê" → NFD ("a" + U+0300, "e" + U+0302) →
+/// filter ASCII → "caphe". "Đi" → "di" (trước đây bị mất đ thành "i").
 #[must_use]
 pub fn normalize_word(raw: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
     raw.trim()
         .to_lowercase()
+        // v3.2.0 FIX chữ "đ": NFD KHÔNG decompose U+0111 (đ) thành "d" +
+        // combining mark → filter ASCII bị loại mất, "đi" thành "i" (1 ký
+        // tự → invalid). Map tường minh đ/Đ → d TRƯỚC khi NFD.
+        .replace(['đ', 'Đ'], "d")
         .nfd() // decompose: "ê" → "e" + U+0302 (combining circumflex)
         .filter(|c| c.is_ascii_alphabetic())
         .collect()
@@ -307,6 +292,16 @@ mod tests {
     fn test_normalize_word() {
         assert_eq!(normalize_word("Xinh"), "xinh");
         assert_eq!(normalize_word("  Yeu  "), "yeu");
+        // v3.2.0 FIX chữ "đ": NFD không decompose U+0111 — phải map tường
+        // minh đ/Đ → d, nếu không "đi" bị rút còn "i" (1 ký tự → invalid).
+        assert_eq!(normalize_word("Đi"), "di");
+        assert_eq!(normalize_word("đá"), "da");
+        assert_eq!(normalize_word("Đồng Đội"), "dongdoi");
+        assert_eq!(normalize_word("đu"), "du");
+        assert!(
+            validate_word(&normalize_word("Đi")).is_none(),
+            "'đi' → 'di' phải hợp lệ (có trong từ điển)"
+        );
         // NFD tách dấu tiếng Việt: "Cà Phê" → "ca" + " " + "phe" → ASCII filter
         // bỏ combining marks (U+0300, U+0302) → "caphe" (chứ không phải "caph"
         // vì "ê" decompose thành "e" + combining circumflex, giữ lại 'e').
@@ -340,6 +335,16 @@ mod tests {
         let _bot = pick_bot_word("zzz", 0);
         // No words start with 'z' in our vocab — returns None
         // (But validate_word("zzz") fails anyway, so this won't be called.)
+    }
+
+    #[test]
+    fn test_vocab_deduped_and_sorted() {
+        // v3.2.0 — từ điển đã dedupe: trùng lặp cũ ("anh"×2, "ban"×3...)
+        // làm lệch xác suất chọn từ của bot và phình binary.
+        for pair in VI_VOCAB.windows(2) {
+            assert!(pair[0] < pair[1], "từ điển phải sort tăng dần, không trùng");
+        }
+        assert!(!VI_VOCAB.is_empty());
     }
 
     /// Compile-time guards.
