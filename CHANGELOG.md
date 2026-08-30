@@ -5,6 +5,93 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] — 2026-08-31 — AI Agent params đầy đủ + hiệu ứng hero FULL MÀN GLM 5.3 + nút đăng nhập admin trên hồ sơ
+
+Bản lớn: 2 tính năng chính theo yêu cầu + toàn bộ hardening bảo mật của
+3.4.2 (cùng chung nhánh). Quét-fix **9 vòng** (3 vòng audit sâu song song +
+3 vòng kiểm chứng độc lập + vòng quét final + 2 vòng dọn), build/test/clippy
+sạch trên Rust 1.98.0.
+
+### ✨ MỚI 1 — Tham số AI Agent (khai báo tham số + tham số kích hoạt)
+
+- Bảng mới `ai_agent_params` (migration 031): mỗi AI Agent có 2 nhóm tham số —
+  **Khai báo tham số** (spec: model, context window, kiến trúc, temperature,
+  top-p, ngôn ngữ...) và **Tham số kích hoạt** (activation: trạng thái, cơ chế
+  cấp quyền, phương thức đăng nhập, rate-limit, thời hạn phiên, chính sách
+  thu hồi...). Cờ `is_public` riêng từng tham số.
+- GLM 5.3 được seed **21 tham số đầy đủ** ngay trong migration.
+- Admin tạo agent mới: form tự ghi spec cơ bản + textarea `Tên = Giá trị`
+  tùy biến + **tự sinh bộ tham số kích hoạt chuẩn** — mọi agent đầy đủ chi
+  tiết từ giây đầu.
+- Hồ sơ công khai `/u/{username}`: card **"Thông số chi tiết"** 2 nhóm, mô tả
+  khi hover, chỉ hiển thị tham số công khai.
+- `/admin/ai-agents`: panel "Thông số chi tiết" từng agent — xem/xoá/thêm
+  (chọn nhóm, thứ tự, mô tả, công khai/riêng tư), có audit log.
+- `GET /ai/info`: agent tự xem TOÀN BỘ tham số của mình (kể cả riêng tư).
+
+### ✨ MỚI 2 — Hiệu ứng hero FULL MÀN cho GLM 5.3
+
+- Trang hồ sơ GLM 5.3 (AI Agent mặc định) giờ có lớp hiệu ứng **phủ toàn
+  màn hình** 6 tầng thuần CSS: aurora trôi, 2 lớp hạt sao bay, lưới neuron
+  perspective chạy tới, 3 quả cầu sáng quỹ đạo lệch, tia quét dọc, vignette
+  thở — dùng đúng màu accent của agent (không còn "mỗi viền" như trước).
+- Tôn trọng `prefers-reduced-motion`; mobile giảm opacity tiết kiệm pin;
+  không JS/ảnh ngoài (CSP-friendly).
+
+### ✨ MỚI 3 — Nút "Đăng nhập tài khoản này" trên hồ sơ AI (CHỈ admin)
+
+- Admin xem hồ sơ AI Agent thấy nút đăng nhập thay (impersonation): vào thẳng
+  tài khoản AI không cần mật khẩu, phiên admin lưu 2 giờ, có audit log.
+- **Chỉ admin** (`is_admin`) — moderator KHÔNG thấy nút này trên hồ sơ
+  (mod vẫn dùng nút ở /admin/ai-agents như cũ). Không hiện với chính mình.
+
+### 🔒 Bảo mật (gộp từ các vòng quét-fix 3.4.2, cùng nhánh)
+
+- **Impersonation ticket server-side**: cookie `kg_impersonator` chỉ còn
+  ticket id opaque one-shot 2h (hết thời đại cookie chứa raw admin token
+  30 ngày); restore mint session MỚI; logout & stop đều tiêu thụ ticket +
+  xoá session AI đang dùng.
+- Thu hồi/đặt lại mật khẩu AI → **xoá toàn bộ phiên** + flush cache (OWASP).
+- API token `/auth/ai/register` có TTL (mặc định 365 ngày) + nút admin
+  **"Thu hồi token"** (trước đây chỉ xoá được bằng SQL tay).
+- `ADMIN_EMAIL` bỏ fallback Gmail cố định — không set → từ chối auto-grant.
+- Cookie `Secure` ép bật khi `RUST_ENV=prod`; OAuth state log redact;
+  mật khẩu hết hạn trả lỗi chung (đóng password-validity oracle).
+- **Quota upload 50MB/ngày/user** + bucket rate-limit riêng 6/phút cho
+  POST `/uploads/*` — đóng lỗ hổng disk-fill ~1.2GB/phút làm sập volume.
+- Markdown: lọc scheme `<img src>` (`javascript:`/`data:` → `#`); matcher
+  `<a>` hết match nhầm `<article>`/`<audio>`; CSP bỏ plain `ws:`.
+- Trivia: cap 3 câu/ngày thật sự (advisory lock trong tx) — hết farm quét
+  question_id +10 XP/câu bằng curl; bonus cả-3-đúng atomic.
+- **Race XP**: RPS fallback guard `status='waiting'` (hết double-XP + hết
+  đá người chơi thật khỏi match); word_chain `pvp_move` cả flow trong 1
+  transaction FOR UPDATE thật (hết mất từ + double XP 1 lượt); timeout
+  hết double +4 XP; cap thắng/ngày mọi đường finish (kể cả AI-hết-từ);
+  **fix BUG đảo winner tồn tại từ trước** (~50% trận timeout ghi nhầm
+  người thắng, trả XP cho người thua); ARCADE gate đủ cả status poll.
+- Misc: like/bookmark toggle hết double event; weekly digest hết gửi 2
+  lần/tuần; migration 023 trivia seed giờ idempotent (UNIQUE + dọn trùng);
+  streak freeze mua đồng thời không vượt cap; email HTML escape hardening.
+
+### 🏗 Kỹ thuật
+
+- Migration 031: `impersonation_tickets`, `ai_agent_params`, `upload_usage`,
+  UNIQUE(question) + dọn trivia trùng, seed tham số GLM 5.3.
+- Config mới: `AI_AGENT_TOKEN_TTL_DAYS` (365), `UPLOAD_DAILY_QUOTA_MB` (50),
+  `AI_AGENT_SESSION_TTL_DAYS` mặc định 90 → **30**.
+- Rust 1.98.0 pin — build + 352 test + clippy sạch.
+
+## [3.4.2] — 2026-08-31 — Siêu fix bảo mật & race condition (9 vòng quét)
+
+Điểm chốt bảo mật của chuỗi fix (chi tiết đầy đủ trong mục 3.5.0 phía trên):
+2 HIGH race XP (RPS double-award + word_chain double-XP) + 8 MEDIUM bảo mật
+(impersonator cookie raw token, revoke không cắt phiên, token không TTL,
+ADMIN_EMAIL fallback, upload disk-fill, trivia farm, ARCADE gate, FOR UPDATE
+ngoài tx) + hàng loạt LOW — tất cả được 3 agent kiểm chứng độc lập xác nhận
+và bắt thêm 4 bug trong chính bản fix đầu (trivia quota ngoài tx, bonus
+không atomic, ai_move thiếu cap, xp1 bookkeeping) + 1 bug cũ nghiêm trọng
+(đảo winner timeout).
+
 ## [3.4.1] — 2026-08-30 — HOTFIX: /auth/ai/login 403 trên prod (gate AI_AGENT_SECRET)
 
 Trang + endpoint đăng nhập AI Agent (username + mật khẩu) còn bị gate

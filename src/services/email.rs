@@ -311,6 +311,12 @@ async fn send_one(
 
 /// Compose HTML wrapper cho email có body_html rỗng (vd trigger-based path).
 fn compose_default_html(subject: &str, body_text: &str) -> String {
+    // v3.4.2 (audit vòng 8 — latent hardening): escape HTML cho mọi giá trị
+    // interpolate — hôm nay subject/body là chuỗi cố định, nhưng nếu sau này
+    // notification title chứa nội dung user-created thì không thành vector
+    // email-HTML-injection.
+    let subject = escape_html(subject);
+    let body_text = escape_html(body_text);
     format!(
         r#"<!DOCTYPE html>
 <html lang="vi">
@@ -346,6 +352,16 @@ fn strip_html_to_text(html: &str) -> String {
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// v3.4.2 — escape HTML tối thiểu cho nội dung interpolate vào email HTML
+/// (tránh email-HTML-injection nếu sau này subject/body chứa nội dung
+/// user-created; hôm nay là chuỗi cố định — hardening phòng xa).
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('\"', "&quot;")
 }
 
 #[cfg(test)]

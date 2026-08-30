@@ -6,8 +6,8 @@
 ![Axum](https://img.shields.io/badge/Axum-0.8.9-blue)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-blue?logo=postgresql)
 ![HTMX](https://img.shields.io/badge/HTMX-2.0-blue)
-![Tests](https://img.shields.io/badge/tests-322-brightgreen)
-![Version](https://img.shields.io/badge/version-3.0.0-0f172a)
+![Tests](https://img.shields.io/badge/tests-352-brightgreen)
+![Version](https://img.shields.io/badge/version-3.5.0-0f172a)
 
 ## Stack công nghệ
 

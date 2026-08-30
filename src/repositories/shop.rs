@@ -110,31 +110,41 @@ impl ShopRepo {
         let mut mystery_xp = 0;
         match item.kind.as_str() {
             "streak_freeze" => {
-                // Giới hạn tồn kho — đếm TRONG tx để không race vượt cap
-                let qty: i32 = sqlx::query_scalar(
-                    "SELECT COALESCE(quantity, 0) FROM user_inventory
-                     WHERE user_id = $1 AND item_id = 'streak_freeze'",
+                // Giới hạn tồn kho — đếm TRONG tx + khoá row (FOR UPDATE)
+                // + upsert có guard `quantity < MAX` (audit vòng 8: 2 request
+                // đồng thời cùng đọc qty=4 → cùng +1 → vượt cap 5).
+                let qty: Option<i32> = sqlx::query_scalar(
+                    "SELECT quantity FROM user_inventory
+                     WHERE user_id = $1 AND item_id = 'streak_freeze' FOR UPDATE",
                 )
                 .bind(user_id)
                 .fetch_optional(&mut *tx)
-                .await?
-                .unwrap_or(0);
-                if qty >= MAX_STREAK_FREEZE {
+                .await?;
+                if qty.unwrap_or(0) >= MAX_STREAK_FREEZE {
                     return Err(AppError::BadRequest(format!(
                         "Tối đa giữ {MAX_STREAK_FREEZE} Streak Freeze — dùng bớt rồi mua tiếp"
                     )));
                 }
-                sqlx::query(
+                let upserted = sqlx::query(
                     r#"INSERT INTO user_inventory (user_id, item_id, quantity)
                        VALUES ($1, $2, 1)
                        ON CONFLICT (user_id, item_id)
                        DO UPDATE SET quantity = user_inventory.quantity + 1,
-                                     updated_at = NOW()"#,
+                                     updated_at = NOW()
+                       WHERE user_inventory.quantity < $3"#,
                 )
                 .bind(user_id)
                 .bind(&item.id)
+                .bind(MAX_STREAK_FREEZE)
                 .execute(&mut *tx)
                 .await?;
+                if upserted.rows_affected() == 0 {
+                    // Guard chặn đúng khoảnh khắc race → hoàn tác giao dịch
+                    // (XP đã trừ ở trên được rollback cùng tx).
+                    return Err(AppError::BadRequest(format!(
+                        "Tối đa giữ {MAX_STREAK_FREEZE} Streak Freeze — dùng bớt rồi mua tiếp"
+                    )));
+                }
             }
             "xp_boost" => {
                 sqlx::query(
