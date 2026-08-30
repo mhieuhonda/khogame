@@ -1140,3 +1140,74 @@
     }
   });
 })();
+
+/* v3.4.0 — GHI CHÚ: confirm qua data-confirm đã có handler chuẩn
+   `initConfirmForms()` (app.js giữa file, dùng requestSubmit giữ HTML
+   validation). Các form v3.4.0 (impersonate, thu hồi mật khẩu) dùng
+   data-confirm thay vì onsubmit="confirm('{{ user_data }}')" — chống
+   XSS inline-JS khi user data chứa quotes. KHÔNG đăng ký handler thứ 2
+   ở đây (audit v2: 2 handler capture-phase = confirm dialog hiện 2 lần).
+*/
+
+/* v3.4.0 — Nút copy (data-copy-target): copy textContent của element
+   chỉ định. Dùng textContent nên KHÔNG có vấn đề escape/inline-JS với
+   ký tự đặc biệt trong mật khẩu ('"<>...). */
+(function () {
+  'use strict';
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-copy-target]') : null;
+    if (!btn) return;
+    var el = document.getElementById(btn.getAttribute('data-copy-target'));
+    if (!el) return;
+    var text = el.textContent || '';
+    function done() {
+      var old = btn.textContent;
+      btn.textContent = '✓ Đã copy';
+      setTimeout(function () { btn.textContent = old; }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, done);
+    } else {
+      // Fallback textarea cho HTTP / browser cũ
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (err) { /* ignore */ }
+      ta.remove();
+      done();
+    }
+  });
+})();
+
+/* v3.4.0 — Sinh mật khẩu ngẫu nhiên crypto-safe (crypto.getRandomValues
+   thay Math.random — audit: Math.random không crypto-safe). Ký tự an toàn
+   dễ đọc: không 0/O/1/l/I. */
+(function () {
+  'use strict';
+  function genPassword(len) {
+    var charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    var out = '';
+    // Lấy đúng len byte ngẫu nhiên (unbiased qua rejection sampling đơn giản:
+    // lấy 256 giá trị vì 256 % 56 != 0 — lặp lại tới khi đủ)
+    var buf = new Uint8Array(len * 2);
+    crypto.getRandomValues(buf);
+    for (var i = 0; i < buf.length && out.length < len; i++) {
+      // 224 = 56 * 4 — vùng không bias (buf[i] < 224 an toàn)
+      if (buf[i] < 224) out += charset[buf[i] % charset.length];
+    }
+    if (out.length < len) return genPassword(len); // cực hiếm — đệ quy bù
+    return out;
+  }
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('[data-pwd-target]') : null;
+    if (!btn) return;
+    var input = document.getElementById(btn.getAttribute('data-pwd-target'));
+    if (!input) return;
+    input.value = genPassword(16);
+    input.focus();
+    input.select();
+  });
+})();

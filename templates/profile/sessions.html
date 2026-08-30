@@ -34,8 +34,8 @@
                 </div>
             </div>
             {% if !s.current %}
-            <form method="post" action="/profile/sessions/{{ s.id }}/revoke" class="session-revoke-form">
-                <button type="submit" class="btn btn-outline btn-sm btn-danger-outline" data-confirm="Thu hồi phiên này?">Thu hồi</button>
+            <form method="post" action="/profile/sessions/{{ s.id }}/revoke" class="session-revoke-form" data-confirm="Thu hồi phiên này?">
+                <button type="submit" class="btn btn-outline btn-sm btn-danger-outline">Thu hồi</button>
             </form>
             {% endif %}
         </div>

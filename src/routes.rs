@@ -228,6 +228,12 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/privacy", get(handlers::pages::privacy))
         // v3.2.0 — trang Thông tin / giới thiệu / hướng dẫn
         .route("/about", get(handlers::pages::about))
+        // v3.4.0 — góp ý / báo cáo lỗi / bảo mật / nâng cấp / chức năng
+        // (form + "góp ý của tôi" — yêu cầu đăng nhập, AuthUser trong handler)
+        .route(
+            "/feedback",
+            get(handlers::feedback::feedback_page).post(handlers::feedback::submit_feedback),
+        )
         // v3.3.0 — kết thúc phiên impersonate (public: người đang
         // impersonate là AI Agent, không vào được /admin/*)
         .route(
@@ -421,12 +427,35 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // === AI Agent admin pages ===
         .route("/admin/ai-agents", get(handlers::admin::ai_agents))
+        // v3.4.0 — admin tạo AI Agent (username + mật khẩu + thời hạn)
+        .route(
+            "/admin/ai-agents/create",
+            post(handlers::admin::create_ai_agent),
+        )
+        // v3.4.0 — đặt lại / thu hồi mật khẩu AI Agent
+        .route(
+            "/admin/ai-agents/{user_id}/reset-password",
+            post(handlers::admin::reset_ai_agent_password),
+        )
+        .route(
+            "/admin/ai-agents/{user_id}/revoke-password",
+            post(handlers::admin::revoke_ai_agent_password),
+        )
         // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
         .route(
             "/admin/ai-agents/{user_id}/login-as",
             post(handlers::admin::impersonate_ai_agent),
         )
         .route("/admin/ai-reports", get(handlers::admin::ai_reports))
+        // v3.4.0 — quản lý góp ý người dùng
+        .route(
+            "/admin/feedback",
+            get(handlers::feedback::admin_feedback_page),
+        )
+        .route(
+            "/admin/feedback/{id}/status",
+            post(handlers::feedback::admin_feedback_update),
+        )
         // Settings
         .route(
             "/admin/settings",

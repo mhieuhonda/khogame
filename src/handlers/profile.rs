@@ -46,6 +46,7 @@ pub async fn show_profile(
         activity_res,
         collections_res,
         unread_res,
+        ai_activity_res,
     ) = tokio::join!(
         UserRepo::stats(&state.db, user.id),
         GameRepo::by_user(&state.db, user.id, 24, 0),
@@ -112,6 +113,28 @@ pub async fn show_profile(
             match &current_user {
                 Some(u) => unread_count(&state, u.id).await,
                 None => 0,
+            }
+        },
+        // v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (public, sanitized): chỉ
+        // task/action/status/percentage/created_at — KHÔNG message,
+        // KHÔNG metadata, KHÔNG ip_address (cấm lộ thông tin nhạy cảm).
+        async {
+            if user.role.is_ai_agent() {
+                match AiAgentRepo::list_progress_for_agent(&state.db, user.id, 10).await {
+                    Ok(reports) => reports
+                        .into_iter()
+                        .map(|r| AiPublicActivity {
+                            task: r.task,
+                            action: r.action,
+                            status: r.status,
+                            percentage: r.percentage,
+                            created_at: r.created_at,
+                        })
+                        .collect::<Vec<_>>(),
+                    Err(_) => Vec::new(),
+                }
+            } else {
+                Vec::new()
             }
         },
     );
@@ -193,7 +216,21 @@ pub async fn show_profile(
         heatmap,
         completeness_pct,
         member_months,
+        ai_activity: ai_activity_res,
     })
+}
+
+/// View công khai của 1 báo cáo tiến trình AI — CHỈ gồm field đã được
+/// kiểm duyệt là không nhạy cảm (task, action, status, percentage, time).
+/// `message` + `metadata` + `ip_address` bị LOẠI chủ động ở handler —
+/// dù template có render nhầm cũng không có dữ liệu để lộ.
+#[derive(Debug, Clone)]
+pub struct AiPublicActivity {
+    pub task: String,
+    pub action: String,
+    pub status: crate::models::ai_agent::AiTaskStatus,
+    pub percentage: i16,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Xây grid heatmap 13 tuần × 7 ngày từ danh sách ngày hoạt động.

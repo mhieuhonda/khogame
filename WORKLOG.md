@@ -614,3 +614,48 @@ Stage Summary:
 - ✅ /api/v1/health trả {database:up, pool:4, version:3.1.1}.
 - ✅ Route /rps và /word-chain trả 303 (redirect login, đúng behavior).
 - ⏭️ User test đăng nhập và thử 2 game mới + xem 100 danh hiệu mới.
+
+---
+
+## [3.4.0] — 2026-08-30 — Feedback system + AI Agent login rework + UI mobile fixes
+
+### Tổng quan
+Bản phát hành tập trung: (1) hệ thống góp ý 2 chiều user→admin, (2) rework
+hoàn toàn đăng nhập AI Agent sang username + mật khẩu có thời hạn do admin
+đặt, (3) fix toàn bộ lỗi UI mobile (comment tin tức chữ dọc, bảng xếp hạng
+tràn), (4) tạm dừng arcade với trang "đang được Hieu Louis xem xét",
+(5) hiệu ứng hồ sơ AI mới theo accent color, (6) báo cáo hoạt động AI
+công khai (sanitized), (7) upgrade CI/CD actions hết cảnh báo Node 20.
+
+### Chi tiết kỹ thuật
+- **Migrations mới**: 028 `ai_agent_credentials` (Argon2id + thời hạn +
+  lockout + functional index LOWER(username)), 029 `user_feedback` (+ enum
+  feedback_category/feedback_status + notification_type thêm
+  'feedback_status'), 030 cập nhật bio/capabilities GLM 5.3.
+- **Argon2id** (crate argon2 0.5): hash tại auth.rs (salt qua encode_b64
+  tránh xung đột rand_core 0.6 vs rand 0.10).
+- **Login AI**: verify_password_login (atomic lockout CASE WHEN, dummy
+  hash timing-equalizer, expiry check sau verify, uniform error messages).
+- **Feedback**: 5 danh mục, security chỉ admin (filter SQL WHERE $n OR
+  category != 'security'), notification ngoài transaction, rate-limit
+  10/24h, page_url chặn //, /\, CR/LF.
+- **Comment news restructure** giống comment game (avatar flex-shrink:0) —
+  root-cause chữ dọc: author-link chiếm hết flex width ép body về 0.
+- **Arcade gate**: const ARCADE_UNDER_REVIEW trong handlers/mod.rs — gate
+  cả page + play/match/move endpoints.
+- **Audit độc lập 2 vòng** (agent riêng): vòng 1 phát hiện 2 HIGH (base64
+  decode sai byte — đã đổi hướng bỏ hẳn, XSS list_replies) + 6 MED; vòng 2
+  verify lại + phát hiện 1 HIGH (locked_until không reset → không re-lock
+  được) + 2 MED (confirm dialog kép, data-confirm trên button). Tất cả đã
+  fix + kèm giải thích trong code.
+
+### Kiểm định trước release
+- cargo check / clippy -D warnings / rustdoc -D warnings: PASS
+- cargo test: 352/352 PASS
+- node --check app.js: PASS
+- CI/CD local gates tương đương CI GitHub Actions
+
+### Deploy
+- Tag v3.4.0 → CI (fmt/check/clippy/test/doc/audit) → CD (build image
+  GHCR + deploy Coolify + verify /health version) → Release tự tạo từ
+  CHANGELOG.

@@ -1,0 +1,129 @@
+{% extends "layout.html" %}
+
+{% block title %}Góp ý &amp; Báo cáo{% endblock %}
+{% block description %}Góp ý, báo cáo lỗi, báo cáo bảo mật, đề xuất nâng cấp và tính năng mới cho Louis Space — quản trị viên xem xét và phản hồi.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Góp ý &amp; Báo cáo cho Louis Space
+        </h1>
+        <p class="section-sub">Ý kiến của bạn giúp nền tảng tốt hơn mỗi ngày. Quản trị viên (Hieu Louis) xem xét mọi góp ý.</p>
+    </div>
+
+    {% if just_sent %}
+    <div class="feedback-success" role="status">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div>
+            <strong>Đã gửi góp ý thành công!</strong>
+            <p>Cảm ơn bạn — quản trị viên sẽ xem xét sớm. Theo dõi trạng thái trong danh sách bên dưới.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="feedback-layout">
+        <div class="feedback-form-card">
+            <h2 class="feedback-form-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4L18.5 2.5z"/></svg>
+                Gửi góp ý mới
+            </h2>
+
+            <form method="post" action="/feedback" class="feedback-form">
+                <div class="form-group">
+                    <label class="form-label" for="feedback-category">Loại góp ý</label>
+                    <select id="feedback-category" name="category" class="form-control" required>
+                        {% for c in &categories %}
+                        <option value="{{ c.key() }}">{{ c.icon() }} {{ c.label() }} — {{ c.hint() }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="feedback-title">Tiêu đề <span class="req">*</span></label>
+                    <input type="text" id="feedback-title" name="title" class="form-control"
+                           placeholder="Tóm tắt ngắn gọn (5-200 ký tự)"
+                           minlength="5" maxlength="200" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="feedback-body">Nội dung chi tiết <span class="req">*</span></label>
+                    <textarea id="feedback-body" name="body" class="form-control" rows="6"
+                              placeholder="Mô tả chi tiết: bạn làm gì, gặp gì, mong muốn gì? (10-5000 ký tự)"
+                              minlength="10" maxlength="5000" required></textarea>
+                    <small class="form-hint">
+                        Báo cáo lỗi: mô tả trình tự tái hiện + thiết bị/trình duyệt.
+                        Bảo mật: <strong> KHÔNG dán mật khẩu hay token</strong> — admin sẽ liên hệ riêng.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="feedback-url">Trang liên quan (tuỳ chọn)</label>
+                    <input type="text" id="feedback-url" name="page_url" class="form-control"
+                           placeholder="/games/ten-game — đường dẫn bạn gặp vấn đề"
+                           maxlength="2048">
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    Gửi góp ý
+                </button>
+                <p class="form-hint feedback-limit-hint">Tối đa 10 góp ý mỗi 24 giờ.</p>
+            </form>
+        </div>
+
+        <div class="feedback-my-list">
+            <h2 class="feedback-form-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Góp ý của tôi
+            </h2>
+
+            {% if my_feedback.is_empty() %}
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <h3>Chưa có góp ý nào</h3>
+                <p>Góp ý đầu tiên của bạn sẽ hiện ở đây cùng phản hồi từ quản trị viên.</p>
+            </div>
+            {% else %}
+            <div class="feedback-items">
+                {% for f in &my_feedback %}
+                <article class="feedback-item {% if f.category.is_security() %}feedback-item-security{% endif %}">
+                    <header class="feedback-item-head">
+                        <span class="feedback-cat-badge" style="background: {{ f.category.color() }}1a; color: {{ f.category.color() }}; border-color: {{ f.category.color() }}40">
+                            {{ f.category.icon() }} {{ f.category.label() }}
+                        </span>
+                        <span class="feedback-status-badge" style="color: {{ f.status.color() }}; border-color: {{ f.status.color() }}55; background: {{ f.status.color() }}12">
+                            {{ f.status.label() }}
+                        </span>
+                        <span class="feedback-time" title="{{ f.created_at.to_rfc3339() }}">{{ f.created_at|time_ago_dt }}</span>
+                    </header>
+                    <h3 class="feedback-item-title">{{ f.title }}</h3>
+                    <p class="feedback-item-body">{{ f.body }}</p>
+                    {% match f.page_url %}
+                    {% when Option::Some with (url) %}
+                    {% if !url.is_empty() %}
+                    <p class="feedback-item-url">Trang: <a href="{{ url }}">{{ url }}</a></p>
+                    {% endif %}
+                    {% when Option::None %}
+                    {% endmatch %}
+                    {% match f.admin_response %}
+                    {% when Option::Some with (resp) %}
+                    {% if !resp.is_empty() %}
+                    <div class="feedback-admin-response">
+                        <strong>Phản hồi của quản trị viên:</strong>
+                        <p>{{ resp }}</p>
+                    </div>
+                    {% endif %}
+                    {% when Option::None %}
+                    {% endmatch %}
+                </article>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endblock %}

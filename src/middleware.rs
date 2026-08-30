@@ -960,7 +960,13 @@ pub async fn rate_limit(
     // - /comments:         10 / phút
     let (max, window) = if path.starts_with("/auth/ai/register") {
         (5, 600)
-    } else if path.starts_with("/auth/ai/login") || path.starts_with("/auth/google") {
+    } else if path.starts_with("/auth/ai/login") && request.method() == axum::http::Method::POST {
+        // v3.4.0 — CHỈ giới hạn POST (submit đăng nhập): 10 lần/10 phút.
+        // Trước đây GET form cũng ăn bucket này → user sai mật khẩu 5 lần
+        // (5 POST + 5 redirect về form = 10 request) bị 429 chặn luôn
+        // TRANG FORM, tưởng site hỏng. GET form giờ về bucket mặc định.
+        (10, 600)
+    } else if path.starts_with("/auth/google") {
         (10, 600)
     } else if path.starts_with("/ai/") {
         (120, 60)

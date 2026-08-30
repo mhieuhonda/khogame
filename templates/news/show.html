@@ -122,34 +122,53 @@
         {% else %}
         <div class="comment-list">
             {% for c in comments %}
+            {# v3.4.0 FIX MOBILE — comment "Xin chào" bị dọc từng ký tự:
+               cấu trúc cũ đặt <a.comment-author> (avatar + tên) là flex item
+               NGANG HÀNG với .comment-body (flex-basis 0%). Khi author chiếm
+               hết bề ngang (tên dài), body bị ép về width 0 → mỗi ký tự xuống
+               dòng. Cấu trúc mới giống comment game (đã đúng): avatar riêng
+               (flex-shrink: 0) + body chứa header bên trong → body LUÔN có
+               width = container - avatar. #}
             <div class="comment-item" id="comment-{{ c.id }}">
-                <a href="/u/{{ c.author_username }}" class="comment-author">
-                    {% match c.author_avatar %}
-                    {% when Option::Some with (url) %}
-                    <img src="{{ url }}" alt="" class="avatar avatar-xs" width="24" height="24" loading="lazy" decoding="async">
-                    {% when Option::None %}
-                    <div class="avatar avatar-xs avatar-fallback">{{ c.author_name|initials }}</div>
-                    {% endmatch %}
-                    <strong>{{ c.author_name }}</strong>
-                </a>
-                <div class="comment-body comment-body-md">{{ c.content|html }}</div>
-                <div class="comment-meta">
-                    <span class="comment-time">{{ c.created_at|format_datetime_vn }}</span>
-                    {% match current_user %}
-                    {% when Option::Some with (u) %}
-                    <button class="btn btn-ghost btn-xs"
-                            hx-post="/news_comments/{{ c.id }}/like"
-                            hx-target="this"
-                            hx-swap="outerHTML">{{ c.like_count }} ❤</button>
-                    {% if c.user_id == u.id || u.role.is_staff() %}
-                    <button class="btn btn-ghost btn-xs btn-danger"
-                            hx-delete="/news_comments/{{ c.id }}"
-                            hx-target="closest .comment-item"
-                            hx-swap="outerHTML"
-                            hx-confirm="Xóa bình luận này?">Xóa</button>
-                    {% endif %}
-                    {% when Option::None %}
-                    {% endmatch %}
+                <div class="comment-avatar">
+                    <a href="/u/{{ c.author_username }}" aria-label="Hồ sơ {{ c.author_name }}">
+                        {% match c.author_avatar %}
+                        {% when Option::Some with (url) %}
+                        <img src="{{ url }}" alt="" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                        {% when Option::None %}
+                        <div class="avatar avatar-sm avatar-fallback">{{ c.author_name|initials }}</div>
+                        {% endmatch %}
+                    </a>
+                </div>
+                <div class="comment-body">
+                    <div class="comment-header">
+                        <a href="/u/{{ c.author_username }}" class="comment-author">{{ c.author_name }}</a>
+                        <span class="comment-time" title="{{ c.created_at.to_rfc3339() }}">{{ c.created_at|format_datetime_vn }}</span>
+                    </div>
+                    <div class="comment-content comment-body-md">{{ c.content|html }}</div>
+                    <div class="comment-actions">
+                        {% match current_user %}
+                        {% when Option::Some with (u) %}
+                        <button class="comment-action"
+                                hx-post="/news_comments/{{ c.id }}/like"
+                                hx-target="this"
+                                hx-swap="outerHTML"
+                                hx-disabled-elt="this"
+                                aria-label="Thích bình luận">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            {{ c.like_count }}
+                        </button>
+                        {% if c.user_id == u.id || u.role.is_staff() %}
+                        <button class="comment-action danger"
+                                hx-delete="/news_comments/{{ c.id }}"
+                                hx-target="closest .comment-item"
+                                hx-swap="outerHTML"
+                                hx-disabled-elt="this"
+                                hx-confirm="Xóa bình luận này?">Xóa</button>
+                        {% endif %}
+                        {% when Option::None %}
+                        {% endmatch %}
+                    </div>
                 </div>
             </div>
             {% endfor %}

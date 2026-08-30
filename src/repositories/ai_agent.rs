@@ -9,11 +9,14 @@
 //! - [`AiAgentRepo::add_progress`]: AI gửi báo cáo tiến trình.
 //! - [`AiAgentRepo::list_progress_recent`]: danh sách báo cáo (cho admin).
 //! - [`AiAgentRepo::revoke_token`]: admin thu hồi token.
+//! - v3.4.0: [`AiAgentRepo::admin_create_agent`], [`AiAgentRepo::admin_reset_password`],
+//!   [`AiAgentRepo::verify_password_login`] — đăng nhập AI Agent bằng
+//!   username + mật khẩu (Argon2id, có thời hạn do admin đặt).
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AiAgentProfile, AiAgentToken, AiAgentWithProfile, AiProgressReport, AiProgressReportWithAgent,
-    AiTaskStatus, User,
+    AiAgentCredential, AiAgentProfile, AiAgentToken, AiAgentWithProfile, AiProgressReport,
+    AiProgressReportWithAgent, AiTaskStatus, User,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -557,6 +560,426 @@ impl AiAgentRepo {
         Ok(())
     }
 
+    // ============================================================
+    // v3.4.0 — USERNAME + PASSWORD CREDENTIALS (admin tạo, có thời hạn)
+    // ============================================================
+
+    /// Admin tạo tài khoản AI Agent mới kèm mật khẩu + thời hạn.
+    ///
+    /// Khác `register` (AI tự đăng ký bằng secret): tài khoản do admin
+    /// chủ động tạo, KHÔNG cần secret, và đăng nhập bằng username +
+    /// mật khẩu (Argon2id) thay vì API token.
+    ///
+    /// * `password` — plain password admin đặt (hash Argon2id trước khi lưu).
+    /// * `expires_days` — số ngày mật khẩu có hiệu lực (1-3650).
+    ///
+    /// Trả về `(user_id, username_final)` — username có thể bị đổi hậu tố
+    /// nếu trùng (`ai_1`, `ai_2`…).
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn admin_create_agent(
+        pool: &PgPool,
+        username: &str,
+        display_name: &str,
+        password: &str,
+        expires_days: i64,
+        model_name: &str,
+        vendor: &str,
+        version: &str,
+        capabilities: &[String],
+        privacy_level: &str,
+        accent_color: &str,
+        bio: &str,
+        admin_id: Uuid,
+    ) -> AppResult<(Uuid, String)> {
+        // Validate các field giống register()
+        let display_name = crate::utils::normalize_nfc(display_name.trim());
+        if display_name.is_empty() {
+            return Err(AppError::BadRequest(
+                "Tên hiển thị không được để trống".into(),
+            ));
+        }
+        let model_name = model_name.trim();
+        if model_name.is_empty() {
+            return Err(AppError::BadRequest(
+                "Tên model không được để trống (vd 'GLM-5.3')".into(),
+            ));
+        }
+        Self::validate_password_strength(password)?;
+        let expires_days = Self::validate_expiry_days(expires_days)?;
+        let privacy_level = match privacy_level.to_ascii_lowercase().as_str() {
+            "anonymous" => "anonymous",
+            _ => "public",
+        };
+        let accent_color = if accent_color.trim().is_empty() {
+            "#7c3aed"
+        } else if accent_color.starts_with('#')
+            && accent_color[1..].chars().all(|c| c.is_ascii_hexdigit())
+            && (accent_color.len() == 7 || accent_color.len() == 4)
+        {
+            accent_color
+        } else {
+            return Err(AppError::BadRequest(
+                "accent_color phải là mã hex (vd '#7c3aed')".into(),
+            ));
+        };
+
+        // Username: validate whitelist + CHUẨN HOÁ LOWERCASE trước khi lưu
+        // (audit v3.4.0: verify_password_login so khớp LOWER(username) nhưng
+        // unique index lại case-sensitive → "GLM53" và "glm53" cùng tồn tại
+        // gây login khớp nhầm. Lowercase lúc tạo + so unique case-insensitive
+        // là root-cause fix).
+        let username_final = username.trim().to_ascii_lowercase();
+        validate_ai_username(&username_final)?;
+        let username_unique = Self::ensure_unique_username_ci(pool, &username_final).await;
+
+        let email_final = format!("ai-{username_unique}@ai-agent.local");
+        let google_sub = format!("ai_agent:{}", Uuid::new_v4());
+        let password_hash = crate::auth::hash_password(password)?;
+        let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_days);
+
+        let mut tx = pool.begin().await?;
+
+        // 1) Tạo user (role ai_agent)
+        let user: User = sqlx::query_as::<_, User>(
+            r"INSERT INTO users (email, username, display_name, bio, google_sub, role, provider)
+              VALUES ($1, $2, $3, $4, $5, 'ai_agent', 'ai_agent')
+              RETURNING id, email, username, display_name, avatar_url, bio, google_sub,
+                role, is_banned, last_seen_at, created_at, updated_at,
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at",
+        )
+        .bind(&email_final)
+        .bind(&username_unique)
+        .bind(&display_name)
+        .bind(bio.trim())
+        .bind(&google_sub)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // 2) Tạo profile
+        let _ = sqlx::query(
+            r"INSERT INTO ai_agent_profiles
+                (user_id, model_name, vendor, version, capabilities, privacy_level, accent_color, verified)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)",
+        )
+        .bind(user.id)
+        .bind(model_name)
+        .bind(vendor.trim())
+        .bind(version.trim())
+        .bind(capabilities)
+        .bind(privacy_level)
+        .bind(accent_color)
+        .execute(&mut *tx)
+        .await?;
+
+        // 3) Default preferences (fail-soft)
+        let _ = sqlx::query(
+            "INSERT INTO user_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+        )
+        .bind(user.id)
+        .execute(&mut *tx)
+        .await;
+
+        // 4) Lưu credentials mật khẩu (Argon2id + thời hạn admin đặt)
+        sqlx::query(
+            r"INSERT INTO ai_agent_credentials
+                (user_id, password_hash, password_expires_at, updated_by)
+              VALUES ($1, $2, $3, $4)",
+        )
+        .bind(user.id)
+        .bind(&password_hash)
+        .bind(expires_at)
+        .bind(admin_id)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok((user.id, username_unique))
+    }
+
+    /// Admin đặt lại mật khẩu + thời hạn cho AI Agent có sẵn.
+    /// Nếu agent chưa có dòng credentials → INSERT mới (upsert).
+    /// Đồng thời mở khoá (locked_until = NULL, failed_attempts = 0).
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn admin_reset_password(
+        pool: &PgPool,
+        user_id: Uuid,
+        password: &str,
+        expires_days: i64,
+        admin_id: Uuid,
+    ) -> AppResult<()> {
+        Self::validate_password_strength(password)?;
+        let expires_days = Self::validate_expiry_days(expires_days)?;
+        let password_hash = crate::auth::hash_password(password)?;
+        let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_days);
+        sqlx::query(
+            r"INSERT INTO ai_agent_credentials
+                (user_id, password_hash, password_expires_at, updated_by)
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (user_id) DO UPDATE SET
+                password_hash = EXCLUDED.password_hash,
+                password_expires_at = EXCLUDED.password_expires_at,
+                updated_by = EXCLUDED.updated_by,
+                failed_attempts = 0,
+                locked_until = NULL,
+                updated_at = NOW()",
+        )
+        .bind(user_id)
+        .bind(&password_hash)
+        .bind(expires_at)
+        .bind(admin_id)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Xoá credentials mật khẩu (admin thu hồi quyền đăng nhập web bằng
+    /// mật khẩu — agent vẫn có thể dùng API token nếu có).
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn admin_revoke_password(pool: &PgPool, user_id: Uuid) -> AppResult<()> {
+        sqlx::query("DELETE FROM ai_agent_credentials WHERE user_id = $1")
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    /// Lấy credentials của 1 AI Agent (nếu có).
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn find_credential(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> AppResult<Option<AiAgentCredential>> {
+        let c = sqlx::query_as::<_, AiAgentCredential>(
+            r"SELECT user_id, password_hash, password_expires_at, failed_attempts,
+                      locked_until, last_login_at, updated_by, created_at, updated_at
+              FROM ai_agent_credentials WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(c)
+    }
+
+    /// Lấy credentials cho toàn bộ danh sách agent (trang admin) —
+    /// 1 query thay vì N query mỗi agent.
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn credentials_map(
+        pool: &PgPool,
+    ) -> AppResult<std::collections::HashMap<Uuid, AiAgentCredential>> {
+        let rows = sqlx::query_as::<_, AiAgentCredential>(
+            r"SELECT user_id, password_hash, password_expires_at, failed_attempts,
+                      locked_until, last_login_at, updated_by, created_at, updated_at
+              FROM ai_agent_credentials",
+        )
+        .fetch_all(pool)
+        .await?;
+        Ok(rows.into_iter().map(|c| (c.user_id, c)).collect())
+    }
+
+    /// Đăng nhập AI Agent bằng username + mật khẩu.
+    ///
+    /// Flow:
+    /// 1. Tìm user theo username (LOWER so khớp — username chuẩn là lowercase
+    ///    nhưng giữ an toàn khi admin gõ hoa).
+    /// 2. Kiểm tra role = ai_agent + không bị ban.
+    /// 3. Kiểm tra credentials: tồn tại, chưa bị khoá (locked_until),
+    ///    mật khẩu chưa hết hạn (password_expires_at).
+    /// 4. Verify Argon2id (constant-time bên trong argon2 crate).
+    /// 5. Sai mật khẩu → tăng failed_attempts; đủ 5 lần → khoá 15 phút.
+    ///    Đúng → reset failed_attempts + cập nhật last_login_at.
+    ///
+    /// Trả về `Ok(User)` khi thành công. `Err(AppError::Forbidden)` với
+    /// message tiếng Việt chi tiết khi sai (message KHÔNG tiết lộ agent
+    /// tồn tại hay không — chống user enumeration).
+    ///
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn verify_password_login(
+        pool: &PgPool,
+        username: &str,
+        password: &str,
+    ) -> AppResult<User> {
+        use chrono::Utc;
+
+        let username_trim = username.trim();
+        if username_trim.is_empty() || password.is_empty() {
+            return Err(AppError::Forbidden(
+                "Tên đăng nhập hoặc mật khẩu không đúng".into(),
+            ));
+        }
+
+        // 1) Tìm user theo username (case-insensitive)
+        let user: Option<User> = sqlx::query_as::<_, User>(
+            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
+                     role, is_banned, last_seen_at, created_at, updated_at,
+                     signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
+              FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1",
+        )
+        .bind(username_trim)
+        .fetch_optional(pool)
+        .await?;
+
+        // Fail-uniform: mọi lý do thất bại đều cùng 1 message
+        const GENERIC_ERR: &str = "Tên đăng nhập hoặc mật khẩu không đúng";
+        const LOCKED_ERR: &str =
+            "Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau 15 phút.";
+        const EXPIRED_ERR: &str = "Mật khẩu đã hết hạn. Liên hệ quản trị viên để được đặt lại.";
+
+        let Some(user) = user else {
+            // Username công khai (/u/{username}) nhưng vẫn chạy 1 lần Argon2
+            // dummy (hash tốn ~50ms như verify thật) — chống timing attack
+            // phân biệt "user tồn tại" qua thời gian response.
+            let _ = crate::auth::hash_password(password);
+            return Err(AppError::Forbidden(GENERIC_ERR.into()));
+        };
+        if !user.role.is_ai_agent() || user.is_banned {
+            return Err(AppError::Forbidden(GENERIC_ERR.into()));
+        }
+
+        // 2) Lấy credentials
+        let cred = sqlx::query_as::<_, AiAgentCredential>(
+            r"SELECT user_id, password_hash, password_expires_at, failed_attempts,
+                      locked_until, last_login_at, updated_by, created_at, updated_at
+              FROM ai_agent_credentials WHERE user_id = $1",
+        )
+        .bind(user.id)
+        .fetch_optional(pool)
+        .await?;
+        let Some(cred) = cred else {
+            // Tài khoản không có mật khẩu (tạo cũ qua /auth/ai/register)
+            return Err(AppError::Forbidden(GENERIC_ERR.into()));
+        };
+
+        // 3) Kiểm tra khoá
+        if let Some(until) = cred.locked_until {
+            if until > Utc::now() {
+                return Err(AppError::Forbidden(LOCKED_ERR.into()));
+            }
+        }
+
+        // 4) Verify mật khẩu (Argon2id)
+        let ok = crate::auth::verify_password(password, &cred.password_hash);
+        if !ok {
+            // ATOMIC increment (audit v3.4.0): `failed_attempts = failed_attempts + 1`
+            // tính TRÊN DB — N request song song không còn đọc giá trị cũ
+            // (race lost-update bypass lockout). Khoá khi chạm ngưỡng 5.
+            // Nếu khoá cũ đã HẾT HẠN thì counter tự reset về 1 (trước đây
+            // counter còn ≥5 sau khi hết khoá → 1 lần gõ sai khoá thêm 15'
+            // nữa — re-lock vĩnh viễn).
+            // Semantics UPDATE Postgres: mọi biểu thức SET đọc giá trị OLD row.
+            //CASE 1 — failed_attempts: khoá đã hết hạn → reset về 1 (bắt đầu
+            // đếm lại chuỗi mới), ngược lại +1.
+            // CASE 2 — locked_until: (a) khoá đã hết hạn → NULL (QUAN TRỌNG:
+            // không reset thì timestamp cũ NOT NULL khiến CASE1 luôn TRUE →
+            // counter kẹt vĩnh viễn ở 1, không bao giờ khoá lại được —
+            // audit v2); (b) counter mới chạm ngưỡng 5 → khoá 15 phút.
+            let row = sqlx::query(
+                r"UPDATE ai_agent_credentials
+                   SET failed_attempts = CASE
+                         WHEN locked_until IS NOT NULL AND locked_until <= NOW() THEN 1
+                         ELSE failed_attempts + 1
+                       END,
+                       locked_until = CASE
+                         WHEN locked_until IS NOT NULL AND locked_until <= NOW() THEN NULL
+                         WHEN failed_attempts + 1 >= 5
+                           AND (locked_until IS NULL OR locked_until <= NOW())
+                         THEN NOW() + INTERVAL '15 minutes'
+                         ELSE locked_until
+                       END
+                   WHERE user_id = $1
+                   RETURNING failed_attempts",
+            )
+            .bind(user.id)
+            .fetch_one(pool)
+            .await;
+            let attempts = row
+                .map(|r: sqlx::postgres::PgRow| {
+                    use sqlx::Row;
+                    let v: i32 = r.get(0);
+                    v
+                })
+                .unwrap_or(cred.failed_attempts + 1);
+            tracing::warn!(
+                username = %user.username,
+                attempts,
+                "AI Agent password login failed"
+            );
+            if attempts >= 5 {
+                return Err(AppError::Forbidden(LOCKED_ERR.into()));
+            }
+            return Err(AppError::Forbidden(GENERIC_ERR.into()));
+        }
+
+        // 5) Kiểm tra hạn mật khẩu (SAU khi verify đúng — tránh lộ thông tin
+        //    "tài khoản tồn tại" cho attacker chưa có mật khẩu)
+        if cred.password_expires_at <= Utc::now() {
+            return Err(AppError::Forbidden(EXPIRED_ERR.into()));
+        }
+
+        // 6) Thành công: reset bộ đếm + cập nhật last_login_at + last_active
+        let _ = tokio::join!(
+            sqlx::query(
+                r"UPDATE ai_agent_credentials
+                   SET failed_attempts = 0, locked_until = NULL, last_login_at = NOW()
+                   WHERE user_id = $1"
+            )
+            .bind(user.id)
+            .execute(pool),
+            sqlx::query("UPDATE ai_agent_profiles SET last_active_at = NOW() WHERE user_id = $1")
+                .bind(user.id)
+                .execute(pool),
+        );
+        Ok(user)
+    }
+
+    /// Validate độ mạnh mật khẩu: 8-128 ký tự.
+    /// Không ép phức tạp (admin tự chọn) — minimum length là rào chính.
+    ///
+    /// # Errors
+    ///
+    /// Trả về `AppError::BadRequest` nếu mật khẩu yếu/quá dài.
+    fn validate_password_strength(password: &str) -> AppResult<()> {
+        let len = password.chars().count();
+        if len < 8 {
+            return Err(AppError::BadRequest("Mật khẩu tối thiểu 8 ký tự".into()));
+        }
+        if len > 128 {
+            return Err(AppError::BadRequest("Mật khẩu tối đa 128 ký tự".into()));
+        }
+        Ok(())
+    }
+
+    /// Validate số ngày hết hạn: 1-3650 (tối đa 10 năm).
+    ///
+    /// # Errors
+    ///
+    /// Trả về `AppError::BadRequest` nếu ngoài khoảng cho phép.
+    fn validate_expiry_days(days: i64) -> AppResult<i64> {
+        if !(1..=3650).contains(&days) {
+            return Err(AppError::BadRequest(
+                "Thời hạn mật khẩu phải từ 1-3650 ngày".into(),
+            ));
+        }
+        Ok(days)
+    }
+
     /// Sinh username từ `model_name` (slug đơn giản).
     fn slugify_model(model_name: &str) -> String {
         let s: String = model_name
@@ -574,23 +997,34 @@ impl AiAgentRepo {
 
     /// Đảm bảo username không trùng lặp — thêm hậu tố _1, _2, ...
     async fn ensure_unique_username(pool: &PgPool, base: &str) -> String {
+        Self::ensure_unique_username_ci(pool, base).await
+    }
+
+    /// Đảm bảo username unique KHÔNG PHÂN BIỆT HOA/THƯỜNG (v3.4.0):
+    /// "GLM53" và "glm53" là 1 danh tính duy nhất vì login so khớp
+    /// LOWER(username). Trùng case-insensitive → thêm hậu tố _1, _2...
+    async fn ensure_unique_username_ci(pool: &PgPool, base: &str) -> String {
         let base = if base.is_empty() {
             "ai_agent".to_string()
         } else {
             base.to_string()
         };
+        // Clamp 44 ký tự — để dư 6 ký tự cho hậu tố "_99999" (username
+        // VARCHAR(50); audit v2: base 48+ suffix _1 = 50+ → INSERT lỗi 22001)
+        let base: String = base.chars().take(44).collect();
         for i in 0..1000u32 {
             let candidate = if i == 0 {
                 base.clone()
             } else {
                 format!("{base}_{i}")
             };
-            let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM users WHERE username = $1")
-                .bind(&candidate)
-                .fetch_optional(pool)
-                .await
-                .ok()
-                .flatten();
+            let exists: Option<i32> =
+                sqlx::query_scalar("SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)")
+                    .bind(&candidate)
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten();
             if exists.is_none() {
                 return candidate;
             }

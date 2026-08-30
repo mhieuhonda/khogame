@@ -16,6 +16,8 @@ pub enum NotificationType {
     Review,
     Rating,
     Mention,
+    /// v3.4.0 — trạng thái góp ý người dùng (feedback) cập nhật
+    FeedbackStatus,
 }
 
 impl NotificationType {
@@ -32,6 +34,7 @@ impl NotificationType {
             Self::Review => "⭐",
             Self::Rating => "⭐",
             Self::Mention => "@",
+            Self::FeedbackStatus => "💬",
         }
     }
     #[must_use]
@@ -47,6 +50,7 @@ impl NotificationType {
             Self::Review => "Đánh giá",
             Self::Rating => "Đánh giá sao",
             Self::Mention => "Đề cập",
+            Self::FeedbackStatus => "Góp ý",
         }
     }
 }
@@ -136,6 +140,7 @@ mod tests {
             NotificationType::Review,
             NotificationType::Rating,
             NotificationType::Mention,
+            NotificationType::FeedbackStatus,
         ];
         for t in &all {
             assert!(!t.icon().is_empty(), "icon rỗng cho {t:?}");

@@ -1665,6 +1665,10 @@ pub async fn export(
 // ============================================================
 
 /// Trang /admin/ai-agents — danh sách tất cả AI Agent (chỉ admin/staff).
+///
+/// v3.4.0 — kèm trạng thái mật khẩu từng agent (active/expired/locked/none)
+/// + form tạo agent mới (username + mật khẩu + thời hạn).
+///
 /// # Errors
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -1675,15 +1679,64 @@ pub async fn ai_agents(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let agents = AiAgentRepo::list_for_admin(&state.db)
-        .await
-        .unwrap_or_default();
-    let unread = unread_count(&state, user.id).await;
+    build_ai_agents_page(&state, user, None, None).await
+}
+
+/// Build dữ liệu trang /admin/ai-agents (dùng chung cho GET list + POST
+/// create/reset-password — POST render TRỰC TIẾP kèm flash mật khẩu, KHÔNG
+/// redirect qua URL vì mật khẩu trong URL sẽ nằm vĩnh viễn trong browser
+/// history + access log — audit v3.4.0 MED-HIGH).
+///
+/// Flash: `flash_username` + `flash_password` chỉ tồn tại trong response
+/// HTML của đúng request POST này — refresh trang là mất (an toàn).
+async fn build_ai_agents_page(
+    state: &AppState,
+    user: crate::models::user::User,
+    flash_username: Option<String>,
+    flash_password: Option<String>,
+) -> AppResult<AdminAiAgentsTemplate> {
+    let (agents_res, creds_res, unread_res) = tokio::join!(
+        AiAgentRepo::list_for_admin(&state.db),
+        AiAgentRepo::credentials_map(&state.db),
+        unread_count(state, user.id)
+    );
+    let agents = agents_res.unwrap_or_default();
+    let creds = creds_res.unwrap_or_default();
+    let now = chrono::Utc::now();
+    // Trạng thái mật khẩu hiển thị cho từng agent (không kèm hash)
+    let cred_views: std::collections::HashMap<Uuid, AiCredentialView> = creds
+        .iter()
+        .map(|(uid, c)| {
+            (
+                *uid,
+                AiCredentialView {
+                    status_label: c.status_at(now).label().to_string(),
+                    status_color: c.status_at(now).color().to_string(),
+                    expires_at: c.password_expires_at,
+                    last_login_at: c.last_login_at,
+                    failed_attempts: c.failed_attempts,
+                },
+            )
+        })
+        .collect();
     Ok(AdminAiAgentsTemplate {
         current_user: Some(user),
-        unread_notifications: unread,
+        unread_notifications: unread_res,
         agents,
+        cred_views,
+        created_username: flash_username.filter(|s| !s.is_empty()),
+        created_password: flash_password.filter(|s| !s.is_empty()),
     })
+}
+
+/// View trạng thái mật khẩu AI Agent cho template (không chứa hash).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AiCredentialView {
+    pub status_label: String,
+    pub status_color: String,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    pub last_login_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub failed_attempts: i32,
 }
 
 /// Trang /admin/ai-reports — live feed báo cáo tiến trình từ AI Agent.
@@ -1790,6 +1843,211 @@ pub async fn impersonate_ai_agent(
         "IMPERSONATION: admin đăng nhập với tư cách AI Agent"
     );
     Ok((new_jar, Redirect::to("/")))
+}
+
+// ============================================================
+// v3.4.0 — AI AGENT: admin tạo tài khoản + quản lý mật khẩu
+// (username + password + thời hạn — xem migration 028)
+// ============================================================
+
+/// Form tạo AI Agent mới (POST /admin/ai-agents/create).
+#[derive(Debug, Deserialize)]
+pub struct AiAgentCreateForm {
+    pub username: String,
+    pub display_name: String,
+    pub password: String,
+    /// Số ngày mật khẩu có hiệu lực (1-3650).
+    pub expires_days: i64,
+    pub model_name: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub version: String,
+    /// Capabilities phân tách bằng dấu phẩy.
+    #[serde(default)]
+    pub capabilities: String,
+    /// "public" hoặc "anonymous".
+    #[serde(default)]
+    pub privacy_level: String,
+    #[serde(default)]
+    pub accent_color: String,
+    #[serde(default)]
+    pub bio: String,
+}
+
+/// POST /admin/ai-agents/create — admin tạo tài khoản AI Agent mới với
+/// username + mật khẩu + thời hạn. Trả về trang danh sách kèm mật khẩu
+/// HIỂN THỊ 1 LẦN (admin copy gửi cho AI out-of-band).
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn create_ai_agent(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Form(form): Form<AiAgentCreateForm>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    // Capabilities: tách dấu phẩy, trim, lọc rỗng, tối đa 20 items
+    let capabilities: Vec<String> = form
+        .capabilities
+        .split(',')
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .take(20)
+        .collect();
+
+    let (user_id, username) = AiAgentRepo::admin_create_agent(
+        &state.db,
+        &form.username,
+        &form.display_name,
+        &form.password,
+        form.expires_days,
+        &form.model_name,
+        &form.vendor,
+        &form.version,
+        &capabilities,
+        &form.privacy_level,
+        &form.accent_color,
+        &form.bio,
+        admin.id,
+    )
+    .await?;
+
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.create",
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} tạo AI Agent {} (username={}, thời hạn mật khẩu {} ngày)",
+            admin.username, form.display_name, username, form.expires_days
+        ),
+    )
+    .await;
+    tracing::info!(
+        admin = %admin.username,
+        agent = %username,
+        "AI Agent account created (username+password)"
+    );
+
+    // Render TRỰC TIẾP trang danh sách kèm flash mật khẩu (KHÔNG redirect
+    // — mật khẩu không bao giờ nằm trong URL/history/access log).
+    // Response là HTML của đúng request POST này; refresh (GET) là mất.
+    let page = build_ai_agents_page(
+        &state,
+        admin,
+        Some(username.clone()),
+        Some(form.password.clone()),
+    )
+    .await?;
+    Ok(page.into_response())
+}
+
+/// Form đặt lại mật khẩu (POST /admin/ai-agents/{id}/reset-password).
+#[derive(Debug, Deserialize)]
+pub struct AiPasswordResetForm {
+    pub password: String,
+    /// Số ngày mật khẩu có hiệu lực (1-3650).
+    pub expires_days: i64,
+}
+
+/// POST /admin/ai-agents/{user_id}/reset-password — admin đặt lại mật khẩu
+/// + thời hạn (mở khoá nếu đang bị khoá).
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn reset_ai_agent_password(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+    Form(form): Form<AiPasswordResetForm>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let target = UserRepo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
+    if target.role != crate::models::user::UserRole::AiAgent {
+        return Err(AppError::BadRequest(
+            "Chỉ đặt lại mật khẩu cho TÀI KHOẢN AI AGENT".into(),
+        ));
+    }
+    AiAgentRepo::admin_reset_password(
+        &state.db,
+        user_id,
+        &form.password,
+        form.expires_days,
+        admin.id,
+    )
+    .await?;
+
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.reset_password",
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} đặt lại mật khẩu AI Agent {} (thời hạn {} ngày)",
+            admin.username, target.username, form.expires_days
+        ),
+    )
+    .await;
+    tracing::info!(admin = %admin.username, target = %target.username, "AI Agent password reset");
+
+    // Render trực tiếp kèm flash mật khẩu (không redirect — không pwd trong URL)
+    let page = build_ai_agents_page(
+        &state,
+        admin,
+        Some(target.username.clone()),
+        Some(form.password.clone()),
+    )
+    .await?;
+    Ok(page.into_response())
+}
+
+/// POST /admin/ai-agents/{user_id}/revoke-password — thu hồi mật khẩu
+/// (AI không thể đăng nhập web bằng mật khẩu nữa; API token nếu có vẫn dùng được).
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn revoke_ai_agent_password(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let target = UserRepo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
+    if target.role != crate::models::user::UserRole::AiAgent {
+        return Err(AppError::BadRequest(
+            "Chỉ thu hồi mật khẩu của TÀI KHOẢN AI AGENT".into(),
+        ));
+    }
+    AiAgentRepo::admin_revoke_password(&state.db, user_id).await?;
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.revoke_password",
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} thu hồi mật khẩu AI Agent {}",
+            admin.username, target.username
+        ),
+    )
+    .await;
+    Ok(Redirect::to("/admin/ai-agents").into_response())
 }
 
 /// POST /impersonate/stop — kết thúc phiên impersonate, khôi phục phiên

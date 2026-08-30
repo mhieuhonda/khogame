@@ -1,0 +1,123 @@
+{% extends "layout.html" %}
+
+{% block title %}Góp ý người dùng - Quản trị{% endblock %}
+
+{% block content %}
+<section class="admin-page admin-feedback-page">
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                Góp ý người dùng
+            </h1>
+            <p>Góp ý / báo cáo lỗi / bảo mật / nâng cấp / chức năng từ người dùng — xem xét và phản hồi.</p>
+        </div>
+        <div class="filter-tabs">
+            <a href="/admin/feedback" class="filter-tab {% if active_key == "" %}active{% endif %}" {% if active_key == "" %}aria-current="true"{% endif %}>
+                Tất cả <span class="filter-count">{{ counts.total }}</span>
+            </a>
+            <a href="/admin/feedback?status=pending" class="filter-tab {% if active_key == "pending" %}active{% endif %}">
+                Chờ xử lý <span class="filter-count">{{ counts.pending }}</span>
+            </a>
+            <a href="/admin/feedback?status=reviewing" class="filter-tab {% if active_key == "reviewing" %}active{% endif %}">
+                Đang xem xét <span class="filter-count">{{ counts.reviewing }}</span>
+            </a>
+            <a href="/admin/feedback?status=resolved" class="filter-tab {% if active_key == "resolved" %}active{% endif %}">
+                Đã xử lý <span class="filter-count">{{ counts.resolved }}</span>
+            </a>
+            <a href="/admin/feedback?status=dismissed" class="filter-tab {% if active_key == "dismissed" %}active{% endif %}">
+                Đã bỏ qua <span class="filter-count">{{ counts.dismissed }}</span>
+            </a>
+        </div>
+    </div>
+
+    {% include "admin/_nav.html" %}
+
+    {% if security_hidden == Some(true) %}
+    <div class="feedback-security-note" role="note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Góp ý <strong>Bảo mật</strong> chỉ quản trị viên được xem — liên hệ admin nếu cần xử lý gấp.
+    </div>
+    {% endif %}
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <div class="empty-icon">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <h3>Không có góp ý nào</h3>
+        <p>Chưa có góp ý nào ở mục này.</p>
+    </div>
+    {% else %}
+    <div class="admin-section">
+    <div class="feedback-admin-list">
+        {% for f in &items %}
+        <div class="feedback-admin-row {% if f.category.is_security() %}feedback-admin-row-security{% endif %}" id="feedback-{{ f.id }}">
+            <div class="feedback-admin-info">
+                <header class="feedback-item-head">
+                    <span class="feedback-cat-badge" style="background: {{ f.category.color() }}1a; color: {{ f.category.color() }}; border-color: {{ f.category.color() }}40">
+                        {{ f.category.icon() }} {{ f.category.label() }}
+                    </span>
+                    <span class="status-badge" style="color: {{ f.status.color() }}">{{ f.status.label() }}</span>
+                    <span class="feedback-time" title="{{ f.created_at.to_rfc3339() }}">{{ f.created_at.to_rfc3339()|time_ago }}</span>
+                </header>
+                <h3 class="feedback-item-title">
+                    {% if f.category.is_security() %}<span class="feedback-security-flag" title="Góp ý bảo mật — chỉ quản trị viên xem">🔐</span>{% endif %}
+                    {{ f.title }}
+                </h3>
+                <div class="feedback-admin-meta">
+                    <a href="/u/{{ f.user_username }}" class="feedback-reporter">
+                        {% match f.user_avatar_url %}
+                        {% when Option::Some with (url) %}
+                        <img src="{{ url }}" alt="" class="avatar avatar-xs" width="24" height="24" loading="lazy" decoding="async">
+                        {% when Option::None %}
+                        <div class="avatar avatar-xs avatar-fallback">{{ f.user_display_name|initials }}</div>
+                        {% endmatch %}
+                        {{ f.user_display_name }} (@{{ f.user_username }})
+                    </a>
+                </div>
+                <p class="feedback-item-body">{{ f.body }}</p>
+                {% match f.page_url %}
+                {% when Option::Some with (url) %}
+                {% if !url.is_empty() %}
+                <p class="feedback-item-url">Trang: <a href="{{ url }}">{{ url }}</a></p>
+                {% endif %}
+                {% when Option::None %}
+                {% endmatch %}
+                {% match f.admin_response %}
+                {% when Option::Some with (resp) %}
+                {% if !resp.is_empty() %}
+                <div class="feedback-admin-response">
+                    <strong>Đã phản hồi:</strong>
+                    <p>{{ resp }}</p>
+                </div>
+                {% endif %}
+                {% when Option::None %}
+                {% endmatch %}
+            </div>
+
+            <div class="feedback-admin-actions">
+                <form method="post" action="/admin/feedback/{{ f.id }}/status" class="feedback-status-form">
+                    <label class="form-label" for="status-{{ f.id }}">Trạng thái</label>
+                    <select name="status" id="status-{{ f.id }}" class="form-control form-control-sm">
+                        {% for s in &statuses %}
+                        <option value="{{ s.key() }}" {% if s.key() == f.status.key() %}selected{% endif %}>{{ s.label() }}</option>
+                        {% endfor %}
+                    </select>
+                    <label class="form-label" for="response-{{ f.id }}">Phản hồi cho người gửi</label>
+                    <textarea name="admin_response" id="response-{{ f.id }}" class="form-control form-control-sm"
+                              rows="3" maxlength="2000"
+                              placeholder="Phản hồi gửi tới người dùng (hiện ở /feedback của họ + notification)">{% match f.admin_response %}{% when Option::Some with (r) %}{{ r }}{% when Option::None %}{% endmatch %}</textarea>
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Cập nhật
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

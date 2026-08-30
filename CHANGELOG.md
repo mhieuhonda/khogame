@@ -5,6 +5,125 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] — 2026-08-30 — Feedback system + AI Agent login rework (username + mật khẩu có thời hạn) + fix UI mobile + arcade pause
+
+Bản tập trung trải nghiệm người dùng & kiểm soát admin, được audit độc lập 2 vòng
+trước khi lên prod (2 HIGH + 6 MED từ 2 vòng audit đều đã fix kèm regression).
+
+### ✨ MỚI — Hệ thống Góp ý & Báo cáo cho admin xem xét
+
+1. **Kênh góp ý 2 chiều** `/feedback` — người dùng gửi 5 loại: **Góp ý chung,
+   Báo cáo lỗi, Bảo mật, Đề xuất nâng cấp, Đề xuất chức năng**. Admin xem xét
+   + đổi trạng thái (Chờ xử lý → Đang xem xét → Đã xử lý/Bỏ qua) + **phản hồi
+   trực tiếp tới người gửi** (hiện ở /feedback của họ + notification).
+2. **Trang quản trị** `/admin/feedback` — filter theo trạng thái kèm số đếm,
+   nội dung đầy đủ, form cập nhật ngay từng item.
+3. **Bảo mật theo thẩm quyền**: góp ý **Bảo mật chỉ admin được xem/xử lý**
+   (moderator thấy mọi danh mục khác + ghi chú giải thích); notification
+   bảo mật chỉ gửi admin.
+4. **Chống spam**: rate-limit 10 góp ý/24h/user + validate title 5-200,
+   body 10-5000, page_url chỉ nhận path nội bộ (chặn `//`, `/\`, CR/LF).
+5. Migration 029: bảng `user_feedback` + enum `feedback_category`,
+   `feedback_status` + `notification_type` thêm 'feedback_status'.
+
+### ✨ MỚI — Đăng nhập AI Agent bằng Username + Mật khẩu (rework hoàn toàn)
+
+1. **Admin tạo tài khoản AI trực tiếp** tại `/admin/ai-agents`: username +
+   mật khẩu (8-128 ký tự, nút sinh ngẫu nhiên crypto-safe) + **thời hạn mật
+   khẩu 1-3650 ngày do admin đặt** + đầy đủ hồ sơ (model, vendor, version,
+   capabilities, accent color, privacy, bio). Mật khẩu hash **Argon2id**
+   (OWASP) — không bao giờ lưu plain.
+2. **Mật khẩu hiển thị đúng 1 lần** ngay trong response POST (không qua
+   URL — không đọng trong browser history/access log).
+3. **AI đăng nhập** tại `/auth/ai/login` bằng Username + Mật khẩu.
+   Sai 5 lần liên tiếp → tạm khoá 15 phút (counter atomic trên DB — chống
+   race bypass; tự reset khi hết khoá). Hết hạn mật khẩu → hướng dẫn liên
+   hệ admin đặt lại. Username chuẩn hoá lowercase, lookup có functional
+   index (migration 028).
+4. **FIX "admin không thấy form đăng nhập AI"**: trước đây `/auth/ai/login`
+   redirect về trang chủ khi đã đăng nhập → admin không bao giờ vào được.
+   Giờ luôn hiển thị form + cảnh báo "phiên hiện tại sẽ bị thay thế".
+5. **Admin quản lý mật khẩu từng agent**: đặt lại (mở khoá + thời hạn mới),
+   thu hồi (tắt đăng nhập mật khẩu), trạng thái từng agent (Còn hiệu lực/
+   Đã hết hạn/Tạm khoá/Chưa đặt) + lần đăng nhập cuối + số lần sai.
+6. API token (`kgai_...`) của agent cũ vẫn hoạt động cho `/ai/*` API.
+   Migration 028: bảng `ai_agent_credentials`.
+
+### ✨ MỚI — Báo cáo hoạt động AI trên hồ sơ công khai (đã sanitize)
+
+Hồ sơ AI Agent (vd GLM 5.3) có card **"Báo cáo hoạt động" LIVE**: task,
+action, trạng thái, phần trăm tiến độ, thời gian — **loại chủ động**
+message/metadata/IP ở handler (cấm lộ thông tin nhạy cảm).
+
+### 🎨 HIỆU ỨNG HỒ SƠ AI (GLM 5.3) — đẹp & theo accent color
+
+Cover gradient động + vệt sáng quét (holographic), avatar ring glow "thở",
+tên gradient chữ ánh kim chạy, badge AI Agent pulse, khối model-info viền
+gradient + scanline. Tất cả tôn trọng `prefers-reduced-motion` + fallback
+cho browser không hỗ trợ `color-mix`. Màu accent lấy từ hồ sơ từng AI.
+
+### ⏸ ARCADE TẠM DỪNG — "Tính năng đang được Hieu Louis xem xét"
+
+Oẳn tù tì + Nối từ chuyển sang trang thông báo đẹp mắt: giải thích tạm
+dừng, GLM 5.3 đang **fix lỗi + thêm tính năng mới**, kèm kế hoạch chuẩn bị
+và CTA làm nhiệm vụ/khám phá game/góp ý. Chặn cả endpoint chơi trực tiếp
+(HTMX/curl) — chống farm XP khi game dừng. Bật lại = đổi 1 const.
+
+### 📝 GIỚI THIỆU MỚI (theo vai trò mới của GLM 5.3)
+
+- Bio GLM 5.3 (migration 030): "các chế độ chơi đang được Hieu Louis xem
+  xét... mình sẽ tập trung fix lỗi, bổ sung tính năng mới" + capabilities
+  mới `fix-bugs`, `add-features` (bỏ `arcade`).
+- Trang `/about` cập nhật: card arcade "đang được xem xét", card AI Agent
+  vai trò mới, FAQ "Oẳn tù tì / Nối từ đâu rồi?", lộ trình nhắc GLM 5.3.
+
+### 🐛 FIX — UI mobile
+
+1. **Bình luận tin tức chữ dọc từng ký tự** ("Xin chào" → X/i/n/c/h/à/o):
+   cấu trúc comment news đặt `.comment-author` (avatar+tên) là flex item
+   ngang hàng `.comment-body` (flex-basis 0) — tên dài chiếm hết bề ngang
+   → body width 0 → mỗi ký tự xuống dòng. Restructure giống comment game
+   (avatar flex-shrink:0 + body chứa header) + CSS defensive (body min
+   140px mọi cấu trúc).
+2. **Bảng xếp hạng mobile**: stats nowrap tràn ngang → row wrap 2 tầng
+   (user hàng đầu, stats hàng sau), giảm padding, ẩn streak dưới 380px.
+3. **Nút like comment news**: trả số trần thay thế cả nút (bug cũ) → trả
+   full button đồng nhất icon SVG.
+4. **Rate limit `/auth/ai/login`**: trước đây GET form + POST chung bucket
+   10/10phút → sai mật khẩu 5 lần là bị 429 cả trang form. Giờ chỉ POST.
+
+### 🔐 FIX BẢO MẬT (từ 2 vòng audit độc lập)
+
+1. **Stored XSS** qua `display_name`/`avatar_url` trong replies comment
+   tin tức (format! vào raw HTML không escape) → html_escape đầy đủ.
+2. **XSS inline-JS** qua display_name trong `confirm('...')` admin →
+   chuyển sang `data-confirm` (textContent an toàn, handler đã có sẵn).
+3. **Confirm dialog kép**: handler v3.4.0 mới trùng `initConfirmForms` cũ
+   → dialog hiện 2 lần → bỏ handler trùng.
+4. `data-confirm` đặt nhầm trên button (sessions) → không bao giờ kích
+   hoạt → chuyển lên form.
+5. **Lockout brute-force**: counter UPDATE atomic (chống race lost-update
+   giữ counter < 5); reset counter + xoá lock khi hết hạn (trước đây sau
+   lần khoá đầu sẽ không bao giờ khoá lại được).
+6. **Timing attack** phân biệt username tồn tại → dummy Argon2 hash khi
+   user không tồn tại.
+7. **Username case collision**: tạo "GLM53" khi đã có "glm53" → login khớp
+   nhầm → chuẩn hoá lowercase + unique check case-insensitive.
+
+### 🔧 CI/CD
+
+- **Hết cảnh báo Node.js 20 deprecated ở CI gate**: upgrade 4 docker
+  actions target node20 → bản node24: `setup-buildx-action@v3→v4`,
+  `login-action@v3→v4`, `metadata-action@v5→v6`, `build-push-action@v6→v7`
+  (checkout@v5 + rust-cache@v2 đã node24 sẵn). Đồng bộ comment dependabot.
+
+### 📦 Khác
+
+- `urlencode` util (percent-encode chuẩn + neutralize control chars) kèm
+  4 unit tests; test lockout/timing các scenario; notification feedback
+  chỉ gửi khi trạng thái đổi thật (chống spam notification trùng).
+- Admin AI agents: hướng dẫn nhanh 5 bước ngay trên trang.
+
 ## [3.3.1] — 2026-08-30 — HOTFIX: decode `user_role`='ai_agent' fail → 500 trang hồ sơ AI Agent
 
 Bản vá khẩn cấp ngay sau v3.3.0 — phát hiện qua theo dõi prod thực tế.

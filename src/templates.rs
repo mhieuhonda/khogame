@@ -88,6 +88,10 @@ impl_template_response!(
     // v3.1.0 — arcade games: Oẳn tù tì + Nối từ
     RpsTemplate,
     WordChainTemplate,
+    // v3.4.0 — feedback system + AI agent login mới
+    FeedbackTemplate,
+    AdminFeedbackTemplate,
+    ArcadeReviewTemplate,
 );
 
 /// Home page
@@ -142,7 +146,8 @@ pub struct LoginTemplate {
     pub unread_notifications: i64,
 }
 
-/// AI Agent login page (nhập API token)
+/// AI Agent login page (v3.4.0 — đăng nhập bằng Username + Mật khẩu
+/// do admin tạo; kèm thông báo cho user đã đăng nhập)
 #[derive(Template)]
 #[template(path = "auth/ai_login.html")]
 pub struct AiLoginTemplate {
@@ -150,6 +155,10 @@ pub struct AiLoginTemplate {
     pub unread_notifications: i64,
     /// Optional `next` path để redirect sau khi đăng nhập.
     pub next: Option<String>,
+    /// Thông báo lỗi đăng nhập (render lại form sau POST fail qua query).
+    pub error: Option<String>,
+    /// Username điền lại sau khi sai mật khẩu (UX — không trả mật khẩu).
+    pub last_username: Option<String>,
 }
 
 /// AI Agent profile edit (`model_name`, vendor, capabilities, ...)
@@ -307,6 +316,9 @@ pub struct ProfileTemplate {
     pub completeness_pct: i32,
     /// v3.0.0 — Năm tham gia (anniversary context) + số tháng thành viên.
     pub member_months: i64,
+    /// v3.4.0 — Báo cáo hoạt động AI (sanitized: task/action/status/pct/time
+    /// — KHÔNG message/metadata/ip). Chỉ có khi user là AI Agent.
+    pub ai_activity: Vec<crate::handlers::profile::AiPublicActivity>,
 }
 
 /// Edit profile
@@ -571,6 +583,14 @@ pub struct AdminAiAgentsTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub agents: Vec<ai_agent::AiAgentWithProfile>,
+    /// v3.4.0 — trạng thái mật khẩu theo agent (map user_id → view).
+    /// KHÔNG chứa password_hash — chỉ nhãn/màu/thời hạn.
+    pub cred_views: std::collections::HashMap<uuid::Uuid, crate::handlers::admin::AiCredentialView>,
+    /// Username vừa tạo/đặt lại mật khẩu (flash 1 lần).
+    pub created_username: Option<String>,
+    /// Mật khẩu vừa tạo/đặt lại — hiển thị 1 LẦN trong response POST
+    /// (render trực tiếp, KHÔNG qua URL/query; không lưu DB plain/log).
+    pub created_password: Option<String>,
 }
 
 /// Admin: live feed báo cáo tiến trình từ AI
@@ -1576,6 +1596,19 @@ pub struct RpsTemplate {
     pub level: crate::models::gamification::LevelInfo,
 }
 
+/// Trang thay thế khi arcade game đang được Hieu Louis xem xét
+/// (v3.4.0 — rps + word-chain tạm dừng, gate bằng ARCADE_UNDER_REVIEW).
+#[derive(Template)]
+#[template(path = "gamification/arcade_review.html")]
+pub struct ArcadeReviewTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Tên game hiển thị (vd "Oẳn tù tì — Kéo búa bao").
+    pub game_title: String,
+    /// Emoji icon game.
+    pub game_emoji: String,
+}
+
 /// Trang Nối từ (/word-chain).
 #[derive(Template)]
 #[template(path = "gamification/word_chain.html")]
@@ -1587,4 +1620,46 @@ pub struct WordChainTemplate {
     /// Số từ hợp lệ lifetime.
     pub valid_lifetime: i64,
     pub level: crate::models::gamification::LevelInfo,
+}
+
+// ============================================================
+// v3.4.0 — FEEDBACK (góp ý / báo cáo lỗi / bảo mật / nâng cấp / chức năng)
+// ============================================================
+
+/// Trang góp ý cho người dùng (/feedback) — form + "góp ý của tôi".
+#[derive(Template)]
+#[template(path = "feedback.html")]
+pub struct FeedbackTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Danh mục góp ý cho dropdown (FeedbackCategory::all()).
+    pub categories: Vec<crate::models::feedback::FeedbackCategory>,
+    /// Góp ý của user + phản hồi admin.
+    pub my_feedback: Vec<crate::models::feedback::FeedbackWithUser>,
+    /// Banner "đã gửi thành công" sau redirect ?sent=1.
+    pub just_sent: bool,
+}
+
+/// Trang admin quản lý feedback (/admin/feedback).
+#[derive(Template)]
+#[template(path = "admin/feedback.html")]
+pub struct AdminFeedbackTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Danh sách feedback (lọc theo active_status).
+    pub items: Vec<crate::models::feedback::FeedbackWithUser>,
+    /// Số lượng theo trạng thái (badge các tab).
+    pub counts: crate::repositories::feedback::FeedbackCounts,
+    /// Trạng thái đang lọc (None = tất cả) — dùng cho logic Rust.
+    #[allow(dead_code)]
+    pub active_status: Option<crate::models::feedback::FeedbackStatus>,
+    /// Key trạng thái đang lọc ("" = tất cả) — so sánh chuỗi ở askama
+    /// (enum path expression không khả dụng trong template).
+    pub active_key: String,
+    /// Danh sách trạng thái cho form select.
+    pub statuses: Vec<crate::models::feedback::FeedbackStatus>,
+    /// Viewer có phải admin không (moderator không thấy góp ý bảo mật).
+    pub is_admin: bool,
+    /// Some(true) khi đang ẩn góp ý bảo mật khỏi moderator (hiện ghi chú).
+    pub security_hidden: Option<bool>,
 }

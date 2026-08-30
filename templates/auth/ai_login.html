@@ -10,21 +10,52 @@
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg>
             </div>
             <h1>Đăng nhập AI Agent</h1>
-            <p>Nhập API token do quản trị viên cấp để truy cập hệ thống với vai trò AI Agent.</p>
+            <p>Nhập <strong>Tên đăng nhập</strong> và <strong>Mật khẩu</strong> do quản trị viên cấp để truy cập hệ thống với vai trò AI Agent.</p>
         </div>
+
+        {% match current_user %}
+        {% when Option::Some with (cu) %}
+        {# v3.4.0 FIX: user đã đăng nhập vẫn THẤY form (trước đây bị redirect
+           về trang chủ — admin không bao giờ đăng nhập được tài khoản AI). #}
+        <div class="ai-login-notice" role="note">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Bạn đang đăng nhập với tư cách <strong>{{ cu.display_name }}</strong>.
+            Đăng nhập AI Agent sẽ <strong>thay thế phiên hiện tại</strong> — hãy chắc chắn rằng bạn đã lưu công việc.
+        </div>
+        {% when Option::None %}
+        {% endmatch %}
+
+        {% match error %}
+        {% when Option::Some with (err) %}
+        <div class="ai-login-error" role="alert">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            {{ err }}
+        </div>
+        {% when Option::None %}
+        {% endmatch %}
 
         <form method="post" action="/auth/ai/login" class="ai-login-form">
             <input type="hidden" name="next" value="{{ next.as_deref().unwrap_or("") }}">
-            <div class="form-group" style="margin:0">
-                <label class="form-label" for="api_token">API Token</label>
-                <input type="password" id="api_token" name="api_token" class="form-control mono"
-                       placeholder="kgai_..."
-                       autocomplete="off" required spellcheck="false"
+
+            <div class="form-group">
+                <label class="form-label" for="username">Tên đăng nhập</label>
+                <input type="text" id="username" name="username" class="form-control mono"
+                       placeholder="vd: glm53"
+                       value="{{ last_username.as_deref().unwrap_or("") }}"
+                       autocomplete="username" required spellcheck="false"
                        autocapitalize="off" autocorrect="off"
-                       style="font-size:13px">
+                       inputmode="text">
+                <small class="form-hint">Tên đăng nhập do quản trị viên tạo (3-50 ký tự, chỉ chữ/số/gạch dưới).</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="password">Mật khẩu</label>
+                <input type="password" id="password" name="password" class="form-control mono"
+                       placeholder="••••••••"
+                       autocomplete="current-password" required>
                 <small class="form-hint">
-                    Token có dạng <code>kgai_&lt;96 ký tự hex&gt;</code>. Token chỉ hiển thị 1 lần khi AI đăng ký tài khoản.
-                    Nếu mất token, liên hệ quản trị viên để cấp lại.
+                    Mật khẩu có <strong>thời hạn do quản trị viên đặt</strong> — hết hạn cần liên hệ quản trị viên để đặt lại.
+                    Sai 5 lần liên tiếp tài khoản sẽ tạm khoá 15 phút.
                 </small>
             </div>
 
@@ -41,9 +72,10 @@
         </a>
 
         <p class="auth-footer">
-            Tài khoản AI Agent dành riêng cho AI được admin ủy quyền để sửa source code,
-            fix lỗi hoặc thực hiện tác vụ bảo trì. Mọi hoạt động của AI được ghi lại
-            vào <a href="/admin/ai-reports">báo cáo tiến trình</a> mà admin có thể xem.
+            Tài khoản AI Agent dành riêng cho AI được quản trị viên ủy quyền để sửa source code,
+            fix lỗi hoặc thực hiện tác vụ bảo trì. Quản trị viên tạo tài khoản (username + mật khẩu
+            + thời hạn) tại <a href="/admin/ai-agents">trang quản trị AI Agents</a>.
+            Mọi hoạt động của AI được ghi lại vào <a href="/admin/ai-reports">báo cáo tiến trình</a>.
         </p>
     </div>
 </section>

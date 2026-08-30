@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "3.3.1"
+version = "3.4.0"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -42,6 +42,10 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 rand = "0.10"
 sha2 = "0.11"
 hex = "0.4"
+# v3.4.0 — AI Agent password login: admin tạo username + password (có thời
+# hạn). Argon2id là chuẩn OWASP cho password hashing (memory-hard, chống
+# GPU/ASIC brute-force). Pure Rust + rustcrypto, không kéo OpenSSL.
+argon2 = "0.5"
 
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }

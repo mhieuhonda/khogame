@@ -766,14 +766,22 @@ pub async fn like_comment(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Response> {
-    let _liked = NewsRepo::toggle_comment_like(&state.db, id, user.id).await?;
-    // Trả về count mới để HTMX swap
+    let liked = NewsRepo::toggle_comment_like(&state.db, id, user.id).await?;
+    // Trả về FULL BUTTON (outerHTML swap cần element thay thế — trả text
+    // số sẽ phá nút, bug cũ v3.3.x: sau like nút biến thành số trần).
     let count: i64 = sqlx::query_scalar("SELECT like_count FROM news_comments WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
         .await
         .unwrap_or(0);
-    Ok(Html(format!("{count}")).into_response())
+    let html = format!(
+        r#"<button class="comment-action" hx-post="/news_comments/{id}/like" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this" aria-label="Thích bình luận" aria-pressed="{liked}">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="{fill}" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            {count}
+        </button>"#,
+        fill = if liked { "currentColor" } else { "none" },
+    );
+    Ok(Html(html).into_response())
 }
 
 /// # Errors
@@ -807,23 +815,46 @@ pub async fn list_replies(
 ) -> AppResult<Response> {
     let replies =
         NewsRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
-    // Render plain HTML — mỗi reply là 1 div.comment-item
+    // Render plain HTML — cấu trúc giống comment chính v3.4.0
+    // (avatar + body) để CSS flex không ép body về width 0 trên mobile.
     let mut html = String::new();
     for r in &replies {
+        // XSS FIX (audit v3.4.0): display_name + avatar_url là user data —
+        // PHẢI html_escape trước khi format vào raw HTML. Bản trước format
+        // trực tiếp → stored XSS qua display_name chứa HTML/JS.
+        let name_esc = crate::utils::html_escape(&r.author_name);
+        let avatar_html = match &r.author_avatar {
+            Some(url) if !url.is_empty() => format!(
+                r#"<img src="{}" alt="" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">"#,
+                crate::utils::html_escape(url)
+            ),
+            _ => format!(
+                r#"<div class="avatar avatar-sm avatar-fallback">{}</div>"#,
+                crate::utils::initials(&r.author_name)
+            ),
+        };
         html.push_str(&format!(
             r#"<div class="comment-item comment-reply" id="comment-{id}">
-                <div class="comment-meta">
-                    <a href="/u/{username}">{username}</a>
-                    <span class="comment-time">{time_ago}</span>
-                </div>
-                <div class="comment-body comment-body-md">{content_md}</div>
-                <div class="comment-actions">
-                    <button class="btn btn-ghost btn-xs" hx-post="/news_comments/{id}/like" hx-target="next" hx-swap="innerHTML">{like_count} ❤</button>
+                <div class="comment-avatar"><a href="/u/{username}" aria-label="Hồ sơ {name}">{avatar_html}</a></div>
+                <div class="comment-body">
+                    <div class="comment-header">
+                        <a href="/u/{username}" class="comment-author">{name}</a>
+                        <span class="comment-time">{time_ago}</span>
+                    </div>
+                    <div class="comment-content comment-body-md">{content_md}</div>
+                    <div class="comment-actions">
+                        <button class="comment-action" hx-post="/news_comments/{id}/like" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="this" aria-label="Thích bình luận">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+                            {like_count}
+                        </button>
+                    </div>
                 </div>
             </div>"#,
             id = r.id,
             username = r.author_username,
-            time_ago = crate::utils::time_ago(r.created_at),
+            name = name_esc,
+            avatar_html = avatar_html,
+            time_ago = crate::utils::html_escape(&crate::utils::time_ago(r.created_at)),
             content_md = crate::services::markdown::render(&r.content),
             like_count = r.like_count,
         ));

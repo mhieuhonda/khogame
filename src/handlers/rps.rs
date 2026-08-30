@@ -16,19 +16,33 @@ use crate::repositories::{GamificationRepo, RpsRepo};
 use crate::state::AppState;
 use crate::templates::RpsTemplate;
 use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use std::sync::Arc;
 
 /// GET /rps — trang game (yêu cầu đăng nhập).
+///
+/// v3.4.0 — khi `ARCADE_UNDER_REVIEW = true`, render trang "tính năng
+/// đang được Hieu Louis xem xét" thay vì UI chơi (game tạm dừng).
 /// # Errors
 /// Trả lỗi khi chưa đăng nhập / DB fail.
 pub async fn rps_page(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
-) -> AppResult<RpsTemplate> {
+) -> AppResult<Response> {
     let Some(user) = current_user else {
         return Err(AppError::Unauthorized);
     };
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        let unread = crate::handlers::auth::unread_count(&state, user.id).await;
+        return Ok(crate::templates::ArcadeReviewTemplate {
+            current_user: Some(user),
+            unread_notifications: unread,
+            game_title: "Oẳn tù tì — Kéo búa bao".into(),
+            game_emoji: "✊✋✌️".into(),
+        }
+        .into_response());
+    }
     let plays_today = RpsRepo::plays_today_count(&state.db, user.id)
         .await
         .unwrap_or(0);
@@ -45,7 +59,8 @@ pub async fn rps_page(
         plays_today,
         wins_lifetime,
         level,
-    })
+    }
+    .into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +78,12 @@ pub async fn play_rps(
     AuthUser(user): AuthUser,
     axum::extract::Form(form): axum::extract::Form<RpsPlayForm>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.4.0 — arcade tạm dừng chờ Hieu Louis xem xét
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        return Err(AppError::Forbidden(
+            "Tính năng đang được Hieu Louis xem xét — sẽ sớm quay lại với bản cập nhật fix lỗi và tính năng mới!".into(),
+        ));
+    }
     let user_choice = RpsChoice::from_form(&form.choice).ok_or_else(|| {
         AppError::BadRequest("Lựa chọn không hợp lệ — phải là rock/paper/scissors".into())
     })?;

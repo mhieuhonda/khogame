@@ -18,19 +18,33 @@ use crate::repositories::{GamificationRepo, WordChainRepo};
 use crate::state::AppState;
 use crate::templates::WordChainTemplate;
 use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use std::sync::Arc;
 
 /// GET /word-chain — trang game (yêu cầu đăng nhập).
+///
+/// v3.4.0 — khi `ARCADE_UNDER_REVIEW = true`, render trang "tính năng
+/// đang được Hieu Louis xem xét" thay vì UI chơi (game tạm dừng).
 /// # Errors
 /// Trả lỗi khi chưa đăng nhập / DB fail.
 pub async fn word_chain_page(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
-) -> AppResult<WordChainTemplate> {
+) -> AppResult<Response> {
     let Some(user) = current_user else {
         return Err(AppError::Unauthorized);
     };
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        let unread = crate::handlers::auth::unread_count(&state, user.id).await;
+        return Ok(crate::templates::ArcadeReviewTemplate {
+            current_user: Some(user),
+            unread_notifications: unread,
+            game_title: "Nối từ tiếng Việt".into(),
+            game_emoji: "🔤".into(),
+        }
+        .into_response());
+    }
     let plays_today = WordChainRepo::plays_today_count(&state.db, user.id)
         .await
         .unwrap_or(0);
@@ -47,7 +61,8 @@ pub async fn word_chain_page(
         plays_today,
         valid_lifetime,
         level,
-    })
+    }
+    .into_response())
 }
 
 #[derive(Debug, Deserialize)]
@@ -62,11 +77,20 @@ pub async fn find_match(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.4.0 — arcade tạm dừng chờ Hieu Louis xem xét
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        return Err(AppError::Forbidden(
+            "Tính năng đang được Hieu Louis xem xét — sẽ sớm quay lại với bản cập nhật fix lỗi và tính năng mới!".into(),
+        ));
+    }
     let status = WordChainRepo::pvp_join_or_create(&state.db, user.id).await?;
     Ok(axum::response::Html(render_state(status)))
 }
 
 /// POST /word-chain/move — đánh 1 từ (HTMX).
+///
+/// v3.4.0 — gate ARCADE_UNDER_REVIEW (trước đây chỉ gate find_match →
+/// trận dở tạo trước deploy vẫn chơi tiếp + cộng XP — audit v3.4.0).
 /// # Errors
 /// Trả lỗi khi chưa đăng nhập / không có trận / chưa đến lượt / DB fail.
 pub async fn move_word(
@@ -74,6 +98,13 @@ pub async fn move_word(
     AuthUser(user): AuthUser,
     axum::extract::Form(form): axum::extract::Form<WordChainMoveForm>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.4.0 — arcade tạm dừng chờ Hieu Louis xem xét (chặn cả trận dở)
+    if crate::handlers::ARCADE_UNDER_REVIEW {
+        return Err(AppError::Forbidden(
+            "Tính năng đang được Hieu Louis xem xét — sẽ sớm quay lại với bản cập nhật fix lỗi và tính năng mới!".into(),
+        ));
+    }
+
     let status = WordChainRepo::pvp_move(&state.db, user.id, &form.word).await?;
     // Spawn achievement check (word_chain_X có thể chạm ngưỡng).
     let db = state.db.clone();

@@ -29,6 +29,10 @@ use std::sync::Arc;
 #[derive(Debug, Deserialize, Default)]
 pub struct AuthQuery {
     pub next: Option<String>,
+    /// Thông báo lỗi login (v3.4.0 — render lại form sau khi POST fail).
+    pub error: Option<String>,
+    /// Username điền lại sau khi sai mật khẩu (không trả mật khẩu).
+    pub username: Option<String>,
 }
 
 // ============================================================
@@ -274,7 +278,9 @@ pub async fn register(
 // OAuth state + AI token. Xem utils.rs — logic giữ nguyên.
 
 // ============================================================
-// Đăng nhập AI Agent (POST /auth/ai/login)
+// Đăng nhập AI Agent (GET/POST /auth/ai/login)
+// v3.4.0 — REWORK HOÀN TOÀN: Username + Mật khẩu do admin tạo
+// (mật khẩu có thời hạn do admin đặt — xem migration 028).
 // ============================================================
 /// # Errors
 ///
@@ -289,21 +295,47 @@ pub async fn login_form(
             "AI Agent login is disabled (feature not configured)".into(),
         ));
     }
-    if current_user.is_some() {
-        return Ok(Redirect::to("/").into_response());
-    }
+    // v3.4.0 FIX — KHÔNG còn redirect "/" khi user đã đăng nhập.
+    // Trước đây admin (đang login) mở /auth/ai/login bị redirect về trang
+    // chủ → KHÔNG BAO GIỜ thấy form đăng nhập AI (bug "admin không thể
+    // đăng nhập tài khoản AI Agent vì không thấy phần đăng nhập").
+    // Giờ: luôn render form; template hiển thị cảnh báo "phiên hiện tại
+    // sẽ bị thay thế" nếu đang có user.
     let tpl = AiLoginTemplate {
-        current_user: None,
+        current_user,
         unread_notifications: 0,
         next: q.next,
+        error: q.error.filter(|s| !s.is_empty()),
+        last_username: q.username.filter(|s| !s.is_empty()),
     };
     Ok(Html(tpl.render().map_err(AppError::from)?).into_response())
 }
 
 #[derive(Debug, Deserialize)]
 pub struct AiLoginForm {
-    pub api_token: String,
+    pub username: String,
+    pub password: String,
     pub next: Option<String>,
+}
+
+/// Helper: redirect về form login kèm thông báo lỗi (giữ username + next).
+fn login_error_redirect(form: &AiLoginForm, q: &AuthQuery, msg: &str) -> Response {
+    let mut loc = format!("/auth/ai/login?error={}", crate::utils::urlencode(msg));
+    if !form.username.trim().is_empty() {
+        loc.push_str(&format!(
+            "&username={}",
+            crate::utils::urlencode(form.username.trim())
+        ));
+    }
+    if let Some(next) = q
+        .next
+        .as_deref()
+        .or(form.next.as_deref())
+        .filter(|s| !s.is_empty())
+    {
+        loc.push_str(&format!("&next={}", crate::utils::urlencode(next)));
+    }
+    Redirect::to(&loc).into_response()
 }
 
 /// # Errors
@@ -315,54 +347,56 @@ pub async fn login(
     headers: axum::http::HeaderMap,
     jar: CookieJar,
     Form(form): Form<AiLoginForm>,
-) -> AppResult<(CookieJar, Redirect)> {
+) -> AppResult<Response> {
     if !state.config.ai_agent_enabled {
         return Err(AppError::Forbidden("AI Agent login is disabled".into()));
     }
     // Origin/Referer check — chống login CSRF cross-site auto-submit.
     // Endpoint tạo session mới nên SameSite=Lax cookie không bảo vệ được.
     crate::middleware::verify_origin(&headers, &state.config.base_url)?;
-    let token = form.api_token.trim();
-    if token.is_empty() {
-        return Err(AppError::BadRequest("API token không được để trống".into()));
+
+    // v3.4.0 — đăng nhập bằng Username + Password (admin tạo, Argon2id,
+    // có thời hạn). Sai → redirect về form với error (không render trực
+    // tiếp để tránh re-submit khi refresh).
+    match AiAgentRepo::verify_password_login(&state.db, &form.username, &form.password).await {
+        Ok(user) => {
+            // Tạo session web cho AI Agent
+            let session_token = auth::gen_session_token();
+            let token_hash = auth::hash_token(&session_token);
+            SessionRepo::create(
+                &state.db,
+                user.id,
+                &token_hash,
+                "ai-agent-web",
+                None,
+                state.config.ai_agent_session_ttl_days,
+            )
+            .await?;
+            let mut new_jar = jar;
+            // Ghi đè cookie session hiện tại (nếu admin đang login bằng
+            // tài khoản người → phiên AI thay thế — đúng kỳ vọng "đăng
+            // nhập vào tài khoản AI"). KHÔNG set kg_impersonator ở đây:
+            // impersonation chỉ dành cho nút "Đăng nhập với tư cách" ở
+            // admin (có audit + khôi phục phiên).
+            auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
+            tracing::info!("AI Agent logged in (username+password): {}", user.username);
+
+            // Safe redirect next — sanitize_redirect chặn control char
+            // (CR/LF/TAB) chống header injection qua Location.
+            let next_raw = form
+                .next
+                .as_deref()
+                .or(q.next.as_deref())
+                .filter(|s| !s.is_empty())
+                .map_or_else(|| "/".to_string(), crate::utils::sanitize_redirect);
+            Ok((new_jar, Redirect::to(&next_raw)).into_response())
+        }
+        Err(AppError::Forbidden(msg)) => {
+            tracing::warn!("AI Agent login failed: {msg}");
+            Ok(login_error_redirect(&form, &q, &msg))
+        }
+        Err(e) => Err(e),
     }
-    // Tra user theo token
-    let (user, _profile) = AiAgentRepo::find_by_api_token(&state.db, token)
-        .await?
-        .ok_or_else(|| AppError::Forbidden("API token không hợp lệ hoặc đã bị thu hồi".into()))?;
-    if !user.role.is_ai_agent() {
-        return Err(AppError::Forbidden(
-            "Token này không thuộc tài khoản AI Agent".into(),
-        ));
-    }
-    if user.is_banned {
-        return Err(AppError::Forbidden("Tài khoản AI Agent đã bị cấm".into()));
-    }
-    // Tạo session
-    let session_token = auth::gen_session_token();
-    let token_hash = auth::hash_token(&session_token);
-    SessionRepo::create(
-        &state.db,
-        user.id,
-        &token_hash,
-        "ai-agent-web",
-        None,
-        state.config.ai_agent_session_ttl_days,
-    )
-    .await?;
-    let mut new_jar = jar;
-    auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
-    tracing::info!("AI Agent logged in: {}", user.username);
-    // Safe redirect next — sử dụng sanitize_redirect để chặn control char
-    // (CR/LF/TAB) chống header injection qua Location. Trước đây chỉ
-    // check starts_with('/') && !starts_with("//") cho phép \r\n qua.
-    let next_raw = form
-        .next
-        .as_deref()
-        .or(q.next.as_deref())
-        .filter(|s| !s.is_empty())
-        .map_or_else(|| "/".to_string(), crate::utils::sanitize_redirect);
-    Ok((new_jar, Redirect::to(&next_raw)))
 }
 
 // ============================================================

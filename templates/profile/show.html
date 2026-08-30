@@ -20,7 +20,8 @@
    không clip theo chữ → chữ rainbow biến mất hoàn toàn trên
    Chrome, đã gặp trên prod v2.6.0–v2.7.0). Span con thì hoạt động
    đúng (chứng minh qua role-badge-text). #}
-<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}">
+<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}{% if ai_profile.is_some() %} profile-page-ai{% endif %}"
+         {% match ai_profile %}{% when Option::Some with (p) %}style="--ai-accent: {{ p.accent_color }}"{% when Option::None %}{% endmatch %}>
     <div class="profile-header">
         <div class="profile-cover"></div>
         <div class="profile-info">
@@ -120,6 +121,41 @@
                     {% when Option::None %}
                     {% endmatch %}
                 </div>
+                {# === v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (sanitized) ===
+                   Chỉ hiện task/action/trạng thái/phần trăm/thời gian.
+                   Message + metadata + IP bị LOẠI ở handler — không render
+                   bất kỳ thông tin nhạy cảm nào ra hồ sơ công khai. #}
+                {% if !ai_activity.is_empty() %}
+                <div class="ai-activity-card" aria-label="Báo cáo hoạt động AI Agent">
+                    <div class="ai-activity-head">
+                        <span class="ai-activity-title">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            Báo cáo hoạt động
+                        </span>
+                        <span class="ai-activity-live" title="Cập nhật khi AI báo cáo tiến trình">
+                            <span class="ai-activity-dot"></span> LIVE
+                        </span>
+                    </div>
+                    <ul class="ai-activity-list">
+                        {% for r in &ai_activity %}
+                        <li class="ai-activity-item">
+                            <span class="ai-activity-status" style="background: {{ r.status.color() }}18; color: {{ r.status.color() }}" title="{{ r.status.label() }}">{{ r.status.label() }}</span>
+                            <span class="ai-activity-task">
+                                <strong>{{ r.task }}</strong>
+                                {% if !r.action.is_empty() %}<span class="ai-activity-action">— {{ r.action }}</span>{% endif %}
+                            </span>
+                            {% if r.percentage > 0 %}
+                            <span class="ai-activity-pct" role="img" aria-label="Hoàn thành {{ r.percentage }} phần trăm">
+                                <span class="ai-activity-pct-bar"><span class="ai-activity-pct-fill" style="width: {{ r.percentage }}%; background: {{ r.status.color() }}"></span></span>
+                                <span class="ai-activity-pct-num">{{ r.percentage }}%</span>
+                            </span>
+                            {% endif %}
+                            <span class="ai-activity-time" title="{{ r.created_at.to_rfc3339() }}">{{ r.created_at|time_ago_dt }}</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
                 {% when Option::None %}
                 {% endmatch %}
 

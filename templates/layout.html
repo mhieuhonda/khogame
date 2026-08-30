@@ -169,12 +169,14 @@
                     <a href="/games/downloads" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>Tải nhiều nhất</a>
                     <a href="/categories" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span>Thể loại</a>
                     <a href="/leaderboard" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></span>Bảng xếp hạng</a>
+                    {# v3.4.0 — góp ý / báo cáo lỗi / bảo mật / nâng cấp / chức năng #}
+                    <a href="/feedback" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Góp ý &amp; Báo cáo</a>
                     {# === v3.0.0 — RETENTION: nhiệm vụ / arcade / shop / referral === #}
                     <a href="/quests" class="menu-link"><span class="menu-icon">✅</span>Nhiệm vụ</a>
                     <a href="/spin" class="menu-link"><span class="menu-icon">🎡</span>Vòng quay may mắn</a>
                     <a href="/trivia" class="menu-link"><span class="menu-icon">🧠</span>Câu đố hằng ngày</a>
-                    <a href="/rps" class="menu-link"><span class="menu-icon">✊</span>Oẳn tù tì</a>
-                    <a href="/word-chain" class="menu-link"><span class="menu-icon">🔤</span>Nối từ</a>
+                    <a href="/rps" class="menu-link"><span class="menu-icon">✊</span>Oẳn tù tì <span class="menu-badge-muted" title="Đang được Hieu Louis xem xét">⏸</span></a>
+                    <a href="/word-chain" class="menu-link"><span class="menu-icon">🔤</span>Nối từ <span class="menu-badge-muted" title="Đang được Hieu Louis xem xét">⏸</span></a>
                     <a href="/shop" class="menu-link"><span class="menu-icon">🛒</span>Cửa hàng XP</a>
                     <a href="/referral" class="menu-link"><span class="menu-icon">🎁</span>Giới thiệu bạn bè</a>
                     <a href="/settings/notifications" class="menu-link"><span class="menu-icon">🔔</span>Tùy chọn thông báo</a>
@@ -220,6 +222,7 @@
                     {% when Option::None %}
                     <a href="/login" class="menu-link menu-link-accent"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></span>Đăng nhập bằng Google</a>
                     <a href="/auth/ai/login" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/></svg></span>Đăng nhập AI Agent</a>
+                    <a href="/feedback" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>Góp ý &amp; Báo cáo</a>
                     <a href="/leaderboard" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg></span>Bảng xếp hạng</a>
                     <a href="/terms" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>Điều khoản</a>
                     <a href="/privacy" class="menu-link"><span class="menu-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Bảo mật</a>
@@ -279,6 +282,7 @@
                 <div class="footer-col">
                     <h4>Thông tin</h4>
                     <a href="/about">Giới thiệu &amp; Hướng dẫn</a>
+                    <a href="/feedback">Góp ý &amp; Báo cáo lỗi</a>
                     <a href="/terms">Điều khoản sử dụng</a>
                     <a href="/privacy">Chính sách bảo mật</a>
                     <a href="/rss.xml">RSS game</a>

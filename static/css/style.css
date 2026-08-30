@@ -8400,3 +8400,920 @@ button.htmx-request::after {
 html {
     scroll-behavior: smooth;
 }
+
+/* ============================================================
+   35. v3.4.0 — AI AGENT PROFILE EFFECTS (GLM 5.3)
+   Hồ sơ AI có hiệu ứng riêng dùng accent color của agent
+   (--ai-accent đặt inline từ ai_agent_profiles.accent_color).
+   Tất cả tôn trọng prefers-reduced-motion (mục 34).
+   ============================================================ */
+
+/* Cover gradient động theo accent của AI */
+.profile-page-ai .profile-cover {
+    background:
+        radial-gradient(1200px 300px at 20% 120%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 38%, transparent), transparent 70%),
+        radial-gradient(800px 260px at 85% 130%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 20%, transparent), transparent 72%),
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, var(--bg-canvas)),
+            var(--bg-canvas) 65%);
+    position: relative;
+    overflow: hidden;
+}
+
+/* Vệt sáng quét ngang qua cover (kiểu holographic) */
+.profile-page-ai .profile-cover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg,
+        transparent 38%,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 49%,
+        transparent 60%);
+    transform: translateX(-120%);
+    animation: ai-cover-sheen 6s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes ai-cover-sheen {
+    0%, 55% { transform: translateX(-120%); }
+    85%, 100% { transform: translateX(120%); }
+}
+
+/* Avatar AI: vòng ring accent + glow nhẹ, "thở" chậm */
+.profile-page-ai .profile-avatar .avatar,
+.profile-page-ai .profile-avatar img.avatar {
+    border: 2px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 65%, transparent);
+    box-shadow:
+        0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent),
+        0 0 18px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+    animation: ai-avatar-breathe 4s ease-in-out infinite;
+}
+
+@keyframes ai-avatar-breathe {
+    0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent), 0 0 14px color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, transparent); }
+    50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent), 0 0 26px color-mix(in srgb, var(--ai-accent, #0ea5e9) 42%, transparent); }
+}
+
+/* Tên AI: gradient chữ theo accent + ánh kim chạy qua */
+.profile-page-ai .profile-meta h1 {
+    background: linear-gradient(90deg,
+        var(--fg-default) 0%,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 85%, var(--fg-default)) 45%,
+        var(--fg-default) 90%);
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ai-name-shimmer 7s linear infinite;
+}
+
+@keyframes ai-name-shimmer {
+    0%   { background-position: 120% 0; }
+    100% { background-position: -120% 0; }
+}
+
+/* Username AI nhỏ cũng mang màu accent */
+.profile-page-ai .profile-username {
+    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 80%, var(--fg-muted));
+    font-weight: 600;
+    letter-spacing: .2px;
+}
+
+/* Badge "AI Agent" trên tên: viền accent + nhịp glow */
+.profile-page-ai .ai-badge-profile {
+    animation: ai-badge-pulse 3.2s ease-in-out infinite;
+}
+
+@keyframes ai-badge-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ai-accent, #0ea5e9) 35%, transparent); }
+    50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, transparent); }
+}
+
+/* Khối thông tin model: viền gradient accent + nền trong suốt nhẹ */
+.profile-page-ai .ai-profile-info {
+    position: relative;
+    background:
+        linear-gradient(var(--bg-subtle), var(--bg-subtle)) padding-box,
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent),
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 45%,
+            transparent 80%) border-box;
+    border: 1px solid transparent;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+/* Đường scanline mảnh dưới khối model info */
+.profile-page-ai .ai-profile-info::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg,
+        transparent,
+        color-mix(in srgb, var(--ai-accent, #0ea5e9) 85%, transparent),
+        transparent);
+    animation: ai-scanline 3.5s linear infinite;
+    opacity: .8;
+}
+
+@keyframes ai-scanline {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Chip model màu accent đậm hơn */
+.profile-page-ai .ai-model-tag {
+    border-width: 1.5px;
+    font-weight: 700;
+}
+
+/* ---- v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (card LIVE) ---- */
+.ai-activity-card {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
+        linear-gradient(135deg,
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 40%, transparent),
+            transparent 60%) border-box;
+    border: 1px solid transparent;
+}
+
+.ai-activity-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ai-activity-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--fg-default);
+}
+
+.ai-activity-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: .8px;
+    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 90%, var(--fg-default));
+    padding: 2px 9px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+}
+
+.ai-activity-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    animation: ai-dot-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes ai-dot-blink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .35; transform: scale(.72); }
+}
+
+.ai-activity-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ai-activity-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+    font-size: 13px;
+    min-width: 0;
+}
+
+.ai-activity-status {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2.5px 9px;
+    border-radius: var(--radius-full);
+    white-space: nowrap;
+}
+
+.ai-activity-task {
+    flex: 1 1 160px;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    overflow-wrap: anywhere;
+}
+
+.ai-activity-task strong {
+    color: var(--fg-default);
+    font-weight: 650;
+}
+
+.ai-activity-action {
+    color: var(--fg-subtle);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+}
+
+.ai-activity-pct {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+}
+
+.ai-activity-pct-bar {
+    display: inline-block;
+    width: 64px;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--border-muted);
+    overflow: hidden;
+}
+
+.ai-activity-pct-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    transition: width .5s ease;
+}
+
+.ai-activity-pct-num {
+    font-size: 11.5px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--fg-muted);
+}
+
+.ai-activity-time {
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--fg-subtle);
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .ai-activity-item { gap: 6px 8px; padding: 7px 9px; }
+    .ai-activity-time { margin-left: 0; width: 100%; order: 9; }
+    .ai-activity-pct { width: 100%; }
+    .ai-activity-pct-bar { flex: 1; width: auto; }
+}
+
+/* Fallback cho browser không hỗ trợ color-mix (Safari <16.2): giảm dần
+   về hiệu ứng phẳng nhưng vẫn phân biệt được hồ sơ AI. */
+@supports not (color: color-mix(in srgb, red, blue)) {
+    .profile-page-ai .profile-cover {
+        background: linear-gradient(135deg, rgba(14,165,233,.16), transparent 60%), var(--bg-canvas);
+    }
+    .profile-page-ai .ai-profile-info,
+    .ai-activity-card {
+        border: 1px solid var(--border-default);
+    }
+    .profile-page-ai .profile-meta h1 {
+        background: none;
+        -webkit-text-fill-color: currentColor;
+    }
+    .ai-activity-live { color: var(--fg-muted); }
+}
+
+/* ============================================================
+   36. v3.4.0 — AI AGENT LOGIN TRANG MỚI (username + password)
+   ============================================================ */
+.ai-login-notice,
+.ai-login-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    font-size: 13.5px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.ai-login-notice {
+    background: color-mix(in srgb, var(--warning) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+    color: var(--fg-default);
+}
+
+.ai-login-notice svg { flex-shrink: 0; margin-top: 2px; color: var(--warning); }
+
+.ai-login-error {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+    color: var(--fg-default);
+    font-weight: 550;
+}
+
+.ai-login-error svg { flex-shrink: 0; margin-top: 2px; color: var(--danger); }
+
+/* Form đăng nhập AI cách đều, input chữ mono dễ copy username */
+.ai-login-form .form-group { margin-bottom: 16px; }
+
+/* ============================================================
+   37. v3.4.0 — ADMIN: AI AGENTS (tạo + mật khẩu có thời hạn)
+   ============================================================ */
+.ai-create-panel {
+    margin: 0 0 20px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+    overflow: hidden;
+}
+
+.ai-create-panel summary {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 18px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--fg-default);
+    list-style: none;
+    user-select: none;
+}
+
+.ai-create-panel summary::-webkit-details-marker { display: none; }
+
+.ai-create-panel summary:hover { background: var(--bg-subtle); }
+
+.ai-create-panel summary svg { color: var(--accent); flex-shrink: 0; }
+
+.ai-create-hint { color: var(--fg-subtle); font-weight: 400; font-size: 13px; }
+
+.ai-create-form {
+    padding: 4px 18px 18px;
+    border-top: 1px dashed var(--border-muted);
+}
+
+.ai-create-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 14px 16px;
+    margin: 14px 0;
+}
+
+.ai-form-full { grid-column: 1 / -1; }
+
+.ai-pwd-input { display: flex; gap: 8px; align-items: stretch; }
+.ai-pwd-input .form-control { flex: 1; min-width: 0; }
+
+/* Flash mật khẩu hiển thị 1 lần sau tạo/đặt lại */
+.ai-cred-flash {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 18px;
+    margin-bottom: 20px;
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, #10b981 9%, transparent);
+    border: 1px solid color-mix(in srgb, #10b981 38%, transparent);
+}
+
+.ai-cred-flash > svg { color: #10b981; flex-shrink: 0; margin-top: 2px; }
+
+.ai-cred-flash-pwd {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 8px 0;
+}
+
+.ai-cred-flash-pwd code {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .4px;
+    padding: 8px 14px;
+    background: var(--bg-canvas);
+    border: 1px dashed color-mix(in srgb, #10b981 55%, transparent);
+    border-radius: var(--radius-md);
+    overflow-wrap: anywhere;
+}
+
+.ai-cred-flash-note { font-size: 12.5px; color: var(--fg-subtle); margin-top: 6px; }
+
+/* Dòng trạng thái mật khẩu trên mỗi agent row */
+.ai-cred-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--fg-muted);
+}
+
+.ai-cred-expire { color: var(--fg-subtle); }
+
+.ai-cred-fail {
+    color: var(--danger);
+    font-weight: 650;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+code.ai-agent-username {
+    font-size: 11.5px;
+    color: var(--fg-muted);
+    background: var(--bg-subtle);
+    padding: 1px 7px;
+    border-radius: var(--radius-full);
+    overflow-wrap: anywhere;
+}
+
+/* Panel đặt lại mật khẩu thả xuống trong từng row */
+.ai-reset-panel { width: 100%; margin-top: 6px; }
+
+.ai-reset-panel summary {
+    list-style: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ai-reset-panel summary::-webkit-details-marker { display: none; }
+
+.ai-reset-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-top: 10px;
+    padding: 12px;
+    background: var(--bg-subtle);
+    border-radius: var(--radius-md);
+}
+
+.ai-reset-form .form-control { width: 100%; min-width: 0; }
+
+@media (min-width: 640px) {
+    .ai-reset-form .form-control { width: auto; flex: 1 1 220px; }
+}
+
+.ai-reset-form .form-label {
+    width: 100%;
+    font-size: 12px;
+    margin: 6px 0 4px;
+}
+
+/* Hộp hướng dẫn cuối trang admin AI agents */
+.ai-help-note {
+    margin-top: 24px;
+    padding: 16px 20px;
+    border: 1px dashed var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-subtle);
+    font-size: 13.5px;
+}
+
+.ai-help-note h3 { font-size: 14px; margin-bottom: 8px; }
+
+.ai-help-note ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.ai-help-note li { line-height: 1.55; }
+
+/* Mobile: agent row xếp dọc gọn */
+@media (max-width: 640px) {
+    .ai-agent-row { flex-direction: column; align-items: stretch; gap: 10px; }
+    .ai-agent-actions { flex-wrap: wrap; gap: 8px; }
+    .ai-agent-actions form { margin: 0; }
+    .ai-create-grid { grid-template-columns: 1fr; }
+    .ai-pwd-input { flex-direction: column; }
+    .ai-pwd-input .btn { width: 100%; }
+}
+
+/* ============================================================
+   38. v3.4.0 — FEEDBACK SYSTEM (user + admin)
+   ============================================================ */
+.feedback-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 28px;
+    align-items: start;
+    margin-top: 20px;
+}
+
+@media (max-width: 900px) {
+    .feedback-layout { grid-template-columns: 1fr; }
+}
+
+.feedback-form-card,
+.feedback-my-list {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-muted);
+    border-radius: var(--radius-lg);
+    padding: 20px 22px;
+}
+
+.feedback-form-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: var(--fg-default);
+}
+
+.feedback-form-title svg { color: var(--accent); }
+
+.feedback-form .form-group { margin-bottom: 14px; }
+
+.feedback-form .btn-lg { width: 100%; margin-top: 4px; }
+
+.feedback-limit-hint { display: block; margin-top: 8px; text-align: center; }
+
+.req { color: var(--danger); font-weight: 700; }
+
+/* Banner đã gửi thành công */
+.feedback-success {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, #10b981 9%, transparent);
+    border: 1px solid color-mix(in srgb, #10b981 38%, transparent);
+    margin-top: 16px;
+}
+
+.feedback-success > svg { color: #10b981; flex-shrink: 0; margin-top: 2px; }
+.feedback-success p { margin: 4px 0 0; color: var(--fg-muted); font-size: 13.5px; }
+
+/* Danh sách góp ý (user + admin dùng chung) */
+.feedback-items { display: flex; flex-direction: column; gap: 14px; }
+
+.feedback-item,
+.feedback-admin-row {
+    padding: 14px 16px;
+    border: 1px solid var(--border-muted);
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+    min-width: 0;
+}
+
+.feedback-item-security { border-color: color-mix(in srgb, #f59e0b 45%, transparent); }
+
+.feedback-item-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.feedback-cat-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.feedback-status-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11.5px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.feedback-time { font-size: 12px; color: var(--fg-subtle); margin-left: auto; white-space: nowrap; }
+
+.feedback-item-title {
+    font-size: 14.5px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    color: var(--fg-default);
+    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.feedback-security-flag { flex-shrink: 0; }
+
+.feedback-item-body {
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--fg-muted);
+    margin: 0 0 6px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.feedback-item-url { font-size: 12.5px; margin: 0 0 4px; overflow-wrap: anywhere; }
+
+.feedback-admin-response {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    border-left: 3px solid var(--accent);
+    font-size: 13px;
+}
+
+.feedback-admin-response p { margin: 4px 0 0; color: var(--fg-muted); }
+
+/* Admin list — 2 cột: info + actions */
+.feedback-admin-list { display: flex; flex-direction: column; gap: 14px; }
+
+.feedback-admin-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+@media (max-width: 860px) {
+    .feedback-admin-row { grid-template-columns: 1fr; }
+    .feedback-time { margin-left: 0; }
+}
+
+.feedback-admin-row-security { border-color: color-mix(in srgb, #f59e0b 50%, transparent); }
+
+.feedback-admin-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.feedback-reporter {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-weight: 600;
+    color: var(--fg-default);
+    text-decoration: none;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.feedback-reporter:hover { color: var(--accent); }
+
+.feedback-admin-actions { min-width: 0; }
+
+.feedback-status-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-subtle);
+    border-radius: var(--radius-md);
+}
+
+.feedback-status-form .form-label { font-size: 12px; margin: 2px 0 0; }
+
+.form-control-sm { font-size: 13px; padding: 7px 10px; }
+
+.filter-count {
+    display: inline-block;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: var(--radius-full);
+    background: var(--bg-subtle);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 18px;
+}
+
+/* ============================================================
+   39. v3.4.0 — ARCADE "ĐANG ĐƯỢC XEM XÉT" PAGE
+   ============================================================ */
+.arcade-review-hero {
+    max-width: 680px;
+    margin: 2.5rem auto;
+    padding: 40px 32px;
+    text-align: center;
+    border-radius: var(--radius-lg);
+    background:
+        radial-gradient(600px 240px at 50% -60px, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+        var(--bg-elevated);
+    border: 1px solid var(--border-muted);
+}
+
+.arcade-review-icon { font-size: 52px; line-height: 1; animation: kg-float 3.5s ease-in-out infinite; }
+
+@keyframes kg-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+
+.arcade-review-title { font-size: 26px; font-weight: 800; margin: 14px 0 10px; }
+
+.arcade-review-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 16px;
+    border-radius: var(--radius-full);
+    font-size: 13.5px;
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+    color: var(--fg-default);
+}
+
+.arcade-review-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warning);
+    animation: ai-dot-blink 1.6s ease-in-out infinite;
+}
+
+.arcade-review-sub {
+    margin: 18px auto 0;
+    max-width: 520px;
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--fg-muted);
+}
+
+.arcade-review-plan {
+    margin: 26px auto 0;
+    text-align: left;
+    max-width: 480px;
+}
+
+.arcade-review-plan h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+
+.arcade-review-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.arcade-review-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+}
+
+.arcade-review-check { font-size: 20px; line-height: 1.2; flex-shrink: 0; }
+
+.arcade-review-list p { margin: 3px 0 0; font-size: 13px; color: var(--fg-subtle); }
+
+.arcade-review-actions {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 28px;
+}
+
+.arcade-review-footer {
+    margin: 22px auto 0;
+    max-width: 480px;
+    font-size: 12.5px;
+    color: var(--fg-subtle);
+}
+
+@media (max-width: 480px) {
+    .arcade-review-hero { padding: 28px 18px; margin: 1.5rem auto; }
+    .arcade-review-title { font-size: 21px; }
+    .arcade-review-actions .btn { width: 100%; }
+}
+
+/* ============================================================
+   40. v3.4.0 — LEADERBOARD MOBILE FIX
+   Trước đây: .leaderboard-stats nowrap + không media query →
+   tràn ngang / chèn chữ trên điện thoại.
+   ============================================================ */
+@media (max-width: 640px) {
+    .leaderboard-row {
+        flex-wrap: wrap;
+        gap: 8px 10px;
+        padding: 12px 14px;
+    }
+
+    .leaderboard-rank { min-width: 26px; font-size: 1rem; }
+
+    /* User (avatar + tên) chiếm trọn hàng đầu cùng rank; stats chuyển
+       xuống hàng riêng, cho phép wrap — hết tràn ngang. */
+    .leaderboard-user { flex: 1 1 calc(100% - 60px); min-width: 0; }
+    .leaderboard-display-name { max-width: 100%; }
+
+    .leaderboard-stats {
+        width: 100%;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        white-space: normal;
+        order: 3;
+        font-size: .78rem;
+    }
+
+    .leaderboard-xp { margin-left: auto; }
+
+    /* Season boards: 1 cột từ 860px (có sẵn), siết thêm khoảng cách */
+    .season-list .leaderboard-row { padding: 10px 12px; }
+    .season-list .leaderboard-xp { margin-left: auto; }
+
+    .hotweek-row { padding: 10px; gap: 8px; }
+    .hotweek-title { font-size: .92rem; }
+
+    .calendar-grid { gap: 3px; }
+}
+
+/* Rất hẹp (iPhone SE): ẩn streak cho thoáng, XP là số quan trọng nhất */
+@media (max-width: 380px) {
+    .leaderboard-streak { display: none; }
+    .leaderboard-rank { min-width: 22px; }
+}
+
+/* ============================================================
+   41. v3.4.0 — NEWS COMMENT DEFENSIVE CSS
+   Fix gốc nằm ở template (restructure) — lớp CSS này bảo vệ thêm
+   mọi .comment-item còn cấu trúc flex ngang cũ: body KHÔNG BAO GIỜ
+   bị ép dưới 140px.
+   ============================================================ */
+.comment-item > .comment-body {
+    flex: 1 1 140px;
+    min-width: 140px;
+    max-width: 100%;
+}
+
+.comment-item > .comment-author {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 60%;
+    overflow-wrap: anywhere;
+}
+
+.comment-content.comment-body-md {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+/* Markdown trong comment không sinh khoảng trắng dọc thừa */
+.comment-body-md > :first-child { margin-top: 0; }
+.comment-body-md > :last-child { margin-bottom: 0; }
+.comment-body-md p { margin: 0 0 .5em; }
+.comment-body-md pre { max-width: 100%; overflow-x: auto; }
+
+/* v3.4.0 — badge "tạm dừng" nhỏ trên menu arcade */
+.menu-badge-muted {
+    display: inline-block;
+    font-size: 10px;
+    opacity: .65;
+    margin-left: 2px;
+}
+
+/* v3.4.0 — ghi chú ẩn góp ý bảo mật khỏi moderator */
+.feedback-security-note {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 11px 14px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, #f59e0b 8%, transparent);
+    border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+    font-size: 13px;
+}
+
+.feedback-security-note svg { color: #f59e0b; flex-shrink: 0; }

@@ -161,6 +161,70 @@ pub fn hash_ai_agent_token(token: &str) -> String {
     hash_token(token)
 }
 
+// ============================================================
+// v3.4.0 — PASSWORD HASHING (Argon2id) cho AI Agent login
+// ============================================================
+
+/// Hash mật khẩu bằng Argon2id (OWASP khuyến nghị).
+///
+/// Tham số mặc định của crate argon2 (m=19456 KiB, t=2, p=1) theo chuẩn
+/// OWASP 2024 — đủ mạnh cho web, hash 1 lần ~50ms trên VPS.
+///
+/// Lưu ý: salt sinh bằng bytes ngẫu nhiên từ rand 0.10 + `encode_b64`
+/// (KHÔNG dùng `SaltString::generate` vì nó cần rand_core 0.6 — xung đột
+/// version với rand 0.10 của app).
+///
+/// # Errors
+///
+/// Trả về lỗi khi Argon2 không hash được (rất hiếm — lỗi nội bộ crate).
+pub fn hash_password(password: &str) -> Result<String, AppError> {
+    use argon2::password_hash::{PasswordHasher, SaltString};
+    use argon2::Argon2;
+    use rand::RngExt;
+
+    let mut salt_bytes = [0u8; 16];
+    rand::rng().fill(&mut salt_bytes[..]);
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("Salt tạo thất bại: {e}")))?;
+    let argon = Argon2::default();
+    let hash = argon
+        .hash_password(password.as_bytes(), &salt)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("Hash mật khẩu thất bại: {e}")))?;
+    Ok(hash.to_string())
+}
+
+/// Verify mật khẩu với Argon2id PHC string.
+/// Trả về `false` khi sai mật khẩu HOẶC hash không parse được (không panic).
+#[must_use]
+pub fn verify_password(password: &str, hash: &str) -> bool {
+    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    use argon2::Argon2;
+
+    let Ok(parsed) = PasswordHash::new(hash) else {
+        tracing::error!("Argon2 hash không parse được — coi như sai mật khẩu");
+        return false;
+    };
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok()
+}
+
+/// Sinh mật khẩu ngẫu nhiên 16 ký tự cho admin (nút "Sinh mật khẩu" trong
+/// form tạo AI Agent). Ký tự an toàn: không có 0/O/1/l/I dễ nhầm.
+/// Dùng `random_range` (unbiased) — pattern giống ReferralRepo.
+#[must_use]
+pub fn gen_random_password() -> String {
+    use rand::RngExt;
+
+    const CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    (0..16)
+        .map(|_| {
+            let i = rand::rng().random_range(0..CHARSET.len());
+            CHARSET[i] as char
+        })
+        .collect()
+}
+
 /// Lấy cookie `Secure` flag — dựa vào BASE_URL (https://→ true) nhưng
 /// cho phép override qua env `COOKIE_SECURE=1` cho prod chạy sau TLS
 /// terminating proxy với BASE_URL=http://localhost (mặc định config).

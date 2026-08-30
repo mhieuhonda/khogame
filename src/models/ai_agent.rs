@@ -177,6 +177,77 @@ pub struct AiAgentWithProfile {
     pub verified: bool,
 }
 
+/// Thông tin mật khẩu đăng nhập của AI Agent (bảng `ai_agent_credentials`,
+/// v3.4.0). `password_hash` KHÔNG bao giờ serialize ra template/API —
+/// struct view riêng này chỉ mang dữ liệu hiển thị được.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AiAgentCredential {
+    pub user_id: Uuid,
+    /// Argon2id PHC string — CHỈ dùng nội bộ repo, không render ra UI.
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub password_expires_at: DateTime<Utc>,
+    pub failed_attempts: i32,
+    pub locked_until: Option<DateTime<Utc>>,
+    pub last_login_at: Option<DateTime<Utc>>,
+    pub updated_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Trạng thái mật khẩu AI Agent để hiển thị ở admin (không nhạy cảm).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CredentialStatus {
+    /// Còn hạn, chưa bị khoá
+    Active,
+    /// Đã hết hạn — admin cần đặt lại
+    Expired,
+    /// Đang bị khoá vì đăng nhập sai nhiều lần
+    Locked,
+    /// Chưa có mật khẩu (tài khoản cũ tạo qua /auth/ai/register)
+    None,
+}
+
+impl AiAgentCredential {
+    /// Trạng thái hiển thị (active/expired/locked) tính tại thời điểm hiện tại.
+    #[must_use]
+    pub fn status_at(&self, now: DateTime<Utc>) -> CredentialStatus {
+        if let Some(until) = self.locked_until {
+            if until > now {
+                return CredentialStatus::Locked;
+            }
+        }
+        if self.password_expires_at <= now {
+            return CredentialStatus::Expired;
+        }
+        CredentialStatus::Active
+    }
+}
+
+impl CredentialStatus {
+    /// Nhãn tiếng Việt cho admin UI.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Active => "Còn hiệu lực",
+            Self::Expired => "Đã hết hạn",
+            Self::Locked => "Tạm khoá",
+            Self::None => "Chưa đặt mật khẩu",
+        }
+    }
+
+    /// Màu badge.
+    #[must_use]
+    pub const fn color(&self) -> &'static str {
+        match self {
+            Self::Active => "#10b981",
+            Self::Expired => "#f59e0b",
+            Self::Locked => "#ef4444",
+            Self::None => "#6b7280",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,5 +295,49 @@ mod tests {
     #[test]
     fn test_default_task_status_is_queued() {
         assert_eq!(AiTaskStatus::default(), AiTaskStatus::Queued);
+    }
+
+    #[test]
+    fn test_credential_status_at_variants() {
+        use chrono::Duration;
+        let now = Utc::now();
+        let base = AiAgentCredential {
+            user_id: Uuid::new_v4(),
+            password_hash: "x".into(),
+            password_expires_at: now + Duration::hours(24),
+            failed_attempts: 0,
+            locked_until: None,
+            last_login_at: None,
+            updated_by: None,
+            created_at: now,
+            updated_at: now,
+        };
+        assert_eq!(base.status_at(now), CredentialStatus::Active);
+        // Hết hạn: expires_at trong quá khứ
+        let mut expired = base.clone();
+        expired.password_expires_at = now - Duration::hours(1);
+        assert_eq!(expired.status_at(now), CredentialStatus::Expired);
+        // Bị khoá: locked_until trong tương lai (dù mật khẩu còn hạn)
+        let mut locked = base.clone();
+        locked.locked_until = Some(now + Duration::minutes(10));
+        assert_eq!(locked.status_at(now), CredentialStatus::Locked);
+        // Khoá đã qua → trở lại active
+        let mut unlocked = base.clone();
+        unlocked.locked_until = Some(now - Duration::minutes(1));
+        assert_eq!(unlocked.status_at(now), CredentialStatus::Active);
+    }
+
+    #[test]
+    fn test_credential_status_labels() {
+        for s in [
+            CredentialStatus::Active,
+            CredentialStatus::Expired,
+            CredentialStatus::Locked,
+            CredentialStatus::None,
+        ] {
+            assert!(!s.label().is_empty());
+            let c = s.color();
+            assert!(c.starts_with('#') && c.len() == 7, "color={c}");
+        }
     }
 }

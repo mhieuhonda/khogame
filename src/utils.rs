@@ -239,6 +239,29 @@ pub fn escape_like(s: &str) -> String {
     out
 }
 
+/// Percent-encode chuỗi cho query parameter URL (v3.4.0 — dùng cho
+/// redirect /auth/ai/login?error=... khi đăng nhập AI Agent sai).
+///
+/// Giữ nguyên ký tự an toàn [A-Za-z0-9_.~-], encode những ký tự còn lại
+/// theo UTF-8 percent-encoding. Chống URL/header injection: mọi byte
+/// control (CR/LF/TAB...) đều bị encode %0D%0A%09 → không thể thoát
+/// ra khỏi Location header.
+#[must_use]
+pub fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push_str(&format!("%{b:02X}"));
+            }
+        }
+    }
+    out
+}
+
 /// Validate một URL là http(s) — chống <javascript:/data:/file>: scheme
 /// nguy hiểm khi dùng URL làm href hoặc src trong HTML. Trả về true nếu
 /// URL rỗng (không bắt buộc) hoặc là http(s)://.
@@ -677,6 +700,36 @@ mod tests_markdown_edge {
     fn test_markdown_empty_input() {
         assert_eq!(safe_markdown_to_html(""), "");
         assert_eq!(safe_markdown_to_html("   \n\n  \n "), "");
+    }
+
+    /// v3.4.0 — urlencode: ký tự an toàn giữ nguyên, còn lại percent-encode.
+    #[test]
+    fn test_urlencode_safe_chars_kept() {
+        assert_eq!(urlencode("abcXYZ019_.-~"), "abcXYZ019_.-~");
+        assert_eq!(urlencode(""), "");
+    }
+
+    #[test]
+    fn test_urlencode_special_chars() {
+        assert_eq!(urlencode(" "), "%20");
+        assert_eq!(urlencode("a&b=c"), "a%26b%3Dc");
+        assert_eq!(urlencode("hanoi"), "hanoi");
+    }
+
+    /// Control char (CR/LF) PHẢI bị encode — chống header injection
+    /// qua Location redirect.
+    #[test]
+    fn test_urlencode_control_chars_neutralized() {
+        let out = urlencode("a\r\nb");
+        assert!(!out.contains('\r'), "raw CR không được xuất hiện");
+        assert!(!out.contains('\n'), "raw LF không được xuất hiện");
+        assert_eq!(out, "a%0D%0Ab");
+    }
+
+    #[test]
+    fn test_urlencode_vietnamese() {
+        // "xin chào" — UTF-8 bytes của à = C3 A0
+        assert_eq!(urlencode("chào"), "ch%C3%A0o");
     }
 
     /// Markdown không tự đóng các thẻ hở trong input — input đã escape trước
