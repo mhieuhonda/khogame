@@ -93,8 +93,9 @@ pub async fn create(
 
 /// v3.0.0 — Giới hạn bộ sưu tập theo cấp độ (hàm thuần — test được).
 /// Lv.1-2: 5 · Lv.3-6: 7 · Lv.7-9: 12 · Lv.10+: 20.
+/// v3.1.0 — level: i64 (BIGINT — hỗ trợ 500 tỷ).
 #[must_use]
-pub fn collection_limit_for_level(level: i32) -> i32 {
+pub fn collection_limit_for_level(level: i64) -> i32 {
     match level {
         0..=2 => 5,
         3..=6 => 7,
@@ -228,5 +229,8 @@ mod tests {
         assert_eq!(collection_limit_for_level(9), 12);
         assert_eq!(collection_limit_for_level(10), 20);
         assert_eq!(collection_limit_for_level(99), 20);
+        // v3.1.0 — i64 case (huge level).
+        assert_eq!(collection_limit_for_level(1_000_000), 20);
+        assert_eq!(collection_limit_for_level(i64::MAX), 20);
     }
 }

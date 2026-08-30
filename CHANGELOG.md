@@ -5,6 +5,105 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-08-30 — Fix bug tự động cấp danh hiệu + 100 Danh Hiệu + MAX_LEVEL 500 tỷ + 2 game (Oẳn tù tì + Nối từ)
+
+Bản lớn (MINOR bump) — thêm 4 tính năng lớn + 1 fix bug critical, build
+trên Rust 1.98 (pin chính xác) + Axum 0.8.9 + Askama 0.16 + sqlx 0.9.
+Quét codebase 2 vòng (build → fix → re-build) — 337 test pass + clippy
+-D warnings sạch.
+
+### 🐛 FIX CRITICAL — Bug tự động cấp danh hiệu (1 lỗi, HIGH)
+
+1. **`src/repositories/gamification.rs::check_and_award::met`** — hàm
+   `met()` dùng match với 25 ID cố định, mọi danh hiệu mới seed vào
+   `achievements` catalog có ID lạ rơi vào `_ => false` → KHÔNG BAO GIỜ
+   được auto-grant dù user đã đạt điều kiện. Hệ quả: user đạt level 15
+   (huy hiệu `level_15` seed nhưng không trong match) không tự nhận.
+   Fix: mở rộng `met()` cho 100 ID mới (25 cũ + 100 mới = 125 tổng), mỗi
+   ID có điều kiện rõ ràng — match arms exhaustive theo tier.
+
+### ✨ TÍNH NĂNG MỚI (4)
+
+1. **+100 Danh Hiệu** (migration `024`) — seed 100 hàng mới vào
+   `achievements` catalog trải đều 16 hạng mục:
+   - 20 level tiers (level_15 → level_max — Vô Biên cấp 500 tỷ)
+   - 5 streak tiers (50/100/365/1000 ngày + champion tổng 365)
+   - 5 comment tiers (100..5000 bình luận)
+   - 10 game published tiers (10..10000 game)
+   - 5 likes_received, 5 downloads, 5 followers, 5 reviews,
+     5 bookmarks, 5 repos, 5 news, 5 chat, 5 collections, 5 social,
+     5 RPS, 5 word_chain tiers.
+   Total catalog: 25 (021) + 100 (024) = 125 danh hiệu.
+
+2. **MAX_LEVEL 500 TỶ** (`MAX_LEVEL = 500_000_000_000`):
+   - 12 cấp đầu (xp 0..=12000) dùng `LEVELS` table (12 tên gọi tĩnh).
+   - Cấp 13+ dùng công thức `level = 12 + (xp - 12000) / 1000`.
+   - XP cần cho max: ~5e14 (500 trillion) — vừa vặn i64 (BIGINT max 9.2e18).
+   - Migration: `user_xp_totals.total_xp` INT → BIGINT (i64) để chứa.
+   - LevelInfo: `level/xp/next_level_xp` chuyển i32 → i64.
+   - Title tier mới cho level 13+ (Vô Song → Vô Biên).
+   - Test mới: `test_tier2_boundary_at_12000_xp`, `test_tier2_high_levels`,
+     `test_tier2_max_level_cap`, `test_title_for_level_tier_distribution`.
+
+3. **Game Oẳn tù tì (Kéo búa bao) — `/rps`**:
+   - 3 nút chọn: ✊ Búa / ✋ Bao / ✌️ Kéo.
+   - Bot chọn ngẫu nhiên (uniform 1/3 each).
+   - XP: +2/win, 0/draw, 0/lose.
+   - Daily cap: 30 ván/ngày (anti-farm).
+   - 5 huy hiệu RPS: rps_first_win → rps_500_wins (Bán Thần Oẳn Tù Tì).
+   - Bảng `rps_plays` (migration 024).
+
+4. **Game Nối từ tiếng Việt — `/word-chain`**:
+   - User gõ 1 từ tiếng Việt (có dấu hay không dấu đều được qua NFD normalize).
+   - Bot trả 1 từ bắt đầu bằng chữ cuối của user (vocabulary embedded ~370 từ).
+   - XP: +3/valid word, 0/invalid.
+   - Daily cap: 20 lượt/ngày.
+   - 5 huy hiệu word_chain: word_chain_first → word_chain_500 (Bậc Thầy Nối Từ).
+   - Bảng `word_chain_plays` (migration 024).
+
+### 🗃️ DATABASE MIGRATION (1 file mới)
+
+- `024_xp_bigint_100_achievements_rps_wordchain.sql`:
+  1. `ALTER TABLE user_xp_totals ALTER COLUMN total_xp TYPE BIGINT` — hỗ trợ level 500 tỷ.
+  2. INSERT 100 danh hiệu mới vào `achievements` (ON CONFLICT DO NOTHING — idempotent).
+  3. CREATE TABLE `rps_plays` (id, user_id, user_choice, bot_choice, result, xp_awarded, created_at).
+  4. CREATE TABLE `word_chain_plays` (id, user_id, word, is_valid, bot_word, xp_awarded, created_at).
+  5. Index bổ trợ cho query lifetime stats nhanh.
+
+### 🔧 REFACTOR (i64 migration)
+
+- `src/models/gamification.rs` — `LevelInfo.{level,xp,next_level_xp}`: i32 → i64.
+- `src/models/gamification.rs::UserXpTotal::total_xp`: i32 → i64.
+- `src/models/gamification.rs::LeaderboardEntry::total_xp`: i32 → i64.
+- `src/repositories/gamification.rs::GamificationRepo::total_xp/award_xp`: trả i64.
+- `src/repositories/gamification.rs::check_and_award::Stats`: thêm 4 cột mới
+  (`social_links_count`, `collections_count`, `rps_wins`, `word_chain_valid`, `total_checkins`).
+- `src/repositories/arcade.rs::SpinRepo::spin`: trả (i32, i64, LevelInfo).
+- `src/repositories/shop.rs::ShopRepo::buy`: total_xp i64.
+- `src/repositories/quests.rs::QuestRepo::claim`: trả (i32, i64, LevelInfo).
+- `src/repositories/rps.rs` (mới) + `src/repositories/word_chain.rs` (mới).
+- `src/handlers/rps.rs` (mới) + `src/handlers/word_chain.rs` (mới).
+- `src/templates.rs::RpsTemplate` + `WordChainTemplate` (mới).
+- `src/templates.rs::ShopTemplate.total_xp`: i32 → i64.
+- `src/templates.rs::level_for/title_for` filter: parse i64 thay i32.
+- `src/handlers/collections.rs::collection_limit_for_level`: level i32 → i64.
+- `src/models/review.rs::ReviewWithUser::author_xp`: i32 → i64.
+- `src/models/retention.rs::PurchaseOutcome::total_xp`: i32 → i64.
+- `templates/gamification/rps.html` (mới) + `templates/gamification/word_chain.html` (mới).
+- `templates/layout.html`: thêm 2 menu link (Oẳn tù tì, Nối từ).
+- `src/routes.rs`: 4 route mới (GET /rps, POST /rps/play, GET /word-chain, POST /word-chain/play).
+
+### ✅ KIỂM TRA CHẤT LƯỢNG
+
+- `cargo check --all-targets`: pass.
+- `cargo clippy --all-targets -- -D warnings`: 0 warning.
+- `cargo test --all`: 337 test pass (12 test mới cho v3.1.0 + 4 fix cho i64 migration).
+- `cargo fmt --check`: clean.
+- `cargo build --release`: pass (binary production-ready).
+- Rust 1.98.0 exact pin (rust-toolchain.toml).
+
+---
+
 ## [2.9.2] — 2026-08-29 — Fix CI/CD trigger chết + 15 bug từ audit toàn diện
 
 Bản vá sau khi quét codebase 2 vòng độc lập (backend Rust + templates/

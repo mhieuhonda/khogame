@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block title %}Nối từ tiếng Việt{% endblock %}
+{% block description %}Game nối từ tiếng Việt — gõ 1 từ hợp lệ, bot sẽ nối tiếp bằng từ bắt đầu bằng chữ cuối của bạn. +3 XP mỗi từ hợp lệ.{% endblock %}
+
+{% block head_extra %}
+<style>
+.wc-wrap { display: flex; flex-direction: column; gap: 1.5rem; margin: 2rem 0; max-width: 640px; margin-left: auto; margin-right: auto; }
+.wc-form { display: flex; gap: .5rem; flex-wrap: wrap; }
+.wc-input {
+    flex: 1;
+    padding: .85rem 1rem;
+    border: 2px solid var(--border, #e2e8f0);
+    border-radius: 10px;
+    background: var(--bg, #fff);
+    color: var(--text, #0f172a);
+    font-size: 1rem;
+    min-width: 200px;
+}
+.wc-input:focus { outline: none; border-color: var(--accent, #0ea5e9); }
+.wc-result { padding: 1.25rem; border-radius: 12px; animation: pop-in .35s cubic-bezier(.2,1.4,.4,1); }
+.wc-result.wc-valid { background: rgba(34,197,94,.08); border: 1px solid #22c55e; }
+.wc-result.wc-invalid { background: rgba(239,68,68,.08); border: 1px solid #ef4444; }
+.wc-status { font-size: 1.2rem; font-weight: 700; margin: 0 0 .5rem; }
+.wc-user-word, .wc-bot-response { margin: .25rem 0; }
+.wc-bot-word { color: var(--accent, #0ea5e9); font-size: 1.15rem; }
+.wc-reason { color: var(--text-dim, #94a3b8); font-style: italic; }
+.wc-stats { color: var(--text-dim, #94a3b8); font-size: .9rem; margin-top: .75rem; }
+.wc-info { background: var(--bg-soft, #f8fafc); border-radius: 12px; padding: 1rem 1.5rem; }
+.wc-info dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin: 0; }
+.wc-info dt { font-size: .85rem; color: var(--text-dim, #64748b); }
+.wc-info dd { margin: 0; font-weight: 700; font-size: 1.1rem; }
+@keyframes pop-in { 0% { transform: scale(.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.wc-suggest { font-size: .85rem; color: var(--text-dim, #94a3b8); margin-top: .5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <span style="font-size:1.4em">🔤</span>
+            Nối từ tiếng Việt
+        </h1>
+        <a href="/rps" class="section-more">Oẳn tù tì →</a>
+    </div>
+
+    <div class="wc-info">
+        <dl>
+            <dt>Cấp độ hiện tại</dt>
+            <dd>Lv.{{ level.level }} — {{ level.title }}</dd>
+            <dt>Tổng XP</dt>
+            <dd>{{ level.xp }}</dd>
+            <dt>Lượt hôm nay</dt>
+            <dd>{{ plays_today }} / 20</dd>
+            <dt>Hợp lệ lifetime</dt>
+            <dd>{{ valid_lifetime }}</dd>
+        </dl>
+    </div>
+
+    <div class="wc-wrap">
+        <p class="wc-stats">Gõ 1 từ tiếng Việt (không dấu) hợp lệ → bot nối tiếp bằng từ bắt đầu bằng chữ cuối của bạn. +3 XP mỗi từ hợp lệ.</p>
+        <form class="wc-form" hx-post="/word-chain/play" hx-target="#wc-result" hx-swap="innerHTML" hx-disabled-elt="button.wc-submit">
+            <input type="text" name="word" class="wc-input" placeholder="Ví dụ: yeu, anh, hoc, troi, mai, ..." autocomplete="off" required maxlength="100" />
+            <button type="submit" class="btn btn-primary wc-submit">Nối từ!</button>
+        </form>
+        <div id="wc-result" aria-live="polite"></div>
+    </div>
+
+    <p class="wc-suggest"><strong>Quy tắc:</strong> từ phải có trong từ điển embedded (~370 từ phổ biến, không dấu) — thử các từ đơn giản như: anh, ba, ban, bao, be, ca, con, di, em, ga, hay, hoc, khong, lam, mot, nguoi, nha, que, sach, troi, yeu...</p>
+    <p class="achievements-hint">🏆 Huy hiệu: 1 từ hợp lệ → <strong>Nối Từ Đầu Tiên</strong>; 10 từ → <strong>Mười Từ Nối</strong>; 500 từ → <strong>Bậc Thầy Nối Từ</strong>.</p>
+</section>
+{% endblock %}

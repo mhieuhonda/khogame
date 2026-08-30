@@ -18,5 +18,7 @@ pub mod quests;
 pub mod referral;
 pub mod repos;
 pub mod reviews;
+pub mod rps;
 pub mod shop;
 pub mod uploads;
+pub mod word_chain;

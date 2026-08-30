@@ -83,6 +83,9 @@ impl_template_response!(
     ShopTemplate,
     ReferralTemplate,
     NotifPrefsTemplate,
+    // v3.1.0 — arcade games: Oẳn tù tì + Nối từ
+    RpsTemplate,
+    WordChainTemplate,
 );
 
 /// Home page
@@ -806,26 +809,28 @@ pub mod filters {
     }
 
     /// v2.9.0 — Số cấp độ từ tổng XP (dùng trong template leaderboard/review).
+    /// v3.1.0 — i64 thay cho i32 (BIGINT) + hỗ trợ level tới 500 tỷ.
     /// # Errors
     ///
     /// Trả lỗi khi input không parse được số.
     #[askama::filter_fn]
     pub fn level_for(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
         let raw = n.to_string();
-        let v: i32 = raw.trim().parse().unwrap_or(0);
+        let v: i64 = raw.trim().parse().unwrap_or(0);
         Ok(crate::models::gamification::level_from_xp(v)
             .level
             .to_string())
     }
 
     /// v2.9.0 — Danh hiệu từ tổng XP.
+    /// v3.1.0 — i64 BIGINT.
     /// # Errors
     ///
     /// Trả lỗi khi input không parse được số.
     #[askama::filter_fn]
     pub fn title_for(n: impl Display, _: &dyn Values) -> ::askama::Result<String> {
         let raw = n.to_string();
-        let v: i32 = raw.trim().parse().unwrap_or(0);
+        let v: i64 = raw.trim().parse().unwrap_or(0);
         Ok(crate::models::gamification::level_from_xp(v)
             .title
             .to_string())
@@ -1470,7 +1475,7 @@ pub struct ShopTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub items: Vec<crate::models::retention::ShopItemWithStock>,
-    pub total_xp: i32,
+    pub total_xp: i64,
 }
 
 /// Trang chương trình giới thiệu (/referral)
@@ -1534,4 +1539,34 @@ pub struct HeatmapWidget {
 pub struct OnboardingWidget {
     pub steps: Vec<crate::models::retention::OnboardingStepStatus>,
     pub done_count: usize,
+}
+
+// ============================================================
+// v3.1.0 — ARCADE: Oẳn tù tì (RPS) + Nối từ (Word Chain)
+// ============================================================
+
+/// Trang Oẳn tù tì / Kéo búa bao (/rps).
+#[derive(Template)]
+#[template(path = "gamification/rps.html")]
+pub struct RpsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Số ván đã chơi hôm nay (cho cap display).
+    pub plays_today: i64,
+    /// Tổng số thắng lifetime.
+    pub wins_lifetime: i64,
+    pub level: crate::models::gamification::LevelInfo,
+}
+
+/// Trang Nối từ (/word-chain).
+#[derive(Template)]
+#[template(path = "gamification/word_chain.html")]
+pub struct WordChainTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Số lượt đã chơi hôm nay.
+    pub plays_today: i64,
+    /// Số từ hợp lệ lifetime.
+    pub valid_lifetime: i64,
+    pub level: crate::models::gamification::LevelInfo,
 }

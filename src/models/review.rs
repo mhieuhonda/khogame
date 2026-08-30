@@ -36,7 +36,8 @@ pub struct ReviewWithUser {
     pub user_username: String,
     pub user_avatar: Option<String>,
     pub is_helpful: bool,
-    pub author_xp: i32,
+    /// v3.1.0 — i64 (BIGINT, user_xp_totals.total_xp đã chuyển sang BIGINT).
+    pub author_xp: i64,
 }
 
 impl ReviewWithUser {

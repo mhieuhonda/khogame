@@ -55,10 +55,11 @@ pub struct GamificationRepo;
 
 impl GamificationRepo {
     /// Đọc tổng XP của user (0 nếu chưa có dòng nào).
+    /// v3.1.0 — total_xp: BIGINT (i64) — hỗ trợ level tới 500 tỷ.
     /// # Errors
     /// Trả lỗi khi DB fail.
-    pub async fn total_xp(pool: &PgPool, user_id: Uuid) -> AppResult<i32> {
-        let xp: Option<i32> =
+    pub async fn total_xp(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
+        let xp: Option<i64> =
             sqlx::query_scalar("SELECT total_xp FROM user_xp_totals WHERE user_id = $1")
                 .bind(user_id)
                 .fetch_optional(pool)
@@ -81,10 +82,13 @@ impl GamificationRepo {
         Ok(if active { 2 } else { 1 })
     }
 
-    /// Cộng XP + ghi log. Trả về (tổng XP mới, XP thực cộng, LevelInfo mới).
+    /// Cộng XP + ghi log. Trả về (tổng XP mới BIGINT, XP thực cộng, LevelInfo mới).
     /// `xp_effective` = 0 khi bị chạm trần anti-farm — caller (service) dùng
     /// giá trị này để tính level TRƯỚC khi cộng, tránh báo "Lên cấp" ảo
     /// khi tổng không đổi (v3.0.0 FIX).
+    /// v3.1.0 — total_xp: BIGINT (i64) — `amount` vào vẫn i32 (per-event
+    /// luôn nhỏ — max ~300 XP/event), nhưng tổng trả ra i64 để caller có
+    /// thể render LevelInfo với xp_i64.
     /// Không thông báo ở tầng repo — caller quyết định (tránh lặp
     /// notification khi award_xp được gọi từ nhiều ngữ cảnh).
     /// # Errors
@@ -94,7 +98,7 @@ impl GamificationRepo {
         user_id: Uuid,
         reason: &str,
         amount: i32,
-    ) -> AppResult<(i32, i32, LevelInfo)> {
+    ) -> AppResult<(i64, i32, LevelInfo)> {
         let mut tx = pool.begin().await?;
         // Anti-farm cap: đếm số event cùng reason đã có hôm nay
         let effective = if amount > 0 {
@@ -150,8 +154,9 @@ impl GamificationRepo {
                 .execute(&mut *tx)
                 .await?;
         }
-        // Upsert tổng
-        let total: i32 = sqlx::query_scalar(
+        // Upsert tổng — v3.1.0: total_xp BIGINT, bind i32 (sqlx tự cast).
+        // Trả i64 để level_from_xp(i64) áp dụng được công thức 500 tỷ.
+        let total: i64 = sqlx::query_scalar(
             r"INSERT INTO user_xp_totals (user_id, total_xp)
                VALUES ($1, $2)
                ON CONFLICT (user_id)
@@ -427,7 +432,7 @@ impl GamificationRepo {
         .bind(xp_awarded)
         .execute(&mut *tx)
         .await?;
-        let total: i32 = sqlx::query_scalar(
+        let total: i64 = sqlx::query_scalar(
             r"INSERT INTO user_xp_totals (user_id, total_xp)
                VALUES ($1, $2)
                ON CONFLICT (user_id)
@@ -624,6 +629,13 @@ impl GamificationRepo {
     ///
     /// Toàn bộ điều kiện được tính bằng 1 query UNION-style duy nhất
     /// (không N+1) rồi so khớp catalog trong Rust.
+    ///
+    /// v3.1.0 FIX (bug tự động cấp danh hiệu): trước đây hàm `met()`
+    /// dùng match với 25 ID cố định. Mọi danh hiệu mới seed vào
+    /// `achievements` catalog có ID lạ → `match _ => false` → KHÔNG BAO
+    /// GIỜ được trao dù user đã đạt điều kiện. Giờ mở rộng `met()` cho
+    /// 100 danh hiệu mới (migration 024) + thêm 4 cột thống kê mới:
+    /// `collections_count`, `rps_wins`, `word_chain_valid`, `total_checkins`.
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn check_and_award(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<Achievement>> {
@@ -645,9 +657,15 @@ impl GamificationRepo {
             repos_count: i64,
             max_streak: i64,
             total_xp: i64,
+            // v3.1.0 — new stats for 100 added achievements
+            social_links_count: i64,
+            collections_count: i64,
+            rps_wins: i64,
+            word_chain_valid: i64,
+            total_checkins: i64,
         }
         let s = sqlx::query_as::<_, Stats>(
-            r"SELECT
+            r#"SELECT
                 (SELECT COUNT(*) FROM games WHERE user_id = $1 AND status = 'published') AS games_published,
                 (SELECT COUNT(*) FROM comments WHERE user_id = $1)
                   + (SELECT COUNT(*) FROM news_comments WHERE user_id = $1) AS comments_count,
@@ -667,15 +685,33 @@ impl GamificationRepo {
                 (SELECT COUNT(*) FROM chat_messages WHERE user_id = $1 AND is_deleted = FALSE) AS chat_messages,
                 (SELECT COUNT(*) FROM github_repos WHERE user_id = $1) AS repos_count,
                 (SELECT COALESCE(MAX(streak), 0)::bigint FROM daily_checkins WHERE user_id = $1) AS max_streak,
-                (SELECT COALESCE(total_xp, 0)::bigint FROM user_xp_totals WHERE user_id = $1) AS total_xp",
+                (SELECT COALESCE(total_xp, 0)::bigint FROM user_xp_totals WHERE user_id = $1) AS total_xp,
+                -- v3.1.0: count of social link platforms. links is a JSON object
+                -- (platform_id -> url map) — count keys via LATERAL jsonb_object_keys.
+                -- COALESCE outside subquery returns 0 if user has no row.
+                COALESCE((
+                  SELECT COUNT(*) FROM user_social_links usl
+                  CROSS JOIN LATERAL jsonb_object_keys(usl.links) AS k
+                  WHERE usl.user_id = $1
+                ), 0) AS social_links_count,
+                -- v3.1.0: count of user collections (for collections_X tiers)
+                (SELECT COUNT(*) FROM collections WHERE user_id = $1) AS collections_count,
+                -- v3.1.0: lifetime RPS wins (for rps_X_wins tiers)
+                (SELECT COUNT(*) FROM rps_plays WHERE user_id = $1 AND result = 'win') AS rps_wins,
+                -- v3.1.0: lifetime valid word_chain plays (for word_chain_X tiers)
+                (SELECT COUNT(*) FROM word_chain_plays WHERE user_id = $1 AND is_valid = TRUE) AS word_chain_valid,
+                -- v3.1.0: total checkin rows (for streak_champion — total 365 days)
+                (SELECT COUNT(*) FROM daily_checkins WHERE user_id = $1) AS total_checkins"#,
         )
         .bind(user_id)
         .fetch_one(pool)
         .await?;
 
-        let level = level_from_xp(s.total_xp as i32).level;
+        // v3.1.0 — level_from_xp giờ nhận i64 (BIGINT) + cap 500 tỷ.
+        let level = level_from_xp(s.total_xp).level;
         let met = |id: &str| -> bool {
             match id {
+                // === Original 25 (seed migration 021) ===
                 "first_login" => true, // đăng nhập rồi mới chạy được hàm này
                 "profile_avatar" => s.has_avatar > 0,
                 "profile_bio" => s.has_bio > 0,
@@ -701,6 +737,124 @@ impl GamificationRepo {
                 "streak_30" => s.max_streak >= 30,
                 "level_5" => level >= 5,
                 "level_10" => level >= 10,
+                // === v3.1.0 — 100 NEW (migration 024) ===
+                // -- LEVEL tiers (20) — level là i64, compare với i64 literal
+                "level_15" => level >= 15,
+                "level_20" => level >= 20,
+                "level_25" => level >= 25,
+                "level_30" => level >= 30,
+                "level_40" => level >= 40,
+                "level_50" => level >= 50,
+                "level_75" => level >= 75,
+                "level_100" => level >= 100,
+                "level_150" => level >= 150,
+                "level_200" => level >= 200,
+                "level_300" => level >= 300,
+                "level_500" => level >= 500,
+                "level_750" => level >= 750,
+                "level_1000" => level >= 1_000,
+                "level_2000" => level >= 2_000,
+                "level_5000" => level >= 5_000,
+                "level_10000" => level >= 10_000,
+                "level_100000" => level >= 100_000,
+                "level_1m" => level >= 1_000_000,
+                "level_max" => level >= crate::models::gamification::MAX_LEVEL,
+                // -- STREAK tiers (5)
+                "streak_50" => s.max_streak >= 50,
+                "streak_100" => s.max_streak >= 100,
+                "streak_365" => s.max_streak >= 365,
+                "streak_1000" => s.max_streak >= 1_000,
+                "streak_champion" => s.total_checkins >= 365,
+                // -- COMMENTS tiers (5)
+                "comments_100" => s.comments_count >= 100,
+                "comments_250" => s.comments_count >= 250,
+                "comments_500" => s.comments_count >= 500,
+                "comments_1000" => s.comments_count >= 1_000,
+                "comments_5000" => s.comments_count >= 5_000,
+                // -- GAMES PUBLISHED tiers (10)
+                "games_10" => s.games_published >= 10,
+                "games_25" => s.games_published >= 25,
+                "games_50" => s.games_published >= 50,
+                "games_100" => s.games_published >= 100,
+                "games_250" => s.games_published >= 250,
+                "games_500" => s.games_published >= 500,
+                "games_1000" => s.games_published >= 1_000,
+                "games_2500" => s.games_published >= 2_500,
+                "games_5000" => s.games_published >= 5_000,
+                "games_10000" => s.games_published >= 10_000,
+                // -- LIKES RECEIVED tiers (5)
+                "likes_received_100" => s.likes_received_total >= 100,
+                "likes_received_250" => s.likes_received_total >= 250,
+                "likes_received_500" => s.likes_received_total >= 500,
+                "likes_received_1000" => s.likes_received_total >= 1_000,
+                "likes_received_5000" => s.likes_received_total >= 5_000,
+                // -- DOWNLOADS tiers (5)
+                "downloads_250" => s.downloads_total >= 250,
+                "downloads_500" => s.downloads_total >= 500,
+                "downloads_1000" => s.downloads_total >= 1_000,
+                "downloads_5000" => s.downloads_total >= 5_000,
+                "downloads_10000" => s.downloads_total >= 10_000,
+                // -- FOLLOWERS tiers (5)
+                "followers_50" => s.followers_count >= 50,
+                "followers_100" => s.followers_count >= 100,
+                "followers_250" => s.followers_count >= 250,
+                "followers_500" => s.followers_count >= 500,
+                "followers_1000" => s.followers_count >= 1_000,
+                // -- REVIEWS tiers (5)
+                "reviews_5" => s.reviews_count >= 5,
+                "reviews_10" => s.reviews_count >= 10,
+                "reviews_25" => s.reviews_count >= 25,
+                "reviews_50" => s.reviews_count >= 50,
+                "reviews_100" => s.reviews_count >= 100,
+                // -- BOOKMARKS tiers (5)
+                "bookmarks_25" => s.bookmarks_count >= 25,
+                "bookmarks_50" => s.bookmarks_count >= 50,
+                "bookmarks_100" => s.bookmarks_count >= 100,
+                "bookmarks_250" => s.bookmarks_count >= 250,
+                "bookmarks_500" => s.bookmarks_count >= 500,
+                // -- REPOS tiers (5)
+                "repos_5" => s.repos_count >= 5,
+                "repos_10" => s.repos_count >= 10,
+                "repos_25" => s.repos_count >= 25,
+                "repos_50" => s.repos_count >= 50,
+                "repos_100" => s.repos_count >= 100,
+                // -- NEWS tiers (5)
+                "news_5" => s.news_published >= 5,
+                "news_10" => s.news_published >= 10,
+                "news_25" => s.news_published >= 25,
+                "news_50" => s.news_published >= 50,
+                "news_100" => s.news_published >= 100,
+                // -- CHAT tiers (5)
+                "chat_10" => s.chat_messages >= 10,
+                "chat_50" => s.chat_messages >= 50,
+                "chat_100" => s.chat_messages >= 100,
+                "chat_500" => s.chat_messages >= 500,
+                "chat_1000" => s.chat_messages >= 1_000,
+                // -- COLLECTIONS tiers (5)
+                "collections_3" => s.collections_count >= 3,
+                "collections_5" => s.collections_count >= 5,
+                "collections_10" => s.collections_count >= 10,
+                "collections_25" => s.collections_count >= 25,
+                "collections_50" => s.collections_count >= 50,
+                // -- SOCIAL LINKS tiers (5) — count of platforms
+                "social_2" => s.social_links_count >= 2,
+                "social_3" => s.social_links_count >= 3,
+                "social_4" => s.social_links_count >= 4,
+                "social_5" => s.social_links_count >= 5,
+                "social_master" => s.social_links_count >= 7,
+                // -- RPS (Oẳn tù tì) tiers (5)
+                "rps_first_win" => s.rps_wins >= 1,
+                "rps_10_wins" => s.rps_wins >= 10,
+                "rps_50_wins" => s.rps_wins >= 50,
+                "rps_100_wins" => s.rps_wins >= 100,
+                "rps_500_wins" => s.rps_wins >= 500,
+                // -- WORD CHAIN (Nối từ) tiers (5)
+                "word_chain_first" => s.word_chain_valid >= 1,
+                "word_chain_10" => s.word_chain_valid >= 10,
+                "word_chain_50" => s.word_chain_valid >= 50,
+                "word_chain_100" => s.word_chain_valid >= 100,
+                "word_chain_500" => s.word_chain_valid >= 500,
+                // (Future IDs từ migration sau → return false — rõ ràng chưa hỗ trợ)
                 _ => false,
             }
         };

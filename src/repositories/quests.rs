@@ -147,13 +147,14 @@ impl QuestRepo {
 
     /// Claim XP 1 nhiệm vụ đã hoàn thành. Trả về (xp_reward, total_xp, level)
     /// — lỗi BadRequest nếu chưa hoàn thành / đã claim / không tồn tại.
+    /// v3.1.0 — total_xp: BIGINT (i64) để hỗ trợ level 500 tỷ.
     /// # Errors
     /// Trả lỗi khi chưa đủ điều kiện hoặc DB fail.
     pub async fn claim(
         pool: &PgPool,
         user_id: Uuid,
         quest_id: &str,
-    ) -> crate::error::AppResult<(i32, i32, crate::models::gamification::LevelInfo)> {
+    ) -> crate::error::AppResult<(i32, i64, crate::models::gamification::LevelInfo)> {
         let mut tx = pool.begin().await?;
         // UPDATE có điều kiện: phải completed + chưa claimed. rows_affected
         // = 0 → sai trạng thái (đưa qua match để phân biệt lỗi).
@@ -187,7 +188,7 @@ impl QuestRepo {
             .bind(xp)
             .execute(&mut *tx)
             .await?;
-        let total: i32 = sqlx::query_scalar(
+        let total: i64 = sqlx::query_scalar(
             r#"INSERT INTO user_xp_totals (user_id, total_xp)
                VALUES ($1, $2)
                ON CONFLICT (user_id)

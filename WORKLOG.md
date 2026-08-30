@@ -534,3 +534,53 @@ Stage Summary:
   sub-fix trong từng mục), 6 test mới, không regression.
 - ✅ Full CI pipeline xanh local: fmt/check/clippy/test/doc + YAML validate.
 - ⏭️ Commit author mhieuhonda + push main + tag v2.9.2 → GitHub Release.
+
+---
+Task ID: v3.1.0-achievements-rps-wordchain
+Agent: Super Z (main)
+Task: Fix bug auto-grant danh hiệu + thêm 100 Danh Hiệu + MAX_LEVEL 500 tỷ + game Oẳn tù tì + game Nối từ.
+
+Work Log:
+- Clone repo khogame, cài Rust 1.98.0 exact (rustup), verify build baseline.
+- Scan codebase: 30.8k dòng Rust + 9k dòng templates, 818 dòng trong
+  repositories/gamification.rs. Identify bug met() trong check_and_award.
+- Migration 024 mới: BIGINT cho user_xp_totals.total_xp + 100 danh hiệu
+  mới (level/streak/comments/games/likes/downloads/followers/reviews/
+  bookmarks/repos/news/chat/collections/social/rps/word_chain) + 2 bảng
+  mới (rps_plays, word_chain_plays).
+- Update src/models/gamification.rs: LevelInfo i32→i64, level_from_xp
+  mở rộng tier 2 công thức + cap 500 tỷ (MAX_LEVEL = 500_000_000_000),
+  title_for_level cho level 13+ (Vô Song → Vô Biên).
+- Update src/repositories/gamification.rs: total_xp/award_xp trả i64;
+  mở rộng met() cho 25+100=125 ID; thêm 5 cột thống kê mới
+  (social_links_count via LATERAL jsonb_object_keys, collections_count,
+  rps_wins, word_chain_valid, total_checkins).
+- Update src/repositories/{arcade,shop,quests}.rs: i64 cho total_xp return.
+- Update src/models/{gamification,review,retention}.rs: i64 cho total_xp/
+  author_xp fields.
+- Update src/templates.rs: ShopTemplate.total_xp i64; level_for/title_for
+  filter parse i64; thêm RpsTemplate + WordChainTemplate (path rps.html +
+  word_chain.html).
+- Tạo src/repositories/rps.rs (RpsChoice/RpsOutcome/RpsRepo::play) +
+  src/repositories/word_chain.rs (VI_VOCAB ~370 từ, WordChainRepo::play).
+- Tạo src/handlers/rps.rs (rps_page + play_rps HTMX endpoint) +
+  src/handlers/word_chain.rs (word_chain_page + play_word_chain).
+- Tạo templates/gamification/rps.html + word_chain.html với CSS+HTMX
+  integration.
+- Update src/routes.rs: 4 route mới (/rps, /rps/play, /word-chain,
+  /word-chain/play) + đăng ký trong layout.html menu.
+- Fix bug normalize_word với NFD decomposition cho tiếng Việt có dấu.
+- Fix 4 test thất bại: boundary level 12/13 tại XP=12000, normalize_word
+  "Cà Phê" → "caphe" (không phải "caph").
+- Update Cargo.toml: version 3.0.0 → 3.1.0; CHANGELOG.md thêm entry v3.1.0.
+
+Stage Summary:
+- ✅ Bug auto-grant danh hiệu FIXED: met() mở rộng 25 → 125 ID match arms.
+- ✅ 100 Danh Hiệu mới seed (migration 024) — 16 category tier.
+- ✅ MAX_LEVEL 500 tỷ (500_000_000_000) qua công thức tier 2 + BIGINT.
+- ✅ Game Oẳn tù tì /rps + /rps/play (HTMX, 3 nút, daily cap 30).
+- ✅ Game Nối từ /word-chain + /word-chain/play (HTMX, NFD normalize,
+  vocabulary embedded ~370 từ, daily cap 20).
+- ✅ 337 test pass + 0 clippy warning + cargo fmt sạch.
+- ✅ cargo build --release thành công — binary production-ready.
+- ⏭️ Commit + push + tag v3.1.0 → GitHub Release → Coolify deploy.

@@ -48,7 +48,9 @@ pub async fn award_xp(pool: &PgPool, user_id: Uuid, reason: &str, amount: i32) {
         GamificationRepo::award_xp(pool, user_id, reason, amount).await
     {
         // Level-up check: level TRƯỚC = level suy từ (tổng mới - XP thực cộng).
-        let prev = crate::models::gamification::level_from_xp(level.xp - xp_effective.max(0));
+        // v3.1.0 — xp/level giờ i64 (BIGINT) — trừ không tràn.
+        let prev =
+            crate::models::gamification::level_from_xp(level.xp - i64::from(xp_effective.max(0)));
         if level.level > prev.level {
             notify_level_up(pool, user_id, level).await;
         }

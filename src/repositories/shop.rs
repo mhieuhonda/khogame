@@ -81,7 +81,8 @@ impl ShopRepo {
 
         let mut tx = pool.begin().await?;
         // 1) Trừ XP có điều kiện — atomic, thiếu tiền → BadRequest
-        let total: Option<i32> = sqlx::query_scalar(
+        // v3.1.0 — total_xp BIGINT (i64) để hỗ trợ level 500 tỷ.
+        let total: Option<i64> = sqlx::query_scalar(
             r#"UPDATE user_xp_totals
                SET total_xp = total_xp - $2, updated_at = NOW()
                WHERE user_id = $1 AND total_xp >= $2
@@ -192,7 +193,7 @@ impl ShopRepo {
         tx.commit().await?;
         Ok(PurchaseOutcome {
             item_id: item.id,
-            total_xp: total_xp + mystery_xp,
+            total_xp: total_xp + i64::from(mystery_xp),
             mystery_xp,
         })
     }

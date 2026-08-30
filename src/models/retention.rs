@@ -216,10 +216,11 @@ pub struct ShopItemWithStock {
 }
 
 /// Kết quả mua hàng.
+/// v3.1.0 — total_xp: BIGINT (i64) — hỗ trợ level tới 500 tỷ.
 #[derive(Debug, Clone, Serialize)]
 pub struct PurchaseOutcome {
     pub item_id: String,
-    pub total_xp: i32,
+    pub total_xp: i64,
     /// Mystery box: XP nhận được (0 với vật phẩm khác).
     pub mystery_xp: i32,
 }

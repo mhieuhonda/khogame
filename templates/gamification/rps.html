@@ -1,0 +1,90 @@
+{% extends "layout.html" %}
+
+{% block title %}Oẳn tù tì — Kéo búa bao{% endblock %}
+{% block description %}Oẳn tù tì (Kéo búa bao) — chơi với bot, thắng +2 XP mỗi ván, tối đa 30 ván mỗi ngày.{% endblock %}
+
+{% block head_extra %}
+<style>
+.rps-wrap { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; margin: 2rem 0; }
+.rps-choices-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+.rps-choice-btn {
+    background: var(--bg-soft, #f1f5f9);
+    border: 3px solid var(--border, #e2e8f0);
+    border-radius: 16px;
+    padding: 1.5rem 2rem;
+    cursor: pointer;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text, #0f172a);
+    transition: transform .15s, border-color .15s, background .15s;
+    display: flex; flex-direction: column; align-items: center; gap: .5rem;
+    min-width: 110px;
+}
+.rps-choice-btn:hover { transform: translateY(-3px); border-color: var(--accent, #0ea5e9); background: var(--bg-soft-hover, #e0f2fe); }
+.rps-choice-btn:active { transform: translateY(0); }
+.rps-choice-btn[disabled] { opacity: .5; cursor: not-allowed; }
+.rps-choice-emoji { font-size: 3rem; }
+.rps-result { padding: 1.5rem; border-radius: 12px; text-align: center; animation: pop-in .4s cubic-bezier(.2,1.4,.4,1); }
+.rps-result.rps-win { background: rgba(34,197,94,.08); border: 1px solid #22c55e; }
+.rps-result.rps-lose { background: rgba(239,68,68,.08); border: 1px solid #ef4444; }
+.rps-result.rps-draw { background: rgba(148,163,184,.08); border: 1px solid #94a3b8; }
+.rps-choices { display: flex; gap: 1.5rem; justify-content: center; align-items: center; margin-bottom: 1rem; }
+.rps-hand { display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+.rps-emoji { font-size: 3.5rem; }
+.rps-label { font-size: .9rem; color: var(--text-dim, #94a3b8); }
+.rps-vs { font-size: 1.2rem; font-weight: 700; color: var(--text-dim, #94a3b8); }
+.rps-outcome { font-size: 1.5rem; font-weight: 700; margin: .5rem 0; }
+.rps-stats { color: var(--text-dim, #94a3b8); font-size: .95rem; }
+@keyframes pop-in { 0% { transform: scale(.7); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.rps-info { background: var(--bg-soft, #f8fafc); border-radius: 12px; padding: 1rem 1.5rem; margin: 1.5rem 0; }
+.rps-info dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: .75rem; margin: 0; }
+.rps-info dt { font-size: .85rem; color: var(--text-dim, #64748b); }
+.rps-info dd { margin: 0; font-weight: 700; font-size: 1.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">
+            <span style="font-size:1.5em">✊✋✌️</span>
+            Oẳn tù tì — Kéo búa bao
+        </h1>
+        <a href="/word-chain" class="section-more">Nối từ →</a>
+    </div>
+
+    <div class="rps-info">
+        <dl>
+            <dt>Cấp độ hiện tại</dt>
+            <dd>Lv.{{ level.level }} — {{ level.title }}</dd>
+            <dt>Tổng XP</dt>
+            <dd>{{ level.xp }}</dd>
+            <dt>Ván hôm nay</dt>
+            <dd>{{ plays_today }} / 30</dd>
+            <dt>Thắng lifetime</dt>
+            <dd>{{ wins_lifetime }}</dd>
+        </dl>
+    </div>
+
+    <div class="rps-wrap">
+        <p class="rps-stats">Chọn một trong 3 — bot sẽ chọn ngẫu nhiên. Thắng +2 XP, hòa/thua 0 XP.</p>
+        <div class="rps-choices-row">
+            <button class="rps-choice-btn" hx-post="/rps/play" hx-vals='{"choice": "rock"}' hx-target="#rps-result" hx-swap="innerHTML" hx-disabled-elt="button.rps-choice-btn">
+                <span class="rps-choice-emoji">✊</span>
+                <span>Búa</span>
+            </button>
+            <button class="rps-choice-btn" hx-post="/rps/play" hx-vals='{"choice": "paper"}' hx-target="#rps-result" hx-swap="innerHTML" hx-disabled-elt="button.rps-choice-btn">
+                <span class="rps-choice-emoji">✋</span>
+                <span>Bao</span>
+            </button>
+            <button class="rps-choice-btn" hx-post="/rps/play" hx-vals='{"choice": "scissors"}' hx-target="#rps-result" hx-swap="innerHTML" hx-disabled-elt="button.rps-choice-btn">
+                <span class="rps-choice-emoji">✌️</span>
+                <span>Kéo</span>
+            </button>
+        </div>
+        <div id="rps-result" aria-live="polite"></div>
+    </div>
+
+    <p class="achievements-hint">🏆 Huy hiệu: thắng 1 ván → <strong>Bàn Tay Đầu Tiên</strong>; 10 ván → <strong>Mười Chiến Thắng</strong>; 500 ván → <strong>Bán Thần Oẳn Tù Tì</strong>. Mở <a href="/achievements">trang huy hiệu</a> để xem tất cả.</p>
+</section>
+{% endblock %}

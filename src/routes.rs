@@ -152,6 +152,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/trivia", get(handlers::arcade::trivia_page))
         .route("/trivia/answer", post(handlers::arcade::answer_trivia))
+        // v3.1.0 — ARCADE: Oẳn tù tì (RPS) + Nối từ (Word Chain)
+        .route("/rps", get(handlers::rps::rps_page))
+        .route("/rps/play", post(handlers::rps::play_rps))
+        .route("/word-chain", get(handlers::word_chain::word_chain_page))
+        .route(
+            "/word-chain/play",
+            post(handlers::word_chain::play_word_chain),
+        )
         .route("/shop", get(handlers::shop::shop_page))
         .route("/shop/buy", post(handlers::shop::buy_item))
         .route("/referral", get(handlers::referral::referral_page))

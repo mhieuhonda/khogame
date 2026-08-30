@@ -29,7 +29,7 @@ impl SpinRepo {
         pool: &PgPool,
         user_id: Uuid,
         rand_val: i32,
-    ) -> AppResult<(i32, i32, LevelInfo)> {
+    ) -> AppResult<(i32, i64, LevelInfo)> {
         let prize = SpinPrize::pick(rand_val);
         let sql = format!(
             r#"INSERT INTO spins (user_id, spin_date, prize_xp)
@@ -55,7 +55,7 @@ impl SpinRepo {
             .bind(xp)
             .execute(&mut *tx)
             .await?;
-        let total: i32 = sqlx::query_scalar(
+        let total: i64 = sqlx::query_scalar(
             r#"INSERT INTO user_xp_totals (user_id, total_xp)
                VALUES ($1, $2)
                ON CONFLICT (user_id)
