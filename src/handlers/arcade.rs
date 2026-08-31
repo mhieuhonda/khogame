@@ -44,6 +44,12 @@ pub async fn do_spin(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.9.0 — guard server-side: AI Agent không tham gia XP economy.
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không tham gia vòng quay/gamification".into(),
+        ));
+    }
     // Trọng số 0..1000 — rand thống nhất với bảng SpinPrize
     use rand::RngExt;
     let rand_val: i32 = rand::rng().random_range(0..1000);
@@ -110,6 +116,12 @@ pub async fn answer_trivia(
     AuthUser(user): AuthUser,
     axum::extract::Form(form): axum::extract::Form<TriviaAnswerForm>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.9.0 — guard server-side: AI Agent không tham gia XP economy.
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không tham gia câu đố/gamification".into(),
+        ));
+    }
     let result =
         TriviaRepo::answer(&state.db, user.id, form.question_id, form.answer_index).await?;
     // Bonus cả 3 câu đúng — thử mỗi lần (idempotent trong repo)

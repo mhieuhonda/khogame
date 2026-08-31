@@ -5,6 +5,96 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] — 2026-09-01 — FIX 403 hồ sơ AI Agent + Hồ sơ GLM 5.3 sạch + bảo mật sâu + Lịch sử phát triển
+
+Bản phát hành theo yêu cầu chủ sở hữu: fix lỗi 403 khi Admin sửa hồ sơ AI
+Agent, xóa toàn bộ hiệu ứng hồ sơ GLM 5.3 (trắng như hồ sơ thường), sửa
+ảnh đại diện bị che, thêm Lịch sử phát triển Louis Space vào trang Thông
+tin, và quét-fix bảo mật toàn codebase (3 luồng audit song song). Ưu tiên
+xuyên suốt: trải nghiệm người dùng.
+
+### Fixed — lỗi người dùng báo
+- **[403] Admin không sửa được hồ sơ AI Agent (GLM 5.3)**: root cause —
+  `update_profile` + `edit_profile_form` (`handlers/ai_agent.rs`) check
+  `role.is_ai_agent()` thuần; khi role của agent bị drift (đổi tay trước
+  v3.8.0, migration 035 chỉ reset agent mặc định) thì admin login-as bị
+  403 oan. Chuyển toàn bộ điểm kiểm tra sang `is_ai_agent_user()` (role
+  HOẶC `google_sub` prefix `ai_agent:`) — nhất quán với v3.6.3. Cả
+  middleware `require_ai_agent` + `AuthAiAgent` (API `/ai/info`,
+  `/ai/progress` KHÔNG còn chết khi drift) và menu "Hồ sơ AI"
+  (`layout.html`), check-in widget, add-to-collection, repos fragment.
+- **Ảnh đại diện bị che trên hồ sơ AI**: root cause thật —
+  `.profile-page-ai .profile-cover { position: relative }` (v3.4.0) đưa
+  cover sang phase positioned elements → vẽ ĐÈ LÊN vùng avatar chồng
+  cover (margin-top −40px) + sheen quét qua mặt avatar. Gỡ cùng hiệu ứng
+  + thêm `position: relative; z-index: 1` phòng vệ cho `.profile-info`
+  (bảo vệ MỌI profile trước future CSS).
+- **Bio AI Agent maxlength lệch**: form cho gõ 1000 ký tự nhưng handler
+  từ chối >500 → 400 vô giải thích. Handler nâng lên 1000 (khớp form +
+  hồ sơ user thường); vendor maxlength 100 → 50 khớp validation.
+- **Confetti không bao giờ được dọn** (`app.js`): `frag.querySelectorAll`
+  sau `appendChild(frag)` luôn rỗng (children đã move vào body) → 45 node
+  confetti/lần điểm danh nằm vĩnh viễn trong DOM, tích lũy vô hạn. Query
+  trên `document`.
+- **fetch đánh dấu đã đọc thông báo** thêm `.catch()` — hết unhandled
+  rejection khi offline.
+- **Dot arcade mất animation** khi keyframes `ai-dot-blink` bị gỡ cùng
+  hiệu ứng GLM 5.3 — tách keyframes riêng `arcade-dot-blink`.
+- **Limit text đo byte thay vì ký tự** (collections: tên 100/mô tả 300;
+  reviews: tiêu đề 200/nội dung 4000): tiếng Việt mỗi ký tự 2–3 byte bị
+  siết oan 2–3 lần so với message. Đồng bộ `chars().count()` với toàn
+  codebase.
+
+### Removed — hiệu ứng hồ sơ GLM 5.3 (yêu cầu "để trắng thôi")
+- Xóa TOÀN BỘ: lớp hero FX full màn (aurora, hạt sao, lưới neuron, orbs,
+  tia quét, vignette), cover gradient + sheen quét, avatar ring/glow
+  "thở", tên shimmer, username tô accent, badge pulse, viền gradient +
+  scanline khối model info, chấm LIVE nhấp nháy — ~13.8KB CSS + IIFE
+  probe FPS/CPU trong app.js (dead code).
+- **GIỮ nguyên thông tin**: badge "✓ AI Agent", model/vendor/version/caps,
+  card tham số, Báo cáo hoạt động (chỉ bỏ trang trí, không bỏ dữ liệu).
+- Bỏ class `profile-page-ai` / `profile-page-ai-hero` khỏi template;
+  hồ sơ AI giờ render giống hệt hồ sơ thường.
+
+### Added
+- **Lịch sử phát triển Louis Space** trên trang Thông tin (`/about`):
+  timeline 7 cột mốc từ nền móng v0.x (2026-08-23) → GA v1.0.0 → redesign
+  Prism → gamification → AI Agent GLM 5.3 → siêu fix v3.8.x → v3.9.0,
+  kèm CSS timeline riêng (dot gradient, badge pill).
+- Migration 041: reset role `ai_agent` cho TOÀN BỘ user có
+  `google_sub LIKE 'ai_agent:%'` bị drift (mở rộng 035 — dọn nốt dữ liệu
+  agent đăng ký cũ; idempotent).
+- Migration 042: Báo cáo hoạt động v3.9.0 công khai trên hồ sơ GLM 5.3
+  (5 entry đã sanitize — không token/PAT/IP/URL nội bộ).
+
+### Security — 3 luồng audit song song (handlers/middleware/infra)
+- **[HIGH] Giả mạo header IP lách rate-limit**: `client_ip_from_parts`
+  tin `CF-Connecting-IP` — site KHÔNG đứng sau Cloudflare, Traefik không
+  ghi đè header này → client tự gắn, xoay mỗi request 1 IP "public" mới
+  = bucket rate-limit mới (brute-force/spam vô hạn) + poison IP audit
+  (signup_ip, last_login_ip, author_ip). Bỏ khỏi danh sách header tin
+  cậy (giữ `X-Real-Ip` — Traefik tự sinh từ peer IP).
+- **[LOW] Orphaned staff session khi impersonate**: phiên admin gốc từng
+  bị ghi đè cookie nhưng row session còn sống tới 30 ngày = credential
+  mồ côi nếu cookie bị capture. Thu hồi ngay row session của phiên đang
+  request impersonation (phiên khôi phục qua ticket là session mới mint).
+- **[LOW] Gamification guard server-side cho AI Agent**: `do_checkin`,
+  `do_spin`, `answer_trivia`, `buy_item` — trước đây chỉ ẩn UI; request
+  thẳng vẫn farm XP. Block rõ ràng theo spec "AI không tham gia XP
+  economy".
+- **[LOW] Maintenance bypass** bổ sung `/ai/progress.json` (biến thể JSON
+  bị sót — AI Agent báo tiến trình nhận 503 oan khi bảo trì).
+- Audit xác nhận SẠCH: 55/55 handler admin có check quyền + audit log;
+  CSRF origin fail-closed; upload magic-bytes/quota atomic; Argon2id +
+  lockout; SQLi không có (mọi `format!()` SQL chỉ ghép hằng số
+  `AssertSqlSafe`); không leak email/google_sub/ip qua API công khai.
+- Document drift: comment `SESSION_KEY` (đã HMAC ls_anon từ v3.5.1),
+  `.env.example` AI session TTL 90 → 30 (khớp config thật).
+
+### Verified
+- Rust 1.98.0: cargo check/clippy/fmt/test (kết quả chi tiết ở CI).
+- PostgreSQL 17 local: 42 migrations sạch, smoke test hồ sơ AI + admin.
+
 ## [3.8.0] — 2026-08-31 — SIÊU FIX: 5 lỗi gốc rễ người dùng báo lâu nhất + XÓA 2 game mode + 10 lớp vá bảo mật
 
 Bản phát hành "siêu fix" theo yêu cầu chủ sở hữu: truy gốc rễ và vá

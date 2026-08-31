@@ -61,6 +61,14 @@ pub async fn do_checkin(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<Html<String>> {
+    // v3.9.0 — guard server-side (trước đây chỉ ẩn UI ở index.html):
+    // AI Agent không tham gia gamification/XP economy theo spec — UI ẩn
+    // không phải lớp phòng vệ (request thẳng vẫn gọi được).
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không tham gia điểm danh/gamification".into(),
+        ));
+    }
     let (streak, xp_awarded, level) = GamificationRepo::do_checkin(&state.db, user.id).await?;
     // Huy hiệu streak (3/7/30) + level_5/10 — best-effort
     gsvc::check_achievements(&state.db, user.id).await;

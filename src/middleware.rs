@@ -325,6 +325,9 @@ pub async fn maintenance_guard(
         // hồ sơ công khai → khi bảo trì khách vẫn xem được profile AI).
         // Giờ chỉ bypass ĐÚNG endpoint nội bộ AI Agent cần để báo tiến
         // trình + đăng nhập API (AI không phải staff, phải qua khi bảo trì).
+        // v3.9.0 FIX (audit M-6): bổ sung /ai/progress.json — biến thể JSON
+        // của /ai/progress bị bỏ sót → khi bảo trì AI Agent báo tiến trình
+        // nhận 503 oan.
         "/ai/info",
         "/ai/progress",
     ];
@@ -626,12 +629,22 @@ pub fn client_ip_from_parts(
 ) -> String {
     let hops = hops.max(1) as usize;
     if trust_proxy {
-        // hops=1 mới tin X-Real-IP / CF-Connecting-IP: các header này chỉ
+        // hops=1 mới tin X-Real-IP (CF-Connecting-IP đã bỏ — v3.9.0): header này chỉ
         // mang 1 giá trị do proxy gần nhất ghi (IP của peer của nó). Khi
         // có ≥2 hop, giá trị đó là IP của proxy trung gian chứ không phải
         // client → bỏ qua để rơi vào nhánh XFF parse đúng hop bên dưới.
         if hops == 1 {
-            for h in ["x-real-ip", "cf-connecting-ip"] {
+            // v3.9.0 FIX (security audit M-1 — HIGH): BỎ "cf-connecting-ip"
+            // khỏi danh sách header tin cậy. Site KHÔNG đứng sau Cloudflare
+            // (topology thật: nginx TCP SNI-passthrough → tunnel → Traefik
+            // → app — xem docs/real-ip.md): Traefik tự sinh/ghi đè
+            // X-Real-Ip từ IP peer nên header này an toàn, NHƯNG
+            // CF-Connecting-IP không được Traefik đụng tới → header do
+            // CLIENT tự gắn đi nguyên văn tới app. Attacker gắn header này
+            // xoay mỗi request 1 IP “public” mới → bucket rate-limit mới
+            // từng request (brute-force/spam vô hạn) + poison IP audit
+            // (signup_ip, last_login_ip, news.author_ip).
+            for h in ["x-real-ip"] {
                 if let Some(v) = headers.get(h).and_then(|v| v.to_str().ok()) {
                     let ip = v.trim();
                     if is_valid_ip_string(ip) {
@@ -1041,8 +1054,9 @@ pub async fn rate_limit(
     }
     // Lấy IP thật của client qua ConnectInfo (được axum thêm vào request
     // extensions khi dùng into_make_service_with_connect_info). Nếu chạy sau
-    // proxy (Traefik/Coolify), ưu tiên header X-Forwarded-For / X-Real-IP /
-    // CF-Connecting-IP do proxy đặt. Nếu không có proxy, dùng IP TCP gốc.
+    // proxy (Traefik/Coolify), ưu tiên header X-Forwarded-For / X-Real-IP
+    // do proxy đặt (v3.9.0 — CF-Connecting-IP đã bỏ vì client tự gắn được).
+    // Nếu không có proxy, dùng IP TCP gốc.
     let connect_info = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
@@ -2170,11 +2184,14 @@ pub async fn require_ai_agent(
         let jar = CookieJar::from_headers(request.headers());
         current_user_from_jar(&state, &jar)
             .await
-            .filter(|u| u.role.is_ai_agent())
+            // v3.9.0 FIX: is_ai_agent_user() (role HOẶC google_sub "ai_agent:")
+            // thay vì role thuần — admin login-as agent bị role drift vẫn
+            // dùng được /ai/info + /ai/progress như spec.
+            .filter(|u| u.is_ai_agent_user())
     };
 
     let user = user_opt.ok_or(StatusCode::UNAUTHORIZED)?;
-    if !user.role.is_ai_agent() {
+    if !user.is_ai_agent_user() {
         return Err(StatusCode::FORBIDDEN);
     }
     if user.is_banned {
@@ -2200,7 +2217,9 @@ where
         parts
             .extensions
             .get::<User>()
-            .filter(|u| u.role.is_ai_agent())
+            // v3.9.0 FIX: nhận diện bền vững theo google_sub (nhất quán
+            // với require_ai_agent ở trên).
+            .filter(|u| u.is_ai_agent_user())
             .map(|u| Self(u.clone()))
             .ok_or(StatusCode::UNAUTHORIZED)
     }

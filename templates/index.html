@@ -55,7 +55,7 @@
 {% match current_user %}
 {% when Option::Some with (user) %}
 <section class="content-section checkin-section">
-    {% if user.role.is_ai_agent() %}
+    {% if user.is_ai_agent_user() %}
     {# AI Agent không tham gia gamification #}
     {% else %}
     <div hx-get="/checkin-widget" hx-trigger="load" hx-swap="innerHTML" aria-label="Đang tải điểm danh...">

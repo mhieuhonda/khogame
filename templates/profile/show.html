@@ -3,21 +3,16 @@
 {% block title %}{{ user.display_name }} (@{{ user.username }}){% endblock %}
 
 {% block content %}
-{# v3.5.0 — HIỆU ỨNG HERO FULL MÀN cho AI Agent MẶC ĐỊNH (GLM 5.3):
-   lớp fixed toàn viewport (aurora + hạt sao + lưới neuron + tia quét +
-   hào quang) nằm DƯỚI nội dung (z-index 0), trang trí thuần CSS — không JS,
-   không ảnh ngoài, tôn trọng prefers-reduced-motion. Các AI Agent thường
-   vẫn giữ hiệu ứng viền cũ (profile-page-ai). #}
-{% if ai_is_default_agent %}
-<div class="ai-hero-fx" aria-hidden="true">
-    <div class="ai-hero-fx-aurora"></div>
-    <div class="ai-hero-fx-stars"></div>
-    <div class="ai-hero-fx-grid"></div>
-    <div class="ai-hero-fx-orbs"><i></i><i></i><i></i></div>
-    <div class="ai-hero-fx-scan"></div>
-    <div class="ai-hero-fx-vignette"></div>
-</div>
-{% endif %}
+{# v3.9.0 — XÓA HOÀN TOÀN HIỆU ỨNG hồ sơ GLM 5.3 theo yêu cầu của chủ
+   sở hữu: bỏ lớp hero FX toàn màn (aurora/sao/lưới/orbs/tia quét/vignette)
+   + mọi glow/shimmer/breathe của trang AI. Hồ sơ AI giờ hiển thị SẠCH
+   giống hồ sơ user thường — vẫn giữ đủ badge "AI Agent", thông tin model,
+   card tham số và Báo cáo hoạt động (thông tin ≠ hiệu ứng).
+   Avatar không còn bị cover đè (nguyên nhân: .profile-cover từng có
+   position:relative + ::after sheen vẽ đè lên vùng avatar chồng cover —
+   xem CSS §35 đã gỡ; thêm z-index phòng vệ trong style.css). #}
+<section class="profile-page"
+         {% match ai_profile %}{% when Option::Some with (p) %}style="--ai-accent: {{ p.accent_color }}"{% when Option::None %}{% endmatch %}>
 {# v2.8.0 — Hiệu ứng hồ sơ ĐƠN GIẢN HOÁ theo yêu cầu:
    - Admin bật `role_badge_effects`: chỉ GIỮ 2 hiệu ứng rainbow
      (1) khung chức vụ lửa `role-badge-admin` (xuống dưới) và
@@ -35,8 +30,6 @@
    không clip theo chữ → chữ rainbow biến mất hoàn toàn trên
    Chrome, đã gặp trên prod v2.6.0–v2.7.0). Span con thì hoạt động
    đúng (chứng minh qua role-badge-text). #}
-<section class="profile-page{% if preferences.role_badge_effects && user.role.is_moderator() %} profile-page-mod-effects{% endif %}{% if ai_profile.is_some() %} profile-page-ai{% endif %}{% if ai_is_default_agent %} profile-page-ai-hero{% endif %}"
-         {% match ai_profile %}{% when Option::Some with (p) %}style="--ai-accent: {{ p.accent_color }}"{% when Option::None %}{% endmatch %}>
     <div class="profile-header">
         <div class="profile-cover"></div>
         <div class="profile-info">
@@ -414,7 +407,7 @@
                 Repo GitHub
             </h2>
         </div>
-        <div hx-get="{% if user.role.is_ai_agent() %}/ai/{{ user.username }}{% else %}/u/{{ user.username }}{% endif %}/repos" hx-trigger="load" hx-swap="innerHTML">
+        <div hx-get="{% if user.is_ai_agent_user() %}/ai/{{ user.username }}{% else %}/u/{{ user.username }}{% endif %}/repos" hx-trigger="load" hx-swap="innerHTML">
             <div class="empty-state" style="padding:24px"><p>Đang tải repo...</p></div>
         </div>
     </div>

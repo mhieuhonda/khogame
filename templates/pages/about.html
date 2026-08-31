@@ -66,6 +66,29 @@
 .about-faq p { margin: 0 0 10px; }
 .static-content h2.section-heading { margin-top: 28px; }
 .static-content h2.section-heading:first-child { margin-top: 0; }
+/* v3.9.0 — Timeline lịch sử phát triển Louis Space */
+.about-timeline {
+    margin: 18px 0 8px;
+    padding-left: 20px;
+    border-left: 2px solid var(--border-muted);
+    display: flex; flex-direction: column; gap: 18px;
+}
+.about-timeline-item { position: relative; }
+.about-timeline-item::before {
+    content: ""; position: absolute; left: -27px; top: 4px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: linear-gradient(135deg, #0ea5e9, #7c3aed);
+    box-shadow: 0 0 0 3px var(--bg-canvas), 0 0 0 4px var(--border-muted);
+}
+.about-timeline-badge {
+    display: inline-block; font-size: .8rem; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #0ea5e9; background: rgba(14,165,233,.10);
+    border: 1px solid rgba(14,165,233,.30);
+    border-radius: 999px; padding: 2px 12px; margin-bottom: 6px;
+}
+.about-timeline-body strong { display: block; margin-bottom: 4px; }
+.about-timeline-body p { margin: 0; color: var(--fg-muted); font-size: .93rem; line-height: 1.65; }
 </style>
 {% endblock %}
 
@@ -175,7 +198,61 @@ MIT / GPL / tự do cá nhân...</div>
             <p>Fork repo <a href="https://github.com/mhieuhonda/khogame">mhieuhonda/khogame</a>, nhánh chính là <code>main</code>. CI kiểm tra: rustfmt, clippy (-D warnings), test, rustdoc và cargo-audit — mọi thay đổi phải vượt hết các cổng này. Đọc README của repo để dựng môi trường dev local trong 5 phút.</p>
         </div>
 
-        <h2 class="section-heading">7. Lộ trình phát triển</h2>
+        <h2 class="section-heading">7. Lịch sử phát triển Louis Space</h2>
+        <p>Louis Space được xây dựng và phát triển liên tục từ tháng 8/2026 — mỗi bản phát hành là một bước tiến hiện rõ trên trang. Dưới đây là những cột mốc chính của hành trình (toàn bộ chi tiết kỹ thuật nằm trong <a href="https://github.com/mhieuhonda/khogame/blob/main/CHANGELOG.md">CHANGELOG</a> của dự án):</p>
+        <div class="about-timeline">
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v0.x — 2026-08-23 → 25</div>
+                <div class="about-timeline-body">
+                    <strong>Nền móng &amp; Era Louis Space</strong>
+                    <p>Dự án khởi nguồn với tên gọi <em>khogame</em>: khung ứng dụng Rust/Axum, đăng tải và bình luận game, uploads ảnh, live chat realtime. Bản v0.8.0 chính thức mở ra "Era Louis Space" — định vị nền tảng cộng đồng game thủ Việt.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v1.0.0 — 2026-08-26</div>
+                <div class="about-timeline-body">
+                    <strong>GA — chính thức phục vụ cộng đồng</strong>
+                    <p>Sản phẩm đạt độ chín: production hardening, CI/CD đầy đủ (GitHub Actions), deploy Docker/Coolify, tin tức đa chuyên mục và hệ thống phân quyền. Louis Space chính thức "General Available" cho mọi người dùng.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v2.0.0 → v2.7.0 — 2026-08-27 → 28</div>
+                <div class="about-timeline-body">
+                    <strong>Redesign "Prism" + Markdown xịn hơn GitHub</strong>
+                    <p>Giao diện được thiết kế lại toàn bộ theo ngôn ngữ hiện đại (GitHub Primer + Vercel Geist + X). Markdown engine v2.2–v2.5 vượt trội: GFM, callouts, code highlight, diff, mention/hashtag. Thêm email thông báo, mạng xã hội trên hồ sơ, sửa loạt lỗi hiệu năng nghiêm trọng (hang forever, cache).</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v2.9.0 — 2026-08-29</div>
+                <div class="about-timeline-body">
+                    <strong>Gamification engine — 50 tính năng giữ chân người dùng</strong>
+                    <p>Hệ thống XP, cấp độ, điểm danh chuỗi ngày, nhiệm vụ, huy hiệu, bảng vàng, bộ sưu tập, vòng quay, câu đố — toàn bộ động cơ giữ chân cộng đồng ra mắt trong một bản phát hành lớn, kèm 15 bugfix từ audit toàn diện.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.x — 2026-08-30 → 31</div>
+                <div class="about-timeline-body">
+                    <strong>AI Agent GLM 5.3 + Arcade PvP + Cửa hàng XP</strong>
+                    <p>GLM 5.3 (model GLM của Z.ai) chính thức là AI Agent mặc định của Louis Space: hồ sơ riêng <code>/ai/</code>, báo cáo hoạt động công khai, tham gia arcade làm đối thủ. Admin/mod đăng nhập với tư cách AI Agent để hỗ trợ. Thêm ghép đấu ngẫu nhiên PvP, cửa hàng XP với khung avatar (Đồng → Rồng Lửa 5000 XP), 100+ huy hiệu thành tựu.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.8.x — 2026-08-31</div>
+                <div class="about-timeline-body">
+                    <strong>Siêu fix + 10 lớp vá bảo mật</strong>
+                    <p>Đợt tổng dọn lớn: vá 5 lỗi gốc rễ người dùng báo lâu nhất, gỡ 2 chế độ chơi không còn phù hợp, tăng cường bảo mật 10 lớp (chặn leo thang quyền, CSRF fail-closed, cài impersonation an toàn, giới hạn phiên) sau 25 vòng audit độc lập.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.9.0 — 2026-09-01</div>
+                <div class="about-timeline-body">
+                    <strong>Hồ sơ AI tinh gọn + quyền admin trọn vẹn + bảo mật sâu</strong>
+                    <p>Fix lỗi 403 khi admin sửa hồ sơ AI Agent, hồ sơ GLM 5.3 hiển thị sạch (bỏ toàn bộ hiệu ứng nặng), sửa ảnh đại diện bị che, chặn giả mạo header IP lách rate-limit, thu hồi phiên admin mồ côi khi impersonate, guard server-side gamification cho AI và hàng loạt tinh chỉnh trải nghiệm.</p>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="section-heading">8. Lộ trình phát triển</h2>
         <p>Tính năng mới được bổ sung liên tục theo phản hồi của cộng đồng: <strong>GLM 5.3 fix lỗi và thêm tính năng mới mỗi bản cập nhật</strong>, huy hiệu động cho sự kiện, tích hợp tải game trực tiếp và phiên bản đa ngôn ngữ. Bạn có ý tưởng? Gửi qua trang <a href="/feedback">Góp ý &amp; Báo cáo</a> — Hieu Louis xem xét từng đề xuất.</p>
         <p>Cảm ơn bạn đã ghé thăm Louis Space — chúc bạn chơi game vui vẻ và leo hạng thật nhanh! 🎉</p>
     </div>

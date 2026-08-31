@@ -703,7 +703,10 @@
                 var item = this.closest('.notification-item');
                 if (item) {
                     var id = item.id.replace('notif-', '');
-                    fetch('/notifications/' + id + '/read', { method: 'POST', keepalive: true });
+                    // v3.9.0 — thêm .catch: fetch fire-and-forget không được
+                    // để unhandled rejection khi offline/fail.
+                    fetch('/notifications/' + id + '/read', { method: 'POST', keepalive: true })
+                        .catch(function() { /* best-effort — offline bỏ qua */ });
                 }
             });
         });
@@ -858,7 +861,7 @@
         // v3.5.1: lấy version từ chính URL của app.js (?v=CARGO_PKG_VERSION
         // do template render) — SW luôn đồng bộ version với app, không còn
         // hardcode "2.9.2" stale.
-        var swVersion = '3.5.1';
+        var swVersion = '3.9.0';
         try {
             var scripts = document.querySelectorAll('script[src*="app.js?v="]');
             for (var i = 0; i < scripts.length; i++) {
@@ -907,7 +910,10 @@
             }
             document.body.appendChild(frag);
             setTimeout(function() {
-                frag.querySelectorAll('.confetti-piece').forEach(function(el) { el.remove(); });
+                // v3.9.0 FIX: frag RỖNG sau appendChild (children được move
+                // vào body) — query trên frag luôn rỗng → 45 node confetti
+                // nằm vĩnh viễn trong DOM, tích lũy vô hạn. Query document.
+                document.querySelectorAll('.confetti-piece').forEach(function(el) { el.remove(); });
             }, 3600);
         } catch (e) { /* fail-safe */ }
     };
@@ -1293,44 +1299,6 @@
   });
 })();
 
-/* v3.6.2 — HERO FX "TĨNH MẶC ĐỊNH" cho hồ sơ AI Agent mặc định (GLM 5.3):
-   CSS mới chỉ animate khi <html> mang class `fx-full`. Hàm này quyết định
-   có bật animation hay không dựa trên sức máy THẬT TẾ:
-     1) Trang có .ai-hero-fx (chỉ trang profile AI mặc định có);
-     2) Không bật reduced-motion (tôn trọng setting OS);
-     3) CPU >= 4 lõi, RAM >= 4GB (navigator.deviceMemory, nếu báo cáo);
-     4) Probe FPS nhanh (~0.7s): nếu < 45fps → coi máy yếu, giữ TĨNH.
-   Máy yếu → hero vẫn đẹp (gradient art tĩnh) nhưng KHÔNG tốn GPU → hết
-   lag khi cuộn trang. Máy mạnh → full animation như cũ. */
-(function () {
-  'use strict';
-  function initHeroFx() {
-    if (!document.querySelector('.ai-hero-fx')) return;
-    var reduce = false;
-    try {
-      reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch (e) { /* ignore */ }
-    if (reduce) return;
-    var cores = navigator.hardwareConcurrency || 4;
-    var mem = navigator.deviceMemory || 8; // Chrome báo GiB; Firefox/Safari không có → coi như đủ
-    if (cores < 4 || mem < 4) return; // máy yếu → giữ tĩnh, không probe
-    // Probe: đếm frame trong ~0.7s — nếu không đạt ~45fps thì bỏ qua
-    var start = performance.now();
-    var frames = 0;
-    function tick(now) {
-      frames++;
-      var elapsed = now - start;
-      if (elapsed < 700) { requestAnimationFrame(tick); return; }
-      var fps = frames / (elapsed / 1000);
-      if (fps >= 45) {
-        document.documentElement.classList.add('fx-full');
-      }
-    }
-    requestAnimationFrame(tick);
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initHeroFx);
-  } else {
-    initHeroFx();
-  }
-})();
+/* v3.9.0 — Hero FX hồ sơ GLM 5.3 đã bị XÓA hoàn toàn theo yêu cầu của
+   chủ sở hữu (hồ sơ hiển thị sạch, không hiệu ứng). IIFE initHeroFx cũ
+   (probe FPS/CPU thêm class fx-full) là dead code — đã gỡ. */

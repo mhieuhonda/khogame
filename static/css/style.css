@@ -2638,6 +2638,15 @@ pre code {
     gap: 20px;
     padding: 0 24px;
     margin-top: -40px;
+    /* v3.9.0 FIX (bug "ảnh đại diện bị che") — phòng vệ: .profile-info
+       chồng lên cover 40px (margin-top âm). Khi cover là element tĩnh,
+       avatar (inline content, nằm sau trong tree) tự vẽ TRÊN cover; nhưng
+       nếu sau này cover được đưa sang positioned (bug v3.4.0 từng gây
+       che avatar hồ sơ AI) thì positioned element vẽ sau toàn bộ nội dung
+       tĩnh. position:relative + z-index:1 ghim hàng avatar/tên luôn TRÊN
+       cover ở mọi profile — bulletproof với cả future CSS. */
+    position: relative;
+    z-index: 1;
     /* v3.7.0 FIX (UI/UX — tương phản): h1 + @username nằm trong vùng
        40px chồng lên ảnh cover (linear-gradient #0f172a — TỐI ở cả 2
        theme). Trước đây chữ màu var(--fg) → light mode = chữ TỐI trên
@@ -8407,137 +8416,23 @@ html {
    Tất cả tôn trọng prefers-reduced-motion (mục 34).
    ============================================================ */
 
-/* Cover gradient động theo accent của AI */
-.profile-page-ai .profile-cover {
-    background:
-        radial-gradient(1200px 300px at 20% 120%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 38%, transparent), transparent 70%),
-        radial-gradient(800px 260px at 85% 130%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 20%, transparent), transparent 72%),
-        linear-gradient(135deg,
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, var(--bg-canvas)),
-            var(--bg-canvas) 65%);
-    position: relative;
-    overflow: hidden;
-}
-
-/* Vệt sáng quét ngang qua cover (kiểu holographic) */
-.profile-page-ai .profile-cover::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(105deg,
-        transparent 38%,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 49%,
-        transparent 60%);
-    transform: translateX(-120%);
-    animation: ai-cover-sheen 6s ease-in-out infinite;
-    pointer-events: none;
-}
-
-@keyframes ai-cover-sheen {
-    0%, 55% { transform: translateX(-120%); }
-    85%, 100% { transform: translateX(120%); }
-}
-
-/* Avatar AI: vòng ring accent + glow nhẹ, "thở" chậm */
-.profile-page-ai .profile-avatar .avatar,
-.profile-page-ai .profile-avatar img.avatar {
-    border: 2px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 65%, transparent);
-    box-shadow:
-        0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent),
-        0 0 18px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
-    animation: ai-avatar-breathe 4s ease-in-out infinite;
-}
-
-@keyframes ai-avatar-breathe {
-    0%, 100% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent), 0 0 14px color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, transparent); }
-    50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent), 0 0 26px color-mix(in srgb, var(--ai-accent, #0ea5e9) 42%, transparent); }
-}
-
-/* Tên AI: gradient chữ theo accent + ánh kim chạy qua */
-.profile-page-ai .profile-meta h1 {
-    background: linear-gradient(90deg,
-        var(--fg-default) 0%,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 85%, var(--fg-default)) 45%,
-        var(--fg-default) 90%);
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: ai-name-shimmer 7s linear infinite;
-}
-
-@keyframes ai-name-shimmer {
-    0%   { background-position: 120% 0; }
-    100% { background-position: -120% 0; }
-}
-
-/* Username AI nhỏ cũng mang màu accent */
-.profile-page-ai .profile-username {
-    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 80%, var(--fg-muted));
-    font-weight: 600;
-    letter-spacing: .2px;
-}
-
-/* Badge "AI Agent" trên tên: viền accent + nhịp glow */
-.profile-page-ai .ai-badge-profile {
-    animation: ai-badge-pulse 3.2s ease-in-out infinite;
-}
-
-@keyframes ai-badge-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ai-accent, #0ea5e9) 35%, transparent); }
-    50%      { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, transparent); }
-}
-
-/* Khối thông tin model: viền gradient accent + nền trong suốt nhẹ */
-.profile-page-ai .ai-profile-info {
-    position: relative;
-    background:
-        linear-gradient(var(--bg-subtle), var(--bg-subtle)) padding-box,
-        linear-gradient(135deg,
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent),
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 45%,
-            transparent 80%) border-box;
-    border: 1px solid transparent;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-}
-
-/* Đường scanline mảnh dưới khối model info */
-.profile-page-ai .ai-profile-info::before {
-    content: "";
-    position: absolute;
-    left: 0; right: 0; top: 0;
-    height: 2px;
-    background: linear-gradient(90deg,
-        transparent,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 85%, transparent),
-        transparent);
-    animation: ai-scanline 3.5s linear infinite;
-    opacity: .8;
-}
-
-@keyframes ai-scanline {
-    0%   { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-
-/* Chip model màu accent đậm hơn */
-.profile-page-ai .ai-model-tag {
-    border-width: 1.5px;
-    font-weight: 700;
-}
+/* v3.9.0 — XÓA toàn bộ hiệu ứng trang trí hồ sơ AI (cover gradient +
+   sheen quét, avatar ring/glow “thở”, tên shimmer, username tô màu,
+   badge pulse, viền gradient + scanline khối model info). Nguyên nhân
+   avatar bị che cũng nằm ở đây: `.profile-cover { position: relative }`
+   đưa cover sang phase positioned elements → vẽ ĐÈ LÊN vùng avatar
+   chồng lên cover (margin-top -40px) + sheen quét qua mặt avatar.
+   Giờ cover tĩnh như profile thường → thứ tự vẽ mặc định, avatar luôn
+   trên cover. Thêm z-index phòng vệ ở .profile-info (mục 19). */
 
 /* ---- v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (card LIVE) ---- */
 .ai-activity-card {
+    /* v3.9.0 — bỏ gradient border-box accent → card phẳng, nền riêng. */
     margin-top: 12px;
     padding: 14px 16px;
     border-radius: var(--radius-lg);
-    background:
-        linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
-        linear-gradient(135deg,
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 40%, transparent),
-            transparent 60%) border-box;
-    border: 1px solid transparent;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
 }
 
 .ai-activity-head {
@@ -8572,16 +8467,12 @@ html {
 }
 
 .ai-activity-dot {
+    /* v3.9.0 — chấm LIVE đứng yên (bỏ nhấp nháy theo yêu cầu "trắng"). */
     width: 7px;
     height: 7px;
     border-radius: 50%;
     background: currentColor;
-    animation: ai-dot-blink 1.6s ease-in-out infinite;
-}
-
-@keyframes ai-dot-blink {
-    0%, 100% { opacity: 1; transform: scale(1); }
-    50%      { opacity: .35; transform: scale(.72); }
+    opacity: .8;
 }
 
 .ai-activity-list {
@@ -8680,20 +8571,9 @@ html {
     .ai-activity-pct-bar { flex: 1; width: auto; }
 }
 
-/* Fallback cho browser không hỗ trợ color-mix (Safari <16.2): giảm dần
-   về hiệu ứng phẳng nhưng vẫn phân biệt được hồ sơ AI. */
+/* Fallback cho browser không hỗ trợ color-mix (Safari <16.2).
+   v3.9.0 — chỉ còn .ai-activity-live dùng color-mix (chip LIVE). */
 @supports not (color: color-mix(in srgb, red, blue)) {
-    .profile-page-ai .profile-cover {
-        background: linear-gradient(135deg, rgba(14,165,233,.16), transparent 60%), var(--bg-canvas);
-    }
-    .profile-page-ai .ai-profile-info,
-    .ai-activity-card {
-        border: 1px solid var(--border-default);
-    }
-    .profile-page-ai .profile-meta h1 {
-        background: none;
-        -webkit-text-fill-color: currentColor;
-    }
     .ai-activity-live { color: var(--fg-muted); }
 }
 
@@ -9155,7 +9035,14 @@ code.ai-agent-username {
     height: 8px;
     border-radius: 50%;
     background: var(--warning);
-    animation: ai-dot-blink 1.6s ease-in-out infinite;
+    /* v3.9.0 — keyframes ai-dot-blink đã xóa theo hiệu ứng GLM 5.3;
+       dot arcade giữ nhịp riêng của mình. */
+    animation: arcade-dot-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes arcade-dot-blink {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%      { opacity: .35; transform: scale(.72); }
 }
 
 .arcade-review-sub {
@@ -9318,269 +9205,12 @@ code.ai-agent-username {
 .feedback-security-note svg { color: #f59e0b; flex-shrink: 0; }
 
 /* ============================================================
-   v3.5.0 — AI AGENT HERO FX FULL MÀN (GLM 5.3 mặc định)
-   v3.6.2 REWORK — "BỚT LAG TRỆ ĐỆ":
-   Trước đây 6 lớp full-viewport chạy animation LIÊN TỤC cho mọi máy:
-   aurora có filter: blur(52px) trên mặt phẳng 1.8× viewport (GPU chết
-   dần mòn trên máy yếu), orbs animate top/left (layout mỗi frame),
-   grid animate background-position (repaint mỗi frame), scan animate
-   top (layout). Trên máy yếu → toàn trang khựng khi cuộn profile.
-   GIẢI PHÁP "TĨNH MẶC ĐỊNH":
-   - Mọi layer render TĨNH (gradient art vẫn đẹp, chi phí = 1 lần paint).
-   - Animation CHỈ bật khi JS xác định máy đủ sức → thêm class
-     `fx-full` lên <html> (xem initHeroFxLite() trong app.js:
-     hardwareConcurrency >= 4 + không reduced-motion + probe FPS).
-   - Khi chạy animation: chỉ animate transform/opacity (compositor),
-     BỎ filter blur lớn (gradient radial vốn đã mềm), bỏ layout-props.
+   v3.9.0 — HERO FX GLM 5.3 ĐÃ XÓA HOÀN TOÀN
+   Theo yêu cầu chủ sở hữu: hồ sơ AI mặc định hiển thị SẠCH như hồ sơ
+   thường — bỏ aurora/hạt sao/lưới neuron/orbs/tia quét/vignette +
+   glow avatar + text-shadow tên (toàn bộ khối CSS của v3.5.0/v3.6.2
+   đã gỡ). IIFE initHeroFx trong app.js cũng đã gỡ.
    ============================================================ */
-
-/* Container: fixed full màn, pointer-events none để không chặn click */
-.ai-hero-fx {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    overflow: hidden;
-    pointer-events: none;
-    --fx1: color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent);
-    --fx2: color-mix(in srgb, #7c3aed 40%, transparent);
-    --fx3: color-mix(in srgb, #10b981 32%, transparent);
-}
-
-/* Nền canvas tối hơn chút để hiệu ứng nổi (chỉ ở trang hồ sơ hero) */
-.profile-page-ai-hero {
-    position: relative;
-    z-index: 1;
-    background:
-        radial-gradient(1000px 500px at 50% -10%, color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent), transparent 70%),
-        var(--bg-canvas);
-}
-
-/* 1) AURORA — dải sáng gradient (radial vốn mềm, KHÔNG cần filter blur
-      52px như trước — blur trên mặt 1.8× viewport là sát thủ GPU máy yếu).
-      Animation chỉ chạy trên .fx-full và chỉ transform (compositor). */
-.ai-hero-fx-aurora {
-    position: absolute;
-    inset: -40%;
-    background:
-        radial-gradient(38% 30% at 22% 28%, var(--fx1), transparent 68%),
-        radial-gradient(34% 26% at 78% 20%, var(--fx2), transparent 66%),
-        radial-gradient(40% 34% at 55% 82%, var(--fx3), transparent 70%);
-    opacity: 0.5;
-    /* Đứng yên mặc định — gradient tĩnh vẫn đầy đủ màu sắc */
-    transform: rotate(-1deg) scale(1.04);
-    will-change: auto;
-}
-.fx-full .ai-hero-fx-aurora {
-    will-change: transform;
-    animation: ai-fx-aurora-drift 26s ease-in-out infinite alternate;
-}
-@keyframes ai-fx-aurora-drift {
-    0%   { transform: translate3d(-4%, -2%, 0) rotate(-3deg) scale(1); }
-    50%  { transform: translate3d(3%, 3%, 0) rotate(2deg) scale(1.08); }
-    100% { transform: translate3d(-2%, 4%, 0) rotate(-1deg) scale(1.03); }
-}
-
-/* 2) HẠT SAO — box-shadow tĩnh trôi bằng transform (rẻ, compositor).
-      Mặc định đứng yên. */
-.ai-hero-fx-stars {
-    position: absolute;
-    inset: 0;
-}
-.ai-hero-fx-stars::before,
-.ai-hero-fx-stars::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: transparent;
-}
-.ai-hero-fx-stars::before {
-    width: 2px; height: 2px;
-    box-shadow:
-        8vw 12vh 0 0 var(--fx1), 20vw 68vh 0 -0.5px #fff5,
-        32vw 34vh 0 0 var(--fx2), 44vw 82vh 0 -0.5px var(--fx1),
-        56vw 18vh 0 0 #fff4, 66vw 54vh 0 0 var(--fx3),
-        76vw 30vh 0 -0.5px var(--fx1), 88vw 74vh 0 0 #fff5,
-        14vw 88vh 0 0 var(--fx2), 38vw 8vh 0 -0.5px #fff6,
-        62vw 92vh 0 0 var(--fx1), 92vw 12vh 0 0 var(--fx3),
-        4vw 46vh 0 -0.5px #fff4, 48vw 44vh 0 0 var(--fx2),
-        70vw 66vh 0 -0.5px #fff5, 26vw 56vh 0 0 var(--fx1),
-        84vw 48vh 0 0 #fff4, 58vw 76vh 0 -0.5px var(--fx3);
-    opacity: 0.85;
-}
-.ai-hero-fx-stars::after {
-    width: 3px; height: 3px;
-    box-shadow:
-        12vw 24vh 0 0 #fff3, 28vw 78vh 0 0 var(--fx1),
-        40vw 40vh 0 0 #fff4, 52vw 86vh 0 0 var(--fx2),
-        64vw 22vh 0 0 #fff3, 80vw 58vh 0 0 var(--fx1),
-        94vw 36vh 0 0 #fff4, 6vw 64vh 0 0 var(--fx3),
-        34vw 16vh 0 0 #fff5, 72vw 90vh 0 0 var(--fx1);
-    opacity: 0.6;
-}
-.fx-full .ai-hero-fx-stars::before {
-    animation: ai-fx-stars-rise 60s linear infinite;
-}
-.fx-full .ai-hero-fx-stars::after {
-    animation: ai-fx-stars-rise 90s linear infinite;
-    animation-delay: -30s;
-}
-@keyframes ai-fx-stars-rise {
-    from { transform: translate3d(0, 12vh, 0); }
-    to   { transform: translate3d(-6vw, -110vh, 0); }
-}
-
-/* 3) LƯỚI NEURON — perspective grid. Trước đây animate
-      background-position (repaint toàn layer mỗi frame) → giờ TĨNH
-      mặc định; .fx-full vẫn animate background-position vì layer chỉ
-      chiếm 62% đáy + mask, và đã loại các sát thủ GPU khác — chấp nhận
-      được. Máy yếu không bao giờ thấy animation này. */
-.ai-hero-fx-grid {
-    position: absolute;
-    inset: auto -60% -22% -60%;
-    height: 62%;
-    background-image:
-        linear-gradient(color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 1px, transparent 1px),
-        linear-gradient(90deg, color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 1px, transparent 1px);
-    background-size: 56px 56px;
-    transform: perspective(520px) rotateX(58deg);
-    transform-origin: 50% 0;
-    mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
-    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
-    opacity: 0.5;
-}
-.fx-full .ai-hero-fx-grid {
-    animation: ai-fx-grid-run 9s linear infinite;
-}
-@keyframes ai-fx-grid-run {
-    from { background-position: 0 0, 0 0; }
-    to   { background-position: 0 56px, 56px 0; }
-}
-
-/* 4) ORB — 3 quả cầu sáng. Trước đây animate top/left (LAYOUT mỗi
-      frame!) → giờ vị trí gốc cố định qua top/left, chuyển động chỉ
-      bằng transform translate/scale (compositor-only). */
-.ai-hero-fx-orbs i {
-    position: absolute;
-    display: block;
-    border-radius: 50%;
-    opacity: 0.75;
-}
-.ai-hero-fx-orbs i:nth-child(1) {
-    width: 10px; height: 10px;
-    top: 24%; left: 32%;
-    background: radial-gradient(circle, #fff, var(--fx1));
-    box-shadow: 0 0 18px 6px color-mix(in srgb, var(--ai-accent, #0ea5e9) 45%, transparent);
-}
-.ai-hero-fx-orbs i:nth-child(2) {
-    width: 7px; height: 7px;
-    top: 58%; left: 58%;
-    background: radial-gradient(circle, #fff, var(--fx2));
-    box-shadow: 0 0 14px 5px #7c3aed66;
-}
-.ai-hero-fx-orbs i:nth-child(3) {
-    width: 12px; height: 12px;
-    top: 38%; left: 74%;
-    background: radial-gradient(circle, #fff, var(--fx3));
-    box-shadow: 0 0 22px 8px #10b98155;
-}
-.fx-full .ai-hero-fx-orbs i:nth-child(1) { animation: ai-fx-orb-a 17s ease-in-out infinite alternate; }
-.fx-full .ai-hero-fx-orbs i:nth-child(2) { animation: ai-fx-orb-b 23s ease-in-out infinite alternate; }
-.fx-full .ai-hero-fx-orbs i:nth-child(3) { animation: ai-fx-orb-c 29s ease-in-out infinite alternate; }
-/* Keyframe mới: transform-only — không đụng top/left */
-@keyframes ai-fx-orb-a {
-    0%   { transform: translate3d(0, 0, 0) scale(1); }
-    50%  { transform: translate3d(24vw, 22vh, 0) scale(1.25); }
-    100% { transform: translate3d(38vw, 8vh, 0) scale(0.9); }
-}
-@keyframes ai-fx-orb-b {
-    0%   { transform: translate3d(0, 0, 0) scale(0.85); }
-    50%  { transform: translate3d(-30vw, -26vh, 0) scale(1); }
-    100% { transform: translate3d(14vw, -34vh, 0) scale(1.3); }
-}
-@keyframes ai-fx-orb-c {
-    0%   { transform: translate3d(0, 0, 0) scale(1); }
-    50%  { transform: translate3d(-26vw, 20vh, 0) scale(0.8); }
-    100% { transform: translate3d(-48vw, -16vh, 0) scale(1); }
-}
-
-/* 5) TIA QUÉT — lướt dọc bằng transform translateY (trước đây animate
-      top = layout mỗi frame). TĨNH mặc định (opacity 0 → không render). */
-.ai-hero-fx-scan {
-    position: absolute;
-    inset-inline: 0;
-    top: -14%;
-    height: 13%;
-    background: linear-gradient(to bottom,
-        transparent,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 42%,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent) 50%,
-        color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 58%,
-        transparent);
-    opacity: 0;
-    visibility: hidden;
-}
-.fx-full .ai-hero-fx-scan {
-    visibility: visible;
-    animation: ai-fx-scan-sweep 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-@keyframes ai-fx-scan-sweep {
-    0%   { transform: translate3d(0, 0, 0); opacity: 0; }
-    8%   { opacity: 0.9; }
-    55%  { opacity: 0.65; }
-    100% { transform: translate3d(0, 124vh, 0); opacity: 0; }
-}
-
-/* 6) VIGNETTE — hào quang biên TĨNH (bỏ animation thở opacity 7s:
-      layer box-shadow khổng lồ breathing liên tục tốn chi phí
-      compositing lớn không tương xứng với hiệu ứng). */
-.ai-hero-fx-vignette {
-    position: absolute;
-    inset: 0;
-    box-shadow:
-        inset 0 0 140px 44px color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent),
-        inset 0 0 42px 10px color-mix(in srgb, #7c3aed 9%, transparent);
-    opacity: 0.75;
-}
-
-/* Hero: tăng cấp avatar + tên cho GLM 5.3 */
-.profile-page-ai-hero .profile-meta h1 {
-    text-shadow:
-        0 0 22px color-mix(in srgb, var(--ai-accent, #0ea5e9) 55%, transparent),
-        0 0 60px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
-}
-.profile-page-ai-hero .profile-avatar .avatar,
-.profile-page-ai-hero .profile-avatar img.avatar {
-    box-shadow:
-        0 0 0 4px color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent),
-        0 0 26px color-mix(in srgb, var(--ai-accent, #0ea5e9) 48%, transparent),
-        0 0 70px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
-}
-
-/* Mobile: giảm opacity tiết kiệm pin/GPU — v3.6.2 bỏ filter blur
-   (máy phổ thông GPU yếu, blur 38px vẫn đắt); gradient tĩnh giữ nguyên */
-@media (max-width: 640px) {
-    .ai-hero-fx { opacity: 0.7; }
-    .ai-hero-fx-grid { height: 40%; opacity: 0.35; }
-    .ai-hero-fx-aurora { opacity: 0.42; }
-}
-
-/* Người dùng bật giảm chuyển động: đứng yên, chỉ còn gradient tĩnh.
-   v3.6.2 — mọi animation đã gate qua .fx-full (JS kiểm tra
-   prefers-reduced-motion trước khi bật), quy tắc này là lớp phòng thứ
-   hai cho trường hợp JS đã bật .fx-full rồi user đổi setting OS. */
-@media (prefers-reduced-motion: reduce) {
-    .ai-hero-fx-aurora,
-    .ai-hero-fx-stars::before,
-    .ai-hero-fx-stars::after,
-    .ai-hero-fx-grid,
-    .ai-hero-fx-orbs i,
-    .ai-hero-fx-scan,
-    .ai-hero-fx-vignette {
-        animation: none !important;
-    }
-    .ai-hero-fx-scan { display: none; }
-}
 
 /* ============================================================
    v3.5.0 — CARD THÔNG SỐ CHI TIẾT (hồ sơ AI công khai)

@@ -46,6 +46,13 @@ pub async fn buy_item(
     AuthUser(user): AuthUser,
     axum::extract::Form(form): axum::extract::Form<BuyForm>,
 ) -> AppResult<axum::response::Html<String>> {
+    // v3.9.0 — guard server-side: AI Agent không tham gia XP economy
+    // (cửa hàng là một phần gamification — mua bằng XP kiếm từ hoạt động).
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không dùng cửa hàng XP".into(),
+        ));
+    }
     use rand::RngExt;
     let rand_val: i32 = rand::rng().random_range(0..10_000);
     let outcome = ShopRepo::buy(&state.db, user.id, &form.item_id, rand_val).await?;

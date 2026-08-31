@@ -868,3 +868,25 @@ home/shop/profile — clean, không overflow; desktop 1280px toàn bộ.
 
 **Kiểm định**: fmt sạch · clippy -D warnings sạch · 362/362 test ·
 rustdoc -D warnings sạch trên Rust 1.98.0. Smoke 25+ request thật.
+---
+Task ID: v3.9.0-superfix
+Agent: Super Z (main) + 3 sub-agent audit song song (A: handlers/auth, B: middleware/infra, C: bug/UI/template)
+Task: Fix 403 admin sửa hồ sơ AI Agent + xóa toàn bộ hiệu ứng hồ sơ GLM 5.3 (trắng) + fix ảnh đại diện bị che + thêm Lịch sử phát triển Louis Space vào /about + quét-fix bảo mật toàn codebase. Rust 1.98, prod-ready, releases tương ứng.
+
+Work Log:
+- Clone repo v3.8.1, đọc WORKLOG/CHANGELOG, dựng env thật: Rust 1.98.0 (rustup) + PostgreSQL 17.6 (zonky, port 5433), 42 migrations sạch.
+- 3 luồng quét song song (agent độc lập): (A) auth/handlers — 55/55 handler admin có check quyền, SQLi/IDOR/XSS sạch, 1 LOW mới; (B) middleware/infra — 1 HIGH (CF-Connecting-IP spoof), 2 MEDIUM, 4 LOW; (C) bug/UI — xác nhận bug 403, root cause avatar bị che, danh sách hiệu ứng cần xóa, 4 bug khác.
+- FIX 403 (root cause): update_profile + edit_profile_form (handlers/ai_agent.rs) check role.is_ai_agent() thuần → role drift = 403 oan cho admin login-as. Đổi sang is_ai_agent_user() (role HOẶC google_sub "ai_agent:") tại 5 điểm code: 2 handler + require_ai_agent + AuthAiAgent (middleware.rs) + 4 template (layout/index/game.show/profile.show).
+- FIX avatar bị che (root cause thật): .profile-page-ai .profile-cover { position: relative } (v3.4.0) đưa cover sang phase positioned → vẽ ĐÈ lên vùng avatar chồng cover (margin-top −40px). Xóa cùng hiệu ứng + thêm position:relative; z-index:1 phòng vệ cho .profile-info.
+- XÓA hiệu ứng GLM 5.3 ("trắng"): hero FX full màn (aurora/sao/lưới/orbs/quét/vignette), cover gradient + sheen, avatar breathe glow, tên shimmer, badge pulse, viền gradient + scanline, LIVE dot blink — ~13.8KB CSS + IIFE initHeroFx (app.js). GIỮ: badge AI Agent, model info, params card, báo cáo hoạt động. Tách keyframes riêng cho dot arcade (đang mượn ai-dot-blink).
+- FIX kèm theo: bio AI handler 500→1000 (khớp maxlength form) + vendor maxlength 100→50; confetti dọn bằng document.querySelectorAll (frag rỗng sau appendChild — 45 node/lần tồn tại vĩnh viễn); fetch notif-read thêm .catch; collections/reviews .len() → chars().count() (tiếng Việt bị siết 2-3 lần); xác minh báo cáo selector a[href^="#"] "hỏng" là DƯƠNG TÍNH GIẢ (byte-level check).
+- BẢO MẬT: [HIGH] bỏ cf-connecting-ip khỏi header tin cậy (site không sau Cloudflare — Traefik không ghi đè, client tự gắn xoay bucket rate-limit + poison IP audit; giữ X-Real-Ip do Traefik sinh); [LOW] thu hồi session admin gốc NGAY khi impersonate (phiên bị ghi đè cookie nhưng row sống tới 30 ngày = credential mồ côi); [LOW] guard server-side gamification/shop cho AI Agent (do_checkin/spin/trivia/buy — trước đây chỉ ẩn UI); [LOW] maintenance bypass thêm /ai/progress.json; fix comment drift SESSION_KEY + .env.example TTL 90→30. Audit xác nhận sạch: CSRF fail-closed, upload magic-bytes, Argon2id+lockout, không SQLi (AssertSqlSafe), không leak PII API.
+- FEATURE: /about thêm "Lịch sử phát triển Louis Space" — timeline 7 cột mốc v0.x→v3.9.0 + CSS timeline riêng.
+- MIGRATION 041: reset role ai_agent cho TOÀN BỘ google_sub LIKE 'ai_agent:%' drift (mở rộng 035 — idempotent). 042: báo cáo hoạt động v3.9.0 công khai trên hồ sơ GLM 5.3 (5 entry sanitized).
+- Version 3.9.0: Cargo.toml + CACHE_VERSION sw.js + fallback app.js.
+- VERIFY end-to-end (server thật, role drift mô phỏng prod glm53 = moderator): login-as → GET /profile/ai/edit = 200 (trước fix: 403); POST /profile/ai = 303 → /ai/glm53; admin session gốc bị thu hồi (0 row còn lại); /impersonate/stop khôi phục admin mới → /admin = 200; /ai/glm53 không còn ai-hero-fx/profile-page-ai, giữ badge + params + activity (5 entry v3.9.0 hiện); /about có timeline.
+- cargo check/clippy -D warnings/fmt sạch; 351/351 test PASS (Rust 1.98.0).
+
+Stage Summary:
+- 22 file code + 2 migration mới, 0 schema breaking — deploy an toàn.
+- Sẵn sàng commit/tag v3.9.0 → CD deploy + GitHub Release tự tạo từ CHANGELOG. Lesson carried: push main, đợi CD xong rồi mới tag.

@@ -611,11 +611,20 @@ pub async fn update_profile(
     AuthUser(user): AuthUser,
     Form(form): Form<AiProfileForm>,
 ) -> AppResult<Redirect> {
-    // Chỉ AI Agent mới được dùng endpoint này
-    if !user.role.is_ai_agent() {
+    // Chỉ AI Agent mới được dùng endpoint này.
+    // v3.9.0 FIX (BUG USER BÁO — admin login-as GLM 5.3 sửa hồ sơ bị 403):
+    // trước đây check `role.is_ai_agent()` thuần — khi role của agent bị
+    // drift (đổi tay qua admin trước v3.8.0, migration 035 chỉ reset agent
+    // MẶC ĐỊNH), admin đăng nhập thay agent bị 403 oan dù đây chính là AI
+    // Agent. Dùng `is_ai_agent_user()` (role HOẶC google_sub "ai_agent:")
+    // — nhất quán với impersonate/require_admin (v3.6.3).
+    if !user.is_ai_agent_user() {
         return Err(AppError::Forbidden(
             "Chỉ tài khoản AI Agent mới được cập nhật hồ sơ AI".into(),
         ));
+    }
+    if user.is_banned {
+        return Err(AppError::Forbidden("Tài khoản đã bị cấm".into()));
     }
     // Validate độ dài các trường text — chống lạm dụng.
     let model_name = form.model_name.trim();
@@ -631,9 +640,13 @@ pub async fn update_profile(
     if form.version.chars().count() > 50 {
         return Err(AppError::BadRequest("Version tối đa 50 ký tự".into()));
     }
+    // v3.9.0 FIX: nâng 500 → 1000 khớp maxlength form ai_edit.html (1000)
+    // VÀ giới hạn bio hồ sơ user thường (handlers::profile::update_profile
+    // cũng 1000 từ v2.5.0) — trước đây form cho gõ 1000 nhưng handler từ
+    // chối >500 → user gõ xong nhận 400 vô giải thích.
     if let Some(bio) = form.bio.as_deref() {
-        if bio.trim().chars().count() > 500 {
-            return Err(AppError::BadRequest("Bio tối đa 500 ký tự".into()));
+        if bio.trim().chars().count() > 1000 {
+            return Err(AppError::BadRequest("Bio tối đa 1000 ký tự".into()));
         }
     }
     if let Some(avatar) = form.avatar_url.as_deref() {
@@ -712,10 +725,16 @@ pub async fn edit_profile_form(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<AiProfileEditTemplate> {
-    if !user.role.is_ai_agent() {
+    // v3.9.0 FIX — `is_ai_agent_user()` thay vì `role.is_ai_agent()`:
+    // cùng gốc rễ với update_profile ở trên (role drift → 403 oan cho
+    // admin login-as AI Agent mặc định).
+    if !user.is_ai_agent_user() {
         return Err(AppError::Forbidden(
             "Chỉ tài khoản AI Agent mới truy cập được trang này".into(),
         ));
+    }
+    if user.is_banned {
+        return Err(AppError::Forbidden("Tài khoản đã bị cấm".into()));
     }
     let profile = AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
         .await?

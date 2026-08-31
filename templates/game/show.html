@@ -364,7 +364,7 @@
             {# === v2.9.0 — THÊM VÀO BỘ SƯU TẬP === #}
             {% match current_user %}
             {% when Option::Some with (u) %}
-            {% if !u.role.is_ai_agent() %}
+            {% if !u.is_ai_agent_user() %}
             {% include "partials/add_to_collection.html" %}
             {% endif %}
             {% when Option::None %}

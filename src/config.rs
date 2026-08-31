@@ -6,10 +6,11 @@ pub struct AppConfig {
     pub port: u16,
     pub base_url: String,
     pub database_url: String,
-    // NOTE: SESSION_KEY vẫn được yêu cầu ở startup (bảo vệ khỏi quên
-    // set khi deploy) nhưng chưa được dùng để HMAC-sign cookies. Khi
-    // thêm HMAC signing, dùng field này — KHÔNG xoá trước khi đó.
-    #[allow(dead_code)]
+    // NOTE: SESSION_KEY bắt buộc ở startup. v3.9.0 — đã được DÙNG THẬT để
+    // HMAC-sign cookie `ls_anon` (rate-limit identity, middleware.rs
+    // anon_hmac từ v3.5.1) — đổi key giữa chừng làm mọi ls_anon cookie cũ
+    // hết hiệu lực (user vào lại được, chỉ mất bucket cũ) nhưng KHÔNG mất
+    // session đăng nhập. Vẫn là secret thật — không commit giá trị thật.
     pub session_key: String,
     pub google_client_id: String,
     pub google_client_secret: String,
@@ -42,7 +43,9 @@ pub struct AppConfig {
     /// Quota upload (MB/ngày/user, mặc định 50). v3.4.2 — chống disk-fill
     /// DoS: trước đây không có quota, 4 endpoint upload ghi ~1.2GB/phút.
     pub upload_daily_quota_mb: i64,
-    /// Có tin headers proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP)
+    /// Có tin headers proxy (X-Forwarded-For / X-Real-IP — v3.9.0 KHÔNG còn
+    /// tin CF-Connecting-IP: site không sau Cloudflare, header này client
+    /// tự gắn được)
     /// khi xác định IP client không? Mặc định BẬT vì prod chạy sau
     /// Traefik/Coolify. Tắt khi expose trực tiếp internet — nếu không
     /// attacker tự set X-Forwarded-For để giả IP, chia bucket rate-limit

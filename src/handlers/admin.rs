@@ -1840,6 +1840,24 @@ pub async fn impersonate_ai_agent(
     )
     .await?;
 
+    // v3.9.0 FIX (security audit LOW — orphaned staff session): phiên admin
+    // GỐC của browser này sắp bị ghi đè cookie (kg_session mới = phiên AI)
+    // → row session cũ còn sống trong DB tới hết TTL (≤30 ngày) là một
+    // credential mồ côi: nếu cookie cũ từng bị capture, kẻ giữ nó vẫn vào
+    // được admin. Thu hồi NGAY row session cũ (chỉ đúng phiên đang request
+    // impersonate — các phiên admin khác thiết bị không bị đụng). Phiên
+    // admin khôi phục sau này qua ticket là session MỚI mint riêng nên
+    // không bị ảnh hưởng.
+    if let Some(old_cookie) = jar.get(crate::auth::SESSION_COOKIE) {
+        let old_hash = crate::auth::hash_token(old_cookie.value());
+        // delete_for_user scope theo user_id — không xóa nhầm phiên người
+        // khác. Cookie lạ/hết hạn → find trả None → bỏ qua im lặng.
+        if let Ok(Some(old_id)) = SessionRepo::find_id_by_token(&state.db, &old_hash).await {
+            let _ = SessionRepo::delete_for_user(&state.db, old_id, admin.id).await;
+            crate::middleware::invalidate_session_cache_for_user(admin.id);
+        }
+    }
+
     // v3.4.2 FIX (audit "raw token trong cookie"): cookie kg_impersonator
     // từ nay chỉ chứa TICKET ID opaque. Trước đây cookie chứa nguyên văn
     // admin session token (credential 30 ngày) — lộ cookie = lộ admin.

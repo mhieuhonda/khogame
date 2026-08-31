@@ -79,10 +79,12 @@ pub async fn create(
             "Tên bộ sưu tập không được trống".into(),
         ));
     }
-    if title.len() > 100 {
+    // v3.9.0 — chars().count() thay vì len() (byte): tiếng Việt mỗi ký tự
+    // 2-3 byte — len() siết oan 2-3 lần so với message hiển thị.
+    if title.chars().count() > 100 {
         return Err(AppError::BadRequest("Tên tối đa 100 ký tự".into()));
     }
-    if form.description.len() > 300 {
+    if form.description.chars().count() > 300 {
         return Err(AppError::BadRequest("Mô tả tối đa 300 ký tự".into()));
     }
     // v3.0.0 — LEVEL PERK: giới hạn số bộ sưu tập tăng theo cấp độ.

@@ -45,12 +45,14 @@ pub async fn submit_review(
             "Tiêu đề review không được để trống".into(),
         ));
     }
-    if title.len() > 200 {
+    // v3.9.0 — chars().count() thay vì len() (byte) — nhất quán với toàn
+    // bộ codebase, tiếng Việt không bị siết oan.
+    if title.chars().count() > 200 {
         return Err(AppError::BadRequest(
             "Tiêu đề review tối đa 200 ký tự".into(),
         ));
     }
-    if form.content.len() > 4000 {
+    if form.content.chars().count() > 4000 {
         return Err(AppError::BadRequest(
             "Nội dung review tối đa 4000 ký tự".into(),
         ));
