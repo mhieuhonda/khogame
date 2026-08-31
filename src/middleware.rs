@@ -2506,6 +2506,10 @@ type MicroCacheMap = HashMap<String, MicroCacheEntry>;
 static MICRO_CACHE: std::sync::OnceLock<std::sync::Mutex<MicroCacheMap>> =
     std::sync::OnceLock::new();
 
+fn micro_cache_map() -> &'static std::sync::Mutex<MicroCacheMap> {
+    MICRO_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
 /// TTL micro-cache (giây) — đọc env MỘT LẦN. 0 = tắt.
 fn micro_cache_ttl() -> u64 {
     static TTL: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
@@ -2569,19 +2573,18 @@ pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
     // Tra cache — MỘT lock duy nhất cho cả check + clone (nếu tách 2 lock,
     // entry có thể bị LRU-evict giữa chừng → expect panic → 500 oan).
     let now = std::time::Instant::now();
-    let hit_entry: Option<(axum::http::response::Parts, axum::body::Bytes)> =
-        MICRO_CACHE.get().and_then(|map| {
-            let map = map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            map.get(&cache_key).and_then(|entry| {
-                // Entry quá TTL → coi như miss (entry stale được dọn lazy
-                // ở lần store kế tiếp; không xoá tại đây để tránh giữ write
-                // lock lâu).
-                (now.duration_since(entry.stored_at).as_secs() < ttl)
-                    .then(|| (entry.parts.clone(), entry.body.clone()))
-            })
-        });
+    let hit_entry: Option<(axum::http::response::Parts, axum::body::Bytes)> = {
+        let map = micro_cache_map()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.get(&cache_key).and_then(|entry| {
+            // Entry quá TTL → coi như miss (entry stale được dọn lazy
+            // ở lần store kế tiếp; không xoá tại đây để tránh giữ write
+            // lock lâu).
+            (now.duration_since(entry.stored_at).as_secs() < ttl)
+                .then(|| (entry.parts.clone(), entry.body.clone()))
+        })
+    };
     if let Some((parts, body)) = hit_entry {
         let mut resp = Response::from_parts(parts, axum::body::Body::from(body));
         // Header quan sát — devtools/network tab thấy hit ngay.
@@ -2617,8 +2620,10 @@ pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     };
 
-    if let Some(map) = MICRO_CACHE.get() {
-        let mut map = map
+    // Store — dùng micro_cache_map() (get_or_init) để đảm bảo map tồn tại
+    // từ request đầu tiên (HOTFIX — xem comment ở micro_cache_map).
+    {
+        let mut map = micro_cache_map()
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Lười dọn: quá số entry → drop các entry cũ nhất (hoặc stale).
@@ -2643,4 +2648,150 @@ pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
 
     // Trả lại response y nguyên (đúng status/headers/body của handler).
     Response::from_parts(parts, axum::body::Body::from(body))
+}
+
+#[cfg(test)]
+mod micro_cache_tests {
+    use super::micro_cache_mw;
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use axum::middleware::from_fn;
+    use axum::response::{Html, IntoResponse, Response};
+    use axum::routing::get;
+    use axum::Router;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    /// Handler đếm số lần được gọi bằng counter RIÊNG mỗi test (counter
+    /// toàn cục sẽ race khi cargo test chạy các test song song trong cùng
+    /// binary — bài học từ lần fail đầu).
+    fn counter_router(path_and_route: (&str, bool), counter: Arc<AtomicUsize>) -> Router {
+        let handler = move || {
+            let c = Arc::clone(&counter);
+            async move {
+                c.fetch_add(1, Ordering::Relaxed);
+                Html("<h1>home</h1>".to_string()).into_response()
+            }
+        };
+        let r = match path_and_route.1 {
+            true => Router::new().route("/", get(handler)),
+            false => Router::new().route("/games/{slug}", get(handler)),
+        };
+        r.layer(from_fn(micro_cache_mw))
+    }
+
+    fn html_request(path: &str) -> Request<Body> {
+        Request::builder()
+            .method("GET")
+            .uri(path)
+            .header(header::ACCEPT, "text/html")
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    async fn body_string(resp: Response) -> String {
+        let (_parts, body) = resp.into_parts();
+        let bytes = axum::body::to_bytes(body, 1024 * 1024).await.unwrap();
+        String::from_utf8_lossy(&bytes).to_string()
+    }
+
+    /// Request 2 giống request 1 → phải HIT (header x-micro-cache: hit)
+    /// và handler KHÔNG được gọi lần 2. Router clone rẻ (Arc) nên dùng
+    /// oneshot cho mỗi request.
+    #[tokio::test]
+    async fn second_anonymous_request_hits_cache() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let app = counter_router(("/", true), Arc::clone(&counter));
+
+        let r1 = ServiceExt::oneshot(app.clone(), html_request("/"))
+            .await
+            .unwrap();
+        assert_eq!(r1.status(), StatusCode::OK);
+        assert!(
+            r1.headers().get("x-micro-cache").is_none(),
+            "request đầu là miss"
+        );
+        let b1 = body_string(r1).await;
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            1,
+            "request đầu chạy handler thật"
+        );
+
+        let r2 = ServiceExt::oneshot(app, html_request("/")).await.unwrap();
+        assert_eq!(r2.status(), StatusCode::OK);
+        assert_eq!(
+            r2.headers()
+                .get("x-micro-cache")
+                .and_then(|v| v.to_str().ok()),
+            Some("hit"),
+            "request 2 (anonymous, cùng path, TTL 5s) phải hit micro-cache"
+        );
+        let b2 = body_string(r2).await;
+        assert_eq!(b1, b2, "body hit phải byte-for-byte giống render thường");
+        assert_eq!(
+            counter.load(Ordering::Relaxed),
+            1,
+            "hit không được chạm handler (không query DB)"
+        );
+    }
+
+    /// Request mang cookie kg_session → bypass cache (render riêng).
+    #[tokio::test]
+    async fn session_cookie_bypasses_cache() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let app = counter_router(("/", true), Arc::clone(&counter));
+        let req = Request::builder()
+            .method("GET")
+            .uri("/")
+            .header(header::ACCEPT, "text/html")
+            .header(header::COOKIE, "kg_session=token-cua-user")
+            .body(Body::empty())
+            .unwrap();
+        let r = ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(
+            r.headers().get("x-micro-cache").is_none(),
+            "user đăng nhập không được dùng cache anonymous"
+        );
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    /// HTMX partial request → không cache (header HX-Request: true).
+    #[tokio::test]
+    async fn htmx_request_bypasses_cache() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let app = counter_router(("/", true), Arc::clone(&counter));
+        let req = Request::builder()
+            .method("GET")
+            .uri("/")
+            .header(header::ACCEPT, "text/html")
+            .header("hx-request", "true")
+            .body(Body::empty())
+            .unwrap();
+        let r = ServiceExt::oneshot(app, req).await.unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(
+            r.headers().get("x-micro-cache").is_none(),
+            "HTMX partial không được cache"
+        );
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
+
+    /// Path ngoài allowlist (vd /games/abc) → không cache.
+    #[tokio::test]
+    async fn non_allowlisted_path_bypasses_cache() {
+        let counter = Arc::new(AtomicUsize::new(0));
+        let app = counter_router(("/games/{slug}", false), Arc::clone(&counter));
+        let r = ServiceExt::oneshot(app, html_request("/games/abc"))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(
+            r.headers().get("x-micro-cache").is_none(),
+            "path chi tiết game không nằm trong allowlist micro-cache"
+        );
+        assert_eq!(counter.load(Ordering::Relaxed), 1);
+    }
 }

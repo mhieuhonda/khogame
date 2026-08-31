@@ -5,6 +5,24 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1] — 2026-08-31 — HOTFIX micro-cache: OnceLock không khởi tạo
+
+Vừa deploy v3.6.0 lên prod, verify bằng curl thấy thiếu header
+`x-micro-cache: hit` → điều tra ra bug thật: cả nhánh lookup lẫn nhánh
+store của `micro_cache_mw` đều gọi `MICRO_CACHE.get()` (chỉ đọc) thay vì
+`get_or_init()` — OnceLock vĩnh viễn ở trạng thái unset → middleware
+chạy rỗng, không cache gì cả (ETag/304 hoạt động là nhờ layer cũ).
+
+### Fixed
+
+- **`micro_cache_map()` helper**: `get_or_init` đảm bảo map được tạo ở
+  request đầu tiên — cả lookup lẫn store đều đi qua helper này.
+- **+4 unit test micro-cache** (tower oneshot, không cần DB): hit lần 2
+  (header `x-micro-cache: hit` + handler KHÔNG được gọi lại + body
+  byte-for-byte giống), cookie session bypass, HTMX partial bypass,
+  path ngoài allowlist bypass. Chạy lặp 5 lần — ổn định, không flaky
+  (counter từng test riêng, không dùng global).
+
 ## [3.6.0] — 2026-08-31 — Admin XP Boost + Micro-cache "siêu mượt" + 74 câu đố mới + quét-fix 400/500
 
 Bản feature tập trung trải nghiệm người dùng: **tối ưu tốc độ toàn diện

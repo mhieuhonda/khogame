@@ -736,3 +736,14 @@ câu/ngày).
 
 **Kiểm định**: cargo fmt + clippy -D warnings + 353/353 test + rustdoc
 -D warnings — sạch toàn bộ trên Rust 1.98.0.
+
+---
+## 2026-08-31 — v3.6.1: HOTFIX micro-cache OnceLock
+
+Sau khi v3.6.0 deploy xong, verify prod bằng curl (Accept: text/html)
+thiếu header `x-micro-cache: hit` — root cause: nhánh lookup + store của
+micro_cache_mw đều dùng `MICRO_CACHE.get()` (chỉ đọc, không khởi tạo) →
+OnceLock unset vĩnh viễn → middleware no-op. Fix: helper `micro_cache_map()`
+dùng `get_or_init` cho cả 2 nhánh + 4 unit test tower-oneshot (hit/bypass
+session/bypass HTMX/bypass non-allowlist) — chạy 5 lần ổn định. 357/357 test
+pass, clippy -D warnings sạch.
