@@ -21,7 +21,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v3.3.1';
+var CACHE_VERSION = 'ls-sw-v3.6.0';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;
@@ -80,17 +80,20 @@ function hasSessionCookie(req) {
     return !!cookie && cookie.indexOf('kg_session=') !== -1;
 }
 
-// Install: pre-cache các critical assets (homepage, htmx, style.css)
-// để LCP install-first cũng có dữ liệu.
+// Install: pre-cache các critical assets (favicon + manifest — KHÔNG có
+// version query) để LCP install-first cũng có dữ liệu.
+// v3.6.0 FIX (tải rác ~350KB mỗi SW install): trước đây precache 4 asset
+// kèm `?v=2.9.2` — version này KHÔNG khớp version thật (?v=3.x) mà URL
+// app dùng → cache.addAll tải ~350KB xuống client rồi key cache KHÔNG
+// BAO GIỜ match request thật (fetch handler match theo URL đầy đủ kèm
+// query) → asset vẫn phải fetch lại, pure waste. Bỏ versioned URL khỏi
+// precache; asset thật được cache lazy ở fetch đầu (cache-first).
 self.addEventListener('install', function(event) {
     event.waitUntil(
         caches.open(STATIC_CACHE).then(function(cache) {
             return cache.addAll([
-                '/static/js/htmx.min.js?v=2.9.2',
-                '/static/css/style.css?v=2.9.2',
-                '/static/css/fonts.css?v=2.9.2',
-                '/static/js/app.js?v=2.9.2',
-                '/static/img/favicon.svg'
+                '/static/img/favicon.svg',
+                '/manifest.json'
             ]).catch(function() {
                 // Critical pre-cache fail (vd: file chưa tồn tại) → không
                 // block install. SW sẽ cache lazy khi fetch đầu tiên.

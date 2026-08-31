@@ -21,8 +21,8 @@
         <div class="comment-actions">
             <button class="comment-action like-comment {% if comment.is_liked %}active{% endif %}"
                     hx-post="/comments/{{ comment.id }}/like"
-                    hx-target="find .like-count"
-                    hx-swap="innerHTML"
+                    hx-target="closest .comment-item"
+                    hx-swap="outerHTML"
                     hx-disabled-elt="this"
                     aria-pressed="{% if comment.is_liked %}true{% else %}false{% endif %}"
                     aria-label="Thích bình luận — {{ comment.like_count }} lượt thích">

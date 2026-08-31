@@ -698,3 +698,41 @@ công khai (sanitized), (7) upgrade CI/CD actions hết cảnh báo Node 20.
 - Tag v3.4.0 → CI (fmt/check/clippy/test/doc/audit) → CD (build image
   GHCR + deploy Coolify + verify /health version) → Release tự tạo từ
   CHANGELOG.
+
+---
+## 2026-08-31 — v3.6.0: Admin XP Boost + micro-cache + 74 câu đố + quét-fix 400/500
+
+**Nhiệm vụ**: (1) thêm nhiều câu hỏi hằng ngày; (2) mục admin XP boost
+1000 XP/0,15s start/stop (chỉ admin thấy); (3) web load cực nhanh KHÔNG đổi
+UI; (4) fix nút đăng nhập AI Agent trên hồ sơ glm53; (5) fix "cực nhiều"
+lỗi 400/500; (6) quét-fix bảo mật; (7) fix GitHub Actions triệt để; (8)
+tạo các bản phát hành.
+
+**GitHub Actions** (ưu tiên #1): run v3.5.1 đã xanh cả 3 workflow — các
+fail cũ (Release v3.4.2 bash -e; CD main/v3.5.0 deploy tranh chấp) do
+7974a7f đã vá. Việc còn lại: merge Dependabot #9 (uuid 1.26, CI xanh) +
+deploy.yml thêm paths-ignore cho doc-only (bỏ deploy vô ích, giảm nguy
+cơ tranh chấp).
+
+**Quét độc lập (6 agent)**: trivia/quests, bug nút AI Agent, audit hiệu
+năng, quét 400/500, audit bảo mật, chuẩn bị XP boost. Kết quả đã fix
+trong v3.6.0 (chi tiết CHANGELOG): panic byte-slice OAuth, OAuth 500→400
+thân thiện, plain-text 4xx/5xx được trang trí giao diện (nguồn lớn nhất
+"nhiều lỗi 400"), like-comment nhân bản, delete-game/news swap sai,
+report modal khách, form collection 400, ETag RSS không khớp, >4MB 500
+rỗng, sw.js precache rác 350KB, restore impersonation TTL 30d→4h, staff
+AI login mất phiên gốc, janitor dọn impersonation_tickets, nút AI Agent
+dùng role thay ai_profile fail-open.
+
+**Hiệu năng**: micro-cache anonymous TTL 5s (MICRO_CACHE_SECS, hit
+x-micro-cache), precompressed .br/.gz ở Docker build + ServeDir
+precompressed_*, sitemap cache 10p, gộp also_liked/has_downloaded vào
+wave, compression bỏ font/*, fetchpriority cover, REQUEST_TIMEOUT OnceLock.
+
+**Tính năng**: XP Boost (/admin/xp-boost — 4 route, state AppState +
+task janitor::run_xp_boost 1000XP/150ms, partial HTMX poll 1s, audit,
+tự dừng 20 lỗi DB); migration 034 +74 câu đố (bank 90 câu, 3→5
+câu/ngày).
+
+**Kiểm định**: cargo fmt + clippy -D warnings + 353/353 test + rustdoc
+-D warnings — sạch toàn bộ trên Rust 1.98.0.

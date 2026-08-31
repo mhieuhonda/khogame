@@ -52,6 +52,10 @@ pub async fn run(config: AppConfig) -> anyhow::Result<()> {
     tokio::spawn(janitor::run_repo_star_refresh((*state).clone()));
     // v3.0.0 — weekly digest email (sáng thứ 2 giờ VN)
     tokio::spawn(janitor::run_weekly_digest((*state).clone()));
+    // v3.6.0 — Admin XP Boost: cộng 1000 XP / 150ms cho admin khi flag bật
+    // (xem state::XpBoostState + handlers::admin::xp_boost_*). Task vĩnh
+    // viễn — idle không chạm DB.
+    tokio::spawn(janitor::run_xp_boost((*state).clone()));
 
     let app = routes::build_router(state);
 

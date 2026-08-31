@@ -9,6 +9,7 @@ use axum::middleware;
 use axum::routing::{get, post};
 use axum::Router;
 use std::sync::Arc;
+use tower_http::compression::predicate::{NotForContentType, Predicate, SizeAbove};
 use tower_http::compression::CompressionLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::ServeDir;
@@ -512,6 +513,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/news/{id}/delete",
             post(handlers::admin::news_delete).delete(handlers::admin::news_delete),
         )
+        // v3.6.0 — ADMIN XP BOOST (1000 XP / 0.15s, start/stop).
+        // Trang + partial chỉ admin (handler check is_admin thủ công —
+        // route_layer require_admin chỉ chặn is_staff, mod cũng qua được).
+        .route("/admin/xp-boost", get(handlers::admin::xp_boost_page))
+        .route(
+            "/admin/xp-boost/start",
+            post(handlers::admin::xp_boost_start),
+        )
+        .route("/admin/xp-boost/stop", post(handlers::admin::xp_boost_stop))
+        .route(
+            "/admin/xp-boost/status",
+            get(handlers::admin::xp_boost_status),
+        )
         .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
 
     Router::new()
@@ -528,6 +542,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         //   /static/* (css/js/img) — cache 30 ngày + stale-while-revalidate
         //     1 ngày (tăng từ 7 ngày v2.0.0): CSS/JS đổi qua cache-bust
         //     ?v=x.y.z trong URL nên kéo dài cache an toàn tuyệt đối.
+        // v3.6.0 PERF — precompressed static assets: ServeDir tự ưu tiên file
+        // `.gz`/`.br` cạnh file gốc khi client gửi Accept-Encoding tương ứng
+        // (brotli > gzip > nguyên bản). File .gz/.br được sinh ở Docker build
+        // (Dockerfile — gzip -9 + brotli -q 11, CHÉP VÀO IMAGE, không đổi
+        // nội dung) → server tốn ~0 CPU nén runtime; CSS 252KB → ~38KB brotli.
+        // Không có file precompressed (dev local) → fallback nén runtime
+        // như cũ — hành vi tương thích hoàn toàn.
         .nest_service(
             "/static/fonts",
             tower::ServiceBuilder::new()
@@ -535,7 +556,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                     axum::http::header::CACHE_CONTROL,
                     axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),
                 ))
-                .service(ServeDir::new("static/fonts")),
+                .service(
+                    ServeDir::new("static/fonts")
+                        .precompressed_gzip()
+                        .precompressed_br(),
+                ),
         )
         // v3.5.1 FIX (audit 5-c — SW chết im lặng): app.js đăng ký
         // `/static/js/sw.js` với scope '/' nhưng SW spec giới hạn max-scope
@@ -558,7 +583,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                         "public, max-age=2592000, stale-while-revalidate=86400",
                     ),
                 ))
-                .service(ServeDir::new("static/js")),
+                .service(
+                    ServeDir::new("static/js")
+                        .precompressed_gzip()
+                        .precompressed_br(),
+                ),
         )
         .nest_service(
             "/static",
@@ -569,7 +598,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                         "public, max-age=2592000, stale-while-revalidate=86400",
                     ),
                 ))
-                .service(ServeDir::new("static")),
+                .service(
+                    ServeDir::new("static")
+                        .precompressed_gzip()
+                        .precompressed_br(),
+                ),
         )
         // Uploaded files (avatar/cover/news/repo) — served from STORAGE_DIR.
         // Cache immutable (1 năm) vì filename là UUID — không bao giờ override
@@ -626,6 +659,25 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // hơn) để mọi response — kể cả short-circuit 429/503 — đều có security
         // headers. Comment cũ "đặt ngoài cùng" đã nói đúng ý nhưng code sai
         // thứ tự `.layer()` (layer gọi sau sẽ là outer).
+        // LỖI THỨ TỰ LAYER MỚI NHẤT (outermost ĐẦU TIÊN):
+        //   DefaultBodyLimit → request_timeout → Compression → SetRequestId
+        //   → Trace → PropagateRequestId → security_headers → cache_control_html
+        //   → maintenance_guard → error_page_mw → origin_check → rate_limit
+        //   → micro_cache_mw (INNERMOST — xem middleware.rs) → handlers.
+        //
+        // v3.6.0 PERF — micro_cache_mw: cache HTML in-memory TTL ngắn cho
+        // KHÁCH (không cookie session) trên các trang công khai topo
+        // (/, /games, /news...). Trước đây MỖI request anonymous vẫn chạy
+        // đủ 18 query DB + render askama cho nội dung GIỐNG HỆT nhau —
+        // giờ hit cache trả HTML sẵn trong ~0.2ms, chịu tải gấp 10-20×.
+        // Người đăng nhập (có cookie kg_session) bypass hoàn toàn — không
+        // bao giờ nhận HTML của người khác. Các layer ngoài (rate_limit,
+        // maintenance, security headers, ETag, compression) vẫn chạy
+        // bình thường trên response cache.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::middleware::micro_cache_mw,
+        ))
         .layer(middleware::from_fn_with_state(state.clone(), rate_limit))
         // v2.1.0 — CSRF defense-in-depth: verify Origin/Referer cho mọi
         // POST/PUT/PATCH/DELETE. Đặt NGOÀI rate_limit để request bị chặn
@@ -653,7 +705,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             axum::http::HeaderName::from_static("x-request-id"),
             MakeRequestUuid,
         ))
-        .layer(CompressionLayer::new())
+        .layer(
+            // v3.6.0 PERF — predicate nén tùy chỉnh: giữ default (bỏ body
+            // <32B, bỏ IMAGES) + THÊM bỏ font/* — woff2 đã nén sẵn (Brotli
+            // nội bộ), nén lại chỉ tốn CPU vô ích trên mọi request font.
+            CompressionLayer::new().compress_when(
+                SizeAbove::new(32)
+                    .and(NotForContentType::IMAGES)
+                    .and(NotForContentType::const_new("font/")),
+            ),
+        )
         // v2.4.0 — OUTERMOST timeout: ngắt mọi request treo >30s. Chống
         // "hang forever" khi DB chậm / pool exhausted / markdown render quá
         // nặng. Skip WebSocket upgrade (header Upgrade). Cấu hình qua env

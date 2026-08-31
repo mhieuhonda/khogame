@@ -5,6 +5,131 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] — 2026-08-31 — Admin XP Boost + Micro-cache "siêu mượt" + 74 câu đố mới + quét-fix 400/500
+
+Bản feature tập trung trải nghiệm người dùng: **tối ưu tốc độ toàn diện
+KHÔNG đổi giao diện** (micro-cache anonymous, precompressed assets,
+sitemap cache, bỏ round-trip tuần tự), **fix bug nút "Đăng nhập tài khoản
+AI Agent" trên hồ sơ glm53**, **thêm nhiều câu hỏi hằng ngày** (bank
+16 → 90 câu, 3 → 5 câu/ngày), **tính năng Admin XP Boost** (1000 XP
+mỗi 0,15 giây, start/stop trong bảng quản trị), và một đợt quét-fix
+lỗi 400/500 + bảo mật độc lập. Build/clippy/rustdoc sạch Rust 1.98.0 —
+353/353 unit test pass.
+
+### ⚡ Hiệu năng — "load cực nhanh, cực mượt" không đổi UI
+
+- **Micro-cache HTML anonymous (TTL 5s)**: homepage + các trang list công
+  khai (/, /games, /games/latest, /trending, /top-rated, /downloads,
+  /featured, /news, /categories, /about, /terms, /privacy) của KHÁCH
+  (không cookie session) giờ được cache in-memory — trước đây mỗi request
+  anonymous vẫn chạy đủ ~18 query DB + render askama cho nội dung giống
+  hệt nhau. Hit cache → TTFB từ ~15-40ms xuống ~0,2-2ms, chịu tải gấp
+  10-20× cùng phần cứng. Người đăng nhập bypass tuyệt đối (không bao giờ
+  nhận HTML của người khác). Header `x-micro-cache: hit` để quan sát.
+  Tắt/tùy chỉnh qua env `MICRO_CACHE_SECS` (default 5, 0 = tắt).
+- **Precompressed static assets**: ServeDir giờ serve file `.br`/`.gz`
+  được sinh ở Docker build (brotli -q 11 / gzip -9) — CSS 252KB → ~38KB
+  brotli, CPU server ~0 thay vì nén runtime mỗi request. Dev không có
+  file nén → fallback nén runtime như cũ (tương thích hoàn toàn).
+- **Bỏ 2 round-trip tuần tự trên trang game**: `also_liked` +
+  `has_downloaded` (invite_rating) gộp vào wave `tokio::join!` chính.
+- **CompressionLayer bỏ nén `font/*`** — woff2 đã nén sẵn bằng brotli
+  nội bộ, nén lại là phí CPU thuần túy trên mọi request font.
+- **Sitemap in-memory cache TTL 10 phút** (khớp max-age=600) — bot
+  crawler fetch dày giờ chỉ đụng DB 1 lần mỗi 10 phút thay vì 5 query
+  mỗi lần.
+- **sw.js**: bỏ precache URL `?v=2.9.2` stale — trước đây SW install tải
+  ~350KB asset KHÔNG BAO GIỜ được dùng (key cache không khớp URL thật);
+  bump `CACHE_VERSION` → activate dọn cache cũ.
+- **`fetchpriority="high"`** cho cover game (LCP nhanh hơn rõ trên mạng
+  chậm VN), `REQUEST_TIMEOUT_SECS` đọc 1 lần (OnceLock).
+
+### 🐛 Fix lỗi 400/500 (quét độc lập toàn codebase)
+
+- **Panic byte-slice OAuth state** (`auth.rs`): `&s[..8]` với query
+  param `state` chứa UTF-8 multi-byte tại ranh giới byte 8 → panic →
+  connection drop không response (monitor ghi 5xx rỗng). Fix
+  `chars().take(8)`.
+- **OAuth exchange/userinfo fail → 500 "Lỗi hệ thống"**: code Google chỉ
+  dùng 1 lần — user bấm Back/refresh trang callback → exchange lần 2
+  fail → 500 sai sự thật. Giờ trả 400 kèm hướng dẫn đăng nhập lại.
+- **Lỗi 400/429/504 text/plain trần không giao diện** (nguồn lớn nhất
+  của "CỰC NHIỀU lỗi 400" nhìn thấy): rejection của extractor axum
+  (Form/Query/Path parse fail), rate-limit 429, timeout 504 — browser
+  navigation đến các lỗi này trước đây hiện trang trắng chữ trơn. Giờ
+  `error_page_mw` tổng hợp trang lỗi đầy đủ giao diện cho browser
+  (HTMX/API giữ nguyên plain — đúng chuẩn), 5xx có incident_id khớp log.
+- **Nút "Đăng nhập tài khoản AI Agent" không hiện trên hồ sơ glm53**:
+  điều kiện cũ `ai_profile.is_some()` phụ thuộc fetch hàng
+  `ai_agent_profiles` fail-open im lặng (lỗi DB/thiếu hàng → nút + mọi
+  card AI biến mất không log). Giờ điều kiện dùng `user.role.is_ai_agent()`
+  (tín hiệu thẩm quyền ổn định) + fetch fail giờ log warn truy vết được.
+- **Like comment game nhân bản comment**: nút like `hx-target="find
+  .like-count"` + handler trả FULL comment item → HTML lồng nhau + trùng
+  DOM id mỗi lần like. Fix: `hx-target="closest .comment-item"` +
+  `outerHTML` (khớp pattern delete/pin).
+- **Xóa game/tin qua HTMX swap cả trang chủ vào bảng**: delete_game/
+  news delete trả Redirect 303 → XHR follow → HTML trang đầy đủ bị nhét
+  vào `<tr>`/item. Giờ request HTMX nhận body rỗng (gỡ item khỏi DOM).
+- **Khách bấm "Báo cáo" thấy trang login vỡ trong modal**: fetch theo
+  redirect về /login rồi innerHTML vào modal. Giờ detect redirect →
+  chuyển cả trang sang /login đúng chuẩn.
+- **Form thêm vào bộ sưu tập 400 trần khi chưa chọn**: select có option
+  rỗng, submit → serde parse UUID từ chuỗi rỗng fail → rejection trần.
+  Giờ parse thủ công với BadRequest tiếng Việt thân thiện.
+- **HTML > 4MB → 500 body rỗng** (ETag layer): giờ pre-check
+  Content-Length → skip ETag, giữ response 200 nguyên vẹn.
+- **ETag RSS không bao giờ khớp**: ETag hash cả `lastBuildDate =
+  Utc::now()` (đổi mỗi giây) → 304 không bao giờ trả, bot reader luôn
+  tải full payload. Giờ hash phần items (content), body vẫn render
+  lastBuildDate fresh.
+
+### 🔒 Bảo mật (vòng quét độc lập thứ ~20)
+
+- **Session restore impersonation TTL 30 ngày → 4 giờ** (2 chỗ: logout +
+  stop_impersonation): ticket one-shot 2h bị đánh cắp trước đây cấp cho
+  kẻ trộm session admin suốt 30 ngày — 4h đủ cho admin re-login.
+- **AI password login của STAFF giờ mint impersonation ticket**: trước
+  đây phiên admin bị ghi đè TRẮN khi đăng nhập AI bằng mật khẩu — admin
+  kẹt trong tài khoản AI, mất đường về. Giờ bấm Đăng xuất/dừng
+  impersonate sẽ khôi phục phiên staff (audit log đầy đủ).
+- **Janitor dọn `impersonation_tickets`** quá 7 ngày (bảng tích tụ vô
+  hạn trước đó).
+- Đã rà lại 12 hạng mục bảo mật (session/CSRF/XSS/SQLi/IDOR/upload/
+  rate-limit/secrets/headers/redirect/impersonation/command-injection):
+  các lớp hiện tại được xác minh nguyên vẹn (full bind-parameter, origin
+  check toàn POST, comrak unsafe off, ownership check đủ, upload magic
+  bytes + quota atomic, cookie HMAC, sanitize redirect).
+
+### ✨ Tính năng
+
+- **Admin XP Boost** (mục "XP Boost" trong bảng quản trị — CHỈ ADMIN
+  thấy, moderator không): bấm **Bắt đầu** → XP của admin tăng liên tục
+  **1000 XP / 0,15 giây** (task nền janitor, reason `admin_boost` —
+  không dính anti-farm cap); bấm **Dừng** → dừng ngay. Partial HTMX cập
+  nhật realtime mỗi 1 giây (tổng XP, cấp độ, số tick). Audit log
+  xp_boost.start/stop; 20 lỗi DB liên tiếp → tự dừng; restart server =
+  boost off (an toàn). XP multiplier của cửa hàng (nếu có) vẫn áp dụng
+  như mọi nguồn XP khác.
+- **74 câu đố hằng ngày mới** (migration 034, `ON CONFLICT (question) DO
+  NOTHING` an toàn re-run): tổng bank 16 → **90 câu** — console/hãng
+  game, thể loại, tiếng lóng MOBA/esports, lịch sử game, game Việt Nam
+  (Flappy Bird, Liên Quân, Đấu Trường Chân Lý), thuật ngữ kỹ thuật;
+  đáp án đảo vị trí chống đoán mò. **Số câu/ngày: 3 → 5** (thưởng +20 XP
+  khi đủ 5 đúng) — 18 ngày chơi liên tục không lặp câu.
+- Label activity feed mới: `admin_boost`.
+
+### 🔧 CI/CD & hạ tầng
+
+- **deploy.yml**: thêm `paths-ignore` cho thay đổi chỉ tài liệu (md/
+  docs/LICENSE) — 1 commit sửa README không còn đốt 25 phút CI gate +
+  full Docker build + patch compose Coolify (nguồn deploy tranh chấp
+  không cần thiết). Tag push + workflow_dispatch không bị ảnh hưởng.
+- **Dockerfile**: builder cài `brotli` + sinh file `.gz`/`.br` cho
+  static assets (css/js/svg/json) ngay sau COPY source — luôn khớp
+  version asset trong image.
+- Merge Dependabot #9 (uuid 1.25.0 → 1.26.0, CI xanh).
+
 ## [3.5.1] — 2026-08-31 — Siêu fix CI/CD (3 workflow) + 15 vòng quét-fix bảo mật + economy
 
 Bản fix tập trung: **GitHub Actions trước tiên** (3 root-cause thật từ logs

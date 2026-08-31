@@ -22,7 +22,31 @@ pub struct CollectionForm {
 
 #[derive(Deserialize)]
 pub struct CollectionGameForm {
-    pub collection_id: uuid::Uuid,
+    // v3.6.0 FIX (400 trần): trước đây `collection_id: uuid::Uuid` — select
+    // có option rỗng "— Chọn bộ sưu tập —", submit khi chưa chọn (JS off,
+    // autofill, submit bằng Enter) → serde parse UUID từ chuỗi rỗng fail →
+    // rejection 400 text/plain trơn. Giờ nhận String + parse thủ công để
+    // trả BadRequest có message tiếng Việt thân thiện.
+    #[serde(default)]
+    pub collection_id: Option<String>,
+}
+
+/// Parse collection_id từ form → UUID, kèm thông báo lỗi thân thiện.
+fn parse_collection_id(form: &CollectionGameForm) -> AppResult<uuid::Uuid> {
+    let raw = form
+        .collection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("");
+    if raw.is_empty() {
+        return Err(AppError::BadRequest(
+            "Bạn chưa chọn bộ sưu tập — hãy chọn 1 bộ sưu tập từ danh sách.".into(),
+        ));
+    }
+    raw.parse::<uuid::Uuid>().map_err(|_| {
+        AppError::BadRequest("Bộ sưu tập được chọn không hợp lệ — thử tải lại trang.".into())
+    })
 }
 
 /// GET /collections — danh sách bộ sưu tập của tôi.
@@ -169,8 +193,9 @@ pub async fn add_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let collection_id = parse_collection_id(&form)?;
     // Collection phải thuộc quyền user
-    let collection = CollectionRepo::find_by_id(&state.db, form.collection_id)
+    let collection = CollectionRepo::find_by_id(&state.db, collection_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bộ sưu tập không tồn tại".into()))?;
     if collection.user_id != user.id {
@@ -200,7 +225,8 @@ pub async fn remove_game(
     Path(slug): Path<String>,
     Form(form): Form<CollectionGameForm>,
 ) -> AppResult<Redirect> {
-    let collection = CollectionRepo::find_by_id(&state.db, form.collection_id)
+    let collection_id = parse_collection_id(&form)?;
+    let collection = CollectionRepo::find_by_id(&state.db, collection_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Bộ sưu tập không tồn tại".into()))?;
     if collection.user_id != user.id {

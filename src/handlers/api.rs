@@ -721,6 +721,13 @@ pub async fn rss(
             pub_date_tag
         ));
     }
+    // v3.6.0 FIX (bug 304 không bao giờ khớp): tính ETag từ `items`
+    // (nội dung feed) TRƯỚC khi move vào xml — xml chứa
+    // `lastBuildDate = Utc::now()` đổi mỗi giây → ETag hash cả xml sẽ đổi
+    // theo → If-None-Match không bao giờ match, mọi bot reader luôn tải
+    // full payload dù content không đổi. Body vẫn render lastBuildDate
+    // fresh (đúng chuẩn RSS) — chỉ ETag là ổn định theo content.
+    let etag = format!("\"{}\"", short_hash(&items));
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
@@ -744,7 +751,6 @@ pub async fn rss(
     );
     // ETag đơn giản dựa trên hash nội dung — client gửi If-None-Match khớp
     // → server trả 304 Not Modified, không cần chuyển payload XML.
-    let etag = format!("\"{}\"", short_hash(&xml));
     if etag_matches(&headers, &etag) {
         return Ok((
             StatusCode::NOT_MODIFIED,
@@ -823,6 +829,10 @@ pub async fn news_rss(
             pub_date_tag
         ));
     }
+    // v3.6.0 FIX — tính ETag từ items TRƯỚC khi move vào xml (xem comment
+    // ở rss()): lastBuildDate trong xml đổi mỗi giây không được phép ảnh
+    // hưởng ETag, nếu không 304 không bao giờ khớp.
+    let etag = format!("\"{}\"", short_hash(&items));
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
@@ -844,7 +854,6 @@ pub async fn news_rss(
         chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S +0000"),
         items
     );
-    let etag = format!("\"{}\"", short_hash(&xml));
     if etag_matches(&headers, &etag) {
         return Ok((
             StatusCode::NOT_MODIFIED,
@@ -874,6 +883,74 @@ pub async fn sitemap(
     headers: axum::http::HeaderMap,
 ) -> AppResult<Response> {
     let base = &state.config.base_url;
+    // v3.6.0 PERF — cache sitemap in-memory TTL 10 phút (khớp
+    // Cache-Control max-age=600): bot crawler (Googlebot/Bingbot) fetch
+    // sitemap thường theo chu kỳ dày — trước đây MỖI lần fetch chạy 5
+    // query DB + build XML chuỗi lớn. Giờ 99% request lấy từ cache,
+    // DB chỉ chạm 1 lần mỗi 10 phút. Cache key đơn giản (1 sitemap duy
+    // nhất) — sai lệch tối đa 10 phút là chấp nhận được hoàn toàn với
+    // changefreq hourly/daily của sitemap.
+    /// Alias chống clippy::type_complexity.
+    type SitemapCache = Option<(std::time::Instant, Arc<String>, Arc<String>)>;
+    static SITEMAP_CACHE: std::sync::OnceLock<std::sync::Mutex<SitemapCache>> =
+        std::sync::OnceLock::new();
+    const SITEMAP_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+    let cached = SITEMAP_CACHE
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let fresh = cached
+        .as_ref()
+        .is_some_and(|(at, _, _)| at.elapsed() < SITEMAP_CACHE_TTL);
+    let (xml, etag) = if fresh {
+        let (_, xml, etag) = cached.expect("checked fresh ở trên");
+        (xml, etag)
+    } else {
+        let (xml, etag) = build_sitemap(&state, base).await?;
+        let (xml, etag) = (Arc::new(xml), Arc::new(etag));
+        if let Some(cache) = SITEMAP_CACHE.get() {
+            *cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((
+                std::time::Instant::now(),
+                Arc::clone(&xml),
+                Arc::clone(&etag),
+            ));
+        }
+        (xml, etag)
+    };
+    // Deref coercion tường minh (Arc<String> → &str) — dùng chung cho cả
+    // nhánh 304 và 200 (tránh pha trộn &String và &'static str trong tuple
+    // array headers).
+    let etag_str: &str = &etag;
+    let xml_str: &str = &xml;
+    if etag_matches(&headers, etag_str) {
+        return Ok((
+            StatusCode::NOT_MODIFIED,
+            [
+                (header::ETAG, etag_str),
+                (header::CACHE_CONTROL, "public, max-age=600"),
+            ],
+        )
+            .into_response());
+    }
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=600"),
+            (header::ETAG, etag_str),
+        ],
+        xml_str.to_string(),
+    )
+        .into_response())
+}
+
+/// Build XML sitemap + ETag từ 5 query DB (gọi bởi handler có cache).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+async fn build_sitemap(state: &AppState, base: &str) -> AppResult<(String, String)> {
     // v2.6.0 — 5 query độc lập (categories/tags/users/games/news) chạy
     // SONG SONG — trước đây 4 song song rồi news query tuần tự sau đó →
     // cộng thêm 1 round-trip cho mỗi sitemap fetch (bot crawl thường
@@ -975,25 +1052,7 @@ pub async fn sitemap(
 {urls}</urlset>"#
     );
     let etag = format!("\"{}\"", short_hash(&xml));
-    if etag_matches(&headers, &etag) {
-        return Ok((
-            StatusCode::NOT_MODIFIED,
-            [
-                (header::ETAG, etag.as_str()),
-                (header::CACHE_CONTROL, "public, max-age=600"),
-            ],
-        )
-            .into_response());
-    }
-    Ok((
-        [
-            (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=600"),
-            (header::ETAG, etag.as_str()),
-        ],
-        xml,
-    )
-        .into_response())
+    Ok((xml, etag))
 }
 
 /// So sánh `ETag` server với If-None-Match header của client.

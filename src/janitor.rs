@@ -221,7 +221,7 @@ pub async fn run_janitor(state: AppState) {
         // liên tục. Log duration để admin quan sát; vẫn giữ hành vi cũ
         // (sleep interval giữa các lần) vì dọn dẹp là idempotent.
         let start = std::time::Instant::now();
-        let (sessions, notifications, daily_stats, emails, xp_events, ai_reports) =
+        let (sessions, notifications, daily_stats, emails, xp_events, ai_reports, tickets) =
             do_cleanup(&state).await;
         let elapsed = start.elapsed();
         if sessions > 0
@@ -230,15 +230,17 @@ pub async fn run_janitor(state: AppState) {
             || emails > 0
             || xp_events > 0
             || ai_reports > 0
+            || tickets > 0
         {
             tracing::info!(
-                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ, {} ai_progress_reports cũ (mất {:?})",
+                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ, {} ai_progress_reports cũ, {} impersonation_tickets cũ (mất {:?})",
                 sessions,
                 notifications,
                 daily_stats,
                 emails,
                 xp_events,
                 ai_reports,
+                tickets,
                 elapsed
             );
         } else if elapsed > Duration::from_secs(30) {
@@ -279,6 +281,68 @@ pub async fn run_weekly_digest(state: AppState) {
         if let Err(e) = send_weekly_digest(&state).await {
             tracing::warn!("Weekly digest fail: {e}");
         }
+    }
+}
+
+// ============================================================
+// v3.6.0 — ADMIN XP BOOST LOOP
+// ------------------------------------------------------------
+// Yêu cầu: admin bấm "Bắt đầu" (trang /admin/xp-boost) → XP của admin
+// tăng liên tục 1000 XP / 0.15 giây; bấm "Dừng" → dừng ngay.
+//
+// Triển khai: 1 task vĩnh viễn sleep 150ms/lượt (state.xp_boost giữ
+// cờ + target). Idle = KHÔNG query DB nào. Đang chạy = gọi thẳng
+// GamificationRepo::award_xp (bỏ qua service để không spam notification
+// "Lên cấp" — level tăng ~6.7 lần/giây ở tier cao).
+//
+// Tự bảo vệ:
+//   - 20 lỗi DB liên tiếp → TỰ DỪNG (chống log spam + DB giật đập).
+//   - Lỗi đơn lẻ chỉ log warn, tick kế tiếp thử lại.
+//   - award_xp reason "admin_boost" KHÔNG thuộc match anti-farm cap
+//     → không bị chặn theo ngày (đúng ý "tăng liên tục").
+// ============================================================
+pub async fn run_xp_boost(state: AppState) {
+    use crate::state::xp_boost;
+    let tick = Duration::from_millis(xp_boost::TICK_MS);
+    let mut consecutive_errors: u32 = 0;
+    tracing::info!(
+        "XP boost loop sẵn sàng ({} XP mỗi {}ms — idle chờ flag)",
+        xp_boost::XP_PER_TICK,
+        xp_boost::TICK_MS
+    );
+    loop {
+        if state.xp_boost.is_running() {
+            if let Some(uid) = state.xp_boost.target().await {
+                match crate::repositories::GamificationRepo::award_xp(
+                    &state.db,
+                    uid,
+                    xp_boost::REASON,
+                    xp_boost::XP_PER_TICK,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        state.xp_boost.bump_tick();
+                        consecutive_errors = 0;
+                    }
+                    Err(e) => {
+                        consecutive_errors += 1;
+                        tracing::warn!("XP boost tick lỗi liên tiếp lần {consecutive_errors}: {e}");
+                        if consecutive_errors >= 20 {
+                            state.xp_boost.stop().await;
+                            tracing::error!(
+                                "XP boost TỰ DỪNG sau 20 lỗi DB liên tiếp — kiểm tra cơ sở dữ liệu rồi bật lại từ /admin/xp-boost"
+                            );
+                            consecutive_errors = 0;
+                        }
+                    }
+                }
+            } else {
+                // Flag bật nhưng target rỗng (race stop) — tắt flag cho sạch.
+                state.xp_boost.stop().await;
+            }
+        }
+        tokio::time::sleep(tick).await;
     }
 }
 
@@ -394,7 +458,7 @@ pub async fn run_email_flusher(state: AppState) {
 
 /// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`,
 /// email_queue kết thúc, xp_events, ai_progress_reports) đã xoá.
-async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64, u64) {
+async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
         .await
         .unwrap_or_else(|e| {
@@ -439,6 +503,17 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64, u64) {
             tracing::warn!("Janitor: lỗi dọn ai_progress_reports: {}", e);
             0
         });
+    // v3.6.0 (audit F5) — dọn impersonation_tickets cũ: ticket chỉ sống
+    // 2h (IMPERSONATION_TTL_HOURS) + đã dùng/hết hạn đều vô hiệu về mặt
+    // an toàn (check `used_at IS NULL AND expires_at > NOW()`), nhưng
+    // trước đây không job nào xoá → bảng tích tụ vô hạn. Giữ 7 ngày cho
+    // mục đích truy vết audit.
+    let tickets = cleanup_impersonation_tickets(&state.db)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Janitor: lỗi dọn impersonation_tickets: {}", e);
+            0
+        });
     (
         sessions,
         notifications,
@@ -446,7 +521,23 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64, u64) {
         emails,
         xp_events,
         ai_reports,
+        tickets,
     )
+}
+
+/// Xoá impersonation_tickets đã dùng hoặc hết hạn quá 7 ngày.
+/// # Errors
+///
+/// Trả lỗi khi DB fail.
+async fn cleanup_impersonation_tickets(pool: &sqlx::PgPool) -> crate::error::AppResult<u64> {
+    let res = sqlx::query(
+        "DELETE FROM impersonation_tickets
+         WHERE expires_at < NOW() - INTERVAL '7 days'
+            OR (used_at IS NOT NULL AND used_at < NOW() - INTERVAL '7 days')",
+    )
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
 }
 
 /// Xoá email_queue ở trạng thái kết thúc (sent/failed/skipped) cũ hơn

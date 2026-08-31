@@ -128,8 +128,18 @@ pub async fn google_callback(
             // v3.4.2 FIX (audit "token trong log"): KHÔNG log nguyên giá trị
             // state (log aggregation thường có readership rộng hơn app) —
             // chỉ log 8 ký tự đầu để correlate + độ dài để debug.
-            let g_prefix = q.state.as_deref().map(|s| &s[..s.len().min(8)]);
-            let c_prefix = cookie_state.as_deref().map(|s| &s[..s.len().min(8)]);
+            // v3.6.0 FIX (panic 500/empty response): cắt prefix bằng
+            // chars().take(8) thay vì byte-slice `&s[..8]` — query param
+            // `state` do user/control hoàn toàn, chứa UTF-8 multi-byte tại
+            // ranh giới byte thứ 8 → panic "byte index not a char boundary"
+            // → connection bị drop không response (monitor ghi 5xx rỗng).
+            let g_prefix: Option<String> = q
+                .state
+                .as_deref()
+                .map(|s| s.chars().take(8).collect());
+            let c_prefix: Option<String> = cookie_state
+                .as_deref()
+                .map(|s| s.chars().take(8).collect());
             tracing::warn!(
                 google_prefix = ?g_prefix,
                 cookie_prefix = ?c_prefix,
@@ -146,8 +156,31 @@ pub async fn google_callback(
     // Validate code param — Google code thường 100-200 ký tự; 1MB code
     // sẽ được gửi sang Google API → waste bandwidth + log bloat.
     let code: String = q.code.chars().take(2048).collect();
-    let token = auth::exchange_code(&state, &code).await?;
-    let userinfo = auth::fetch_userinfo(&state, &token.access_token).await?;
+    // v3.6.0 FIX (nhóm 500 OAuth): exchange_code/fetch_userinfo fail vì
+    // mạng tới Google lỗi HOẶC `code` đã tiêu (user bấm Back/refresh trang
+    // callback — code Google chỉ dùng được 1 lần). Trước đây 2 lỗi này map
+    // AppError::OAuth/Http → 500 "Lỗi hệ thống" sai sự thật + nhiễu error
+    // monitor. Giờ bắt lỗi và trả 400 với hướng dẫn rõ ràng (đăng nhập lại)
+    // — giảm mạnh số 500 mà user thật gặp trên luồng login Google.
+    let token = match auth::exchange_code(&state, &code).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::warn!("OAuth token exchange thất bại: {e}");
+            return Err(AppError::BadRequest(
+                "Không hoàn tất đăng nhập Google (phiên giao tiếp có thể đã hết hạn hoặc bị tải lại). Vui lòng đăng nhập lại."
+                    .into(),
+            ));
+        }
+    };
+    let userinfo = match auth::fetch_userinfo(&state, &token.access_token).await {
+        Ok(u) => u,
+        Err(e) => {
+            tracing::warn!("OAuth fetch userinfo thất bại: {e}");
+            return Err(AppError::BadRequest(
+                "Không lấy được thông tin tài khoản Google. Vui lòng đăng nhập lại.".into(),
+            ));
+        }
+    };
 
     if !userinfo.email_verified.unwrap_or(false) {
         return Err(AppError::BadRequest(
@@ -354,7 +387,12 @@ pub async fn logout(
                             &token_hash,
                             "impersonation-restore",
                             None,
-                            30,
+                            // v3.6.0 SECURITY FIX (audit F6): TTL restore
+                            // 30 NGÀY → 4 GIỜ. Ticket one-shot 2h bị đánh
+                            // cắp trước khi dùng trước đây cho attacker
+                            // session admin SUỐNG 30 ngày. 4h đủ cho admin
+                            // vào /admin và re-login lại bình thường.
+                            4,
                         )
                         .await?;
                         tracing::warn!(

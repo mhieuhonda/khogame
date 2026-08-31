@@ -21,8 +21,11 @@ WORKDIR /app
 # Build-time deps: pkg-config cần cho ring (rustls backend) build script.
 # Không cần libssl-dev/libpq-dev vì dùng rustls + sqlx pure-Rust protocol.
 # Ca-certificates cho https cargo registry fetch.
+# brotli (v3.6.0): sinh file .br cho static assets (precompressed serving
+# — xem routes.rs ServeDir::precompressed_br). Chỉ tồn tại ở builder stage,
+# không vào image runtime.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        pkg-config ca-certificates \
+        pkg-config ca-certificates brotli \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy manifest + tài nguyên compile-time (askama templates + sqlx migrations)
@@ -63,6 +66,22 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     stat -c "khogame binary: %s bytes" /usr/local/bin/khogame && \
     test $(stat -c%s /usr/local/bin/khogame) -gt 2000000 || \
         (echo "!! Binary quá nhỏ — nghi là dummy build"; exit 1)
+
+# v3.6.0 PERF — Precompress static assets (gzip -9 + brotli -q 11) cho
+# ServeDir::precompressed_gzip/.precompressed_br() (routes.rs):
+#   - style.css 252KB → ~38KB brotli / ~49KB gzip — client tải nhanh hơn
+#     rõ, server KHÔNG tốn CPU nén runtime mỗi request.
+#   - Chỉ nén css/js/svg/json (woff2 đã nén sẵn bằng brotli nội bộ — nén
+#     lại vô nghĩa; PNG/JPG cũng đã nén).
+#   - File gốc GIỮ NGUYÊN (-k) — client không gửi Accept-Encoding vẫn nhận
+#     bản thường. File .gz/.br sinh NGAY SAU khi COPY source → luôn khớp
+#     version asset trong image (không có nguy cơ stale như commit file
+#     nén vào repo).
+RUN cd static && \
+    find . -type f \( -name "*.css" -o -name "*.js" -o -name "*.svg" -o -name "*.json" \) \
+        -exec sh -c 'gzip -9 -k -c "$1" > "$1.gz"; brotli -q 11 -c "$1" > "$1.br"' _ {} \; && \
+    find . -name "*.gz" -o -name "*.br" | head -20 && \
+    echo "Precompressed $(find . -name '*.br' | wc -l) files brotli + $(find . -name '*.gz' | wc -l) gzip"
 
 # ============================================================
 # Stage 2: runtime (debian-slim, non-root)

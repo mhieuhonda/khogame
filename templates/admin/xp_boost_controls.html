@@ -1,0 +1,26 @@
+{# Partial NÚT ĐIỀU KHIỂN XP BOOST — render bởi:
+   - POST /admin/xp-boost/start (running=true) và /admin/xp-boost/stop
+     (running=false) → swap outerHTML vào #boost-controls.
+   Biến: running #}
+{% if running %}
+<form hx-post="/admin/xp-boost/stop"
+      hx-target="#boost-controls"
+      hx-swap="outerHTML"
+      hx-disabled-elt="find button[type=submit]">
+    <button type="submit" class="btn btn-danger">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        Dừng tăng XP
+    </button>
+</form>
+{% else %}
+<form hx-post="/admin/xp-boost/start"
+      hx-target="#boost-controls"
+      hx-swap="outerHTML"
+      hx-disabled-elt="find button[type=submit]"
+      hx-confirm="Bật tăng XP liên tục cho tài khoản của bạn?">
+    <button type="submit" class="btn btn-primary">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Bắt đầu
+    </button>
+</form>
+{% endif %}

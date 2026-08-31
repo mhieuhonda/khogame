@@ -48,12 +48,106 @@ pub struct AppState {
     /// client. Giờ đếm theo connection (ref-count): user chỉ rời khỏi map
     /// khi ĐÓNG TẤT CẢ connection.
     pub chat_online: Arc<PresenceMap>,
+    /// v3.6.0 — TRẠNG THÁI ADMIN XP BOOST (chỉ admin thấy trang, xem
+    /// handlers::admin::xp_boost_page): khi bật, task nền
+    /// janitor::run_xp_boost cộng 1000 XP mỗi 150ms cho admin đã bấm
+    /// "Bắt đầu". State in-memory — restart server = boost tắt (an toàn,
+    /// không tự cộng XP khi không ai giám sát).
+    pub xp_boost: Arc<XpBoostState>,
 }
 
 /// v2.9.2 — Cap số WebSocket connection đồng thời mỗi user (chống DoS:
 /// trước đây 1 user login được mở VÔ SỐ connection, mỗi connection =
 /// 1 task + rx buffer 256 event → đốt bộ nhớ. 5 là dư cho multi-tab thật).
 pub const MAX_WS_CONNS_PER_USER: usize = 5;
+
+// ============================================================
+// v3.6.0 — ADMIN XP BOOST STATE
+// ------------------------------------------------------------
+// Yêu cầu nghiệp vụ: trong bảng quản trị có 1 mục CHỈ ADMIN thấy; bấm
+// "Bắt đầu" → XP của admin tăng liên tục 1000 XP / 0.15 giây; bấm
+// "Dừng" → dừng ngay.
+//
+// Thiết kế:
+//   - `running` (AtomicBool): cờ ON/OFF — task nền janitor::run_xp_boost
+//     đọc flag mỗi 150ms, chỉ chạm DB khi đang chạy (idle = 0 query).
+//   - `target` (RwLock<Option<Uuid>>): admin đang được cộng XP — bấm
+//     "Bắt đầu" ở tài khoản nào thì tài khoản đó nhận XP; 2 admin cùng
+//     bấm thì admin sau ghi đè mục tiêu (single-boost toàn hệ thống).
+//   - `ticks` (AtomicU64): số lần +1000 đã thực hiện trong phiên hiện
+//     tại — hiển thị lên trang quản trị qua partial HTMX poll 1s.
+//   - KHÔNG lưu DB: restart = boost off (không tự cộng XP vô chủ).
+// ============================================================
+
+/// Định mức XP boost — dùng chung bởi state + janitor + template.
+pub mod xp_boost {
+    /// XP cộng mỗi tick.
+    pub const XP_PER_TICK: i32 = 1000;
+    /// Chu kỳ tick (mili-giây) — 0.15s theo yêu cầu.
+    pub const TICK_MS: u64 = 150;
+    /// Reason ghi vào xp_events (KHÔNG nằm trong match anti-farm cap ở
+    /// GamificationRepo::award_xp → không bị chặn theo ngày).
+    pub const REASON: &str = "admin_boost";
+}
+
+/// Trạng thái Admin XP Boost — xem comment module phía trên.
+#[derive(Default)]
+pub struct XpBoostState {
+    running: std::sync::atomic::AtomicBool,
+    target: tokio::sync::RwLock<Option<Uuid>>,
+    started_at: tokio::sync::RwLock<Option<std::time::Instant>>,
+    ticks: std::sync::atomic::AtomicU64,
+}
+
+impl XpBoostState {
+    /// Boost có đang chạy không?
+    #[must_use]
+    pub fn is_running(&self) -> bool {
+        self.running.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Admin đang được cộng XP (None nếu dừng).
+    #[must_use]
+    pub async fn target(&self) -> Option<Uuid> {
+        *self.target.read().await
+    }
+
+    /// Thời điểm bấm "Bắt đầu" của phiên hiện tại.
+    #[must_use]
+    pub async fn started_at(&self) -> Option<std::time::Instant> {
+        *self.started_at.read().await
+    }
+
+    /// Số tick (+1000 XP) đã cộng trong phiên hiện tại.
+    #[must_use]
+    pub fn ticks(&self) -> u64 {
+        self.ticks.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Bật boost cho admin `user_id`. Ghi đè target nếu đang chạy.
+    pub async fn start(&self, user_id: Uuid) {
+        self.running
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        *self.target.write().await = Some(user_id);
+        *self.started_at.write().await = Some(std::time::Instant::now());
+        self.ticks.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Tắt boost. Trả về target của phiên vừa dừng (để audit log).
+    pub async fn stop(&self) -> Option<Uuid> {
+        self.running
+            .store(false, std::sync::atomic::Ordering::Relaxed);
+        let prev = self.target.write().await.take();
+        *self.started_at.write().await = None;
+        prev
+    }
+
+    /// Gọi bởi task nền sau MỖI tick cộng XP thành công.
+    pub fn bump_tick(&self) {
+        self.ticks
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 /// Kết quả đăng ký presence cho 1 WebSocket connection mới.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +207,7 @@ impl AppState {
             // cho chat vì client có HTTP history fallback để khôi phục).
             chat_tx: broadcast::channel::<ChatEvent>(256).0,
             chat_online: Arc::new(PresenceMap::new()),
+            xp_boost: Arc::new(XpBoostState::default()),
         })
     }
 

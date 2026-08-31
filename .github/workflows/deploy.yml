@@ -10,6 +10,23 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    # v3.6.0 FIX (Actions triệt để): thay đổi chỉ tài liệu (README/CHANGELOG/
+    # docs/LICENSE) KHÔNG build image + deploy prod — trước đây 1 commit sửa
+    # README vẫn đốt 25 phút CI gate + full Docker build + patch compose
+    # Coolify, tạo đợt deploy tranh chấp không cần thiết (nguồn incident
+    # 2026-08-30: 3 CD chạy đua). Lưu ý: paths-ignore áp cho mọi push event
+    # (kể cả tag) — nhưng release tag thật LUÔN kèm bump Cargo.toml/Cargo.lock
+    # nên không bao giờ bị skip; tag giả định chỉ đổi docs thì bỏ deploy cũng
+    # đúng (image không đổi). Muốn deploy thủ công bất kể path:
+    # workflow_dispatch.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".github/dependabot.yml"
+      - ".github/PULL_REQUEST_TEMPLATE.md"
+      - ".github/ISSUE_TEMPLATE/**"
   workflow_dispatch:
 
 env:

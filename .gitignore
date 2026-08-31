@@ -29,3 +29,7 @@ logs/
 
 # Uploads (nếu có)
 /uploads/
+
+# v3.6.0 — precompressed static assets (sinh lúc Docker build, không commit)
+static/**/*.gz
+static/**/*.br

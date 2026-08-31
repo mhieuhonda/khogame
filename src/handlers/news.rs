@@ -633,6 +633,7 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> AppResult<Response> {
     // Lookup news by slug WITHOUT status filter — owner cần xoá được
     // pending/rejected của chính mình (find_by_slug_public chặn status
@@ -650,6 +651,17 @@ pub async fn delete(
         return Err(AppError::Forbidden("Bạn không có quyền xóa".into()));
     }
     NewsRepo::delete(&state.db, full.id).await?;
+    // v3.6.0 FIX (UI-bug HTMX): nút xóa ở my_news dùng hx-delete +
+    // hx-target="closest .my-news-item" — Redirect 303 bị XHR follow →
+    // TRANG MY-NEWS FULL bị lồng vào item. Giờ: request HTMX → body rỗng
+    // (HTMX gỡ item khỏi DOM); request thường → redirect như cũ.
+    let is_htmx = headers
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    if is_htmx {
+        return Ok(Html(String::new()).into_response());
+    }
     Ok(Redirect::to("/my-news").into_response())
 }
 

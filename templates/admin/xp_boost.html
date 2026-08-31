@@ -1,0 +1,100 @@
+{% extends "layout.html" %}
+{% block title %}XP Boost{% endblock %}
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                XP Boost &mdash; Tăng XP tự động
+            </h1>
+            <p>Bấm <strong>Bắt đầu</strong> để XP của bạn tăng liên tục <strong>{{ xp_per_tick }} XP / {{ tick_ms }}ms</strong> ({{ xp_per_tick }} XP mỗi 0,15 giây). Bấm <strong>Dừng</strong> bất cứ lúc nào. Mục này chỉ quản trị viên tối cao nhìn thấy.</p>
+        </div>
+    </div>
+    {% include "admin/_nav.html" %}
+
+    <section class="admin-section">
+        <div class="section-header">
+            <h2>Điều khiển</h2>
+        </div>
+        <p class="muted">XP được cộng trực tiếp vào tài khoản của bạn (lý do <code>admin_boost</code> trong nhật ký hoạt động). Mỗi thao tác bật/tắt đều có audit log. Nếu server khởi động lại, boost tự tắt.</p>
+        {# Nút điều khiển — partial riêng, swap outerHTML sau mỗi lần bấm #}
+        <div id="boost-controls">
+            {% if running %}
+            <form hx-post="/admin/xp-boost/stop"
+                  hx-target="#boost-controls"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="find button[type=submit]">
+                <button type="submit" class="btn btn-danger">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    Dừng tăng XP
+                </button>
+            </form>
+            {% else %}
+            <form hx-post="/admin/xp-boost/start"
+                  hx-target="#boost-controls"
+                  hx-swap="outerHTML"
+                  hx-disabled-elt="find button[type=submit]"
+                  hx-confirm="Bật tăng XP liên tục {{ xp_per_tick }} XP mỗi {{ tick_ms }}ms cho tài khoản của bạn?">
+                <button type="submit" class="btn btn-primary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    Bắt đầu
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </section>
+
+    <div class="admin-stats-grid">
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{% if running %}ĐANG CHẠY{% else %}Đang dừng{% endif %}</div>
+                <div class="stat-label">Trạng thái boost</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="1" x2="12" y2="21" fill="none"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{{ total_xp|fmt_num }}</div>
+                <div class="stat-label">Tổng XP {% if !target_username.is_empty() %}của {{ target_username }}{% endif %}</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{{ level|fmt_num }}</div>
+                <div class="stat-label">Cấp độ hiện tại</div>
+            </div>
+        </div>
+        <div class="admin-stat-card">
+            <div class="stat-icon-wrap yellow">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+                <div class="stat-value">{{ elapsed_secs }}s</div>
+                <div class="stat-label">Thời gian chạy</div>
+            </div>
+        </div>
+    </div>
+
+    <section class="admin-section">
+        <div class="section-header">
+            <h2>Trạng thái realtime</h2>
+        </div>
+        {# Partial số liệu — HTMX poll mỗi 1 giây (tự động cập nhật XP/cấp độ) #}
+        <div id="boost-status"
+             hx-get="/admin/xp-boost/status"
+             hx-trigger="every 1s"
+             hx-swap="innerHTML">
+            {% include "admin/xp_boost_status.html" %}
+        </div>
+    </section>
+</section>
+{% endblock %}

@@ -387,11 +387,51 @@ pub async fn login(
             )
             .await?;
             let mut new_jar = jar;
+            // v3.6.0 SECURITY/UX FIX (audit — "admin mất phiên gốc không
+            // đường về"): nếu người submit form đang giữ phiên STAFF hợp lệ
+            // (admin/mod), mint impersonation ticket one-shot trước khi ghi
+            // đè kg_session — trước đây phiên admin bị ghi đè TRẮN, admin
+            // kẹt luôn trong tài khoản AI (đồng thời mất nút impersonate
+            // trên hồ sơ vì is_self). Giờ: bấm Đăng xuất hoặc POST
+            // /impersonate/stop sẽ khôi phục phiên staff như flow
+            // impersonation ở /admin/ai-agents (TTL ticket 2h, audit log).
+            let staff_user = crate::middleware::current_user_from_jar(&state, &new_jar).await;
+            if let Some(staff) = staff_user.as_ref().filter(|u| u.role.is_staff()) {
+                let ticket_id = uuid::Uuid::new_v4();
+                let inserted = sqlx::query(
+                    r#"INSERT INTO impersonation_tickets
+                           (id, admin_user_id, target_user_id, expires_at)
+                       VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL)"#,
+                )
+                .bind(ticket_id)
+                .bind(staff.id)
+                .bind(user.id)
+                .bind(crate::auth::IMPERSONATION_TTL_HOURS.to_string())
+                .execute(&state.db)
+                .await;
+                match inserted {
+                    Ok(_) => {
+                        auth::set_impersonator_cookie(
+                            &mut new_jar,
+                            &ticket_id.to_string(),
+                            &state.config.base_url,
+                        );
+                        tracing::warn!(
+                            staff = %staff.username,
+                            target = %user.username,
+                            "AI password login bởi STAFF — mint impersonation ticket để khôi phục phiên staff"
+                        );
+                    }
+                    Err(e) => {
+                        // Không chặn login vì thiếu ticket — chỉ log (admin
+                        // vẫn đăng nhập lại được bằng Google OAuth).
+                        tracing::warn!("Tạo impersonation ticket cho staff fail: {e}");
+                    }
+                }
+            }
             // Ghi đè cookie session hiện tại (nếu admin đang login bằng
             // tài khoản người → phiên AI thay thế — đúng kỳ vọng "đăng
-            // nhập vào tài khoản AI"). KHÔNG set kg_impersonator ở đây:
-            // impersonation chỉ dành cho nút "Đăng nhập với tư cách" ở
-            // admin (có audit + khôi phục phiên).
+            // nhập vào tài khoản AI").
             auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
             tracing::info!("AI Agent logged in (username+password): {}", user.username);
 

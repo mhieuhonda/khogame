@@ -285,6 +285,8 @@ impl ActivityEvent {
             "word_chain" => "đã nối từ hợp lệ",
             "shop_spend" => "đã mua vật phẩm cửa hàng",
             "mystery_box" => "đã mở mystery box",
+            // v3.6.0 — Admin XP Boost
+            "admin_boost" => "nhận XP boost từ quản trị",
             _ => "có hoạt động mới",
         }
     }

@@ -2,7 +2,7 @@
 //!
 //! Spin: 1 lượt/ngày (PK user+date), trọng số chọn prize ở models
 //! (hàm thuần test được), XP cộng qua cùng tx.
-//! Trivia: mỗi ngày chọn 3 câu chưa trả lời (deterministic theo user+ngày),
+//! Trivia: mỗi ngày chọn N câu chưa trả lời (deterministic theo user+ngày),
 //! đáp án chỉ chấm ở server (client không bao giờ nhận correct_index),
 //! mỗi câu hỏi 1 user trả lời tối đa 1 lần trong đời (chặn retry farm).
 
@@ -13,8 +13,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Số câu hỏi mỗi ngày.
-pub const TRIVIA_PER_DAY: i64 = 3;
-/// XP mỗi câu đúng + thưởng cả 3.
+/// v3.6.0 — tăng 3 → 5 theo yêu cầu "thêm nhiều câu hỏi hằng ngày
+/// hơn" (bank cũng mở rộng 16 → 90 câu ở migration 034 — 5 câu/ngày đủ
+/// dùng 18 ngày không lặp câu).
+pub const TRIVIA_PER_DAY: i64 = 5;
+/// XP mỗi câu đúng + thưởng đủ cả ngày.
 pub const TRIVIA_XP_PER_CORRECT: i32 = 10;
 pub const TRIVIA_ALL_BONUS: i32 = 20;
 
@@ -161,7 +164,7 @@ impl TriviaRepo {
             .await?;
         if answered_today >= TRIVIA_PER_DAY {
             return Err(AppError::BadRequest(
-                "Bạn đã trả lời đủ 3 câu hỏi hôm nay — quay lại vào ngày mai!".into(),
+                "Bạn đã trả lời đủ số câu hỏi hôm nay — quay lại vào ngày mai!".into(),
             ));
         }
         let row: Option<(i32, String, serde_json::Value)> = sqlx::query_as(
@@ -199,7 +202,7 @@ impl TriviaRepo {
         if answered_today >= TRIVIA_PER_DAY {
             tx.rollback().await?;
             return Err(AppError::BadRequest(
-                "Bạn đã trả lời đủ 3 câu hỏi hôm nay — quay lại vào ngày mai!".into(),
+                "Bạn đã trả lời đủ số câu hỏi hôm nay — quay lại vào ngày mai!".into(),
             ));
         }
         // PK (user_id, question_id) chống double-answer — DO NOTHING rồi
@@ -333,8 +336,10 @@ mod tests {
     use super::*;
 
     /// Compile-time guards: constants vô lý → fail build ngay (pattern janitor).
+    /// v3.6.0: TRIVIA_PER_DAY 3 → 5 (mở rộng bank 16 → 90 câu ở migration 034).
     const _: () = {
-        assert!(TRIVIA_PER_DAY == 3);
+        assert!(TRIVIA_PER_DAY == 5);
+        assert!(TRIVIA_PER_DAY > 0 && TRIVIA_PER_DAY <= 20);
         assert!(TRIVIA_XP_PER_CORRECT > 0);
         assert!(TRIVIA_ALL_BONUS >= TRIVIA_XP_PER_CORRECT);
     };

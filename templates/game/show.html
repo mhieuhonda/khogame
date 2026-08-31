@@ -43,7 +43,7 @@
             {% match game.cover_image %}
             {% when Option::Some with (url) %}
                 {% if !url.is_empty() %}
-                <img src="{{ url }}" alt="{{ game.title }}" width="480" height="270" decoding="async">
+                <img src="{{ url }}" alt="{{ game.title }}" width="480" height="270" decoding="async" fetchpriority="high">
                 {% else %}
                 <div class="cover-fallback cover-fallback-lg">{{ game.title|initials }}</div>
                 {% endif %}
@@ -451,7 +451,20 @@
 
 <script>
 function openReportModal(slug) {
-    fetch(`/games/${slug}/report-form`).then(r => r.text()).then(html => {
+    // v3.6.0 FIX: khách chưa đăng nhập → /games/{slug}/report-form yêu cầu
+    // AuthUser → 303 /login → fetch follow redirect và nhét HTML TRANG
+    // ĐĂNG NHẬP vỡ giao diện vào modal. Giờ phát hiện redirect (r.redirected
+    // hoặc URL cuối chứa /login) → chuyển cả trang sang /login đúng chuẩn.
+    fetch(`/games/${slug}/report-form`).then(r => {
+        if (r.redirected || r.url.includes('/login')) {
+            // /login không đọc ?next= (chỉ /auth/google đọc) — chuyển thẳng
+            // trang đăng nhập, đăng nhập xong user quay lại bằng nút Back.
+            window.location.href = '/login';
+            return;
+        }
+        return r.text();
+    }).then(html => {
+        if (!html) return;
         const container = document.getElementById('modal-container');
         container.innerHTML = html;
         // Focus control đầu tiên — keyboard user không phải Tab từ đầu

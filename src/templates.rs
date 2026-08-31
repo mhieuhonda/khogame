@@ -92,6 +92,8 @@ impl_template_response!(
     FeedbackTemplate,
     AdminFeedbackTemplate,
     ArcadeReviewTemplate,
+    // v3.6.0 — Admin XP Boost (1000 XP / 0.15s start/stop)
+    AdminXpBoostTemplate,
 );
 
 /// Home page
@@ -1677,4 +1679,62 @@ pub struct AdminFeedbackTemplate {
     pub is_admin: bool,
     /// Some(true) khi đang ẩn góp ý bảo mật khỏi moderator (hiện ghi chú).
     pub security_hidden: Option<bool>,
+}
+
+// ============================================================
+// v3.6.0 — ADMIN XP BOOST (1000 XP / 0.15 giây, start/stop)
+// ============================================================
+
+/// Trang /admin/xp-boost — bảng điều khiển tăng XP tự động (CHỈ ADMIN).
+#[derive(Template)]
+#[template(path = "admin/xp_boost.html")]
+pub struct AdminXpBoostTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Boost đang chạy?
+    pub running: bool,
+    /// Username admin đang được cộng XP (rỗng khi dừng).
+    pub target_username: String,
+    /// Tổng XP hiện tại của target (0 khi dừng).
+    pub total_xp: i64,
+    /// Cấp độ hiện tại của target (0 khi dừng).
+    pub level: i64,
+    /// Số tick +XP đã cộng trong phiên hiện tại.
+    pub ticks: u64,
+    /// Tổng XP đã cộng trong phiên (= ticks × xp_per_tick).
+    pub xp_added: u64,
+    /// Số giây đã chạy.
+    pub elapsed_secs: u64,
+    /// XP mỗi tick (hiển thị).
+    pub xp_per_tick: i32,
+    /// Chu kỳ tick ms (hiển thị).
+    pub tick_ms: u64,
+}
+
+/// Partial nút điều khiển XP Boost (Bắt đầu/Dừng) — POST start/stop
+/// trả về partial này, swap outerHTML vào #boost-controls.
+#[derive(Template)]
+#[template(path = "admin/xp_boost_controls.html")]
+pub struct XpBoostControlsPartial {
+    /// Đang chạy → render nút Dừng; dừng → render nút Bắt đầu.
+    pub running: bool,
+}
+
+/// Partial trạng thái số liệu XP Boost — GET /admin/xp-boost/status
+/// (HTMX poll 1s) + include trực tiếp trong admin/xp_boost.html.
+/// Field trùng tên với AdminXpBoostTemplate để dùng chung 1 file partial.
+#[derive(Template)]
+#[template(path = "admin/xp_boost_status.html")]
+pub struct XpBoostStatusPartial {
+    pub running: bool,
+    pub target_username: String,
+    pub total_xp: i64,
+    pub level: i64,
+    pub ticks: u64,
+    /// Tổng XP đã cộng trong phiên (= ticks × XP_PER_TICK, tính sẵn
+    /// vì askama không cast kiểu trong expression).
+    pub xp_added: u64,
+    pub elapsed_secs: u64,
+    pub xp_per_tick: i32,
+    pub tick_ms: u64,
 }

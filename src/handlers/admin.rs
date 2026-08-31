@@ -13,7 +13,7 @@ use crate::templates::{
     AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate, AdminNewsCategoriesTemplate,
     AdminNewsPendingTemplate, AdminReportsTemplate, AdminReposTemplate, AdminSessionsTemplate,
     AdminSettingsTemplate, AdminTemplate, AdminUserDetailTemplate, AdminUsersTemplate,
-    CommentItemPartial, NewsCategoryWithCountView,
+    CommentItemPartial, NewsCategoryWithCountView, XpBoostControlsPartial, XpBoostStatusPartial,
 };
 use askama::Template;
 use axum::extract::{Path, Query, State};
@@ -2385,7 +2385,10 @@ pub async fn stop_impersonation(
                         &token_hash,
                         "impersonation-restore",
                         None,
-                        30,
+                        // v3.6.0 SECURITY FIX (audit F6): TTL restore
+                        // 30 NGÀY → 4 GIỜ — ticket 2h bị đánh cắp trước đây
+                        // cấp session admin suốt 30 ngày. 4h đủ dùng.
+                        4,
                     )
                     .await?;
                     crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
@@ -2800,4 +2803,177 @@ pub async fn achievements_admin(
         earned_today: earned_today.unwrap_or(0),
         checkins_today: checkins_today.unwrap_or(0),
     })
+}
+
+// ============================================================
+// v3.6.0 — ADMIN XP BOOST (1000 XP / 0.15 giây, start/stop)
+// ------------------------------------------------------------
+// Trang /admin/xp-boost — CHỈ ADMIN (is_admin, mod không thấy — đúng
+// yêu cầu "chỉ admin thấy"). State sống ở AppState::xp_boost, task
+// nền janitor::run_xp_boost cộng XP. 4 endpoint:
+//   GET  /admin/xp-boost          → trang đầy đủ
+//   POST /admin/xp-boost/start    → bật (trả partial controls)
+//   POST /admin/xp-boost/stop     → tắt (trả partial controls)
+//   GET  /admin/xp-boost/status   → partial số liệu (HTMX poll 1s)
+// ============================================================
+
+// Partial struct (XpBoostControlsPartial + XpBoostStatusPartial) nằm ở
+// templates.rs — cần cùng module với `mod filters` để dùng |fmt_num.
+
+/// Thu thập dữ liệu hiển thị hiện tại của boost (None-safe).
+async fn xp_boost_view_data(state: &AppState) -> XpBoostStatusPartial {
+    use crate::state::xp_boost;
+    let running = state.xp_boost.is_running();
+    let target = state.xp_boost.target().await;
+    let ticks = state.xp_boost.ticks();
+    let elapsed_secs = state
+        .xp_boost
+        .started_at()
+        .await
+        .map_or(0, |t| t.elapsed().as_secs());
+    let (username, total_xp, level) = match target {
+        Some(uid) => {
+            let (u, xp) = tokio::join!(
+                UserRepo::find_by_id(&state.db, uid),
+                crate::repositories::GamificationRepo::total_xp(&state.db, uid),
+            );
+            let xp = xp.unwrap_or(0);
+            let level = crate::models::gamification::level_from_xp(xp).level;
+            let username = u
+                .ok()
+                .flatten()
+                .map_or_else(|| "(không rõ)".to_string(), |u| u.username);
+            (username, xp, level)
+        }
+        None => (String::new(), 0, 0),
+    };
+    XpBoostStatusPartial {
+        running,
+        target_username: username,
+        total_xp,
+        level,
+        ticks,
+        xp_added: ticks * u64::from(xp_boost::XP_PER_TICK.unsigned_abs()),
+        elapsed_secs,
+        xp_per_tick: xp_boost::XP_PER_TICK,
+        tick_ms: xp_boost::TICK_MS,
+    }
+}
+
+/// GET /admin/xp-boost — trang quản lý XP Boost (chỉ admin).
+/// # Errors
+///
+/// Trả về lỗi khi không đủ quyền hoặc DB fail.
+pub async fn xp_boost_page(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<crate::templates::AdminXpBoostTemplate> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao được dùng XP Boost".into(),
+        ));
+    }
+    let (status, unread) = tokio::join!(xp_boost_view_data(&state), unread_count(&state, user.id),);
+    Ok(crate::templates::AdminXpBoostTemplate {
+        current_user: Some(user),
+        unread_notifications: unread,
+        running: status.running,
+        target_username: status.target_username,
+        total_xp: status.total_xp,
+        level: status.level,
+        ticks: status.ticks,
+        xp_added: status.xp_added,
+        elapsed_secs: status.elapsed_secs,
+        xp_per_tick: status.xp_per_tick,
+        tick_ms: status.tick_ms,
+    })
+}
+
+/// POST /admin/xp-boost/start — bật tăng XP liên tục cho admin hiện tại.
+/// # Errors
+///
+/// Trả về lỗi khi không đủ quyền.
+pub async fn xp_boost_start(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Html<String>> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao được dùng XP Boost".into(),
+        ));
+    }
+    state.xp_boost.start(user.id).await;
+    audit(
+        &state,
+        user.id,
+        "xp_boost.start",
+        "system",
+        &user.id.to_string(),
+        &format!(
+            "admin {} bật XP boost ({} XP/{}ms)",
+            user.username,
+            crate::state::xp_boost::XP_PER_TICK,
+            crate::state::xp_boost::TICK_MS
+        ),
+    )
+    .await;
+    tracing::warn!(admin = %user.username, "XP BOOST: BẬT");
+    let partial = XpBoostControlsPartial { running: true };
+    Ok(Html(partial.render()?))
+}
+
+/// POST /admin/xp-boost/stop — dừng tăng XP.
+/// # Errors
+///
+/// Trả về lỗi khi không đủ quyền.
+pub async fn xp_boost_stop(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Html<String>> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao được dùng XP Boost".into(),
+        ));
+    }
+    let stopped_for = state.xp_boost.stop().await;
+    let ticks = state.xp_boost.ticks();
+    let xp_added = ticks as i64 * i64::from(crate::state::xp_boost::XP_PER_TICK);
+    audit(
+        &state,
+        user.id,
+        "xp_boost.stop",
+        "system",
+        &stopped_for.map_or_else(String::new, |u| u.to_string()),
+        &format!(
+            "admin {} tắt XP boost (đã cộng {ticks} tick = {xp_added} XP)",
+            user.username
+        ),
+    )
+    .await;
+    tracing::warn!(admin = %user.username, "XP BOOST: TẮT");
+    let partial = XpBoostControlsPartial { running: false };
+    Ok(Html(partial.render()?))
+}
+
+/// GET /admin/xp-boost/status — partial số liệu (HTMX poll 1s).
+/// # Errors
+///
+/// Trả về lỗi khi không đủ quyền hoặc DB fail.
+pub async fn xp_boost_status(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Response> {
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao được dùng XP Boost".into(),
+        ));
+    }
+    let data = xp_boost_view_data(&state).await;
+    let mut resp = Html(data.render()?).into_response();
+    // Partial động — tuyệt đối không cache (mỗi giây số XP đổi).
+    resp.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    Ok(resp)
 }

@@ -61,10 +61,21 @@ pub async fn show_profile(
         UserRepo::get_preferences(&state.db, user.id),
         async {
             if user.role.is_ai_agent() {
-                AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
-                    .await
-                    .ok()
-                    .flatten()
+                match AiAgentRepo::find_profile_by_user_id(&state.db, user.id).await {
+                    Ok(profile) => profile,
+                    Err(e) => {
+                        // v3.6.0 FIX (bug nút AI Agent): trước đây `.ok().flatten()`
+                        // nuốt lỗi DB im lặng → ai_profile = None → nút
+                        // "Đăng nhập tài khoản này" + mọi card AI BIẾN MẤT
+                        // mà không một dòng log. Giờ vẫn fail-open (hồ sơ
+                        // vẫn render) nhưng log warn để admin truy vết.
+                        tracing::warn!(
+                            "Fetch ai_agent_profiles cho user {} fail: {} — card AI + nút impersonate ẩn",
+                            user.username, e
+                        );
+                        None
+                    }
+                }
             } else {
                 None
             }
@@ -214,7 +225,16 @@ pub async fn show_profile(
     // CHỈ admin (không phải mod) thấy nút "Đăng nhập tài khoản này" trên
     // hồ sơ AI Agent — yêu cầu rõ của spec v3.5.0 (mod vẫn dùng nút ở
     // /admin/ai-agents như cũ).
-    let can_impersonate_ai = ai_profile.is_some()
+    //
+    // v3.6.0 FIX (BUG USER BÁO — "admin vào hồ sơ glm53 không thấy nút đăng
+    // nhập AI Agent"): điều kiện cũ `ai_profile.is_some()` phụ thuộc việc
+    // fetch hàng `ai_agent_profiles` thành công (fail-open im lặng — lỗi DB
+    // hay thiếu hàng profile → nút mất tích không dấu vết). Thẩm quyền để
+    // hiện nút là VAI TRÒ của user (user.role.is_ai_agent()), KHÔNG PHẢI sự
+    // tồn tại của hàng profile (đó chỉ là dữ liệu hiển thị). Endpoint
+    // /admin/ai-agents/{id}/login-as tự kiểm tra role AiAgent + ban — dùng
+    // role đây là tín hiệu đúng và ổn định hơn.
+    let can_impersonate_ai = user.role.is_ai_agent()
         && !is_self
         && current_user.as_ref().is_some_and(|cu| cu.role.is_admin());
 

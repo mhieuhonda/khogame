@@ -749,6 +749,10 @@ pub fn normalize_path_for_rate_limit(path: &str) -> String {
         "reset-password",
         "login-as",
         "params",
+        // v3.6.0 — action segments của /admin/xp-boost/* (start/stop/status
+        // + poll status 1s/lần → bucket riêng, không đốt bucket /admin/{x}
+        // chung của các trang admin khác).
+        "xp-boost",
         // danh sách đặc biệt
         "latest",
         "trending",
@@ -1400,6 +1404,23 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
         return response;
     }
 
+    // v3.6.0 FIX (nguồn 500 thật): nếu Content-Length đã biết và > 4MB →
+    // BỎ QUA ETag (trả response nguyên vẹn) thay vì đọc body rồi trả 500
+    // rỗng. Trước đây trang HTML >4MB (tin dài + syntax highlight) rơi vào
+    // nhánh `Err(_) => 500` — user thấy trang trắng, không marker, không
+    // incident_id (không qua AppError).
+    if let Some(cl) = response
+        .headers()
+        .get(axum::http::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        if cl > 4 * 1024 * 1024 {
+            tracing::warn!("HTML body {cl} bytes > 4MB — skip ETag/hash (không còn 500 rỗng)");
+            return response;
+        }
+    }
+
     // Snapshot headers trước khi consume body — để rebuild response giữ
     // nguyên CSP/HSTS/X-Frame-Options/etc. từ security_headers.
     let original_headers = response.headers().clone();
@@ -1410,10 +1431,29 @@ pub async fn cache_control_html(request: Request, next: Next) -> Response {
     // v2.4 — Lower limit từ 16MB xuống 4MB: bài tin dài 50K chars + markdown
     // syntax highlight + 6 post-process pass ~ 1-2MB max. 4MB đủ an toàn
     // cho mọi page, giảm memory pressure khi concurrent (vd 100 users *
-    // 16MB = 1.6GB tạm). Vượt 4MB → skip ETag, vẫn response bình thường.
+    // 16MB = 1.6GB tạm). Vượt 4MB → v3.6.0: trả trang lỗi có giao diện
+    // (text/html + message thân thiện) thay vì 500 body rỗng trơn.
     let body = match axum::body::to_bytes(response.into_body(), 4 * 1024 * 1024).await {
         Ok(bytes) => bytes,
-        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Err(e) => {
+            tracing::error!("Đọc body HTML để hash ETag thất bại: {e}");
+            let mut resp = (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::response::Html(
+                    "<!DOCTYPE html><html lang=\"vi\"><head><meta charset=\"utf-8\"><title>Lỗi hệ thống</title></head>\
+                     <body style=\"font-family:system-ui,sans-serif;text-align:center;padding:3rem 1rem\">\
+                     <h1 style=\"font-size:1.5rem\">Lỗi hệ thống</h1>\
+                     <p>Trang quá lớn để xử lý cache — vui lòng tải lại trang.</p>\
+                     <p><a href=\"/\" style=\"color:#6d5ae0\">Về trang chủ</a></p></body></html>",
+                ),
+            )
+                .into_response();
+            resp.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            );
+            return resp;
+        }
     };
 
     // Compute ETag (weak) từ body content + length. DefaultHasher đủ cho
@@ -1541,6 +1581,97 @@ fn set_html_cache_headers(headers: &mut axum::http::HeaderMap, has_session: bool
 //   - Request khác (curl, API client với Accept: application/json...)
 //     → giữ nguyên như cũ (không đoán mò content-type).
 // ============================================================
+/// v3.6.0 — Tổng hợp `ErrorPageInfo` cho các response lỗi KHÔNG sinh ra từ
+/// `AppError` (không có marker): rejection của extractor axum (Form/Query/
+/// Path → 400 text/plain), rate_limit (429), request_timeout (504)…
+///
+/// Điều kiện để "trang trí":
+/// - status 4xx/5xx (trừ 401 — error.rs đã tự redirect về /login).
+/// - path KHÔNG thuộc nhóm API/bot/asset (/api, /ai, /chat, /rss, /sitemap,
+///   /static, /uploads, /health, /manifest, /opensearch, /robots…) — client
+///   các path này là chương trình, body plain-text là hành vi đúng.
+/// - Content-Type PHẢI là text/plain hoặc KHÔNG có — nếu body đã là HTML
+///   (fallback not_found, trang bảo trì 200…) thì bỏ qua, tránh đè trang
+///   đã đẹp sẵn.
+///
+/// Trả None → error_page_mw giữ nguyên response.
+fn synthesize_plain_error_info(
+    path: &str,
+    response: &Response,
+) -> Option<crate::error::ErrorPageInfo> {
+    use crate::error::ErrorPageInfo;
+
+    let status = response.status().as_u16();
+    if !(400..=599).contains(&status) || status == 401 {
+        return None;
+    }
+    // API/bot/asset paths — plain text là đúng chuẩn cho client chương trình.
+    if path.starts_with("/api/")
+        || path.starts_with("/ai/")
+        || path.starts_with("/chat/")
+        || path.starts_with("/static/")
+        || path.starts_with("/uploads/")
+        || path.starts_with("/rss")
+        || path.starts_with("/sitemap")
+        || path.starts_with("/robots")
+        || path.starts_with("/opensearch")
+        || path.starts_with("/manifest")
+        || path.starts_with("/health")
+        || path.starts_with("/.well-known/")
+    {
+        return None;
+    }
+    let ct_is_plain = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/plain"));
+    let ct_missing = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .is_none();
+    if !ct_is_plain && !ct_missing {
+        return None; // đã là HTML/JSON — không đè
+    }
+
+    let message = match status {
+        400 => {
+            "Yêu cầu không hợp lệ — dữ liệu gửi lên bị lỗi định dạng. Kiểm tra lại rồi thử lại nhé."
+                .to_string()
+        }
+        403 => "Bạn không có quyền truy cập trang này.".to_string(),
+        404 => "Không tìm thấy trang bạn đang tìm.".to_string(),
+        405 => "Phương thức request không được hỗ trợ cho trang này.".to_string(),
+        408 => "Hết thời gian chờ yêu cầu — vui lòng thử lại.".to_string(),
+        413 => "Dữ liệu gửi lên quá lớn.".to_string(),
+        429 => "Bạn thao tác quá nhanh — nghỉ một chút rồi thử lại nhé.".to_string(),
+        500 => "Lỗi hệ thống, vui lòng thử lại sau ít phút.".to_string(),
+        502 | 504 => "Yêu cầu xử lý quá thời gian — vui lòng thử lại sau.".to_string(),
+        503 => "Hệ thống đang bảo trì tạm thời, xin quay lại sau.".to_string(),
+        _ => "Có lỗi xảy ra khi xử lý yêu cầu.".to_string(),
+    };
+
+    // 5xx: sinh incident_id + log — nhất quán với AppError::into_response
+    // để user báo cáo ID và admin correlate với log (error.rs).
+    let request_id = (status >= 500)
+        .then(uuid::Uuid::new_v4)
+        .map(|u| u.to_string());
+    if let Some(ref rid) = request_id {
+        tracing::error!(
+            incident_id = %rid,
+            status,
+            path,
+            "Lỗi plain-text (không qua AppError) được error_page_mw trang trí — tra ID này trong log"
+        );
+    }
+
+    Some(ErrorPageInfo {
+        status,
+        message,
+        request_id,
+    })
+}
+
 pub async fn error_page_mw(
     State(state): State<Arc<AppState>>,
     request: Request,
@@ -1558,20 +1689,37 @@ pub async fn error_page_mw(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|a| a.contains("text/html"));
     let jar = CookieJar::from_headers(request.headers());
+    // v3.6.0 — capture path TRƯỚC khi next.run() consume request (dùng
+    // cho synthesize lỗi plain-text phía dưới).
+    let request_path = request.uri().path().to_string();
 
     let response = next.run(request).await;
 
-    // Chỉ can thiệp khi response là lỗi từ AppError (có marker) VÀ
-    // request đến từ browser navigation (không phải HTMX, chấp nhận HTML).
+    // Chỉ can thiệp khi request đến từ browser navigation (không phải
+    // HTMX, chấp nhận HTML).
     if is_htmx || !accepts_html {
         return response;
     }
-    let Some(info) = response
+
+    // v3.6.0 FIX ("CỰC NHIỀU lỗi 400/500" hiển thị trần): ngoài lỗi từ
+    // AppError (có marker), còn 2 nguồn lỗi 4xx/5xx KHÔNG có marker:
+    //   1) Rejection của extractor axum (Form/Query/Path parse fail) —
+    //      trả 400 body text/plain trơn "Failed to parse..." không CSS.
+    //   2) rate_limit 429 / request_timeout 504 — text/plain trơn.
+    // Browser navigation đến các lỗi này hiện "trang trắng chữ trơn" —
+    // user báo "web nhiều lỗi 400". Giờ tổng hợp ErrorPageInfo từ status
+    // + content-type để render trang lỗi đầy đủ giao diện (giữ nguyên
+    // partial trơn cho HTMX/API — branch return phía trên đã lọc).
+    let info = match response
         .extensions()
         .get::<crate::error::ErrorPageInfo>()
         .cloned()
-    else {
-        return response;
+    {
+        Some(i) => i,
+        None => match synthesize_plain_error_info(&request_path, &response) {
+            Some(i) => i,
+            None => return response,
+        },
     };
 
     // Lấy user hiện hành (best-effort — lỗi DB thì render trang lỗi
@@ -2261,11 +2409,17 @@ pub async fn request_timeout(request: Request, next: Next) -> Response {
     if is_ws_route && request.headers().get(axum::http::header::UPGRADE).is_some() {
         return next.run(request).await;
     }
-    let secs: u64 = std::env::var("REQUEST_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse().ok())
-        .filter(|v: &u64| *v > 0 && *v <= 600)
-        .unwrap_or(30);
+    // v3.6.0 PERF: đọc env + parse MỘT LẦN duy nhất (OnceLock) thay vì mỗi
+    // request (env lookup + allocate + parse chuỗi). Giá trị semantics giữ
+    // nguyên: default 30, clamp 1..=600, 0 hoặc parse fail → default.
+    static TIMEOUT_SECS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    let secs: u64 = *TIMEOUT_SECS.get_or_init(|| {
+        std::env::var("REQUEST_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .filter(|v: &u64| *v > 0 && *v <= 600)
+            .unwrap_or(30)
+    });
     let timeout = Duration::from_secs(secs);
     match tokio::time::timeout(timeout, next.run(request)).await {
         Ok(resp) => resp,
@@ -2291,4 +2445,202 @@ pub async fn request_timeout(request: Request, next: Next) -> Response {
             resp
         }
     }
+}
+
+// ============================================================
+// v3.6.0 PERF — MICRO-CACHE HTML CHO KHÁCH (ANONYMOUS)
+// ------------------------------------------------------------
+// Vấn đề: MỖI request anonymous của homepage chạy đủ ~18 query DB +
+// render askama cho nội dung GIỐNG HỆT nhau giữa 2 lần data đổi. Traffic
+// khách chiếm phần lớn → DB pool (25 conn) là nút cổ chai đầu tiên.
+//
+// Giải pháp: cache HTML cuối (sau handler, trước mọi layer trang trí)
+// trong HashMap in-memory, TTL 5s, CHỈ áp cho:
+//   - GET/HEAD + Accept: text/html + KHÔNG header HX-Request (partial
+//     HTMX không cache) — full page navigation.
+//   - Request KHÔNG mang cookie kg_session (đăng nhập bypass tuyệt đối
+//     — không bao giờ nhận HTML render cho người khác, kể cả khách mang
+//     cookie session hết hạn — an toàn hơn là tiếc).
+//   - Path nằm trong MICRO_CACHE_PATHS (trang công khai topo).
+//   - Response 2xx + text/html + KHÔNG Set-Cookie + body < 512KB.
+//
+// Layer ordering: INNERMOST (trong rate_limit) → hit cache vẫn đi qua
+// rate_limit (bucket vẫn đếm), maintenance_guard (503 khi bảo trì),
+// security_headers, ETag layer (hash body cache cho 304), compression.
+// Lộ trình "không đổi giao diện": HTML byte-for-byte giống render thường.
+//
+// Env: MICRO_CACHE_SECS (default 5, 0 = tắt hoàn toàn).
+// ============================================================
+
+/// Path được micro-cache — chỉ các trang công khai, nội dung giống hệt
+/// nhau cho mọi khách trong cửa sổ TTL.
+const MICRO_CACHE_PATHS: &[&str] = &[
+    "/",
+    "/games",
+    "/games/latest",
+    "/games/trending",
+    "/games/top-rated",
+    "/games/downloads",
+    "/games/featured",
+    "/news",
+    "/categories",
+    "/about",
+    "/terms",
+    "/privacy",
+];
+
+/// Giới hạn: 64 entry × ~500KB = ~32MB tệ đa — phòng kẻ spam ?page=1..9999
+/// (path khác query khác key) tràn RAM.
+const MICRO_CACHE_MAX_ENTRIES: usize = 64;
+const MICRO_CACHE_MAX_BODY: usize = 512 * 1024;
+
+/// Entry cache: parts (status + headers của RESPONSE) + body bytes.
+struct MicroCacheEntry {
+    stored_at: std::time::Instant,
+    parts: axum::http::response::Parts,
+    body: axum::body::Bytes,
+}
+
+type MicroCacheMap = HashMap<String, MicroCacheEntry>;
+
+static MICRO_CACHE: std::sync::OnceLock<std::sync::Mutex<MicroCacheMap>> =
+    std::sync::OnceLock::new();
+
+/// TTL micro-cache (giây) — đọc env MỘT LẦN. 0 = tắt.
+fn micro_cache_ttl() -> u64 {
+    static TTL: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *TTL.get_or_init(|| {
+        std::env::var("MICRO_CACHE_SECS")
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .filter(|v| *v <= 300)
+            .unwrap_or(5)
+    })
+}
+
+/// Middleware micro-cache — chi tiết thiết kế xem comment block phía trên.
+pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
+    let ttl = micro_cache_ttl();
+    if ttl == 0 {
+        return next.run(request).await;
+    }
+
+    let method = request.method().clone();
+    let is_get = method == axum::http::Method::GET || method == axum::http::Method::HEAD;
+    let path = request.uri().path().to_string();
+    let query = request
+        .uri()
+        .query()
+        .map(|q| q.to_string())
+        .unwrap_or_default();
+
+    // Điều kiện áp cache — kiểm tra RẺ trước khi đụng gì đắt hơn.
+    let eligible = is_get
+        && MICRO_CACHE_PATHS.contains(&path.as_str())
+        && request
+            .headers()
+            .get(axum::http::header::ACCEPT)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|a| a.contains("text/html"))
+        && !request
+            .headers()
+            .get("hx-request")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.eq_ignore_ascii_case("true"))
+        // Có cookie session (kể cả hết hạn) → bypass: render riêng cho
+        // user này. Cookie anon của rate-limit KHÔNG ảnh hưởng (nó nằm
+        // ngoài phạm vi HTML — response cache không chứa Set-Cookie).
+        && !request
+            .headers()
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|c| c.contains(&format!("{SESSION_COOKIE}=")));
+
+    if !eligible {
+        return next.run(request).await;
+    }
+
+    let cache_key = if query.is_empty() {
+        path.clone()
+    } else {
+        format!("{path}?{query}")
+    };
+
+    // Tra cache — MỘT lock duy nhất cho cả check + clone (nếu tách 2 lock,
+    // entry có thể bị LRU-evict giữa chừng → expect panic → 500 oan).
+    let now = std::time::Instant::now();
+    let hit_entry: Option<(axum::http::response::Parts, axum::body::Bytes)> =
+        MICRO_CACHE.get().and_then(|map| {
+            let map = map
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            map.get(&cache_key).and_then(|entry| {
+                // Entry quá TTL → coi như miss (entry stale được dọn lazy
+                // ở lần store kế tiếp; không xoá tại đây để tránh giữ write
+                // lock lâu).
+                (now.duration_since(entry.stored_at).as_secs() < ttl)
+                    .then(|| (entry.parts.clone(), entry.body.clone()))
+            })
+        });
+    if let Some((parts, body)) = hit_entry {
+        let mut resp = Response::from_parts(parts, axum::body::Body::from(body));
+        // Header quan sát — devtools/network tab thấy hit ngay.
+        resp.headers_mut()
+            .insert("x-micro-cache", HeaderValue::from_static("hit"));
+        return resp;
+    }
+
+    // Miss → chạy handler như thường.
+    let response = next.run(request).await;
+
+    // Chỉ cache response 2xx HTML không kèm Set-Cookie và body vừa phải.
+    if !response.status().is_success() {
+        return response;
+    }
+    let has_set_cookie = response
+        .headers()
+        .contains_key(axum::http::header::SET_COOKIE);
+    let ct_is_html = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|ct| ct.starts_with("text/html"));
+    if has_set_cookie || !ct_is_html {
+        return response;
+    }
+
+    // Buffer body để lưu — vượt MAX thì bỏ (không cache, response trả
+    // nguyên vẹn).
+    let (parts, body_stream) = response.into_parts();
+    let body = match axum::body::to_bytes(body_stream, MICRO_CACHE_MAX_BODY).await {
+        Ok(b) => b,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    if let Some(map) = MICRO_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Lười dọn: quá số entry → drop các entry cũ nhất (hoặc stale).
+        if map.len() >= MICRO_CACHE_MAX_ENTRIES {
+            let mut keys: Vec<(String, std::time::Instant)> =
+                map.iter().map(|(k, e)| (k.clone(), e.stored_at)).collect();
+            keys.sort_by_key(|(_, t)| *t);
+            let excess = map.len() - MICRO_CACHE_MAX_ENTRIES + 1;
+            for (k, _) in keys.into_iter().take(excess) {
+                map.remove(&k);
+            }
+        }
+        map.insert(
+            cache_key,
+            MicroCacheEntry {
+                stored_at: now,
+                parts: parts.clone(),
+                body: body.clone(),
+            },
+        );
+    }
+
+    // Trả lại response y nguyên (đúng status/headers/body của handler).
+    Response::from_parts(parts, axum::body::Body::from(body))
 }

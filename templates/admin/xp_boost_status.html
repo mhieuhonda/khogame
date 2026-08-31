@@ -1,0 +1,17 @@
+{# Partial TRẠNG THÁI XP BOOST — render bởi:
+   - GET /admin/xp-boost/status (HTMX poll 1s, Cache-Control: no-store)
+   - include trực tiếp trong admin/xp_boost.html (render đầu)
+   Biến: running, target_username, total_xp, level, ticks, xp_added,
+   elapsed_secs, xp_per_tick, tick_ms — 2 struct (AdminXpBoostTemplate &
+   XpBoostStatusPartial) khai báo trùng tên field. #}
+{% if running %}
+<div class="alert alert-success" role="status">
+    <strong>ĐANG TĂNG XP</strong> — {{ target_username }}: <strong>{{ total_xp|fmt_num }} XP</strong> · Cấp {{ level|fmt_num }} · Đã cộng {{ ticks|fmt_num }} tick (+{{ xp_added|fmt_num }} XP) trong {{ elapsed_secs }}s.
+    <span class="muted">(tốc độ +{{ xp_per_tick }} XP / {{ tick_ms }}ms)</span>
+</div>
+{% else %}
+<div class="alert" role="status">
+    <strong>Đang dừng.</strong> {% if !target_username.is_empty() %}Lần chạy gần nhất: {{ target_username }} đạt <strong>{{ total_xp|fmt_num }} XP</strong> (Cấp {{ level|fmt_num }}).{% else %}Bấm "Bắt đầu" để tăng {{ xp_per_tick }} XP mỗi {{ tick_ms }}ms.{% endif %}
+    <span class="muted">XP của bạn giữ nguyên cho tới khi bật lại.</span>
+</div>
+{% endif %}

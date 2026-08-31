@@ -533,6 +533,9 @@ pub async fn show_game(
         reviews_total_res,
         my_review_res,
         my_collections_res,
+        // v3.6.0 PERF — gộp also_liked vào wave chính (trước đây await
+        // TUẦN TỰ sau wave → cộng thêm 1 round-trip DB vào TTFB trang game).
+        also_liked_res,
     ) = tokio::join!(
         crate::repositories::UserRepo::find_by_id(&state.db, game.user_id),
         GameRepo::get_links(&state.db, game.id),
@@ -568,6 +571,8 @@ pub async fn show_game(
                 None => Vec::new(),
             }
         },
+        // v3.6.0 PERF — xem comment block ở tuple destructure phía trên.
+        GameRepo::also_liked(&state.db, game.id, 6),
     );
     let author = author_res?.ok_or_else(|| AppError::NotFound("Tác giả không tồn tại".into()))?;
     let links = links_res?;
@@ -582,11 +587,10 @@ pub async fn show_game(
     let reviews_total = reviews_total_res.unwrap_or(0);
     let my_review = my_review_res;
     let my_collections = my_collections_res;
+    // v3.6.0 PERF — also_liked từ wave chính (fail-open như cũ).
+    let also_liked = also_liked_res.unwrap_or_default();
 
-    // v3.0.0 — also_liked + countdown
-    let also_liked = GameRepo::also_liked(&state.db, game.id, 6)
-        .await
-        .unwrap_or_default();
+    // v3.0.0 — countdown
     let release_countdown_days = game.release_date.and_then(|d| {
         let n = (d - crate::utils::today_vn()).num_days();
         // Chỉ đếm ngược khi CÒN ngày (đã ra mắt → None, không hiện banner)
@@ -596,9 +600,12 @@ pub async fn show_game(
     // v2.6.0 — 4 interaction checks + unread_count chạy SONG SONG —
     // trước đây unread_for await SAU interaction block → cộng thêm 1
     // round-trip. Giờ tất cả 5 futures trong 1 wave.
-    let (is_liked, is_bookmarked, is_following_author, user_rating, unread) =
+    // v3.6.0 PERF — has_downloaded gộp vào wave interaction (trước đây
+    // await TUẦN TỰ sau wave → +1 round-trip DB trên TTFB trang game cho
+    // user đã login chưa đánh giá).
+    let (is_liked, is_bookmarked, is_following_author, user_rating, unread, has_downloaded) =
         if let Some(ref u) = current_user {
-            let (liked_res, bm_res, following_res, rating_res, unread_res) = tokio::join!(
+            let (liked_res, bm_res, following_res, rating_res, unread_res, downloaded_res) = tokio::join!(
                 InteractionRepo::is_liked(&state.db, game.id, u.id),
                 InteractionRepo::is_bookmarked(&state.db, game.id, u.id),
                 async {
@@ -610,6 +617,7 @@ pub async fn show_game(
                 },
                 InteractionRepo::get_user_rating(&state.db, game.id, u.id),
                 unread_for(&state, current_user.as_ref()),
+                InteractionRepo::has_downloaded(&state.db, game.id, u.id),
             );
             (
                 liked_res.unwrap_or(false),
@@ -617,9 +625,10 @@ pub async fn show_game(
                 following_res.unwrap_or(false),
                 rating_res.unwrap_or(None),
                 unread_res,
+                downloaded_res.unwrap_or(false),
             )
         } else {
-            (false, false, false, None, 0)
+            (false, false, false, None, 0, false)
         };
 
     // Structured data (JSON-LD) cho SEO: schema.org/VideoGame —
@@ -639,14 +648,8 @@ pub async fn show_game(
     let breadcrumb_ld = build_breadcrumb_json_ld(&state.config.base_url, &game, category.as_ref());
 
     // v3.0.0 — invite_rating: đã tải + chưa đánh giá → prompt mời đánh giá
-    let invite_rating = match current_user.as_ref() {
-        Some(u) if user_rating.is_none() => {
-            InteractionRepo::has_downloaded(&state.db, game.id, u.id)
-                .await
-                .unwrap_or(false)
-        }
-        _ => false,
-    };
+    // (v3.6.0: dùng has_downloaded từ wave — bỏ round-trip tuần tự).
+    let invite_rating = current_user.is_some() && user_rating.is_none() && has_downloaded;
 
     Ok(GameShowTemplate {
         current_user,
@@ -747,7 +750,8 @@ pub async fn delete_game(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
     Path(slug): Path<String>,
-) -> AppResult<Redirect> {
+    headers: axum::http::HeaderMap,
+) -> AppResult<Response> {
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
@@ -755,7 +759,19 @@ pub async fn delete_game(
         return Err(AppError::Forbidden("Bạn không có quyền xóa".into()));
     }
     GameRepo::delete(&state.db, game.id).await?;
-    Ok(Redirect::to("/"))
+    // v3.6.0 FIX (UI-bug HTMX): form xóa ở my_games dùng hx-post +
+    // hx-target="closest tr" — XHR tự follow Redirect 303 → HTML TRANG
+    // CHỦ bị swap vào <tr> của bảng (my-news tương tự). Giờ: request HTMX
+    // → trả body rỗng (HTMX gỡ <tr> khỏi DOM); request thường (không có
+    // header HX-Request) → redirect về / như cũ.
+    let is_htmx = headers
+        .get("hx-request")
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.eq_ignore_ascii_case("true"));
+    if is_htmx {
+        return Ok(axum::response::Html(String::new()).into_response());
+    }
+    Ok(Redirect::to("/").into_response())
 }
 
 // ============= Download (hidden link redirect) =============
