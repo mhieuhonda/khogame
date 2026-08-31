@@ -43,6 +43,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# v3.5.1 FIX (supply-chain, audit 5-c): default permissions mức workflow =
+# contents: read — job autofmt tự nới lên contents:write khi cần commit fmt.
+# Trước đây các job khác thừa kế quyền mặc định của repo (có thể là
+# read/write trên repo cũ) → nếu action bên thứ 3 bị xâm nhập, token lộ
+# có ghi được vào repo.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: short
@@ -68,7 +76,7 @@ jobs:
           fetch-depth: 0
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
           components: rustfmt
@@ -102,8 +110,17 @@ jobs:
 
           Được tạo tự động bởi CI workflow (.github/workflows/ci.yml job autofmt)
           vì commit trước đó chưa chạy \`cargo fmt --all\`."
-          git push
-          echo "✅ Đã commit diff fmt ngược về main với [skip ci]."
+          # Retry 3 lần — nếu có push khác vào main giữa chừng thì rebase rồi push lại.
+          for attempt in 1 2 3; do
+            if git push; then
+              echo "✅ Đã commit diff fmt ngược về main với [skip ci]."
+              exit 0
+            fi
+            echo "⚠️ Push thất bại (lần $attempt/3) — pull --rebase rồi thử lại."
+            git pull --rebase origin main || { echo "::error::Rebase conflict — job autofmt cần chạy lại."; exit 1; }
+          done
+          echo "::error::Không push được sau 3 lần thử."
+          exit 1
 
       - name: Verify fmt clean (PR mode — fail để contributor tự fix)
         # PR không push được về fork, chỉ warn contributor qua failure rõ ràng.
@@ -115,6 +132,11 @@ jobs:
 
   # Job 1: cargo check — build dependency graph + verify Cargo.lock consistent.
   # Chạy nhanh nhất (~30s với cache), là early gate cho các job sau.
+  #
+  # ⚠️ CHECKOUT THEO REF (không phải github.sha): nếu job autofmt vừa push
+  # commit fmt lên main thì github.sha là commit CŨ (chưa fmt) → các job
+  # này kiểm tra code lỗi thời, job fmt/verify sẽ fail oan. Checkout theo
+  # github.ref (refs/heads/main) luôn lấy head mới nhất sau autofmt.
   check:
     name: Cargo check
     runs-on: ubuntu-latest
@@ -122,11 +144,11 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
-        # Re-checkout để lấy auto-format commit nếu autofmt đã push.
-        # GITHUB_TOKEN auto-invalidate cache khi có push mới.
+        with:
+          ref: ${{ github.ref }}
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
           components: rustfmt, clippy
@@ -151,9 +173,13 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Lấy head mới nhất (kể cả commit fmt autofmt vừa push) — nếu
+          # checkout github.sha (commit cũ chưa fmt) thì verify LUÔN fail oan.
+          ref: ${{ github.ref }}
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
           components: rustfmt
@@ -169,9 +195,11 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
           components: clippy
@@ -194,9 +222,11 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
 
@@ -218,9 +248,11 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
 
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
 
@@ -246,6 +278,8 @@ jobs:
     needs: autofmt
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
 
       - name: Cài cargo-audit
         uses: taiki-e/install-action@v2

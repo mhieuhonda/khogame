@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "khogame"
-version = "3.5.0"
+version = "3.5.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1334,6 +1334,7 @@ dependencies = [
  "comrak",
  "dotenvy",
  "hex",
+ "hmac",
  "lettre",
  "mime",
  "once_cell",

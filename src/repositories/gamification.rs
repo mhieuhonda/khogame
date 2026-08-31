@@ -49,6 +49,23 @@ pub mod xp {
     /// bơm +10 XP/lần vào account mục tiêu. Cap 50 XP/ngày tương tự
     /// `received_like`.
     pub const MAX_RECEIVED_FOLLOW_XP_PER_DAY: i32 = 50;
+    /// v3.5.1 FIX (XP farm — audit vòng 10, task 5-b): các reason
+    /// "tạo mới nội dung" đều có vòng lặp xoá-rồi-làm-lại mà v3.0.0
+    /// chưa cap, vì mỗi lần là 1 event INSERT mới:
+    /// - `post_game` (50): farm draft→publish (đã chặn ở `GameRepo::publish`
+    ///   bằng cột published_at, cap này là lớp phòng vệ thứ 2) + xoá game
+    ///   rồi đăng lại.
+    /// - `post_news` (40): xoá news đã duyệt rồi submit lại.
+    /// - `review` (15): xoá review (+15) rồi review lại (+15) — ~900 XP/phút.
+    /// - `repo` (20): xoá repo đăng ký (+20) rồi register lại (+20).
+    ///
+    /// Giá trị = SỐ EVENT/ngày (cùng ngữ nghĩa COUNT như các cap trên):
+    /// 4 game (200 XP), 4 news (160 XP), 6 review (90 XP), 5 repo (100 XP)
+    /// — ngưỡng hợp lý cho user thật, farmer bị chặn sau vài vòng.
+    pub const MAX_POST_GAME_XP_PER_DAY: i32 = 4;
+    pub const MAX_POST_NEWS_XP_PER_DAY: i32 = 4;
+    pub const MAX_REVIEW_XP_PER_DAY: i32 = 6;
+    pub const MAX_REPO_XP_PER_DAY: i32 = 5;
 }
 
 pub struct GamificationRepo;
@@ -108,6 +125,11 @@ impl GamificationRepo {
                 "received_like" => Some(xp::MAX_RECEIVED_LIKE_XP_PER_DAY),
                 "received_download" => Some(xp::MAX_RECEIVED_DOWNLOAD_XP_PER_DAY),
                 "received_follow" => Some(xp::MAX_RECEIVED_FOLLOW_XP_PER_DAY),
+                // v3.5.1 — cap các reason tạo-nội-dùng (xoá-rồi-làm-lại farm)
+                "post_game" => Some(xp::MAX_POST_GAME_XP_PER_DAY),
+                "post_news" => Some(xp::MAX_POST_NEWS_XP_PER_DAY),
+                "review" => Some(xp::MAX_REVIEW_XP_PER_DAY),
+                "repo" => Some(xp::MAX_REPO_XP_PER_DAY),
                 _ => None,
             };
             match cap {

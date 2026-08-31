@@ -537,6 +537,29 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 ))
                 .service(ServeDir::new("static/fonts")),
         )
+        // v3.5.1 FIX (audit 5-c — SW chết im lặng): app.js đăng ký
+        // `/static/js/sw.js` với scope '/' nhưng SW spec giới hạn max-scope
+        // theo đường dẫn của file SW (mặc định = /static/js/) → browser từ
+        // chối registration, toàn bộ tầng cache offline/PWA 223 dòng không
+        // bao giờ kích hoạt trên prod. Header `Service-Worker-Allowed: /`
+        // (chỉ có ý nghĩa trên chính file sw.js, vô hại với file JS khác)
+        // mở scope hợp lệ. Nest riêng (giống /static/fonts) vì nest_service
+        //("/static") không thể gắn header cho 1 file duy nhất.
+        .nest_service(
+            "/static/js",
+            tower::ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::HeaderName::from_static("service-worker-allowed"),
+                    axum::http::HeaderValue::from_static("/"),
+                ))
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static(
+                        "public, max-age=2592000, stale-while-revalidate=86400",
+                    ),
+                ))
+                .service(ServeDir::new("static/js")),
+        )
         .nest_service(
             "/static",
             tower::ServiceBuilder::new()

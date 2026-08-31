@@ -143,12 +143,24 @@ pub async fn register(
             return Err(AppError::BadRequest("Token label tối đa 100 ký tự".into()));
         }
     }
-    // Validate email — RFC 5321 max 254 ký tự
+    // Validate email — RFC 5321 max 254 ký tự + format cơ bản.
+    // v3.5.1 FIX (audit 5-e F10): trước đây chỉ check length — AI secret
+    // holder đăng ký agent với email NẠO BẤT KỲ (email nạn nhân) → mỗi lượt
+    // follow là 1 email gửi tới địa chỉ đó qua SMTP của site (spam relay).
+    // Format check chặn địa chỉ rác; trigger email chỉ dùng cho user thật.
     if let Some(email) = req.email.as_deref() {
-        if !email.is_empty() && email.trim().chars().count() > 254 {
-            return Err(AppError::BadRequest(
-                "Email quá dài (tối đa 254 ký tự)".into(),
-            ));
+        if !email.is_empty() {
+            let e = email.trim();
+            if e.chars().count() > 254 {
+                return Err(AppError::BadRequest(
+                    "Email quá dài (tối đa 254 ký tự)".into(),
+                ));
+            }
+            if !is_valid_email(e) {
+                return Err(AppError::BadRequest(
+                    "Email không hợp lệ (vd: name@example.com)".into(),
+                ));
+            }
         }
     }
     // Validate username length — repo tự slugify nhưng text raw vẫn
@@ -750,6 +762,46 @@ fn is_valid_hex_color(s: &str) -> bool {
     matches!(rest.len(), 3 | 6) && rest.chars().all(|c| c.is_ascii_hexdigit())
 }
 
+/// v3.5.1 — Validate email format tối giản nhưng chặt (audit 5-e F10):
+/// local-part@domain, local-part 1-64 ký tự [a-zA-Z0-9._%+-], domain
+/// label [a-zA-Z0-9-] + TLD ≥2 chữ cái, không khoảng trắng/ký tự điều
+/// khiển. Không dùng regex crate (tránh dependency mới) — pure parser.
+/// Mục đích: chặn địa chỉ rác dùng site làm spam relay, KHÔNG phải
+/// validate RFC 5322 đầy đủ.
+fn is_valid_email(s: &str) -> bool {
+    let Some((local, domain)) = s.split_once('@') else {
+        return false;
+    };
+    // Local part: 1..=64, charset an toàn
+    if local.is_empty() || local.len() > 64 {
+        return false;
+    }
+    if !local
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '%' | '+' | '-'))
+    {
+        return false;
+    }
+    // Domain: ít nhất 1 label + TLD, tổng ≤ 190 (254 - local - @)
+    if domain.is_empty() || domain.len() > 190 || !domain.contains('.') {
+        return false;
+    }
+    if domain
+        .chars()
+        .any(|c| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'))
+    {
+        return false;
+    }
+    // TLD cuối ≥ 2 chữ cái, không label rỗng (a..b) hoặc bắt đầu/kết thúc '-'
+    domain
+        .split('.')
+        .all(|label| !label.is_empty() && !label.starts_with('-') && !label.ends_with('-'))
+        && domain
+            .rsplit('.')
+            .next()
+            .is_some_and(|tld| tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,6 +840,25 @@ mod tests {
         assert!(!constant_time_eq(b"short", b"longer-string"));
         assert!(!constant_time_eq(b"", b"x"));
         assert!(constant_time_eq(b"", b""));
+    }
+
+    /// v3.5.1 — email format validation (audit 5-e F10).
+    #[test]
+    fn test_is_valid_email() {
+        // Hợp lệ
+        assert!(is_valid_email("name@example.com"));
+        assert!(is_valid_email("first.last+tag@sub.domain.io"));
+        assert!(is_valid_email("a_b%test@my-domain.vn"));
+        // Rác / spam relay vector
+        assert!(!is_valid_email("no-at-sign"));
+        assert!(!is_valid_email("@nodomain.com"));
+        assert!(!is_valid_email("user@"));
+        assert!(!is_valid_email("user@localhost"));
+        assert!(!is_valid_email("user name@example.com"));
+        assert!(!is_valid_email("user@exa mple.com"));
+        assert!(!is_valid_email("user@example.c"));
+        assert!(!is_valid_email("user@-bad-.com"));
+        assert!(!is_valid_email("user@exa..mple.com"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::auth::{hash_token, SESSION_COOKIE};
+use crate::auth::{hash_token, should_secure_cookie, SESSION_COOKIE};
 use crate::error::AppError;
 use crate::models::user::User;
 use crate::repositories::{AiAgentRepo, SessionRepo, UserRepo};
@@ -878,6 +878,38 @@ impl IntoResponse for RateLimited {
     }
 }
 
+/// Validate session token THẬT (cache → DB) và trả user_id nếu hợp lệ.
+/// Dùng cho `rate_limit` bucket identity — KHÔNG đụng `touch_last_seen`
+/// (auth middleware đầy đủ sẽ làm việc đó sau trong pipeline).
+///
+/// v3.5.1 FIX (rate-limit bypass, audit task 5-a): trước đây bucket dùng
+/// `s:{hash(cookie)}` NGOÀI VIỆC validate — bot xoay `Cookie: kg_session=<rác
+/// ngẫu nhiên>` mỗi request được bucket MỚI từng request trên endpoint
+/// không cần đăng nhập (/auth/ai/login brute-force, /auth/ai/register dò
+/// AI_AGENT_SECRET). Giờ chỉ session THẬT mới được bucket riêng;
+/// cookie rác rơi về bucket dùng chung (fail-closed).
+async fn session_user_id_from_token(state: &AppState, token: &str) -> Option<Uuid> {
+    let token_hash = hash_token(token);
+    // Fast path: SESSION_CACHE (cùng cache auth middleware dùng — hit thì
+    // không tốn query nào).
+    if let Some(map) = SESSION_CACHE.get() {
+        let map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((user, cached_at)) = map.get(&token_hash) {
+            if cached_at.elapsed() < SESSION_CACHE_TTL && !user.is_banned {
+                return Some(user.id);
+            }
+        }
+    }
+    // Slow path: DB lookup (1 query cho cache-miss mỗi 10s/user — cùng
+    // bậc với auth middleware vốn đã chạy sau đó).
+    let user_id = SessionRepo::find_user_by_token(&state.db, &token_hash)
+        .await
+        .ok()??;
+    Some(user_id)
+}
+
 /// Middleware giới hạn tốc độ cho các endpoint nhạy cảm
 /// # Errors
 ///
@@ -921,17 +953,43 @@ pub async fn rate_limit(
     // (một user spam = 429 cả site; một trang 50 reply lazy-load có thể
     // đốt 50/240 slot global). Khi IP là private/unknown, key bucket
     // theo định danh per-browser thay vì IP:
-    //   1) Có session cookie (đã login) → hash cookie (ổn định/user).
-    //   2) Có anon cookie (đã ghé trước đó) → dùng nguyên giá trị.
-    //   3) Chưa có gì → sinh anon id mới, set vào response.
+    //   1) Session cookie HỢP LỆ (validate cache/DB) → bucket theo user.
+    //   2) Endpoint nhạy cảm /auth/ai/* + không có session hợp lệ → bucket
+    //      DÙNG CHUNG (chống xoay cookie tạo bucket mới — v3.5.1).
+    //   3) Có anon cookie (đã ghé trước đó) → dùng nguyên giá trị.
+    //   4) Chưa có gì → sinh anon id mới, set vào response.
     // Khi hạ tầng truyền IP thật (PROXY protocol / CDN), IP là public →
     // key theo IP như cũ — hành vi cũ được bảo toàn.
     let mut set_anon_cookie: Option<String> = None;
     let bucket_identity = if is_private_ip(&ip) {
         warn_shared_ip_once(&ip);
-        if let Some(token) = session_cookie_value(request.headers()) {
-            format!("s:{}", &hash_token(&token)[..16])
-        } else if let Some(anon) = anon_cookie_value(request.headers()) {
+        // v3.5.1 FIX (task 5-a): validate session cookie TRƯỚC khi dùng
+        // làm bucket key. Trước đây hash cookie THÔ (không validate) — bot
+        // xoay kg_session rác mỗi request được bucket riêng từng request,
+        // bypass hoàn toàn limit /auth/ai/login (10/10') và /auth/ai/register
+        // (5/10') → brute-force không giới hạn. Cookie rác giờ rơi về
+        // bucket dùng chung, chỉ session THẬT (user đăng nhập thật) có
+        // bucket riêng ổn định.
+        let valid_user = match session_cookie_value(request.headers()) {
+            Some(token) => session_user_id_from_token(&state, &token).await,
+            None => None,
+        };
+        // Endpoint đăng nhập/đăng ký AI Agent: nhạy cảm nhất (brute-force
+        // credential + dò AI_AGENT_SECRET). Anon cookie cũng KHÔNG được
+        // tin ở đây (cũng xoay được từng request) — mọi request không có
+        // session hợp lệ dùng chung 1 bucket "x:auth-anon". Fail-closed:
+        // attacker xoay cookie bao nhiêu lần vẫn dồn vào cùng bucket
+        // 5-10 request/10 phút. DB lockout per-account (5 lần/15') vẫn
+        // là lớp bảo vệ thứ hai như cũ.
+        let sensitive_auth = path.starts_with("/auth/ai/");
+        if let Some(uid) = valid_user {
+            format!("u:{uid}")
+        } else if sensitive_auth {
+            "x:auth-anon".to_string()
+        } else if let Some(anon) = anon_cookie_value(request.headers(), &state.config.session_key) {
+            // Cookie anon ĐÃ XÁC THỰC chữ ký (v3.5.1) — bot không thể tự xoay
+            // giá trị mới mỗi request để tạo bucket riêng (bucket key = id đã
+            // verify, không phải raw cookie).
             format!("a:{anon}")
         } else {
             // Chưa có cookie nào → sinh anon id, set vào response để request
@@ -948,7 +1006,10 @@ pub async fn rate_limit(
             // request sau đã có anon riêng), bot không cookie thì toàn bộ
             // dồn vào 1 bucket → bị chặn đúng ngưỡng. Fail-closed: gắt hơn
             // chứ không bao giờ nới lỏng.
-            let anon = Uuid::new_v4().to_string();
+            // v3.5.1: anon id mới được HMAC-KÝ (xem new_signed_anon_value) —
+            // các request sau mang cookie có chữ ký hợp lệ mới được bucket
+            // riêng; bot bỏ/không giữ cookie thì dồn bucket chung như cũ.
+            let anon = new_signed_anon_value(&state.config.session_key);
             set_anon_cookie = Some(anon);
             "x:anon-unknown".to_string()
         }
@@ -1051,9 +1112,14 @@ pub async fn rate_limit(
         // đầu tiên không có cookie → response không set → request tiếp
         // theo lại được bucket mới → vô hiệu hoá hoàn toàn rate limit
         // với bot không cookie khi app sau proxy shared-IP.
+        // v3.5.1 FIX (task 5-a): thêm Secure flag — dùng chung logic
+        // `should_secure_cookie` với các cookie auth (prod/https).
         if let Some(anon) = &set_anon_cookie {
-            let cookie =
+            let mut cookie =
                 format!("{ANON_COOKIE}={anon}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax");
+            if should_secure_cookie(&state.config.base_url) {
+                cookie.push_str("; Secure");
+            }
             if let Ok(v) = HeaderValue::from_str(&cookie) {
                 too_many
                     .headers_mut()
@@ -1067,9 +1133,13 @@ pub async fn rate_limit(
     // private — xem comment bucket_identity bên trên). Cookie là UUID
     // ngẫu nhiên thuần chức năng (rate limit), không PII, HttpOnly +
     // SameSite=Lax, 1 năm — đủ dài để không reset khi user quay lại.
+    // v3.5.1 FIX (task 5-a): thêm Secure flag như các cookie auth.
     if let Some(anon) = set_anon_cookie {
-        let cookie =
+        let mut cookie =
             format!("{ANON_COOKIE}={anon}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax");
+        if should_secure_cookie(&state.config.base_url) {
+            cookie.push_str("; Secure");
+        }
         if let Ok(v) = HeaderValue::from_str(&cookie) {
             response
                 .headers_mut()
@@ -1105,8 +1175,43 @@ fn session_cookie_value(headers: &axum::http::HeaderMap) -> Option<String> {
 /// cần fallback identity (IP private). Không PII, chỉ là UUID ngẫu nhiên.
 const ANON_COOKIE: &str = "ls_anon";
 
-fn anon_cookie_value(headers: &axum::http::HeaderMap) -> Option<String> {
-    cookie_value(headers, ANON_COOKIE)
+/// v3.5.1 FIX (audit 5-e F2 — bot xoay ls_anon tạo bucket mới): ký cookie
+/// anon bằng HMAC-SHA256(SESSION_KEY) — bot không thể tự sinh cặp
+/// `{uuid}.{sig}` hợp lệ mỗi request để lách rate-limit bucket. Cookie cũ
+/// (unsigned, từ phiên bản trước) tự động bị coi là không hợp lệ → request
+/// đầu sau deploy dùng bucket dùng chung + được set lại cookie có chữ ký
+/// (self-healing, không ảnh hưởng user thật).
+///
+/// Trả về giá trị cookie ĐÃ XÁC THỰC (None nếu thiếu/chữ ký sai).
+fn anon_cookie_value(headers: &axum::http::HeaderMap, session_key: &str) -> Option<String> {
+    let raw = cookie_value(headers, ANON_COOKIE)?;
+    let (id, sig) = raw.rsplit_once('.')?;
+    if anon_hmac(session_key, id) != sig {
+        // Chữ ký không khớp (cookie giả mạo hoặc cookie cũ unsigned) →
+        // coi như không có cookie → bucket dùng chung.
+        return None;
+    }
+    Some(id.to_string())
+}
+
+/// Sinh giá trị cookie anon đã ký: `{uuid}.{hmac_hex_16}`.
+/// 16 hex (64-bit) đủ chống dò mò cho mục đích rate-limit identity —
+/// brute-force 2^64 chữ ký mỗi request là vô nghĩa kinh tế.
+fn new_signed_anon_value(session_key: &str) -> String {
+    let id = Uuid::new_v4().to_string();
+    format!("{}.{}", id, anon_hmac(session_key, &id))
+}
+
+/// HMAC-SHA256(key, id) — 16 ký tự hex đầu (constant-time so sánh ở caller
+/// qua chuỗi == ngắn; secret dài 64-bit output đủ an toàn cho identity).
+fn anon_hmac(session_key: &str, id: &str) -> String {
+    use hmac::{Hmac, KeyInit, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(session_key.as_bytes())
+        .expect("HMAC chấp nhận key mọi độ dài");
+    mac.update(id.as_bytes());
+    let out = mac.finalize().into_bytes();
+    hex::encode(&out[..8])
 }
 
 /// Log 1 lần duy nhất khi phát hiện mọi request dùng chung 1 IP private —
@@ -2066,7 +2171,9 @@ mod client_ip_tests {
 
 #[cfg(test)]
 mod cookie_value_tests {
-    use super::{anon_cookie_value, cookie_value, session_cookie_value, ANON_COOKIE};
+    use super::{
+        anon_cookie_value, cookie_value, new_signed_anon_value, session_cookie_value, ANON_COOKIE,
+    };
     use axum::http::HeaderMap;
 
     fn hm_cookie(v: &str) -> HeaderMap {
@@ -2081,17 +2188,43 @@ mod cookie_value_tests {
         assert_eq!(session_cookie_value(&h).as_deref(), Some("abc123"));
     }
 
+    /// v3.5.1 — cookie anon giờ phải có chữ ký HMAC hợp lệ.
     #[test]
-    fn reads_anon_cookie() {
-        let h = hm_cookie("ls_anon=uuid-xyz; theme=dark");
-        assert_eq!(anon_cookie_value(&h).as_deref(), Some("uuid-xyz"));
+    fn reads_anon_cookie_signed() {
+        let key = "test-session-key-32-bytes-xxxxxxxx";
+        let signed = new_signed_anon_value(key);
+        // Cookie đầy đủ dạng `uuid.sig` → verify trả về đúng id
+        let h = hm_cookie(&format!("ls_anon={signed}; theme=dark"));
+        let expected_id = signed.split('.').next().unwrap();
+        assert_eq!(
+            anon_cookie_value(&h, key).as_deref(),
+            Some(expected_id),
+            "cookie có chữ ký hợp lệ phải pass"
+        );
+        // Chữ ký sai (thay đổi 1 byte) → None
+        let tampered = format!("{}x", &signed[..signed.len() - 1]);
+        let h2 = hm_cookie(&format!("ls_anon={tampered}"));
+        assert!(
+            anon_cookie_value(&h2, key).is_none(),
+            "chữ ký sai phải bị từ chối"
+        );
+        // Cookie cũ KHÔNG có dấu chấm (unsigned) → None (bắt buộc upgrade)
+        let h3 = hm_cookie("ls_anon=uuid-xyz");
+        assert!(
+            anon_cookie_value(&h3, key).is_none(),
+            "cookie unsigned phải bị từ chối"
+        );
+        // Key khác → chữ ký không khớp
+        let h4 = hm_cookie(&format!("ls_anon={signed}"));
+        assert!(anon_cookie_value(&h4, "other-key-32-bytes-yyyyyyyyyyyy").is_none());
     }
 
     #[test]
     fn no_cookie_returns_none() {
         let h = hm_cookie("theme=dark");
+        let key = "test-session-key-32-bytes-xxxxxxxx";
         assert!(session_cookie_value(&h).is_none());
-        assert!(anon_cookie_value(&h).is_none());
+        assert!(anon_cookie_value(&h, key).is_none());
     }
 
     #[test]

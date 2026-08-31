@@ -17,9 +17,12 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   CARGO_TERM_COLOR: always
 
+# v3.5.1 FIX (audit 5-c — least privilege): workflow-level chỉ đọc; job
+# build-push tự nới packages:write. ci-gate + deploy-coolify trước đây
+# thừa kế packages:write dù không đẩy image nào — thu hẹp blast radius
+# nếu runner/action bị xâm nhập.
 permissions:
   contents: read
-  packages: write
 
 # KHÔNG cancel deploy đang chạy — có thể deploy partial state, hỏng prod.
 concurrency:
@@ -46,8 +49,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Verify tag version khớp Cargo.toml (chống image serve sai version)
+        # Incident v3.4.2: tag v3.4.2 push nhưng Cargo.toml vẫn 3.4.1 →
+        # image build ra serve "3.4.1" qua /health → CD verify của main/v3.5.0
+        # fail oan + release v3.4.2 fail. Gate này chặn sớm ngay từ ci-gate.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          CARGO_VERSION=$(grep -E '^version = "[0-9]' Cargo.toml | head -1 | sed -E 's/.*"([0-9][^"]*)".*/\1/')
+          echo "Tag version: $VERSION | Cargo.toml: $CARGO_VERSION"
+          if [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag $TAG lệch version với Cargo.toml ($CARGO_VERSION). Bump version rồi tag lại."
+            exit 1
+          fi
+          echo "✅ Tag version khớp Cargo.toml ($CARGO_VERSION)."
+
       - name: Cài Rust 1.98 (exact pin)
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1.98 pin SHA — supply-chain hardening (audit 5-c)
         with:
           toolchain: "1.98.0"
           components: clippy
@@ -90,6 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: ci-gate
     timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
@@ -101,8 +123,10 @@ jobs:
         uses: docker/setup-buildx-action@v4
         with:
           # BuildKit mặc định — cần cho --mount=type=cache trong Dockerfile.
+          # v3.5.1 FIX (audit 5-c): pin version thay vì :latest — image daemon
+          # build prod image không nên trôi theo tag mutable (supply chain).
           driver-opts: |
-            image=moby/buildkit:latest
+            image=moby/buildkit:v0.32.2
 
       - name: Đăng nhập GHCR
         uses: docker/login-action@v4
@@ -162,23 +186,57 @@ jobs:
   # continue-on-error=true khiến workflow báo success dù deploy fail
   # (token expired) → user thấy "build xong" nhưng web không đổi.
   # Build image vẫn ở GHCR sẵn sàng cho manual deploy nếu cần retry.
+  #
+  # 🔒 SERIALIZED DEPLOY: concurrency level-job với group CỐ ĐỊNH
+  # (không chứa github.ref) → các deploy từ main + tag KHÔNG BAO GIỜ
+  # chạy đè nhau. Incident 2026-08-30 (v3.4.2/v3.5.0/main push cùng lúc):
+  # 3 CD PATCH compose Coolify đồng thời → deploy cuối cùng thắng là
+  # image CŨ (v3.4.2 serve 3.4.1) → verify của main/v3.5.0 fail + prod
+  # chạy bản cũ. Tương tự incident v2.9.1 (stack kẹt starting:unknown,
+  # web 503 25 phút). Group cố định = 1 deploy tại 1 thời điểm, FIFO.
   # ────────────────────────────────────────────────────────────
   deploy-coolify:
     name: Trigger Coolify deploy
     runs-on: ubuntu-latest
     needs: build-push
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    timeout-minutes: 15
+    timeout-minutes: 20
+    concurrency:
+      group: coolify-deploy
+      cancel-in-progress: false
     env:
       COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
       COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
       COOLIFY_SERVICE_UUID: ${{ secrets.COOLIFY_SERVICE_UUID }}
       IMAGE_REF: ${{ needs.build-push.outputs.image_ref }}
+      PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://louis.vangioitutien.com' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Cần full tags để so sánh tag hiện tại với tag mới nhất (stale guard)
+          fetch-depth: 0
+
+      - name: Guard — skip deploy cho tag cũ (chống rollback prod)
+        # Nếu push tag CŨ (vd re-push v3.4.2 khi đã có v3.5.0) → KHÔNG deploy
+        # để không rollback prod về bản cũ. Image vẫn build + release vẫn tạo.
+        id: stale-guard
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          CURRENT="${GITHUB_REF_NAME#v}"
+          # Tag mới nhất theo semver (sort -V)
+          LATEST=$(git tag -l 'v*' | sed -E 's/^v//' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -V | tail -1)
+          echo "Tag hiện tại: v$CURRENT | Tag mới nhất: v$LATEST"
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "skip=yes" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag v$CURRENT không phải mới nhất (v$LATEST) — SKIP deploy để không rollback prod. Image vẫn ở GHCR, GitHub Release vẫn tạo bình thường."
+          else
+            echo "skip=no" >> "$GITHUB_OUTPUT"
+            echo "✅ Tag v$CURRENT là mới nhất — deploy bình thường."
+          fi
 
       - name: Verify required secrets
         id: verify-secrets
+        if: steps.stale-guard.outputs.skip != 'yes'
         continue-on-error: true
         run: |
           if [ -z "$COOLIFY_URL" ] || [ -z "$COOLIFY_API_TOKEN" ] || [ -z "$COOLIFY_SERVICE_UUID" ]; then
@@ -188,19 +246,19 @@ jobs:
           echo "All Coolify secrets present."
 
       - name: Skip if secrets missing
-        if: steps.verify-secrets.outcome == 'failure'
+        if: steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'failure'
         run: |
           echo "::notice::Skipping Coolify deploy — secrets missing. Image is at GHCR ready for manual deploy."
 
       - name: Pin image digest vào compose prod
-        if: steps.verify-secrets.outcome == 'success'
+        if: steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success'
         run: |
           sed -i "s|__IMAGE_REF__|${{ env.IMAGE_REF }}|g" deploy/compose.prod.yml
           echo "── compose.prod.yml (image line) ──"
           grep -n "image:" deploy/compose.prod.yml | head -5
 
       - name: PATCH compose lên Coolify
-        if: steps.verify-secrets.outcome == 'success'
+        if: steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success'
         id: patch
         run: |
           set -uo pipefail
@@ -245,7 +303,7 @@ jobs:
         # always() để step được evaluate dù PATCH fail; condition bên trong
         # quyết định chạy hay không. Nếu PATCH fail → skip trigger (compose
         # chưa update → trigger chỉ redeploy OLD image, lừa dối operator).
-        if: always() && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success'
+        if: always() && steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success'
         id: trigger
         run: |
           set -uo pipefail
@@ -263,7 +321,7 @@ jobs:
           fi
 
       - name: Chờ stack healthy (tối đa 10 phút)
-        if: always() && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success' && steps.trigger.outputs.queued == 'yes'
+        if: always() && steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success' && steps.trigger.outputs.queued == 'yes'
         run: |
           set -uo pipefail
           for i in $(seq 1 20); do
@@ -288,7 +346,7 @@ jobs:
           exit 1
 
       - name: Verify deployed image matches built image
-        if: always() && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success'
+        if: always() && steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success'
         id: verify
         continue-on-error: false
         run: |
@@ -307,8 +365,9 @@ jobs:
           fi
           for i in $(seq 1 12); do
             sleep 15
-            # 1) Check web /health (primary signal)
-            WEB=$(curl -sS --max-time 10 "https://louis.vangioitutien.com/health" 2>/dev/null || echo "FAIL")
+            # 1) Check web /health (primary signal) — dùng PUBLIC_URL (repo
+            # variable, fallback domain prod) thay vì hardcode.
+            WEB=$(curl -sS --max-time 10 "${PUBLIC_URL}/health" 2>/dev/null || echo "FAIL")
             echo "[$i/12] Web /health: $WEB"
             WEB_VERSION=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("version",""))' 2>/dev/null || echo "")
             WEB_STATUS=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))' 2>/dev/null || echo "")
@@ -349,11 +408,11 @@ jobs:
           echo "## Coolify Deploy Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Image built**: \`${{ env.IMAGE_REF }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stale-tag guard (skip deploy)**: ${{ steps.stale-guard.outputs.skip || 'no' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Secrets verified**: ${{ steps.verify-secrets.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Compose PATCHed**: ${{ steps.patch.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Deploy triggered**: ${{ steps.trigger.outcome }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Job status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Coolify dashboard**: ${{ secrets.COOLIFY_URL }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ "${{ job.status }}" = "success" ]; then
             echo "✅ Deploy thành công — web đã update image mới." >> $GITHUB_STEP_SUMMARY

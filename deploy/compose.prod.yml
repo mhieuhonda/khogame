@@ -32,7 +32,12 @@ services:
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GOOGLE_REDIRECT_URI=https://louis.vangioitutien.com/auth/google/callback
       - BASE_URL=https://louis.vangioitutien.com
-      - ADMIN_EMAIL=khongdich.admin@gmail.com
+      # v3.5.1 FIX (audit 5-c): bỏ hardcode email admin trong repo công khai —
+      # biết được email auto-grant admin = nhắm đúng tài khoản Google để chiếm
+      # quyền. Khai báo ADMIN_EMAIL trong tab Environment Variables của
+      # Coolify (không commit vào repo). Tài khoản admin hiện có trong DB giữ
+      # nguyên role — biến này chỉ dùng cho auto-grant khi login lần đầu.
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - RUST_LOG=khogame=info,tower_http=warn
       - TZ=Asia/Ho_Chi_Minh
       # v2.8.0 — Token gọi GitHub API khi đăng/làm mới repo. KHÔNG có token
@@ -74,19 +79,28 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
-    # ─── NOTE: Security hardening đã bị REMOVE (tạm thời) ──────────────
-    # Trước đây có read_only + tmpfs + cap_drop ALL + security_opt +
-    # pids_limit + mem_limit + cpus, nhưng KHÔNG bao giờ được test thực
-    # tế trên prod (Coolify API token hết hạn → PATCH luôn fail → compose
-    # cũ không có hardening vẫn chạy). Lần đầu token work, hardening DB
-    # (cap_drop ALL) break postgres → crash-loop → web 503.
-    # Quyết định: remove hardening BOTH app + DB để compose match chính xác
-    # phiên bản đang chạy healthy trên prod. Giảm risk phá prod lần nữa.
-    # TODO: re-add hardening từng bước, test trên staging trước:
-    #   1) logging rotation (đã giữ — safe)
-    #   2) app: read_only + tmpfs + cap_drop ALL (app non-root, port >1024)
-    #   3) DB: chỉ CAP_CHOWN+DAC_OVERRIDE (giữ entrypoint chown), không ALL
-    #   4) Resource limits (mem_limit/cpus) — kiểm tra tải thực tế trước
+    # ─── v3.5.1: Hardening THEO ĐÚNG staged TODO của chính file này ─────
+    # Stage 2 (app): read_only + tmpfs /tmp + cap_drop ALL + no-new-privs
+    # + pids_limit. AN TOÀN cho app vì (đã audit src/):
+    #   - App ghi file DUY NHẤT vào /app/storage (services/storage.rs —
+    #     fs::write duy nhất; dir là named volume rw, volume vẫn ghi được
+    #     ngay cả khi rootfs read_only).
+    #   - Chạy non-root (USER khogame, Dockerfile), bind port 3000 >1024
+    #     → không cần CAP_NET_BIND_SERVICE hay capability nào.
+    #   - Bin Rust tĩnh thuần, không JIT/interpreter ghi disk lúc runtime.
+    # Incident crash-loop trước đây là do cap_drop ALL trên DB (postgres
+    # entrypoint cần chown) — KHÔNG phải app. DB hardening (stage 3: chỉ
+    # CAP_CHOWN+DAC_OVERRIDE) + resource limits (stage 4) cần test staging
+    # trước khi áp — chưa thêm, đúng kế hoạch của file.
+    # ────────────────────────────────────────────────────────────────────
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
     # ─── Log rotation (json-file driver default không xoay → disk đầy) ───
     # Coolify host thường có disk 20-50GB; app log ~1MB/phút nếu traffic
     # cao → đầy disk trong ~1 tuần nếu không rotate.
@@ -137,15 +151,14 @@ services:
       timeout: 3s
       retries: 10
       start_period: 30s
-    # ─── NOTE: Security hardening đã bị REMOVE khỏi DB container ───
-    # Trước đây có cap_drop: ALL + security_opt + pids_limit + mem_limit +
-    # cpus, nhưng cap_drop: ALL khiến postgres:17-alpine entrypoint không
-    # chown được PGDATA (cần CAP_CHOWN) → container crash-loop → toàn bộ
-    # stack unhealthy → web 503. Fix: bỏ hardening DB, giữ logging rotation.
-    # App hardening (read_only + cap_drop ALL) vẫn giữ vì app chạy non-root,
-    # bind port 3000 >1024, không cần capability nào.
-    # TODO: re-add DB hardening cẩn thận sau (CAP_CHOWN + DAC_OVERRIDE), test
-    # trên staging trước khi đưa prod.
+    # ─── NOTE: DB hardening — chưa áp (stage 3 của staged TODO) ────────
+    # cap_drop: ALL break postgres:17-alpine entrypoint (cần CHOWN cho
+    # PGDATA + SETUID/SETGID cho su-exec chuyển user) → crash-loop → web
+    # 503 (incident đã xảy ra). Stage 3 khi áp: cap_drop ALL + cap_add
+    # CHOWN, DAC_OVERRIDE, SETUID, SETGID — PHẢI test staging trước.
+    # v3.5.1: thêm pids_limit (an toàn — chỉ giới hạn số process, postgres
+    # chạy vài process con) chống fork-bomb từ bên trong container DB.
+    pids_limit: 512
     # ─── Log rotation (json-file driver default không xoay → disk đầy) ───
     logging:
       driver: json-file

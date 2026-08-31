@@ -1127,10 +1127,17 @@ pub async fn health_lb(State(_state): State<Arc<AppState>>) -> Response {
         .into_response()
 }
 
-/// Health endpoint chi tiết — query DB để xác nhận kết nối còn dùng được,
-/// kèm pool metrics cho admin gỡ rối. Dùng cho `/api/v1/health` (đã public
-/// nhưng monitor hiếm khi gọi vì LB dùng `/health`).
-pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
+/// Health endpoint chi tiết — query DB để xác nhận kết nối còn dùng được.
+///
+/// v3.5.1 FIX (audit 5-e F5 — info leak): pool metrics + uptime + trạng thái
+/// degraded giờ CHỈ trả cho staff (admin/mod đã login). Khách ẩn danh (kể cả
+/// healthcheck container `curl /api/v1/health` không mang session) chỉ nhận
+/// `{status, version, database}` — đủ tín hiệu cho healthcheck (db up/down)
+/// nhưng không tiết lộ pool sizing / fingerprint deploy cho attacker recon.
+pub async fn health_detail(
+    State(state): State<Arc<AppState>>,
+    jar: axum_extra::extract::CookieJar,
+) -> Response {
     let started = START_TIME.get_or_init(std::time::Instant::now);
     let uptime_secs = started.elapsed().as_secs();
     let pool = &state.db;
@@ -1138,43 +1145,34 @@ pub async fn health_detail(State(state): State<Arc<AppState>>) -> Response {
         .fetch_one(pool)
         .await
         .is_ok();
-    // Pool stats giúp phát hiện connection leak / cạn pool trên prod
-    // mà không cần kết nối trực tiếp vào PostgreSQL để chạy pg_stat_activity.
-    let pool_size = pool.size();
-    let pool_idle = pool.num_idle() as u32;
-    let in_use = pool_size.saturating_sub(pool_idle);
+    // v3.5.1: chỉ staff (session hợp lệ) được xem metrics nhạy cảm.
+    let is_staff = crate::middleware::current_user_from_jar(&state, &jar)
+        .await
+        .is_some_and(|u| u.role.is_staff());
+    let detail = |db_label: &str| {
+        let mut v = serde_json::json!({
+            "status": if db_ok { "ok" } else { "degraded" },
+            "version": env!("CARGO_PKG_VERSION"),
+            "database": db_label,
+        });
+        if is_staff {
+            let pool_size = pool.size();
+            let pool_idle = pool.num_idle() as u32;
+            let in_use = pool_size.saturating_sub(pool_idle);
+            v["pool"] = serde_json::json!({
+                "size": pool_size,
+                "idle": pool_idle,
+                "in_use": in_use,
+            });
+            v["uptime_secs"] = serde_json::json!(uptime_secs);
+            v["time"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
+        }
+        v
+    };
     let (status, body) = if db_ok {
-        (
-            axum::http::StatusCode::OK,
-            serde_json::json!({
-                "status": "ok",
-                "version": env!("CARGO_PKG_VERSION"),
-                "database": "up",
-                "pool": {
-                    "size": pool_size,
-                    "idle": pool_idle,
-                    "in_use": in_use,
-                },
-                "uptime_secs": uptime_secs,
-                "time": chrono::Utc::now().to_rfc3339(),
-            }),
-        )
+        (axum::http::StatusCode::OK, detail("up"))
     } else {
-        (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            serde_json::json!({
-                "status": "degraded",
-                "version": env!("CARGO_PKG_VERSION"),
-                "database": "down",
-                "pool": {
-                    "size": pool_size,
-                    "idle": pool_idle,
-                    "in_use": in_use,
-                },
-                "uptime_secs": uptime_secs,
-                "time": chrono::Utc::now().to_rfc3339(),
-            }),
-        )
+        (axum::http::StatusCode::SERVICE_UNAVAILABLE, detail("down"))
     };
     // Health endpoint không cache — monitor (Coolify/Kubernetes) cần trạng
     // thái thời gian thực, không phải snapshot cũ.
@@ -1339,7 +1337,10 @@ pub async fn user_profile(
         "bio": user.bio,
         "role": format!("{:?}", user.role).to_lowercase(),
         "created_at": user.created_at.to_rfc3339(),
-        "last_seen_at": user.last_seen_at.map(|d| d.to_rfc3339()),
+        // v3.5.1 FIX (audit 5-e F6 — stalking vector): bỏ `last_seen_at`
+        // chính xác tới giây khỏi API public (trang hồ sơ HTML cũng không
+        // hiển thị — chỉ admin xem được). Giữ lại ở JSON cho self/staff nếu
+        // cần bằng cách gọi với session — nhưng mặc định ẩn hoàn toàn.
         "stats": {
             "games_count": stats.games_count,
             "followers_count": stats.followers_count,

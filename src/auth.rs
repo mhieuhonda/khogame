@@ -232,7 +232,7 @@ pub fn gen_random_password() -> String {
 /// kể cả BASE_URL http (đặt nhầm env không hạ cấp cookie xuống plain-text
 /// được gửi qua mạng). Muốn tắt hẳn phải tường minh unset RUST_ENV +
 /// COOKIE_SECURE — không bao giờ fail-open ngầm.
-fn should_secure_cookie(base_url: &str) -> bool {
+pub fn should_secure_cookie(base_url: &str) -> bool {
     if std::env::var("COOKIE_SECURE")
         .ok()
         .is_some_and(|v| matches!(v.trim(), "1" | "true" | "yes" | "on"))

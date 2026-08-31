@@ -13,6 +13,18 @@ use uuid::Uuid;
 pub const MYSTERY_MIN_XP: i32 = 10;
 pub const MYSTERY_MAX_XP: i32 = 150;
 
+/// v3.5.1 FIX (audit 5-e, HIGH — máy in XP): giá mystery box tại seed
+/// migration 032. EV payout = (10+150)/2 ≈ 79.5 XP — giá PHẢI > EV thì
+/// mở vô hạn mới không sinh XP ròng (45 cũ → +34.5 XP/hộp = in XP vô hạn).
+/// Hằng này chỉ để guard compile-time + tài liệu — DB (`shop_items.price`)
+/// mới là nguồn sự thật khi mua.
+pub const MYSTERY_BOX_PRICE_XP: i32 = 100;
+
+/// v3.5.1 — cap số hộp mở/ngày/user (lớp phòng vệ 2: kể cả nếu admin chỉnh
+/// giá DB về thấp lại, farm cũng bị chặn ở 5 hộp/ngày = tối đa +375 XP/ngày
+/// nếu trúng jackpots liên tiếp — vô hại với economy).
+pub const MYSTERY_BOX_DAILY_CAP: i64 = 5;
+
 /// Giới hạn tồn kho streak_freeze (chặn mua ôm hàng).
 pub const MAX_STREAK_FREEZE: i32 = 5;
 
@@ -175,6 +187,33 @@ impl ShopRepo {
                 .await?;
             }
             "mystery_box" => {
+                // v3.5.1 FIX (audit 5-e): cap số hộp/ngày + advisory lock
+                // cấp user serialize check-then-act (cùng pattern RPS/
+                // Trivia). Đếm event 'mystery_box' hôm nay — mỗi hộp mở luôn
+                // chèn 1 event (mystery_xp ≥ 10 > 0).
+                sqlx::query("SELECT pg_advisory_xact_lock(hashtext('shop:' || $1::text))")
+                    .bind(user_id.to_string())
+                    .execute(&mut *tx)
+                    .await?;
+                let opened_today: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(
+                    format!(
+                        "SELECT COUNT(*) FROM xp_events
+                             WHERE user_id = $1 AND reason = 'mystery_box'
+                               AND created_at >= {}",
+                        crate::utils::SQL_TODAY_START_VN
+                    )
+                    .as_str(),
+                ))
+                .bind(user_id)
+                .fetch_one(&mut *tx)
+                .await?;
+                if opened_today >= MYSTERY_BOX_DAILY_CAP {
+                    // return Err trong tx → rollback → XP trừ ở trên được
+                    // hoàn lại tự động.
+                    return Err(AppError::BadRequest(format!(
+                        "Chỉ mở được {MYSTERY_BOX_DAILY_CAP} Hộp Bí Ẩn mỗi ngày — quay lại vào ngày mai!"
+                    )));
+                }
                 // rand_val 0..=9999 → XP min..max (chọn ở service layer,
                 // hàm thuần ở dưới dùng chung test được)
                 mystery_xp = mystery_xp_for(rand_val);
@@ -235,5 +274,17 @@ mod tests {
     /// Compile-time guard (pattern janitor).
     const _: () = {
         assert!(MAX_STREAK_FREEZE >= 1 && MAX_STREAK_FREEZE <= 10);
+    };
+
+    /// v3.5.1 guard (audit 5-e): giá mystery box PHẢI > EV phần thưởng —
+    /// nếu không, mở hộp lặp là in XP vô hạn. EV ≈ (min+max)/2 (phân phối
+    /// gần đều của rand_val 0..9999).
+    const _: () = {
+        let ev = (MYSTERY_MIN_XP + MYSTERY_MAX_XP) / 2;
+        assert!(
+            MYSTERY_BOX_PRICE_XP > ev,
+            "MYSTERY_BOX_PRICE_XP phải > EV payout — dùng máy in XP"
+        );
+        assert!(MYSTERY_BOX_DAILY_CAP >= 1 && MYSTERY_BOX_DAILY_CAP <= 20);
     };
 }

@@ -785,9 +785,20 @@
         // Version query trong URL buộc browser download SW mới khi deploy
         // mới (URL khác → SW script khác → SW update). SW strategy:
         // skipWaiting → clients.claim để update apply ngay lập tức.
+        // v3.5.1: lấy version từ chính URL của app.js (?v=CARGO_PKG_VERSION
+        // do template render) — SW luôn đồng bộ version với app, không còn
+        // hardcode "2.9.2" stale.
+        var swVersion = '3.5.1';
+        try {
+            var scripts = document.querySelectorAll('script[src*="app.js?v="]');
+            for (var i = 0; i < scripts.length; i++) {
+                var m = (scripts[i].getAttribute('src') || '').match(/[?&]v=([0-9][0-9.]*)/);
+                if (m) { swVersion = m[1]; break; }
+            }
+        } catch (e) { /* giữ default */ }
         window.addEventListener('load', function() {
             navigator.serviceWorker
-                .register('/static/js/sw.js?v=2.9.2', { scope: '/' })
+                .register('/static/js/sw.js?v=' + swVersion, { scope: '/' })
                 .then(function(reg) {
                     if (reg && typeof reg.update === 'function') {
                         // Trigger update check sau 60s nếu user keep tab mở

@@ -853,13 +853,25 @@ pub async fn download_game(
 /// # Errors
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+///
+/// v3.5.1 FIX (Reflected XSS — audit task 5-f, HIGH): trước đây render
+/// partial với `slug` THÔ từ path param — template đưa slug vào context
+/// JS string (`onclick="...getElementById('report-modal-{{ slug }}')..."`).
+/// Askama escape `'` thành `&#39;` nhưng HTML parser DECODE numeric entity
+/// TRƯỚC khi đưa cho JS engine → `'` phá vỡ JS string literal → inject
+/// JS tuỳ ý (victim đã login click 1 lần là chạy payload same-origin).
+/// Giờ resolve slug qua DB và dùng canonical slug (charset [a-z0-9-] do
+/// slugify tạo) — không tồn tại → 404. Fix luôn bug phụ: trước đây chấp
+/// nhận report cho game không tồn tại.
 pub async fn report_form(
     State(state): State<Arc<AppState>>,
     AuthUser(_user): AuthUser,
     Path(slug): Path<String>,
 ) -> AppResult<Html<String>> {
-    let _ = state;
-    let partial = ReportModalPartial { slug: &slug };
+    let game = GameRepo::find_by_slug(&state.db, &slug)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    let partial = ReportModalPartial { slug: &game.slug };
     Ok(Html(partial.render()?))
 }
 

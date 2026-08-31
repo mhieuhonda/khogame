@@ -175,6 +175,14 @@ impl RpsRepo {
         bot_choice: RpsChoice,
     ) -> AppResult<RpsPlayResult> {
         let mut tx = pool.begin().await?;
+        // v3.5.1 FIX (task 5-b — daily-cap race): advisory lock cấp user
+        // TRƯỚC khi đọc count — dưới READ COMMITTED, N tx đồng thời của cùng
+        // user vẫn cùng đọc count < cap rồi cùng INSERT (kể cả khi count đọc
+        // "trong tx"). Lock serialize check-then-insert — pattern TriviaRepo.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('rps:' || $1::text))")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         // Anti-farm: đếm trong tx để không race vượt cap
         let sql = format!(
             "SELECT COUNT(*) FROM rps_plays
@@ -540,6 +548,24 @@ impl RpsRepo {
 
             // Resolve trong 1 tx: update match + ghi plays + cộng XP.
             let mut tx = pool.begin().await?;
+            // v3.5.1 FIX (audit task 5-b — RPS daily-cap race): lock advisory
+            // cấp user cho CẢ 2 bên (thứ tự UUID tăng dần tránh deadlock)
+            // TRƯỚC khi đọc count. Trước đây chỉ re-check count trong tx nhưng
+            // dưới READ COMMITTED, N tx đồng thời của cùng user vẫn cùng đọc
+            // count < cap rồi cùng INSERT (lock hàng `FOR UPDATE SKIP LOCKED`
+            // chạy autocommit ngoài tx nên không serialize gì cả). Advisory
+            // xact-lock serialize đúng theo user — cùng pattern TriviaRepo.
+            let (lock_a, lock_b) = if p1_id < user_id {
+                (p1_id, user_id)
+            } else {
+                (user_id, p1_id)
+            };
+            for lock_id in [lock_a, lock_b] {
+                sqlx::query("SELECT pg_advisory_xact_lock(hashtext('rps:' || $1::text))")
+                    .bind(lock_id.to_string())
+                    .execute(&mut *tx)
+                    .await?;
+            }
             let outcome = RpsOutcome::determine(p1_choice, user_choice); // góc nhìn P1
             let (xp1, xp2) = match outcome {
                 RpsOutcome::Win => (RPS_PVP_XP_WIN, 0),
@@ -570,11 +596,8 @@ impl RpsRepo {
                 continue;
             }
             // v3.4.2 FIX (audit "daily cap ngoài tx"): đếm lại TRONG tx sau
-            // khi giành được match — N request đồng thời đều vượt pre-check
-            // ngoài đời (cùng đọc plays_today < cap) giờ chỉ những request
-            // serialize sau INSERT mới thấy count tăng dần; request vượt
-            // cap bị rollback. (P1 được resolve kèm theo khi có người join —
-            // overshoot tối đa 1 ván/ngày, chấp nhận.)
+            // khi giành được match — v3.5.1: giờ có advisory lock nên count
+            // đọc là CHẮC CHẮN serialised (không còn overshoot).
             let sql_cap = format!(
                 "SELECT COUNT(*) FROM rps_plays
                  WHERE user_id = $1 AND created_at >= {}",
@@ -590,16 +613,36 @@ impl RpsRepo {
                     "Bạn đã chơi {RPS_DAILY_CAP} ván hôm nay — quay lại vào ngày mai!"
                 )));
             }
-            // Plays cho cả 2 (góc nhìn riêng từng bên).
-            insert_play_tx(
-                &mut tx,
-                p1_id,
-                p1_choice.id(),
-                user_choice.id(),
-                outcome.db_str(),
-                xp1,
-            )
-            .await?;
+            // v3.5.1 FIX: cap của P1 cũng phải được re-check trong lock —
+            // P1 có thể đã chơi thêm ván khác sau khi tạo match này. Vượt
+            // cap → P1 không được ghi play/XP (match vẫn resolve, xp1=0 —
+            // cùng pattern fallback_to_ai).
+            let p1_plays: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql_cap.as_str()))
+                .bind(p1_id)
+                .fetch_one(&mut *tx)
+                .await?;
+            let p1_over_cap = p1_plays >= RPS_DAILY_CAP;
+            if p1_over_cap {
+                // Match row đã ghi xp1 gốc ở UPDATE trên — sửa lại xp1=0 cho
+                // nhất quán bookkeeping (poll sau không hiển thị XP ảo).
+                sqlx::query("UPDATE rps_matches SET xp1 = 0 WHERE id = $1")
+                    .bind(match_id)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            // Plays cho cả 2 (góc nhìn riêng từng bên) — P1 vượt cap thì
+            // không ghi play cho P1 (v3.5.1).
+            if !p1_over_cap {
+                insert_play_tx(
+                    &mut tx,
+                    p1_id,
+                    p1_choice.id(),
+                    user_choice.id(),
+                    outcome.db_str(),
+                    xp1,
+                )
+                .await?;
+            }
             let my_outcome = match outcome {
                 RpsOutcome::Win => RpsOutcome::Lose,
                 RpsOutcome::Lose => RpsOutcome::Win,
@@ -614,7 +657,9 @@ impl RpsRepo {
                 xp2,
             )
             .await?;
-            award_xp_tx(&mut tx, p1_id, xp1).await?;
+            if !p1_over_cap {
+                award_xp_tx(&mut tx, p1_id, xp1).await?;
+            }
             let total_xp = if xp2 > 0 {
                 sqlx::query_scalar(
                     r#"INSERT INTO user_xp_totals (user_id, total_xp)
@@ -759,6 +804,14 @@ impl RpsRepo {
         };
 
         let mut tx = pool.begin().await?;
+        // v3.5.1 FIX (verify 5-d — deadlock window): advisory lock cấp user
+        // LÊN TRƯỚC row UPDATE của match (giữ thứ tự lock thống nhất với join
+        // path: advisory trước row) — loại bỏ cửa sổ deadlock PG 40P01 khi
+        // fallback và join đua nhau trên cùng match đang waiting.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('rps:' || $1::text))")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         let (p1_id, p1_choice, p2_choice, xp1, xp2) = (
             user_id,
             my_choice_str.clone(),
@@ -812,6 +865,7 @@ impl RpsRepo {
         // v3.4.2 FIX (audit cap): fallback resolve match kể cả khi user đã
         // chạm cap (match phải có kết thúc), nhưng KHÔNG ghi plays/XP thêm —
         // chống farm XP bằng cách để match timeout rồi poll fallback.
+        // (v3.5.1: advisory lock đã acquire ở ĐẦU tx — xem trên.)
         let sql_cap = format!(
             "SELECT COUNT(*) FROM rps_plays
              WHERE user_id = $1 AND created_at >= {}",

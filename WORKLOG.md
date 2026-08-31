@@ -1,6 +1,45 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v3.5.1-superfix
+Agent: Super Z (main) + 6 sub-agent audit độc lập (5-a/5-b/5-c/5-d/5-e/5-f)
+Task: Siêu fix lỗi GitHub Actions (ưu tiên tối cao) + 15 vòng quét-fix bảo
+mật toàn codebase, build Rust 1.98, release v3.5.1.
+
+Work Log:
+- Phân tích 3 workflow run fail (2026-08-30) trực tiếp từ logs GitHub API:
+  Release v3.4.2 (bash -e giết step trước fallback), CD main + CD v3.5.0
+  (3 deploy đua nhau + tag v3.4.2 lệch version Cargo.toml=3.4.1).
+- FIX GitHub Actions (xem CHANGELOG 3.5.1 mục CI/CD): release.yml `if !`
+  pattern + version gate; deploy.yml job-level concurrency `coolify-deploy`
+  + stale-tag guard + version gate + least-privilege permissions + buildkit
+  pin v0.32.2; ci.yml checkout theo ref sau autofmt + retry push.
+- 15 vòng quét bảo mật: 6 vòng agent độc lập (auth/CSRF/XSS, SQLi/IDOR/
+  upload/economy, Docker/supply-chain/secrets, verify round, background
+  jobs/email/AI API/referral/quest/shop, templates/JS XSS sâu) + cargo
+  audit + các vòng build/test/validate.
+- FIX 2 HIGH mới phát hiện: XP farm draft→publish (~3.000 XP/phút) —
+  publish() FOR UPDATE + gate published_at; Mystery Box in XP vô hạn —
+  migration 032 giá 100 XP + cap 5/ngày + advisory lock; Reflected XSS
+  report-form — resolve slug qua DB.
+- FIX 8 MEDIUM: rate-limit bypass xoay cookie (validate session +
+  HMAC-signed ls_anon + shared bucket /auth/ai/*), upload quota reserve
+  atomic, RPS advisory locks 3 path, daily caps post_game/post_news/
+  review/repo, supply-chain CI, Postgres dev bind 127.0.0.1.
+- FIX 9 LOW: cookie Secure/HttpOnly, WS Origin check, health metrics
+  gating staff, bỏ last_seen_at API, email validation, janitor retention
+  ai_progress_reports, quest toggle farm (migration 033 like_history).
+- Fix Service Worker chết im lặng từ trước (Service-Worker-Allowed: /).
+- Prod compose hardening stage 2 đúng TODO của file (read_only, cap_drop
+  ALL, tmpfs, no-new-privileges, pids_limit).
+- Validate: cargo check/clippy -D warnings/fmt/rustdoc + cargo audit sạch;
+  353/353 test PASS trên Rust 1.98.0. YAML 3 workflow hợp lệ.
+
+Stage Summary:
+- Version 3.5.1, migration 032 + 033, Cargo.lock + hmac 0.13.
+- Sẵn sàng tag v3.5.1 → CD deploy serialize + Release tự tạo từ CHANGELOG.
+
+---
 Task ID: v2.9.1-deploy-verify
 Agent: Super Z (main)
 Task: Deploy verify + incident recovery sau release v2.9.1.

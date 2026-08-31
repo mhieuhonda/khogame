@@ -428,21 +428,48 @@ impl GameRepo {
     /// UPDATE vô điều kiện + caller luôn coi là "mới publish" → POST
     /// `/games/{slug}/publish` lặp lại được +50 XP mỗi lần (hook
     /// on_game_published fire lại) + spam notification cho followers.
+    ///
+    /// v3.5.1 FIX (XP farm vòng lặp draft→publish, HIGH): v3.0.0 chỉ chặn
+    /// publish 2 lần LIÊN TIẾP — owner vẫn dựng vòng lặp qua form edit
+    /// (đặt status=draft) rồi gọi `/publish` lại: mỗi vòng `status <> 'published'`
+    /// đều thoả → +50 XP + notification-toàn-bộ-followers mỗi cycle (~3.000
+    /// XP/phút). Giờ hook CHỈ fire khi game CHƯA TỪNG publish lần nào
+    /// (`published_at IS NULL` trước update — mốc này được COALESCE bảo
+    /// toàn, không reset khi về draft). Re-publish sau khi về draft vẫn
+    /// set status='published' bình thường, chỉ không cộng XP/spam nữa.
+    /// `SELECT ... FOR UPDATE` trong tx chống 2 request publish đua nhau.
     /// # Returns
-    /// `true` nếu game chuyển trạng thái → caller mới fire hook XP.
+    /// `true` nếu đây là lần publish ĐẦU TIÊN của game → caller fire hook XP.
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn publish(pool: &PgPool, id: Uuid) -> AppResult<bool> {
-        let res = sqlx::query(
-            "UPDATE games SET status = 'published', \
-             published_at = COALESCE(published_at, NOW()) \
-             WHERE id = $1 AND status <> 'published'",
+        let mut tx = pool.begin().await?;
+        let row: Option<(bool, bool)> = sqlx::query_as(
+            "SELECT (status = 'published'), (published_at IS NOT NULL) \
+             FROM games WHERE id = $1 FOR UPDATE",
         )
         .bind(id)
-        .execute(pool)
+        .fetch_optional(&mut *tx)
         .await?;
-        Ok(res.rows_affected() > 0)
+        // Game không tồn tại (hoặc bị xoá giữa chừng) → không có gì để publish.
+        let Some((already_published, ever_published)) = row else {
+            return Ok(false);
+        };
+        if !already_published {
+            sqlx::query(
+                "UPDATE games SET status = 'published', \
+                 published_at = COALESCE(published_at, NOW()) \
+                 WHERE id = $1",
+            )
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
+        // Hook XP/notification chỉ fire khi: game vừa chuyển sang published
+        // VÀ chưa từng được publish lần nào trước đó.
+        Ok(!already_published && !ever_published)
     }
 
     /// # Errors

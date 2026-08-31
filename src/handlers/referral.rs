@@ -45,6 +45,7 @@ pub async fn referral_page(
 /// KHÔNG đăng nhập, KHÔNG ghi DB ở đây (ghi khi người mới đăng nhập lần
 /// đầu — an toàn tuyệt đối với bot lướt link).
 pub async fn short_link(
+    State(state): State<Arc<AppState>>,
     axum::extract::Path(code): axum::extract::Path<String>,
 ) -> impl IntoResponse {
     // Chuẩn hoá: chỉ nhận [A-Z0-9] độ dài hợp lý — chặn header injection
@@ -55,9 +56,16 @@ pub async fn short_link(
         .collect();
     let mut resp = Redirect::to("/").into_response();
     if safe_code.len() >= 4 {
-        let cookie = format!(
-            "{REFERRAL_COOKIE}={safe_code}; Path=/; Max-Age={REFERRAL_COOKIE_MAX_AGE}; SameSite=Lax"
+        // v3.5.1 FIX (audit 5-e F3): thêm HttpOnly + Secure (dùng chung
+        // should_secure_cookie với các cookie khác). Giá trị là referral
+        // code công khai nên mức độ nhạy cảm thấp, nhưng đồng nhất chính
+        // sách cookie toàn site (HttpOnly + SameSite=Lax + Secure ở prod).
+        let mut cookie = format!(
+            "{REFERRAL_COOKIE}={safe_code}; Path=/; Max-Age={REFERRAL_COOKIE_MAX_AGE}; HttpOnly; SameSite=Lax"
         );
+        if crate::auth::should_secure_cookie(&state.config.base_url) {
+            cookie.push_str("; Secure");
+        }
         if let Ok(v) = axum::http::HeaderValue::from_str(&cookie) {
             resp.headers_mut().append(axum::http::header::SET_COOKIE, v);
         }

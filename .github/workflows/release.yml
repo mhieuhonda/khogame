@@ -32,9 +32,15 @@ jobs:
 
       - name: Resolve tag name
         id: tag
+        env:
+          # v3.5.1 FIX (shell injection, audit 5-c): input workflow_dispatch
+          # KHÔNG interpolate trực tiếp vào run: (`${{ inputs.tag }}` — người
+          # có write access có thể chèn lệnh shell). Truyền qua env rồi tham
+          # chiếu "$TAG" — GitHub masking + shell quoting an toàn.
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
           else
             TAG="${GITHUB_REF##*/}"
           fi
@@ -50,23 +56,42 @@ jobs:
           fi
           echo "Tag format OK: $TAG"
 
-      - name: Extract CHANGELOG section for this tag
-        id: notes
+      - name: Verify tag version khớp Cargo.toml (chống tag lệch version như v3.4.2)
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          # CHANGELOG.md format: "## [x.y.z] - YYYY-MM-DD" header, next "## [" ends section.
+          VERSION="${TAG#v}"
+          CARGO_VERSION=$(grep -E '^version = "[0-9]' Cargo.toml | head -1 | sed -E 's/.*"([0-9][^"]*)".*/\1/')
+          echo "Tag version:     $VERSION"
+          echo "Cargo.toml:      $CARGO_VERSION"
+          if [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag $TAG có version '$VERSION' nhưng Cargo.toml là '$CARGO_VERSION'. Bump version trong Cargo.toml + Cargo.lock (cargo update -p khogame --precise $VERSION) RỒI mới tag lại. Version lệch khiến image Docker serve sai version qua /health và CD verify fail (đã xảy ra với v3.4.2)."
+            exit 1
+          fi
+          echo "✅ Tag version khớp Cargo.toml."
+
+      - name: Extract CHANGELOG section for this tag
+        id: notes
+        # ⚠️ QUAN TRỌNG: GitHub Actions chạy step với `bash -e` (errexit).
+        # Phiên bản cũ dùng `python3 ... ; if [ $? -ne 0 ]` — khi python
+        # exit(1) thì shell CHẾT NGAY tại python, nhánh fallback không bao
+        # giờ chạy → step fail (đã xảy ra với tag v3.4.2: section CHANGELOG
+        # chưa có tại commit đó). Fix: dùng `if ! cmd; then` — pattern duy
+        # nhất an toàn với errexit.
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          # CHANGELOG.md format: "## [x.y.z] — YYYY-MM-DD" header, next "## [" ends section.
           # Match either [v1.0.1] or [1.0.1] (user might omit v prefix in changelog).
           VERSION="${TAG#v}"
           echo "Extracting changelog for tag=$TAG version=$VERSION"
 
-          python3 - "$VERSION" <<'PY' > /tmp/release_notes.md
+          if ! python3 - "$VERSION" <<'PY' > /tmp/release_notes.md
           import re, sys
           version = sys.argv[1]
           try:
               with open("CHANGELOG.md", encoding="utf-8") as f:
                   content = f.read()
           except FileNotFoundError:
-              print(f"CHANGELOG.md not found")
+              print("CHANGELOG.md not found")
               sys.exit(1)
 
           # Match "## [x.y.z] - YYYY-MM-DD" or "## [vx.y.z] - YYYY-MM-DD"
@@ -81,8 +106,7 @@ jobs:
               sys.exit(1)
           print(body)
           PY
-
-          if [ $? -ne 0 ]; then
+          then
             echo "::warning::CHANGELOG extraction failed — using generic release notes"
             {
               echo "## Release $TAG"

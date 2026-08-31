@@ -23,7 +23,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # v3.5.1 FIX (audit 5-c): bind 127.0.0.1 thay vì 0.0.0.0 — file compose
+      # dev có password hardcode công khai trong repo; nếu chạy trên VPS/public
+      # host, 0.0.0.0 expose Postgres ra internet với credential ai cũng đọc
+      # được. Chỉ app trong cùng compose network cần kết nối được tới DB —
+      # loopback binding vẫn cho phép psql từ host để debug.
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U khogame -d khogame"]
       interval: 5s
@@ -58,7 +63,11 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID missing — cp .env.example .env và điền OAuth credentials}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET missing — cp .env.example .env và điền OAuth credentials}
       GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-http://localhost:3000/auth/google/callback}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-khongdich.admin@gmail.com}
+      # v3.5.1 FIX (audit 5-c): bỏ default cứng email admin trong repo công
+      # khai — cấu hình của ai tự động lên admin khi login Google là thông
+      # tin nhạy cảm (biết được = nhắm đúng tài khoản chiếm quyền). Dev
+      # muốn auto-admin thì tự set ADMIN_EMAIL trong .env.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       RUST_LOG: ${RUST_LOG:-khogame=debug,tower_http=info}
       TZ: Asia/Ho_Chi_Minh
       # v2.9.1 — GitHub token (optional): tăng quota GitHub API 60 → 5000

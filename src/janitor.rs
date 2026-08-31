@@ -27,6 +27,13 @@ const DIGEST_HOUR_VN: u32 = 8;
 /// thuộc bảng này (đã cache ở user_xp_totals) nên xoá an toàn tuyệt đối.
 const XP_EVENTS_RETENTION_DAYS: i64 = 90;
 
+/// v3.5.1 FIX (audit 5-e F4 — bảng phình vô hạn): số ngày giữ
+/// `ai_progress_reports`. `/ai/progress` chấp nhận row ~10.5KB với bucket
+/// 120 req/phút/agent → tiềm năng ~172k row/ngày mà KHÔNG job nào dọn.
+/// 90 ngày đủ cho audit gần, cũ hơn xoá (report chỉ có giá trị gỡ rối
+/// ngắn hạn — agent_id CASCADE xoá theo user).
+const AI_PROGRESS_RETENTION_DAYS: i64 = 90;
+
 /// Chu kỳ chạy dọn dẹp mặc định (6 giờ). Có thể override qua env
 /// `JANITOR_INTERVAL_SECS` (tối thiểu 60s để tránh spam DB khi test).
 const DEFAULT_INTERVAL_SECS: u64 = 6 * 3600;
@@ -214,16 +221,24 @@ pub async fn run_janitor(state: AppState) {
         // liên tục. Log duration để admin quan sát; vẫn giữ hành vi cũ
         // (sleep interval giữa các lần) vì dọn dẹp là idempotent.
         let start = std::time::Instant::now();
-        let (sessions, notifications, daily_stats, emails, xp_events) = do_cleanup(&state).await;
+        let (sessions, notifications, daily_stats, emails, xp_events, ai_reports) =
+            do_cleanup(&state).await;
         let elapsed = start.elapsed();
-        if sessions > 0 || notifications > 0 || daily_stats > 0 || emails > 0 || xp_events > 0 {
+        if sessions > 0
+            || notifications > 0
+            || daily_stats > 0
+            || emails > 0
+            || xp_events > 0
+            || ai_reports > 0
+        {
             tracing::info!(
-                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ (mất {:?})",
+                "Janitor: đã xoá {} session hết hạn, {} notification cũ, {} dòng daily_stats cũ, {} email_queue kết thúc, {} xp_events cũ, {} ai_progress_reports cũ (mất {:?})",
                 sessions,
                 notifications,
                 daily_stats,
                 emails,
                 xp_events,
+                ai_reports,
                 elapsed
             );
         } else if elapsed > Duration::from_secs(30) {
@@ -378,8 +393,8 @@ pub async fn run_email_flusher(state: AppState) {
 }
 
 /// Thực hiện một vòng dọn dẹp, trả về (sessions, notifications, `daily_stats`,
-/// email_queue kết thúc, xp_events) đã xoá.
-async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64) {
+/// email_queue kết thúc, xp_events, ai_progress_reports) đã xoá.
+async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64, u64) {
     let sessions = SessionRepo::cleanup_expired(&state.db)
         .await
         .unwrap_or_else(|e| {
@@ -417,7 +432,21 @@ async fn do_cleanup(state: &AppState) -> (u64, u64, u64, u64, u64) {
             tracing::warn!("Janitor: lỗi dọn xp_events: {}", e);
             0
         });
-    (sessions, notifications, daily_stats, emails, xp_events)
+    // v3.5.1 — dọn ai_progress_reports quá hạn (bảng phình vô hạn trước đó).
+    let ai_reports = cleanup_ai_progress_reports(&state.db, AI_PROGRESS_RETENTION_DAYS)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Janitor: lỗi dọn ai_progress_reports: {}", e);
+            0
+        });
+    (
+        sessions,
+        notifications,
+        daily_stats,
+        emails,
+        xp_events,
+        ai_reports,
+    )
 }
 
 /// Xoá email_queue ở trạng thái kết thúc (sent/failed/skipped) cũ hơn
@@ -451,14 +480,33 @@ async fn cleanup_xp_events(pool: &sqlx::PgPool, days: i64) -> crate::error::AppR
     Ok(res.rows_affected())
 }
 
+/// v3.5.1 — Xoá báo cáo tiến độ AI cũ hơn `days` ngày. Dùng index
+/// `idx_ai_progress_created` (created_at DESC) — xoá theo range có index.
+/// # Errors
+///
+/// Trả lỗi khi DB fail.
+async fn cleanup_ai_progress_reports(
+    pool: &sqlx::PgPool,
+    days: i64,
+) -> crate::error::AppResult<u64> {
+    let res = sqlx::query(
+        "DELETE FROM ai_progress_reports WHERE created_at < NOW() - ($1 || ' days')::INTERVAL",
+    )
+    .bind(days.to_string())
+    .execute(pool)
+    .await?;
+    Ok(res.rows_affected())
+}
+
 /// v2.2.0 — Test compile-time guards
 #[cfg(test)]
 mod tests {
     use super::{
-        DAILY_STATS_RETENTION_DAYS, DEFAULT_INTERVAL_SECS, EMAIL_BATCH_SIZE,
-        EMAIL_FLUSH_INTERVAL_SECS, EMAIL_QUEUE_RETENTION_DAYS, EMAIL_STUCK_SENDING_SECS,
-        NOTIFICATION_RETENTION_DAYS, REPO_REFRESH_BATCH_SIZE, REPO_REFRESH_DELAY_MS,
-        REPO_REFRESH_INTERVAL_SECS, REPO_STALE_AFTER_SECS, XP_EVENTS_RETENTION_DAYS,
+        AI_PROGRESS_RETENTION_DAYS, DAILY_STATS_RETENTION_DAYS, DEFAULT_INTERVAL_SECS,
+        EMAIL_BATCH_SIZE, EMAIL_FLUSH_INTERVAL_SECS, EMAIL_QUEUE_RETENTION_DAYS,
+        EMAIL_STUCK_SENDING_SECS, NOTIFICATION_RETENTION_DAYS, REPO_REFRESH_BATCH_SIZE,
+        REPO_REFRESH_DELAY_MS, REPO_REFRESH_INTERVAL_SECS, REPO_STALE_AFTER_SECS,
+        XP_EVENTS_RETENTION_DAYS,
     };
 
     /// Compile-time guards: nếu ai đổi hằng số janitor thành giá trị vô lý
@@ -476,7 +524,10 @@ mod tests {
         // v3.0.0 — guards retention mới:
         assert!(EMAIL_QUEUE_RETENTION_DAYS >= 7); // email log phải sống đủ lâu để audit
         assert!(XP_EVENTS_RETENTION_DAYS >= 30); // heatmap/season cần cửa sổ tối thiểu 30 ngày
-                                                 // v2.9.1 — guards cho job refresh repo:
+                                                 // v3.5.1 — guard retention ai_progress_reports
+        assert!(AI_PROGRESS_RETENTION_DAYS >= 30);
+        assert!(AI_PROGRESS_RETENTION_DAYS <= 365);
+        // v2.9.1 — guards cho job refresh repo:
         assert!(REPO_REFRESH_INTERVAL_SECS >= 300); // tránh spam GitHub API
         assert!(REPO_STALE_AFTER_SECS >= 300); // stale "hợp lý", không quét liên tục
         assert!(REPO_STALE_AFTER_SECS < REPO_REFRESH_INTERVAL_SECS as i64); // mỗi chu kỳ phải có repo đáng quét

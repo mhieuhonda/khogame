@@ -5,6 +5,121 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1] — 2026-08-31 — Siêu fix CI/CD (3 workflow) + 15 vòng quét-fix bảo mật + economy
+
+Bản fix tập trung: **GitHub Actions trước tiên** (3 root-cause thật từ logs
+của 3 run fail hôm 2026-08-30), sau đó **15 vòng quét-fix bảo mật** (6 vòng
+audit song song bởi 6 agent độc lập + verification round + các vòng
+validate/build/test). Build/test/clippy/rustdoc sạch trên Rust 1.98.0 —
+353/353 unit test pass.
+
+### 🔧 CI/CD — fix 3 lỗi workflow thật (ưu tiên cao nhất)
+
+- **Release v3.4.2 fail** — root cause: step chạy `bash -e` (errexit) nhưng
+  pattern cũ `python3 ...; if [ $? -ne 0 ]` → khi CHANGELOG thiếu section,
+  python exit(1) giết shell NGAY, nhánh fallback generic-notes không bao giờ
+  chạy. Fix: `if ! python3 ...; then` (pattern an toàn với errexit) + test
+  thực tế dưới `set -e`.
+- **CD main/v3.5.0 fail** — root cause kép: (1) tag v3.4.2 push cùng lúc
+  với main + v3.5.0 → 3 pipeline CD chạy song song (concurrency theo ref)
+  cùng PATCH compose Coolify → deploy cuối thắng là image cũ; (2) tag
+  v3.4.2 bị lệch version (Cargo.toml = 3.4.1) → image serve sai version →
+  verify của main/v3.5.0 đợi 3 phút không thấy 3.5.0 → fail. Fix 3 lớp:
+  - Job `deploy-coolify` dùng job-level concurrency group cố định
+    `coolify-deploy` (cancel-in-progress: false) → **serialize mọi deploy**,
+    hết race main-vs-tag (đã từng gây 503 25 phút ở v2.9.1 và fail v3.5.0).
+  - **Stale-tag guard**: push tag cũ (không phải mới nhất) → skip deploy
+    (image vẫn build + release vẫn tạo) → không bao giờ rollback prod.
+  - **Version gate**: release.yml + deploy.yml ci-gate verify tag khớp
+    Cargo.toml — fail sớm với message rõ (chống lặp incident v3.4.2).
+- **ci.yml latent bug**: job sau `autofmt` checkout `github.sha` (commit
+  chưa fmt) → khi autofmt commit fmt back, job `fmt`/`check`/`clippy` chạy
+  trên code cũ → fail oan. Fix: checkout theo `ref: ${{ github.ref }}` (head
+  mới nhất). autofmt push thêm retry 3 lần với pull --rebase.
+- Supply-chain hardening: pin `dtolnay/rust-toolchain` theo full SHA,
+  buildkit `:latest` → `v0.32.2`, top-level `permissions: contents: read`
+  (ci) + job-level `packages: write` (chỉ job build), bỏ secret COOLIFY_URL
+  khỏi step summary, input workflow_dispatch release.yml truyền qua `env:`
+  thay vì interpolate vào `run:` (chống shell injection).
+
+### 🔒 Bảo mật — 15 vòng quét, 2 HIGH + 8 MEDIUM đã fix
+
+- **[HIGH] XP farm draft→publish vô hạn** (~3.000 XP/phút + spam notification
+  toàn bộ followers mỗi cycle): `GameRepo::publish` giờ dùng tx +
+  `SELECT ... FOR UPDATE`, hook XP/notification CHỈ fire khi game chưa từng
+  publish lần nào (`published_at IS NULL` trước update). Re-publish sau khi
+  về draft không còn cộng XP/spam.
+- **[HIGH] Mystery Box = máy in XP** (giá 45 XP, EV phần thưởng 79.5 XP →
+  +34.5 XP/hộp, không cap): migration 032 nâng giá lên 100 XP (house edge
+  +20.5/hộp) + cap 5 hộp/ngày + advisory lock + compile-time guard
+  `price > EV`.
+- **[HIGH] Reflected XSS qua `/games/{slug}/report-form`**: slug thô từ
+  path param render vào `onclick="...'{{ slug }}'..."` — Askama escape `'`
+  thành `&#39;` nhưng HTML parser decode numeric entity TRƯỚC khi đưa cho
+  JS engine → phá JS string literal → inject JS tuỳ ý. Fix: resolve slug
+  qua DB (404 nếu không tồn tại) — dùng canonical slug charset [a-z0-9-].
+- **[MEDIUM] Rate-limit bypass bằng xoay cookie**: (1) bucket key cũ
+  `s:{hash(cookie)}` KHÔNG validate — bot xoay `kg_session` rác mỗi request
+  được bucket riêng → brute-force /auth/ai/login không giới hạn. Giờ
+  validate session (cache → DB) mới được bucket `u:{uid}`; (2) `/auth/ai/*`
+  không có session hợp lệ → bucket dùng chung `x:auth-anon` (fail-closed);
+  (3) cookie `ls_anon` giờ được **HMAC-SHA256 ký bằng SESSION_KEY** (hmac
+  crate) — bot không thể tự sinh cookie hợp lệ mới mỗi request; cookie cũ
+  unsigned tự nâng cấp (self-healing).
+- **[MEDIUM] Upload quota race**: check-then-act → **reserve atomic**
+  (`INSERT ... ON CONFLICT DO UPDATE ... WHERE bytes_used + $2 <= quota
+  RETURNING`) — N upload đồng thời không thể cùng vượt quota; save lỗi →
+  hoàn trả bytes (compensating update).
+- **[MEDIUM] RPS daily-cap race**: advisory lock `pg_advisory_xact_lock`
+  cấp user (pattern TriviaRepo) cho cả 3 path (bot, PvP join, fallback AI);
+  join path khoá CẢ 2 user theo thứ tự UUID (deadlock-free) + re-check cap
+  P1 trong lock (skip play/XP, xp1=0); fallback lock TRƯỚC row UPDATE.
+- **[MEDIUM] XP farm xoá-rồi-làm-lại** (review +15, repo +20, news +40):
+  daily cap cho `post_game`/`post_news`/`review`/`repo` trong `award_xp`
+  (4/4/6/5 events ngày — đủ ngưỡng user thật, farmer bị chặn).
+- **[MEDIUM] Supply-chain CI** (xem mục CI/CD trên) + branch protection
+  khuyến nghị bật required checks (script `setup-branch-protection.sh`).
+- **[MEDIUM] Dev compose expose Postgres 0.0.0.0** password hardcode công
+  khai → bind `127.0.0.1:5432`.
+- **[LOW] Cookie hardening**: `ls_anon` + `ls_ref` thêm `Secure` (dùng chung
+  `should_secure_cookie`) + `ls_ref` thêm HttpOnly.
+- **[LOW] WS `/chat/ws` Origin check** trước upgrade (CSWSH
+  defense-in-depth — dùng `verify_origin` như POST).
+- **[LOW] `/api/v1/health` info leak**: pool metrics + uptime giờ chỉ trả
+  staff — anonymous (kể cả healthcheck container) chỉ nhận
+  `{status, version, database}` đủ tín hiệu alive.
+- **[LOW] `/api/v1/users/{username}` bỏ `last_seen_at`** chính xác tới
+  giây (stalking vector — trang hồ sơ HTML vốn không hiển thị).
+- **[LOW] Email validation `/auth/ai/register`**: format check chặt
+  (local@domain, charset + TLD ≥ 2) — chống dùng site làm spam relay tới
+  email nạn nhân.
+- **[LOW] `ai_progress_reports` không có retention** (tiềm năng ~172k
+  row/ngày): janitor dọn quá 90 ngày (dùng index có sẵn).
+- **[LOW] Quest farm bằng toggle**: migration 033 `like_history` — quest
+  `like_game` chỉ bump lần ĐẦU user like game đó; `set_rating` trả
+  `first_ever` (xmax=0) — quest `rate_game` chỉ bump lần đầu rate game đó.
+
+### 🛠 Khác
+
+- **Service Worker hoạt động lần đầu tiên**: app.js đăng ký
+  `/static/js/sw.js` scope `/` nhưng max-scope mặc định = `/static/js/` →
+  browser từ chối registration → toàn bộ tầng cache offline (223 dòng)
+  CHẾT IM LẶNG từ trước tới giờ. Fix: serve `/static/js` với header
+  `Service-Worker-Allowed: /` (nest riêng như /static/fonts) + version SW
+  URL tự lấy từ script tag thay vì hardcode `2.9.2`.
+- **Prod compose hardening** (theo đúng staged TODO của chính file): app
+  `read_only` + tmpfs `/tmp` + `cap_drop ALL` + `no-new-privileges` +
+  `pids_limit 256` (an toàn — app non-root, port 3000, chỉ ghi vào volume
+  /app/storage đã audit). DB: `pids_limit 512` (cap_drop DB cần test
+  staging — chưa áp, đúng kế hoạch).
+- **ADMIN_EMAIL không còn hardcode trong repo** (compose dev/prod +
+  .env.example) — khai báo trong Coolify env (tài khoản admin hiện tại
+  trong DB giữ nguyên role, biến chỉ dùng cho auto-grant lần đầu).
+- Cargo.toml thêm `hmac 0.13` (đã là transitive dep của argon2 — RustCrypto,
+  well-audited) cho anon cookie signing.
+- cargo-audit: 0 vulnerability (3 warning unmaintained của syntect transitive
+  deps — đã theo dõi từ v2.9.1, không có CVE thực tế).
+
 ## [3.5.0] — 2026-08-31 — AI Agent params đầy đủ + hiệu ứng hero FULL MÀN GLM 5.3 + nút đăng nhập admin trên hồ sơ
 
 Bản lớn: 2 tính năng chính theo yêu cầu + toàn bộ hardening bảo mật của

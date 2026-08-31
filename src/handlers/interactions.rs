@@ -43,7 +43,7 @@ pub async fn toggle_like(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
-    let is_liked = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
+    let (is_liked, first_ever) = InteractionRepo::toggle_like(&state.db, game.id, user.id).await?;
     // v2.9.0 — XP cho chủ game + huy hiệu discovery (best-effort)
     if is_liked {
         let db = state.db.clone();
@@ -52,11 +52,15 @@ pub async fn toggle_like(
             crate::services::gamification::on_like(&db, actor, owner).await;
         });
         // v3.0.0 — quest like_game + heatmap
-        let db_ret = state.db.clone();
-        let ret_uid = user.id;
-        tokio::spawn(async move {
-            crate::services::retention::on_action(db_ret, ret_uid, "like_game", 1).await;
-        });
+        // v3.5.1 FIX (audit 5-e F7): chỉ bump quest khi đây là lần ĐẦU user
+        // like game này (like_history) — chống farm unlike→like vòng lặp.
+        if first_ever {
+            let db_ret = state.db.clone();
+            let ret_uid = user.id;
+            tokio::spawn(async move {
+                crate::services::retention::on_action(db_ret, ret_uid, "like_game", 1).await;
+            });
+        }
     }
     // Đọc lại counter từ DB sau khi toggle để tránh hiển thị giá trị stale
     let like_count = GameRepo::find_by_id(&state.db, game.id)
@@ -124,14 +128,20 @@ pub async fn rate(
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
     ensure_interactable(&game, &user)?;
-    InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
+    let first_ever_rating =
+        InteractionRepo::set_rating(&state.db, game.id, user.id, form.score).await?;
     // v3.0.0 — quest rate_game + onboarding first_rating + heatmap
+    // v3.5.1 FIX (audit 5-e F7): chỉ bump quest khi đây là lần ĐẦU user rate
+    // game này — chống farm đổi điểm lặp lại (5★→4★→5★...) hoàn thành quest.
+    // Onboarding first_rating vẫn idempotent (bảng riêng complete một lần).
     {
-        let db_ret = state.db.clone();
-        let ret_uid = user.id;
-        tokio::spawn(async move {
-            crate::services::retention::on_action(db_ret, ret_uid, "rate_game", 1).await;
-        });
+        if first_ever_rating {
+            let db_ret = state.db.clone();
+            let ret_uid = user.id;
+            tokio::spawn(async move {
+                crate::services::retention::on_action(db_ret, ret_uid, "rate_game", 1).await;
+            });
+        }
         let db_ob = state.db.clone();
         let uid_ob = user.id;
         tokio::spawn(async move {

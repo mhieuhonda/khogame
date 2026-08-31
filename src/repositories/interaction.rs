@@ -13,10 +13,20 @@ impl InteractionRepo {
     /// (2 request cùng thấy 'chưa like' → cùng INSERT → đếm like sai).
     /// DELETE-first atomic: nếu DELETE xoá được row → đã unlike; ngược
     /// lại INSERT. Result consistent dù bao nhiêu request đè nhau.
+    ///
+    /// v3.5.1 (audit 5-e F7): trả về `(liked, first_ever)` — `first_ever`
+    /// = TRUE chỉ khi đây là lần ĐẦU user này like game này (ghi vào
+    /// `like_history`, migration 033). Caller dùng `first_ever` để bump
+    /// quest `like_game` — chống farm unlike→like lặp vòng hoàn thành
+    /// quest "thích N game" bằng 1 game duy nhất.
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn toggle_like(pool: &PgPool, game_id: Uuid, user_id: Uuid) -> AppResult<bool> {
+    pub async fn toggle_like(
+        pool: &PgPool,
+        game_id: Uuid,
+        user_id: Uuid,
+    ) -> AppResult<(bool, bool)> {
         let mut tx = pool.begin().await?;
         let deleted = sqlx::query("DELETE FROM likes WHERE game_id = $1 AND user_id = $2")
             .bind(game_id)
@@ -25,7 +35,7 @@ impl InteractionRepo {
             .await?;
         if deleted.rows_affected() > 0 {
             tx.commit().await?;
-            Ok(false)
+            Ok((false, false))
         } else {
             // v3.4.2 FIX (audit race): 2 request đồng thời cùng thấy
             // deleted=0 → cùng INSERT (DO NOTHING) → cùng trả Ok(true) →
@@ -41,8 +51,23 @@ impl InteractionRepo {
             .execute(&mut *tx)
             .await?;
             let liked = inserted.rows_affected() > 0;
+            // v3.5.1: marker like_history — chỉ lần ĐẦU insert được row
+            // (PK user+game) → first_ever. Re-like sau unlike không tính
+            // quest progress nữa.
+            let mut first_ever = false;
+            if liked {
+                let hist = sqlx::query(
+                    "INSERT INTO like_history (user_id, game_id) VALUES ($1, $2)
+                     ON CONFLICT (user_id, game_id) DO NOTHING",
+                )
+                .bind(user_id)
+                .bind(game_id)
+                .execute(&mut *tx)
+                .await?;
+                first_ever = hist.rows_affected() > 0;
+            }
             tx.commit().await?;
-            Ok(liked)
+            Ok((liked, first_ever))
         }
     }
 
@@ -298,28 +323,36 @@ impl InteractionRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    /// v3.5.1 (audit 5-e F7): trả về `first_ever` — TRUE chỉ khi đây là
+    /// lần ĐẦU user này rate game này (INSERT mới, không phải UPDATE điểm
+    /// cũ). Caller chỉ bump quest `rate_game` khi first_ever — chống farm
+    /// đổi điểm lặp lại để hoàn thành quest.
     pub async fn set_rating(
         pool: &PgPool,
         game_id: Uuid,
         user_id: Uuid,
         score: i16,
-    ) -> AppResult<()> {
+    ) -> AppResult<bool> {
         // Bọc trong tx: INSERT rating + UPDATE games.rating_avg/rating_count
         // phải atomic. Trước đây 2 query rời nhau → nếu UPDATE thứ 2 fail
         // (DB chập chờn, lock contention), bảng `ratings` có điểm mới nhưng
         // `games.rating_avg` vẫn là giá trị cũ → UI hiển thị star_avg sai
         // cho đến khi user khác rate lại game đó.
         let mut tx = pool.begin().await?;
-        sqlx::query(
+        // xmax=0 ⇔ row MỚI insert (không phải update row cũ) — trick chuẩn
+        // Postgres để phân biệt INSERT vs UPDATE trong upsert.
+        let inserted_new: Option<bool> = sqlx::query_scalar(
             r"INSERT INTO ratings (game_id, user_id, score)
               VALUES ($1, $2, $3)
-              ON CONFLICT (game_id, user_id) DO UPDATE SET score = EXCLUDED.score",
+              ON CONFLICT (game_id, user_id) DO UPDATE SET score = EXCLUDED.score
+              RETURNING (xmax = 0)",
         )
         .bind(game_id)
         .bind(user_id)
         .bind(score)
-        .execute(&mut *tx)
+        .fetch_one(&mut *tx)
         .await?;
+        let first_ever = inserted_new.unwrap_or(false);
 
         // Recompute game rating_avg / rating_count
         sqlx::query(
@@ -332,7 +365,7 @@ impl InteractionRepo {
         .execute(&mut *tx)
         .await?;
         tx.commit().await?;
-        Ok(())
+        Ok(first_ever)
     }
 
     /// # Errors

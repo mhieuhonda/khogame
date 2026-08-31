@@ -71,8 +71,19 @@ pub struct HistoryResponse {
 pub async fn ws_handler(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
+    // v3.5.1 FIX (CSWSH defense-in-depth, audit task 5-a): middleware
+    // `origin_check` chỉ phủ POST/PUT/PATCH/DELETE — GET handshake của WS
+    // từng KHÔNG được kiểm Origin. SameSite=Lax đã chặn cross-site WS
+    // handshake trên browser hiện đại, nhưng tầng gốc mới đúng chuẩn:
+    // Origin/Referer (nếu có) phải khớp BASE_URL. Non-browser client
+    // (không gửi Origin) vẫn qua như `verify_origin` vốn xử lý.
+    if let Err(e) = crate::middleware::verify_origin(&headers, &state.config.base_url) {
+        tracing::warn!("Từ chối WS upgrade /chat/ws: Origin không khớp BASE_URL");
+        return e.into_response();
+    }
     // Auth BEFORE upgrade: cookie không truyền được qua WS handshake (cookie
     // là HTTP header — chỉ có hiệu lực trong HTTP request, không qua WS frame).
     // Nên user phải được resolve ở đây, không trong WS callback.
