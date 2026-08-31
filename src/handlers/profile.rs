@@ -294,6 +294,16 @@ async fn build_profile_template(
         && !is_self
         && current_user.as_ref().is_some_and(|cu| cu.role.is_admin());
 
+    // v3.8.0 — khung avatar của chính user (nút bật/tắt trên hồ sơ).
+    // Some((frame_id, is_visible)): còn hạn khung (kể cả đang ẩn).
+    let avatar_frame_state = if is_self {
+        UserRepo::avatar_frame_state(&state.db, user.id)
+            .await
+            .unwrap_or(None)
+    } else {
+        None
+    };
+
     Ok(ProfileTemplate {
         current_user,
         unread_notifications: unread,
@@ -320,7 +330,28 @@ async fn build_profile_template(
         ai_params_activation,
         ai_is_default_agent,
         can_impersonate_ai,
+        avatar_frame_state,
     })
+}
+
+/// v3.8.0 — Bật/tắt hiển thị khung avatar của chính mình (fix bug
+/// "không thể tắt khung avatar" — trước đây khung hiện vĩnh viễn đến
+/// hết hạn, không có cách ẩn). Thời hạn vẫn chạy bình thường khi ẩn.
+/// # Errors
+/// Trả lỗi khi chưa đăng nhập / DB fail.
+pub async fn toggle_avatar_frame(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<Redirect> {
+    // Đọc trạng thái hiện tại để lật lại (bật → ẩn, ẩn → bật)
+    let current = UserRepo::avatar_frame_state(&state.db, user.id).await?;
+    let Some((_, currently_visible)) = current else {
+        return Err(AppError::BadRequest(
+            "Bạn chưa sở hữu khung avatar nào đang hiệu lực".into(),
+        ));
+    };
+    UserRepo::set_avatar_frame_visible(&state.db, user.id, !currently_visible).await?;
+    Ok(Redirect::to("/profile"))
 }
 
 /// View công khai của 1 báo cáo tiến trình AI — CHỈ gồm field đã được

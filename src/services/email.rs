@@ -77,7 +77,18 @@ impl SmtpConfig {
             .unwrap_or_else(|| "Louis Space <noreply@louis.space>".to_string());
         let tls = match std::env::var("SMTP_TLS").ok().as_deref() {
             Some("implicit") => SmtpTls::Implicit,
-            Some("none") => SmtpTls::None,
+            Some("none") => {
+                // v3.8.0 FIX (security audit F16): SMTP plaintext trong prod
+                // = credentials + nội dung notification đi qua mạng không
+                // mã hoá. Chỉ cho phép khi RUST_ENV != prod (dev local SMTP).
+                if std::env::var("RUST_ENV").ok().as_deref() == Some("prod") {
+                    tracing::error!(
+                        "SMTP_TLS=none bị TỪ CHỐI trong RUST_ENV=prod —                          credentials sẽ đi mạng không mã hoá. Dùng starttls                          (587) hoặc implicit (465). Email transport bị tắt."
+                    );
+                    return None;
+                }
+                SmtpTls::None
+            }
             _ => SmtpTls::StartTls,
         };
         Some(Self {

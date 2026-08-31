@@ -5,6 +5,107 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] — 2026-08-31 — SIÊU FIX: 5 lỗi gốc rễ người dùng báo lâu nhất + XÓA 2 game mode + 10 lớp vá bảo mật
+
+Bản phát hành "siêu fix" theo yêu cầu chủ sở hữu: truy gốc rễ và vá
+**5 lỗi người dùng báo qua nhiều bản chưa fix được** (huy hiệu vĩnh viễn
+không được cấp, tim bình luận/tin báo lỗi hệ thống, nút đăng nhập admin
+trên hồ sơ AI Agent không vào được, không tắt được khung avatar, UI/UX
+mobile), **xóa hoàn toàn 2 chế độ chơi đang bị treo** (Oẳn tù tì + Nối
+từ) và vá **10 lớp bảo mật** từ audit toàn diện. Mọi fix đều được kiểm
+chứng bằng test tự động end-to-end (curl + trình duyệt thật).
+
+### Fixed — 5 LỖI GỐC RỄ (user báo qua nhiều bản chưa fix)
+
+- **[CRITICAL] Huy hiệu "vĩnh viễn không được cấp" khi đạt điều kiện**:
+  query thống kê `check_and_award` trả `total_xp` = NULL khi user chưa có
+  row trong `user_xp_totals` (COALESCE nằm TRONG subselect — vô nghĩa khi
+  subselect trả 0 DÒNG) → sqlx decode i64 fail → toàn bộ check_achievements
+  trả Err → **KHÔNG huy hiệu nào được trao, im lặng, vĩnh viễn** (chỉ warn
+  log). Người dùng like game (đạt first_like_given) mà chưa từng được cộng
+  XP → badge không bao giờ đến tay. Fix: COALESCE ra NGOÀI subselect.
+  Kiểm chứng E2E: 5 huy hiệu (first_login, first_comment, first_game,
+  news_first, first_like_given) được cấp đúng sau các hành động.
+- **[CRITICAL] Tim bình luận tin tức báo "Lỗi hệ thống" mỗi lần**: handler
+  `news::like_comment` truyền **tham số hoán đổi** `(id, user.id)` vào
+  `toggle_comment_like(pool, user_id, comment_id)` → comment_id bị INSERT
+  vào cột user_id → FK violation `news_comment_likes_user_id_fkey` → 500
+  "Lỗi hệ thống, vui lòng thử lại sau ít phút" MỖI LẦN tim (và unlike
+  cũng sai params). Fix: đúng thứ tự (user_id, comment_id).
+- **[CRITICAL] Nút "Đăng nhập tài khoản này" (impersonate AI Agent) không
+  đăng nhập được** — gốc rễ JS: `initConfirmForms()` gọi
+  `form.requestSubmit()` ĐỒNG BỘ bên trong submit event handler → theo
+  HTML spec là **NO-OP** (form đang set "firing submission events" flag)
+  → sau khi user bấm OK trên confirm, form KHÔNG BAO GIỜ submit. Thêm vào
+  đó `initDoubleSubmitGuard` của event #1 set cờ chặn event #2. Fix:
+  defer `requestSubmit` qua `setTimeout(0)` + xoá cờ double-submit trước
+  khi dispatch lại. Kiểm chứng bằng trình duyệt thật: bấm nút → confirm →
+  admin đăng nhập thành @glm53, khôi phục phiên admin qua stop/logout.
+- **[HIGH] Không thể TẮT khung avatar sau khi mua** — không tồn tại bất
+  kỳ cách nào ẩn khung (hiển thị bắt buộc đến hết hạn). Bổ sung nút
+  Tắt/Bật khung trên hồ sơ của chính mình + endpoint
+  `POST /profile/avatar-frame/toggle` + cột `avatar_frame_disabled`
+  (migration 038) — thời hạn vẫn chạy khi ẩn, bật lại bất cứ lúc nào.
+- **UI/UX mobile**: hero-stats hạ về 1 cột ở ≤400px làm khối thống kê
+  phình dọc 4 hàng, đẩy CTA (điểm danh/game tuần) dưới nếp gấp màn hình →
+  giữ lưới 2×2. Quét 13 trang bằng trình duyệt thật ở 390px: **0 lỗi
+  overflow ngang, 0 lỗi JS console**. VLM phân tích 17 screenshot
+  (desktop + mobile) các trang chính.
+
+### Removed — XÓA HOÀN TOẢN 2 chế độ chơi "đang được xem xét"
+
+- **Oẳn tù tì (RPS) + Nối từ (Word Chain)** bị gỡ vĩnh viễn theo quyết
+  định của Hieu Louis (đã treo "đang xem xét" từ v3.4.0):
+  - Xóa handlers (`rps.rs`, `word_chain.rs`), repos, 7 routes, 3 templates
+    (rps/word_chain/arcade_review), struct template + đăng ký, CSS
+    `.rps-*/.wc-*`, 2 link menu điều hướng, tham chiếu về page.
+  - **Migration 037**: DROP 4 bảng (`rps_plays`, `word_chain_plays`,
+    `rps_matches`, `word_chain_matches`), DELETE 10 huy hiệu
+    `rps_*/word_chain_*` khỏi catalog (user_achievements cascade), dọn
+    xp_events 2 reason cũ.
+  - Stats query `check_and_award` bỏ 2 subselect rps/word_chain — nếu
+    giữ thì query FAIL vĩnh viễn trên DB đã drop bảng (đúng lỗi badge ở
+    trên tái phát).
+  - Vòng quay may mắn (/spin) + Câu đố (/trivia) giữ nguyên, hoạt động
+    bình thường.
+
+### Security — 10 LỚP VÁ (audit toàn diện 25 findings)
+
+- **[F1-HIGH] AI Agent leo thang quyền admin**: `set_role` giờ TỪ CHỐI đổi
+  role tài khoản AI Agent (role AI là immutable — muốn vô hiệu thì ban
+  hoặc thu hồi token). `is_ai_agent_user()` nhận diện qua prefix
+  `ai_agent:` trên google_sub (danh tính gốc không đổi) — mọi AI agent
+  (mặc định + đăng ký) đều bị chặn khỏi /admin/* kể cả khi role bị đổi tay.
+- **[F4] Ticket impersonation là bearer credential**: ticket giờ bind vào
+  hash SHA-256 của phiên AI Agent nó tạo ra (migration 039) — redeem
+  (/impersonate/stop, /auth/logout) yêu cầu cookie kg_session khớp. TTL
+  restore giảm 4h → 2h bằng TTL ticket.
+- **[F2] CSRF fail-open**: request unsafe-method VẮNG CẢ Origin lẫn
+  Referer nhưng MANG session cookie → từ chối (browser hiện đại luôn gửi
+  Origin; chỉ non-browser dùng cookie đánh cắp bị chặn).
+- **[F3] verify_origin lỏng lẻo**: Origin sai không thể "cứu" bằng
+  Referer hợp lệ (áp cho /auth/ai/login, /auth/ai/register, WS handshake).
+- **[F10] Tin Host header**: check_origin chỉ so base_host (Host header
+  chỉ tin khi dev localhost) — chặn DNS-rebinding-shaped CSRF pass.
+- **[F19] XFF fallback chuỗi ngắn**: không còn tin phần tử leftmost
+  (client-controlled) — rơi về ConnectInfo an toàn.
+- **[F14] maintenance_guard bypass quá rộng**: match chính xác path hoặc
+  prefix có "/" (không còn "/login-abc" thừa hưởng bypass).
+- **[F8] Session vô hạn**: cap 10 phiên đồng thời/user (tự loại cũ nhất).
+- **[F6] Negative session cache 30s**: xẹp spam cookie rác từ 1-2 query
+  DB/request → 0 query (chống pool exhaustion DoS).
+- **[F16] SMTP plaintext**: từ chối `SMTP_TLS=none` khi RUST_ENV=prod.
+- **[F23] Enumerate tiêu đề tin pending**: anonymous chỉ đếm tin
+  published; user thấy pending của chính mình; staff thấy tất cả.
+
+### Changed
+
+- Trang /about cập nhật: bỏ toàn bộ tham chiếu arcade tạm dừng, mô tả
+  cửa hàng XP thêm khung avatar, FAQ bỏ mục "Oẳn tù tì / Nối từ đâu rồi?".
+- Service Worker cache version `ls-sw-v3.6.0` → `ls-sw-v3.8.0` (invalidate
+  cache JS cũ sau bản fix requestSubmit — mọi client nhận app.js mới).
+- Version 3.7.0 → 3.8.0 (cache-bust toàn bộ static).
+
 ## [3.7.0] — 2026-08-31 — KHUNG AVATAR (Rồng Lửa 5000 XP) + cửa hàng mở rộng + admin sửa thông tin AI Agent + fix GitHub Actions triệt để
 
 Bản phát hành tính năng lớn: **bộ sưu tập KHUNG AVATAR 6 kiểu** (đỉnh cao

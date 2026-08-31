@@ -641,9 +641,27 @@
                 e.preventDefault();
                 if (window.confirm(form.getAttribute('data-confirm'))) {
                     form.dataset.confirmed = '1';
-                    // Re-dispatch: requestSubmit giữ submitter + validation
-                    if (form.requestSubmit) form.requestSubmit();
-                    else form.submit();
+                    // v3.8.0 FIX (bug "nút Đăng nhập tài khoản này trên hồ sơ
+                    // AI Agent không đăng nhập được" — qua 5+ bản chưa fix):
+                    // requestSubmit() gọi ĐỒNG BỘ trong khi submit event đang
+                    // được dispatch là NO-OP theo HTML spec (form đang set
+                    // "firing submission events" flag → requestSubmit return
+                    // ngay không làm gì). Kết quả: user bấm OK trên confirm
+                    // → form KHÔNG BAO GIỜ submit → admin không thể đăng nhập
+                    // thay AI Agent (và mọi form data-confirm khác cũng chết
+                    // tương tự). Fix: defer requestSubmit ra SAU event dispatch
+                    // (setTimeout 0) — flag đã clear, submit chạy đúng flow
+                    // đầy đủ (validation + submitter button).
+                    setTimeout(function() {
+                        // initDoubleSubmitGuard chạy ở event #1 (SAU handler
+                        // này return) sẽ set dataset.submitted='1' — nếu
+                        // không xoá, event #2 từ requestSubmit bị guard chặn
+                        // preventDefault → form vẫn không submit. Xoá cờ
+                        // trước khi dispatch lại.
+                        delete form.dataset.submitted;
+                        if (form.requestSubmit) form.requestSubmit();
+                        else if (form.submit) form.submit();
+                    }, 0);
                 }
             }
         }, true);

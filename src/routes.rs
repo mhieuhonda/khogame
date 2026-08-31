@@ -164,19 +164,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/trivia", get(handlers::arcade::trivia_page))
         .route("/trivia/answer", post(handlers::arcade::answer_trivia))
-        // v3.1.0 — ARCADE: Oẳn tù tì (RPS) + Nối từ (Word Chain)
-        // v3.3.0 — PVP MATCHMAKING: ghép ngẫu nhiên người dùng thật,
-        // fallback GLM 5.3 (AI Agent mặc định) khi không có ai.
-        .route("/rps", get(handlers::rps::rps_page))
-        .route("/rps/play", post(handlers::rps::play_rps))
-        .route("/rps/match/{id}/status", get(handlers::rps::match_status))
-        .route("/word-chain", get(handlers::word_chain::word_chain_page))
-        .route("/word-chain/match", post(handlers::word_chain::find_match))
-        .route("/word-chain/move", post(handlers::word_chain::move_word))
-        .route(
-            "/word-chain/match/{id}/status",
-            get(handlers::word_chain::match_status),
-        )
+        // v3.8.0 — RPS (Oẳn tù tì) + Word Chain (Nối từ) đã được XÓA HOÀN
+        // TOÀN theo quyết định của Hieu Louis (xem migration 037). Routes,
+        // handlers, repos, templates, bảng DB và huy hiệu rps_*/word_chain_*
+        // đều đã gỡ sạch. Ai vào /rps hay /word-chain giờ nhận 404 fallback.
         .route("/shop", get(handlers::shop::shop_page))
         .route("/shop/buy", post(handlers::shop::buy_item))
         .route("/referral", get(handlers::referral::referral_page))
@@ -226,6 +217,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::profile::revoke_own_session),
         )
         .route("/profile/export", get(handlers::profile::export_my_data))
+        // v3.8.0 — bật/tắt hiển thị khung avatar của chính mình
+        .route(
+            "/profile/avatar-frame/toggle",
+            post(handlers::profile::toggle_avatar_frame),
+        )
         .route("/notifications", get(handlers::notifications::list))
         .route(
             "/notifications/{id}/read",

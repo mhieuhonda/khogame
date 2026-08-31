@@ -353,6 +353,11 @@ pub async fn logout(
         // của SESSION_CACHE — logout mà 10s sau vẫn còn đăng nhập là bug).
         crate::middleware::invalidate_session_cache(&token_hash);
     }
+    // v3.8.0 (audit F4): đọc hash session AI TRƯỚC khi move jar — dùng để
+    // xác thực binding ticket impersonation khi logout khỏi phiên AI.
+    let cur_session_hash: Option<String> = jar
+        .get(auth::SESSION_COOKIE)
+        .map(|c| auth::hash_token(c.value()));
     let mut new_jar = jar;
     auth::clear_session_cookie(&mut new_jar, &state.config.base_url);
     let _ = current_user;
@@ -366,14 +371,20 @@ pub async fn logout(
         .get(auth::IMPERSONATOR_COOKIE)
         .map(|c| c.value().to_string())
     {
+        // v3.8.0 (audit F4): ticket redeem phải BIND đúng session AI đang
+        // giữ (hash cookie kg_session). Ticket legacy NULL vẫn chấp nhận
+        // (tồn tại ≤2h sau deploy 039).
+        let cur_hash: String = cur_session_hash.unwrap_or_default();
         if let Ok(tid) = uuid::Uuid::parse_str(&imp_raw) {
             let admin_id: Option<uuid::Uuid> = sqlx::query_scalar(
                 r#"UPDATE impersonation_tickets
                    SET used_at = NOW()
                    WHERE id = $1 AND used_at IS NULL AND expires_at > NOW()
+                     AND (bound_session_hash IS NULL OR bound_session_hash = $2)
                    RETURNING admin_user_id"#,
             )
             .bind(tid)
+            .bind(&cur_hash)
             .fetch_optional(&state.db)
             .await?;
             if let Some(admin_id) = admin_id {
@@ -387,12 +398,10 @@ pub async fn logout(
                             &token_hash,
                             "impersonation-restore",
                             None,
-                            // v3.6.0 SECURITY FIX (audit F6): TTL restore
-                            // 30 NGÀY → 4 GIỜ. Ticket one-shot 2h bị đánh
-                            // cắp trước khi dùng trước đây cho attacker
-                            // session admin SUỐNG 30 ngày. 4h đủ cho admin
-                            // vào /admin và re-login lại bình thường.
-                            4,
+                            // v3.8.0 (audit F4): TTL restore 4h → 2h bằng
+                            // TTL ticket (ticket 2h mà restore 4h là
+                            // mismatch vô nghĩa).
+                            2,
                         )
                         .await?;
                         tracing::warn!(

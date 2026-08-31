@@ -16,6 +16,23 @@ impl SessionRepo {
         ip: Option<&str>,
         ttl_days: i64,
     ) -> AppResult<Uuid> {
+        // v3.8.0 FIX (security audit F8): cap số session đồng thời MỖI USER
+        // = 10 (loại cũ nhất trước). Trước đây không giới hạn — cookie bị
+        // đánh cắp nhiều lần (hoặc login spam) tích lũy phiên 30 ngày vô
+        // hạn, mỗi phiên là một cửa hậu sống độc lập với đổi mật khẩu.
+        // CTE lấy id của các phiên cũ nhất vượt quota rồi DELETE (chỉ đụng
+        // session đã hết hạn hoặc quá quota — không chạm session đang dùng).
+        let _ = sqlx::query(
+            r#"WITH ranked AS (
+                   SELECT id FROM sessions
+                   WHERE user_id = $1 AND expires_at > NOW()
+                   ORDER BY created_at DESC OFFSET 9
+               )
+               DELETE FROM sessions WHERE id IN (SELECT id FROM ranked)"#,
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await;
         let id: Uuid = sqlx::query_scalar(
             r"INSERT INTO sessions (user_id, token_hash, user_agent, ip_address, expires_at)
               VALUES ($1, $2, $3, $4, NOW() + ($5 || ' days')::INTERVAL)

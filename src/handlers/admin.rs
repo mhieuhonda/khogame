@@ -712,6 +712,22 @@ pub async fn set_role(
             "Không thể tự hạ quyền của chính mình".into(),
         ));
     }
+    // v3.8.0 FIX (security audit F1 — HIGH): TÀI KHOẢN AI AGENT không bao
+    // giờ được đổi role sang user/moderator/admin. Trước đây set_role
+    // chấp nhận mọi user — AI agent bị đổi role tay sẽ:
+    //   (a) mất mọi tính năng AI (nút login-as, hồ sơ /ai/, params...),
+    //   (b) session web 30 ngày vẫn sống → nếu role mới là staff thì
+    //       require_admin KHÔNG còn chặn nổi (hole admin-access).
+    // Bây giờ chặn tại nguồn: role AI là immutable, muốn "tắt" một AI
+    // agent thì BAN (set_banned) hoặc thu hồi token/mật khẩu.
+    let target_user = UserRepo::find_by_id(&state.db, id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    if target_user.is_ai_agent_user() {
+        return Err(AppError::BadRequest(
+            "Tài khoản AI Agent không được đổi vai trò — hãy cấm tài khoản              hoặc thu hồi mật khẩu/token nếu AI bị lạm dụng".into(),
+        ));
+    }
     UserRepo::set_role(&state.db, id, &form.role).await?;
     // v2.1.0 — xoá session cache của user này để quyền mới lan truyền ngay
     // (SESSION_CACHE có thể đang giữ bản User với role cũ trong 10s).
@@ -1830,15 +1846,21 @@ pub async fn impersonate_ai_agent(
     // Ticket: one-shot (used_at), TTL 2 giờ, lưu DB — restore mint session
     // MỚI cho admin, token cũ không bao giờ rời server lần 2.
     let ticket_id = uuid::Uuid::new_v4();
+    // v3.8.0 FIX (security audit F4): bind ticket vào session AI vừa tạo
+    // (hash SHA-256). Redeem (/impersonate/stop, /auth/logout) yêu cầu
+    // cookie kg_session hiện tại khớp hash — ticket bị lộ riêng lẻ không
+    // thể đổi thành session admin nữa (trước đây ticket là bearer
+    // credential thuần redeem được từ endpoint public).
     sqlx::query(
         r#"INSERT INTO impersonation_tickets
-               (id, admin_user_id, target_user_id, expires_at)
-           VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL)"#,
+               (id, admin_user_id, target_user_id, expires_at, bound_session_hash)
+           VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL, $5)"#,
     )
     .bind(ticket_id)
     .bind(admin.id)
     .bind(target.id)
     .bind(crate::auth::IMPERSONATION_TTL_HOURS.to_string())
+    .bind(&token_hash)
     .execute(&state.db)
     .await?;
 
@@ -2666,6 +2688,11 @@ pub async fn stop_impersonation(
         let _ = SessionRepo::delete(&state.db, &cur_hash).await;
         crate::middleware::invalidate_session_cache(&cur_hash);
     }
+    // v3.8.0 (audit F4): hash của session AI ĐANG GIỮ (tính trước khi
+    // xoá) — dùng để xác thực ticket binding bên dưới.
+    let cur_session_hash: Option<String> = new_jar
+        .get(crate::auth::SESSION_COOKIE)
+        .map(|c| crate::auth::hash_token(c.value()));
     let Some(ticket_raw) = new_jar
         .get(crate::auth::IMPERSONATOR_COOKIE)
         .map(|c| c.value().to_string())
@@ -2681,15 +2708,28 @@ pub async fn stop_impersonation(
     let ticket_id = uuid::Uuid::parse_str(&ticket_raw).ok();
     let mut restored_admin: Option<String> = None;
     if let Some(tid) = ticket_id {
+        // v3.8.0 (audit F4): ticket phải được BIND đúng session AI hiện tại
+        // (legacy NULL = ticket tạo trước migration 039 — chấp nhận kèm
+        // warn). Ticket bị đánh cắp riêng (không kèm cookie session AI
+        // khớp) → từ chối, không mint session admin.
+        let bound_ok = cur_session_hash.as_deref().unwrap_or_default();
         let admin_id: Option<uuid::Uuid> = sqlx::query_scalar(
             r#"UPDATE impersonation_tickets
                SET used_at = NOW()
                WHERE id = $1 AND used_at IS NULL AND expires_at > NOW()
+                 AND (bound_session_hash IS NULL OR bound_session_hash = $2)
                RETURNING admin_user_id"#,
         )
         .bind(tid)
+        .bind(bound_ok)
         .fetch_optional(&state.db)
         .await?;
+        if admin_id.is_some() {
+            tracing::warn!(
+                "Impersonation STOP: ticket {} redeem với binding hợp lệ",
+                tid
+            );
+        }
         if let Some(admin_id) = admin_id {
             // 3) Admin còn hợp lệ (staff + không ban) → mint session mới.
             if let Ok(Some(admin_user)) = UserRepo::find_by_id(&state.db, admin_id).await {
@@ -2702,10 +2742,10 @@ pub async fn stop_impersonation(
                         &token_hash,
                         "impersonation-restore",
                         None,
-                        // v3.6.0 SECURITY FIX (audit F6): TTL restore
-                        // 30 NGÀY → 4 GIỜ — ticket 2h bị đánh cắp trước đây
-                        // cấp session admin suốt 30 ngày. 4h đủ dùng.
-                        4,
+                        // v3.8.0 SECURITY FIX (audit F4): TTL restore 4h → 2h
+                        // — bằng đúng TTL ticket. Trước đây ticket 2h nhưng
+                        // session restore sống 4h (mismatch vô nghĩa).
+                        2,
                     )
                     .await?;
                     crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);

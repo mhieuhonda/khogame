@@ -19,18 +19,9 @@ pub mod quests;
 pub mod referral;
 pub mod repos;
 pub mod reviews;
-pub mod rps;
 pub mod shop;
 pub mod uploads;
-pub mod word_chain;
 
-/// v3.4.0 — Arcade (Oẳn tù tì + Nối từ) tạm dừng chờ Hieu Louis xem xét.
-///
-/// Khi `true`:
-/// - GET /rps + /word-chain render trang "tính năng đang được xem xét"
-///   (thay vì UI chơi).
-/// - POST /rps/play, /word-chain/match, /word-chain/move trả lỗi thân thiện
-///   (chặn chơi trực tiếp qua HTMX/curl).
-///
-/// Muốn bật lại game: đổi `false` + deploy (1 dòng, không migration).
-pub const ARCADE_UNDER_REVIEW: bool = true;
+// v3.8.0 — Arcade RPS (Oẳn tù tì) + Word Chain (Nối từ) đã XÓA HOÀN TOÀN
+// khỏi codebase (handlers, repos, routes, templates, bảng DB, huy hiệu).
+// Vòng quay may mắn (/spin) + câu đố (/trivia) vẫn hoạt động bình thường.

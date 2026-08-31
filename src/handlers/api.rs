@@ -556,23 +556,32 @@ pub struct DuplicateQuery {
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
 pub async fn news_check_duplicate(
     State(state): State<Arc<AppState>>,
+    crate::middleware::CurrentUser(current_user): crate::middleware::CurrentUser,
     Query(q): Query<DuplicateQuery>,
 ) -> AppResult<Response> {
     let title = q.title.trim();
     if title.chars().count() < 3 {
         return Ok(Json(serde_json::json!({"exists": false, "count": 0})).into_response());
     }
-    // Đếm tin published + pending có cùng title (case-insensitive)
+    // v3.8.0 FIX (security audit F23): đếm tin pending là thông tin nội bộ —
+    // anonymous KHÔNG được enumerate tiêu đề tin chưa duyệt. Đăng nhập:
+    // published + pending CỦA CHÍNH MÌNH (đúng mục đích cảnh báo trùng cho
+    // tác giả); staff thấy tất cả (duyệt tin cần nhìn trùng pending).
+    let viewer = current_user.as_ref();
+    let is_staff = viewer.is_some_and(|u| u.role.is_staff());
     let pattern = format!(
         "%{}%",
         crate::utils::escape_like(&title.chars().take(200).collect::<String>())
     );
     let count: i64 = sqlx::query_scalar(
         r"SELECT COUNT(*) FROM news
-           WHERE status IN ('published', 'pending')
+           WHERE (status = 'published'
+                  OR (status = 'pending' AND ($2::boolean OR user_id = $3)))
              AND title ILIKE $1 ESCAPE '\'",
     )
     .bind(&pattern)
+    .bind(is_staff)
+    .bind(viewer.map_or_else(uuid::Uuid::nil, |u| u.id))
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);

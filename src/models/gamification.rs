@@ -281,8 +281,6 @@ impl ActivityEvent {
             "spin" => "đã quay vòng may mắn",
             "trivia" => "đã trả lời câu đố đúng",
             "trivia_bonus" => "đã hoàn thành cả 3 câu đố",
-            "rps_win" => "đã thắng ván Oẳn tù tì",
-            "word_chain" => "đã nối từ hợp lệ",
             "shop_spend" => "đã mua vật phẩm cửa hàng",
             "mystery_box" => "đã mở mystery box",
             // v3.6.0 — Admin XP Boost
@@ -514,18 +512,7 @@ mod tests {
     #[test]
     fn test_activity_labels_v310() {
         // v3.1.0 — new reasons cho arcade games
-        let ev = ActivityEvent {
-            reason: "rps_win".into(),
-            amount: 2,
-            created_at: Utc::now(),
-        };
-        assert_eq!(ev.label(), "đã thắng ván Oẳn tù tì");
-        let ev = ActivityEvent {
-            reason: "word_chain".into(),
-            amount: 3,
-            created_at: Utc::now(),
-        };
-        assert_eq!(ev.label(), "đã nối từ hợp lệ");
+        // (v3.8.0 — rps_win / word_chain đã xóa cùng 2 game mode)
         let ev = ActivityEvent {
             reason: "shop_spend".into(),
             amount: -50,

@@ -87,13 +87,9 @@ impl_template_response!(
     ShopTemplate,
     ReferralTemplate,
     NotifPrefsTemplate,
-    // v3.1.0 — arcade games: Oẳn tù tì + Nối từ
-    RpsTemplate,
-    WordChainTemplate,
-    // v3.4.0 — feedback system + AI agent login mới
+    // v3.4.0 — feedback system
     FeedbackTemplate,
     AdminFeedbackTemplate,
-    ArcadeReviewTemplate,
     // v3.6.0 — Admin XP Boost (1000 XP / 0.15s start/stop)
     AdminXpBoostTemplate,
 );
@@ -335,6 +331,9 @@ pub struct ProfileTemplate {
     /// phải chính mình → render nút "Đăng nhập tài khoản này" (impersonation
     /// có audit log — CHỈ admin, mod không thấy nút này trên hồ sơ).
     pub can_impersonate_ai: bool,
+    /// v3.8.0 — Khung avatar của chính user: `Some((frame_id, is_visible))`
+    /// khi còn hạn (kể cả đang ẩn) — render nút Tắt/Bật khung. None = không có.
+    pub avatar_frame_state: Option<(String, bool)>,
 }
 
 /// Edit profile
@@ -1616,49 +1615,6 @@ pub struct HeatmapWidget {
 pub struct OnboardingWidget {
     pub steps: Vec<crate::models::retention::OnboardingStepStatus>,
     pub done_count: usize,
-}
-
-// ============================================================
-// v3.1.0 — ARCADE: Oẳn tù tì (RPS) + Nối từ (Word Chain)
-// ============================================================
-
-/// Trang Oẳn tù tì / Kéo búa bao (/rps).
-#[derive(Template)]
-#[template(path = "gamification/rps.html")]
-pub struct RpsTemplate {
-    pub current_user: Option<user::User>,
-    pub unread_notifications: i64,
-    /// Số ván đã chơi hôm nay (cho cap display).
-    pub plays_today: i64,
-    /// Tổng số thắng lifetime.
-    pub wins_lifetime: i64,
-    pub level: crate::models::gamification::LevelInfo,
-}
-
-/// Trang thay thế khi arcade game đang được Hieu Louis xem xét
-/// (v3.4.0 — rps + word-chain tạm dừng, gate bằng ARCADE_UNDER_REVIEW).
-#[derive(Template)]
-#[template(path = "gamification/arcade_review.html")]
-pub struct ArcadeReviewTemplate {
-    pub current_user: Option<user::User>,
-    pub unread_notifications: i64,
-    /// Tên game hiển thị (vd "Oẳn tù tì — Kéo búa bao").
-    pub game_title: String,
-    /// Emoji icon game.
-    pub game_emoji: String,
-}
-
-/// Trang Nối từ (/word-chain).
-#[derive(Template)]
-#[template(path = "gamification/word_chain.html")]
-pub struct WordChainTemplate {
-    pub current_user: Option<user::User>,
-    pub unread_notifications: i64,
-    /// Số lượt đã chơi hôm nay.
-    pub plays_today: i64,
-    /// Số từ hợp lệ lifetime.
-    pub valid_lifetime: i64,
-    pub level: crate::models::gamification::LevelInfo,
 }
 
 // ============================================================

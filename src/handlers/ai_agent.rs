@@ -398,15 +398,18 @@ pub async fn login(
             let staff_user = crate::middleware::current_user_from_jar(&state, &new_jar).await;
             if let Some(staff) = staff_user.as_ref().filter(|u| u.role.is_staff()) {
                 let ticket_id = uuid::Uuid::new_v4();
+                // v3.8.0 (audit F4): bind ticket vào session AI sắp set —
+                // redeem yêu cầu cookie kg_session khớp (xem stop/logout).
                 let inserted = sqlx::query(
                     r#"INSERT INTO impersonation_tickets
-                           (id, admin_user_id, target_user_id, expires_at)
-                       VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL)"#,
+                           (id, admin_user_id, target_user_id, expires_at, bound_session_hash)
+                       VALUES ($1, $2, $3, NOW() + ($4 || ' hours')::INTERVAL, $5)"#,
                 )
                 .bind(ticket_id)
                 .bind(staff.id)
                 .bind(user.id)
                 .bind(crate::auth::IMPERSONATION_TTL_HOURS.to_string())
+                .bind(&token_hash)
                 .execute(&state.db)
                 .await;
                 match inserted {

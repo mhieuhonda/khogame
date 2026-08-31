@@ -36,7 +36,7 @@ impl UserRepo {
                 b.avatar_frame AS avatar_frame
               FROM users u
               LEFT JOIN user_boosts b ON b.user_id = u.id
-                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW()
+                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW() AND NOT b.avatar_frame_disabled
               WHERE u.id = $1",
         )
         .bind(id)
@@ -58,7 +58,7 @@ impl UserRepo {
                 b.avatar_frame AS avatar_frame
               FROM users u
               LEFT JOIN user_boosts b ON b.user_id = u.id
-                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW()
+                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW() AND NOT b.avatar_frame_disabled
               WHERE u.username = $1",
         )
         .bind(username)
@@ -549,6 +549,49 @@ impl UserRepo {
         .execute(pool)
         .await?;
         Ok(())
+    }
+
+    /// v3.8.0 — Trạng thái khung avatar của user (cho nút bật/tắt trên
+    /// hồ sơ của chính mình). Trả về `Some((frame_id, is_visible))` khi
+    /// user còn hạn khung (dù đang ẩn), `None` khi không có khung.
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn avatar_frame_state(
+        pool: &PgPool,
+        user_id: Uuid,
+    ) -> AppResult<Option<(String, bool)>> {
+        let row: Option<(String, bool)> = sqlx::query_as(
+            r"SELECT avatar_frame, NOT avatar_frame_disabled
+               FROM user_boosts
+               WHERE user_id = $1 AND avatar_frame IS NOT NULL
+                 AND avatar_frame_until > NOW()",
+        )
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// v3.8.0 — Bật/ẩn khung avatar của user (giữ nguyên thời hạn).
+    /// `visible = false` → ẩn khung (avatar render gốc); `true` → đeo lại.
+    /// Trả về Ok(false) nếu user không có khung nào đang hiệu lực.
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn set_avatar_frame_visible(
+        pool: &PgPool,
+        user_id: Uuid,
+        visible: bool,
+    ) -> AppResult<bool> {
+        let res = sqlx::query(
+            r"UPDATE user_boosts SET avatar_frame_disabled = $2, updated_at = NOW()
+               WHERE user_id = $1 AND avatar_frame IS NOT NULL
+                 AND avatar_frame_until > NOW()",
+        )
+        .bind(user_id)
+        .bind(!visible)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
     }
 
     async fn ensure_unique_username(pool: &PgPool, base: &str) -> String {

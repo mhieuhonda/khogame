@@ -40,7 +40,15 @@ pub const DEFAULT_AGENT_GOOGLE_SUB: &str = "ai_agent:default-glm53";
 /// "GLM 5.3 là AI Agent mặc định" ở mọi trạng thái role.
 #[must_use]
 pub fn is_ai_agent_user(role: &crate::models::user::UserRole, google_sub: &str) -> bool {
-    role.is_ai_agent() || google_sub == DEFAULT_AGENT_GOOGLE_SUB
+    // v3.8.0 FIX (security audit F1 — HIGH): nhận diện qua PREFIX
+    // "ai_agent:" trên google_sub thay vì chỉ so khớp agent mặc định.
+    // Trước đây: agent ĐĂNG KÝ (/auth/ai/register, google_sub
+    // "ai_agent:{uuid}") chỉ được nhận diện qua role — nếu role bị đổi
+    // tay sang Moderator/Admin thì is_ai_agent_user() = false trong khi
+    // session web 30 ngày vẫn sống → AI Agent truy cập được /admin/*.
+    // google_sub là danh tính GỐC không đổi — mọi tài khoản AI (mặc định
+    // + đăng ký) đều mang prefix này (migration 027/028, register path).
+    role.is_ai_agent() || google_sub.starts_with("ai_agent:")
 }
 
 /// Cache id của agent mặc định (UUID lookup 1 lần/process — hàng chỉ

@@ -301,6 +301,18 @@
                     Chỉnh sửa hồ sơ
                 </a>
                 {% endmatch %}
+                {# v3.8.0 — TẮT/BẬT KHUNG AVATAR (fix bug "không thể tắt khung
+                   avatar"): khung vẫn còn hạn khi ẩn — bật lại bất cứ lúc nào. #}
+                {% match avatar_frame_state %}
+                {% when Option::Some with ((frame_id, visible)) %}
+                <form method="post" action="/profile/avatar-frame/toggle" class="profile-frame-toggle-form">
+                    <button type="submit" class="btn btn-outline" title="Khung hiện tại: {{ frame_id }}">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>
+                        {% if visible %}Tắt khung avatar{% else %}Bật khung avatar{% endif %}
+                    </button>
+                </form>
+                {% when Option::None %}
+                {% endmatch %}
                 {% endif %}
                 {# === v3.5.0 — NÚT ĐĂNG NHẬP THAY AI AGENT (CHỈ ADMIN) ===
                    can_impersonate_ai đã lọc ở handler: người xem PHẢI là

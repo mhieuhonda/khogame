@@ -778,7 +778,13 @@ pub async fn like_comment(
     AuthUser(user): AuthUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Response> {
-    let liked = NewsRepo::toggle_comment_like(&state.db, id, user.id).await?;
+    // v3.8.0 FIX (bug "tim bình luận báo lỗi hệ thống" — qua nhiều bản chưa
+    // fix được): tham số BỊ HOÁN ĐỔI. Bản cũ gọi toggle_comment_like(db, id,
+    // user.id) trong khi signature là (pool, user_id, comment_id) →
+    // comment_id bị INSERT vào cột user_id → FK violation user_id_fkey →
+    // 500 "Lỗi hệ thống" MỖI LẦN user tim bình luận tin tức (và unlike
+    // cũng sai params). Đổi lại đúng thứ tự: user_id trước, comment_id sau.
+    let liked = NewsRepo::toggle_comment_like(&state.db, user.id, id).await?;
     // Trả về FULL BUTTON (outerHTML swap cần element thay thế — trả text
     // số sẽ phá nút, bug cũ v3.3.x: sau like nút biến thành số trần).
     let count: i64 = sqlx::query_scalar("SELECT like_count FROM news_comments WHERE id = $1")

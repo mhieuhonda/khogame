@@ -656,8 +656,14 @@ impl GamificationRepo {
     /// dùng match với 25 ID cố định. Mọi danh hiệu mới seed vào
     /// `achievements` catalog có ID lạ → `match _ => false` → KHÔNG BAO
     /// GIỜ được trao dù user đã đạt điều kiện. Giờ mở rộng `met()` cho
-    /// 100 danh hiệu mới (migration 024) + thêm 4 cột thống kê mới:
-    /// `collections_count`, `rps_wins`, `word_chain_valid`, `total_checkins`.
+    /// 100 danh hiệu mới (migration 024).
+    ///
+    /// v3.8.0 FIX (bug "đạt điều kiện nhưng huy hiệu vĩnh viễn không được
+    /// cấp"): thống kê rps_wins / word_chain_valid đã xoá cùng 2 game mode
+    /// (migration 037 drop bảng rps_plays / word_chain_plays — nếu giữ
+    /// subselect vào bảng đã drop thì TOÀN BỘ query stats fail →
+    /// check_and_award trả Err → KHÔNG huy hiệu nào được trao cho ai,
+    /// vĩnh viễn, chỉ thấy warn log).
     /// # Errors
     /// Trả lỗi khi DB fail.
     pub async fn check_and_award(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<Achievement>> {
@@ -682,8 +688,6 @@ impl GamificationRepo {
             // v3.1.0 — new stats for 100 added achievements
             social_links_count: i64,
             collections_count: i64,
-            rps_wins: i64,
-            word_chain_valid: i64,
             total_checkins: i64,
         }
         let s = sqlx::query_as::<_, Stats>(
@@ -707,7 +711,16 @@ impl GamificationRepo {
                 (SELECT COUNT(*) FROM chat_messages WHERE user_id = $1 AND is_deleted = FALSE) AS chat_messages,
                 (SELECT COUNT(*) FROM github_repos WHERE user_id = $1) AS repos_count,
                 (SELECT COALESCE(MAX(streak), 0)::bigint FROM daily_checkins WHERE user_id = $1) AS max_streak,
-                (SELECT COALESCE(total_xp, 0)::bigint FROM user_xp_totals WHERE user_id = $1) AS total_xp,
+                -- v3.8.0 FIX (bug "huy hiệu vĩnh viễn không được cấp"):
+                -- COALESCE phải nằm NGOÀI subselect. Bản cũ
+                -- (SELECT COALESCE(total_xp,0) FROM user_xp_totals WHERE ...)
+                -- trả 0 DÒNG khi user chưa có row (chưa từng được cộng XP)
+                -- → subselect = NULL → sqlx decode i64 fail →
+                -- check_and_award trả Err → KHÔNG huy hiệu nào được trao,
+                -- vĩnh viễn, im lặng (chỉ warn log). Người dùng like game
+                -- (điều kiện first_like_given đạt) mà không hành vi nào
+                -- tạo user_xp_totals → badge không bao giờ đến tay.
+                COALESCE((SELECT total_xp FROM user_xp_totals WHERE user_id = $1), 0)::bigint AS total_xp,
                 -- v3.1.0: count of social link platforms. links is a JSON object
                 -- (platform_id -> url map) — count keys via LATERAL jsonb_object_keys.
                 -- COALESCE outside subquery returns 0 if user has no row.
@@ -718,10 +731,10 @@ impl GamificationRepo {
                 ), 0) AS social_links_count,
                 -- v3.1.0: count of user collections (for collections_X tiers)
                 (SELECT COUNT(*) FROM collections WHERE user_id = $1) AS collections_count,
-                -- v3.1.0: lifetime RPS wins (for rps_X_wins tiers)
-                (SELECT COUNT(*) FROM rps_plays WHERE user_id = $1 AND result = 'win') AS rps_wins,
-                -- v3.1.0: lifetime valid word_chain plays (for word_chain_X tiers)
-                (SELECT COUNT(*) FROM word_chain_plays WHERE user_id = $1 AND is_valid = TRUE) AS word_chain_valid,
+                -- v3.8.0: rps_wins / word_chain_valid subselects removed
+                -- (2 game modes deleted; migration 037 drops rps_plays /
+                -- word_chain_plays; keeping these subselects would break
+                -- the WHOLE stats query on every check_and_award call).
                 -- v3.1.0: total checkin rows (for streak_champion — total 365 days)
                 (SELECT COUNT(*) FROM daily_checkins WHERE user_id = $1) AS total_checkins"#,
         )
@@ -864,18 +877,9 @@ impl GamificationRepo {
                 "social_4" => s.social_links_count >= 4,
                 "social_5" => s.social_links_count >= 5,
                 "social_master" => s.social_links_count >= 7,
-                // -- RPS (Oẳn tù tì) tiers (5)
-                "rps_first_win" => s.rps_wins >= 1,
-                "rps_10_wins" => s.rps_wins >= 10,
-                "rps_50_wins" => s.rps_wins >= 50,
-                "rps_100_wins" => s.rps_wins >= 100,
-                "rps_500_wins" => s.rps_wins >= 500,
-                // -- WORD CHAIN (Nối từ) tiers (5)
-                "word_chain_first" => s.word_chain_valid >= 1,
-                "word_chain_10" => s.word_chain_valid >= 10,
-                "word_chain_50" => s.word_chain_valid >= 50,
-                "word_chain_100" => s.word_chain_valid >= 100,
-                "word_chain_500" => s.word_chain_valid >= 500,
+                // v3.8.0 — rps_* / word_chain_* achievements deleted together
+                // with the two game modes (migration 037 removes catalog
+                // rows, so met() will never see these IDs again).
                 // v3.2.0 — Fallback GENERIC cho huy hiệu cấp độ mới dạng
                 // `level_N` (N là số — migration 027 seed thêm ~45 ngưỡng
                 // mịn: level_2, level_3, ..., level_1500, ...). Không cần

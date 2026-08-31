@@ -44,10 +44,52 @@ static SESSION_CACHE: std::sync::OnceLock<std::sync::Mutex<SessionCacheMap>> =
 /// đủ ngắn để thay đổi quyền lan truyền gần như tức thời.
 const SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// v3.8.0 (security audit F6) — NEGATIVE cache cho token hash KHÔNG hợp lệ.
+/// Bot xoay cookie `kg_session=<rác ngẫu nhiên>` từng request buộc mỗi
+/// request chạm 1-2 query DB (sessions + users) TRƯỚC khi rate-limit
+/// quyết 429 → amplification phá pool (25 conn). Cache âm 30s xẹp toàn bộ
+/// spam cookie rác về 0 query. Token thật mới sinh không bao giờ trùng
+/// hash đã cache âm (CSPRNG 36 ký tự).
+static NEGATIVE_SESSION_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>>,
+> = std::sync::OnceLock::new();
+const NEGATIVE_SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Ghi nhận token hash KHÔNG hợp lệ (DB miss) vào negative cache.
+fn negative_cache_insert(token_hash: &str) {
+    if let Some(map) = NEGATIVE_SESSION_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if map.len() > 20_000 {
+            map.retain(|_, at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL);
+        }
+        map.insert(token_hash.to_string(), std::time::Instant::now());
+    }
+}
+
+/// Token hash có đang bị cache âm (vừa tra là KHÔNG hợp lệ) không?
+fn negative_cache_hit(token_hash: &str) -> bool {
+    NEGATIVE_SESSION_CACHE.get().is_some_and(|map| {
+        let map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.get(token_hash)
+            .is_some_and(|at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL)
+    })
+}
+
 /// Xoá 1 session khỏi cache (key = token hash). Gọi khi logout /
 /// revoke — user bị đá ra NGAY LẬP TỨC, không đợi TTL.
 pub fn invalidate_session_cache(token_hash: &str) {
     if let Some(map) = SESSION_CACHE.get() {
+        let mut map = map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        map.remove(token_hash);
+    }
+    // Đồng bộ xoá negative entry (phòng khi hash từng bị miss trong gap).
+    if let Some(map) = NEGATIVE_SESSION_CACHE.get() {
         let mut map = map
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -90,11 +132,24 @@ pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<
             }
         }
     }
+    // v3.8.0 (audit F6): negative cache — cookie rác vừa tra xong không
+    // đụng DB lại trong 30s (xếp nền cho cả rate_limiter + error_page).
+    if negative_cache_hit(&token_hash) {
+        return None;
+    }
 
     // === Slow path: query DB như cũ ===
-    let user_id = SessionRepo::find_user_by_token(&state.db, &token_hash)
+    let user_id = match SessionRepo::find_user_by_token(&state.db, &token_hash)
         .await
-        .ok()??;
+        .ok()
+        .flatten()
+    {
+        Some(uid) => uid,
+        None => {
+            negative_cache_insert(&token_hash);
+            return None;
+        }
+    };
     let user = UserRepo::find_by_id(&state.db, user_id).await.ok()??;
     if user.is_banned {
         return None;
@@ -273,10 +328,16 @@ pub async fn maintenance_guard(
         "/ai/info",
         "/ai/progress",
     ];
-    if bypass_prefixes
-        .iter()
-        .any(|p| path == p.trim_end_matches('/') || path.starts_with(p))
-    {
+    // v3.8.0 FIX (security audit F14): match CHÍNH XÁC path hoặc prefix
+    // kèm "/". Bản cũ dùng starts_with(p) thuần → "/login-abc",
+    // "/auth-whatever" cũng bypass maintenance vô tình (route tương lai
+    // kế thừa lỗ bypass lặng lẽ). Giờ "/login" chỉ match "/login" và
+    // "/login/..." (route con nếu có), "/auth" match "/auth/..." — đúng
+    // ngữ cảnh từng prefix.
+    if bypass_prefixes.iter().any(|p| {
+        let p = p.trim_end_matches('/');
+        p.is_empty() || path == p || path.starts_with(&format!("{p}/"))
+    }) {
         return next.run(request).await;
     }
     let on = state.maintenance_enabled().await;
@@ -589,14 +650,17 @@ pub fn client_ip_from_parts(
                 .map(|p| p.trim())
                 .filter(|p| is_valid_ip_string(p))
                 .collect();
-            if !valids.is_empty() {
+            if valids.len() >= hops && hops > 0 {
                 // valids[len-1] = hop gần app nhất; client = valids[len-hops].
-                // Nếu chuỗi ngắn hơn expected (proxy chỉ append 1 phần)
-                // thì lấy phần tử ĐẦU — vẫn tốt hơn "unknown" và an toàn
-                // vì phần tử đầu của XFF do proxy ngoài cùng ghi.
-                let idx = valids.len().saturating_sub(hops);
+                let idx = valids.len() - hops;
                 return valids[idx].to_string();
             }
+            // v3.8.0 FIX (security audit F19): chuỗi XFF NGẮN hơn số hop
+            // tin cậy → các entry đều không chứng minh được client thật
+            // (phần tử đầu do client tự ghi — attacker-controlled nếu
+            // proxy ngoài cùng thiếu). Bản cũ lấy leftmost → bot tự set
+            // XFF ngắn xoay bucket rate-limit + poison audit IP. Giờ rơi
+            // về ConnectInfo (IP TCP của hop cuối) — an toàn hơn.
         }
     }
     connect_info.map_or_else(|| "unknown".into(), |a| a.ip().to_string())
@@ -682,8 +746,20 @@ pub fn verify_origin(
         host_only.eq_ignore_ascii_case(base_host.split(':').next().unwrap_or(""))
     };
     match (origin.as_deref(), referer.as_deref()) {
-        (Some(o), _) if !o.is_empty() && check(o) => Ok(()),
-        (Some(_), Some(r)) if !r.is_empty() && check(r) => Ok(()),
+        (Some(o), _) if !o.is_empty() => {
+            // v3.8.0 FIX (security audit F3): Origin TỒN TẠI thì quyết định
+            // NGAY theo Origin — Referer hợp lệ KHÔNG thể "cứu" một Origin
+            // sai (bản cũ match (Some(_), Some(r)) cho phép Origin evil +
+            // Referer site pass — endpoint mint session (/auth/ai/login,
+            // /auth/ai/register, /chat/ws handshake) cần strict tuyệt đối).
+            if check(o) {
+                Ok(())
+            } else {
+                Err(AppError::Forbidden(
+                    "Yêu cầu không đến từ domain hợp lệ".into(),
+                ))
+            }
+        }
         (None, Some(r)) if !r.is_empty() && check(r) => Ok(()),
         (Some(_), _) | (_, Some(_)) => {
             // Có Origin/Referer nhưng không khớp → từ chối.
@@ -921,11 +997,24 @@ async fn session_user_id_from_token(state: &AppState, token: &str) -> Option<Uui
             }
         }
     }
+    // v3.8.0 (audit F6): negative cache chặn cookie rác đốt query DB trước
+    // khi rate-limit quyết 429 (trước đây mỗi request 1 query → pool DoS).
+    if negative_cache_hit(&token_hash) {
+        return None;
+    }
     // Slow path: DB lookup (1 query cho cache-miss mỗi 10s/user — cùng
     // bậc với auth middleware vốn đã chạy sau đó).
-    let user_id = SessionRepo::find_user_by_token(&state.db, &token_hash)
+    let user_id = match SessionRepo::find_user_by_token(&state.db, &token_hash)
         .await
-        .ok()??;
+        .ok()
+        .flatten()
+    {
+        Some(uid) => uid,
+        None => {
+            negative_cache_insert(&token_hash);
+            return None;
+        }
+    };
     Some(user_id)
 }
 
@@ -1917,6 +2006,24 @@ pub async fn origin_check(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.trim().to_string());
 
+    // v3.8.0 FIX (security audit F2): request unsafe-method VẮNG CẢ Origin
+    // lẫn Referer nhưng MANG session cookie → từ chối (fail-closed).
+    // Browser hiện đại luôn gửi Origin cho POST/PUT/DELETE — request như
+    // vậy hoặc là non-browser dùng cookie đánh cắp, hoặc proxy legacy
+    // stripping headers. AI Agent dùng Bearer token (không cookie) nên
+    // không bị ảnh hưởng. Chỉ vô hiệu khi không có cookie (curl dev/test).
+    if origin.is_none() && referer.is_none() {
+        let has_session_cookie = request
+            .headers()
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|c| c.contains("kg_session="));
+        if has_session_cookie {
+            return Err(AppError::Forbidden(
+                "Yêu cầu thiếu thông tin nguồn (Origin/Referer) — bị chặn                  để phòng CSRF".into(),
+            ));
+        }
+    }
     if let Some(err) = check_origin_headers(
         origin.as_deref(),
         referer.as_deref(),
@@ -1970,8 +2077,17 @@ fn check_origin_headers(
         if h.is_empty() {
             return false;
         }
-        // Khớp Host của request NÀY (đa domain vẫn ổn) hoặc base_url.
-        (!host.is_empty() && h == host) || (!base_host.is_empty() && h == base_host)
+        if !base_host.is_empty() && h == base_host {
+            return true;
+        }
+        // v3.8.0 FIX (security audit F10): KHÔNG tin Host header của request
+        // trên prod. Trước đây `h == host` cho phép DNS-rebinding / proxy
+        // chuyển Host tùy ý: Origin + Host đều là domain của attacker →
+        // check CSRF pass. Host chỉ được tin khi base_url là localhost
+        // (dev — Host là localhost:3000 khớp base_host so với port strip).
+        let is_dev_base =
+            base_host == "localhost" || base_host == "127.0.0.1" || base_host == "::1";
+        is_dev_base && !host.is_empty() && h == host
     };
 
     match (
@@ -2322,13 +2438,16 @@ mod client_ip_tests {
     }
 
     #[test]
-    fn xff_shorter_than_hops_falls_back_to_leftmost() {
-        // hops=2 nhưng XFF chỉ có 1 phần tử → lấy phần tử đầu (do proxy
-        // ngoài cùng ghi) thay vì "unknown".
+    fn xff_shorter_than_hops_falls_back_to_connect_info() {
+        // v3.8.0 (security audit F19): hops=2 nhưng XFF chỉ có 1 phần tử —
+        // phần tử đó KHÔNG chứng minh được client thật (do client tự ghi
+        // nếu proxy ngoài cùng thiếu). Bản cũ tin leftmost → bot tự set
+        // XFF ngắn để xoay bucket rate-limit + poison audit IP. Giờ rơi
+        // về ConnectInfo (IP TCP của hop cuối) — an toàn hơn.
         let h = hm_xff("203.0.113.10");
         assert_eq!(
             client_ip_from_parts(&h, Some(&addr("10.0.0.5")), true, 2),
-            "203.0.113.10"
+            "10.0.0.5"
         );
     }
 

@@ -6190,11 +6190,23 @@ a.chat-msg-author {
     }
 
     .hero-stats {
-        grid-template-columns: 1fr;
+        /* v3.8.0 UI FIX (VLM review): giữ lưới 2x2 luôn — bản cũ hạ về
+        1 cột ở ≤400px khiến khối stats phình dọc 4 hàng, đẩy CTA chính
+        (điểm danh, game tuần) xuống dưới nếp gấp màn hình. 2x2 vẫn vừa
+        riêng từng ô ~170px cho 4 chỉ số ngắn. */
+        grid-template-columns: repeat(2, 1fr);
     }
 
     .hero-stat + .hero-stat {
+        border-left: 1px solid var(--border-muted);
+        border-top: 0;
+    }
+
+    .hero-stat:nth-child(3) {
         border-left: 0;
+    }
+
+    .hero-stat:nth-child(n+3) {
         border-top: 1px solid var(--border-muted);
     }
 }
@@ -8325,32 +8337,6 @@ button.htmx-request::after {
     animation: kg-spin .6s linear infinite;
 }
 
-/* ---- Kết quả game: thắng lắc nhẹ, thua rung, hiện nhanh ---- */
-.rps-result.rps-win,
-.wc-result.wc-valid {
-    animation: kg-pop .45s cubic-bezier(.2,1.4,.4,1);
-}
-
-.rps-result.rps-lose,
-.wc-result.wc-invalid {
-    animation: kg-shake .4s ease;
-}
-
-.rps-result.rps-draw {
-    animation: kg-fade-up .35s ease both;
-}
-
-/* Confetti xuất hiện trong partial kết quả thắng (span.confettiPiece
-   được sinh từ server với --confetti-x ngẫu nhiên) */
-.confettiPiece {
-    position: absolute;
-    top: 0;
-    width: 8px;
-    height: 8px;
-    border-radius: 2px;
-    pointer-events: none;
-    animation: kg-confetti-fall 1.1s ease-in forwards;
-}
 
 /* ---- Avatar admin/mod: viền gradient VIP ---- */
 .role-admin-badge,

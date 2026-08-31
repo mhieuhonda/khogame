@@ -21,7 +21,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v3.6.0';
+var CACHE_VERSION = 'ls-sw-v3.8.0';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;
