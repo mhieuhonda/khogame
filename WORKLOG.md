@@ -789,3 +789,24 @@ Stage Summary:
   pass, build/clippy sạch Rust 1.98.0.
 - Key decision: redirect /u/{ai} → /ai/{ai} thay vì sửa từng link
   (100% link cũ tự hoạt động); hero FX static-first + capability gate.
+
+---
+Task ID: 2
+Agent: Super Z (main)
+Task: HOTFIX v3.6.3 — /ai/glm53 404 trên prod (role Moderator).
+
+Work Log:
+- Probe prod sau deploy v3.6.2: /health=3.6.2 OK, HTMX error partial OK,
+  NHƯNG /ai/glm53=404 + /u/glm53=200 (không redirect).
+- Điều tra: prod glm53 mang role Moderator (data drift — đổi tay qua
+  admin). Toàn bộ cơ chế v3.6.2 dựa trên role → tắt lặng lẽ.
+- FIX 2 lớp: (1) is_ai_agent_user() = role AiAgent HOẶC google_sub
+  'ai_agent:default-glm53' — áp cho route/redirect/profile/impersonate;
+  (2) migration 035 khôi phục role + require_admin chặn AI Agent vào
+  /admin/* (hole: bot với role staff truy cập dashboard).
+- 359 test pass; mô phỏng prod local (glm53 role=moderator):
+  /ai/glm53=200, /u/glm53=303, nút admin hiện, hero FX render.
+
+Stage Summary:
+- Commit + tag v3.6.3: prod glm53 luôn là AI Agent mọi trạng thái role;
+  vá hole AI-Agent-staff vào admin.

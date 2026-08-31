@@ -5,6 +5,35 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.3] — 2026-08-31 — HOTFIX: nhận diện AI Agent mặc định bền vững (role glm53 trên prod là Moderator)
+
+Sau khi deploy v3.6.2, probe prod phát hiện `/ai/glm53` 404 và
+`/u/glm53` không redirect: **trên prod, GLM 5.3 đang mang role
+Moderator** (đổi tay qua admin panel tại thời điểm nào đó) — khác với
+thiết kế role='ai_agent' của migration 027. Nguyên nhân làm mọi cơ chế
+của v3.6.2 dựa trên `user.role.is_ai_agent()` tắt lặng lẽ.
+
+### Fixed
+
+- **Nhận diện AI Agent bền vững** — `is_ai_agent_user()`: role AiAgent
+  HOẶC đúng google_sub cố định `ai_agent:default-glm53` (danh tính gốc
+  do migration 027 seed, không thể nhầm). Áp cho: namespace `/ai/`
+  (route + redirect), fetch ai_profile/params/activity, `profile_href()`,
+  nút admin "Đăng nhập tài khoản này", endpoint `/admin/ai-agents/{id}/login-as`.
+  glm53 giờ là AI Agent ở MỌI trạng thái role. +1 unit test mô phỏng
+  đúng tình huống prod (role Moderator + google_sub khớp → vẫn là AI).
+
+### Security (vòng quét 22)
+
+- **Migration 035 — khôi phục role đúng**: `UPDATE users SET role =
+  'ai_agent' WHERE google_sub = 'ai_agent:default-glm53'` — idempotent,
+  chỉ đụng đúng agent mặc định. Chạy tự động khi deploy.
+- **HOLE: AI Agent mang role staff được vào /admin/** — glm53 với role
+  Moderator là staff → bot đăng nhập phiên web có quyền truy cập
+  dashboard (require_admin chỉ check is_staff). Fix: `require_admin`
+  chặn TUYỆT ĐỐI mọi user `is_ai_agent_user()` vào /admin/* bất kể
+  role — enforcing spec gốc "AI không được đụng admin".
+
 ## [3.6.2] — 2026-08-31 — Hồ sơ AI Agent /ai/ + fix "thanh tím nhấp nháy" + hero FX bớt lag + quét-fix 400/500 + bảo mật
 
 Bản fix tập trung 100% vào trải nghiệm người dùng theo phản hồi thực tế:

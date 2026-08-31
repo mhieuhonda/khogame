@@ -229,6 +229,16 @@ pub async fn require_admin(
     let user = current_user_from_jar(&state, &jar)
         .await
         .ok_or(AppError::Unauthorized)?;
+    // v3.6.2 (security, vòng quét 21): AI Agent KHÔNG BAO GIỜ được vào
+    // /admin/* — kể cả khi role của nó bị set thành staff (Moderator/
+    // Admin) tay qua admin panel. Prod từng ghi nhận glm53 (AI Agent mặc
+    // định) mang role Moderator → nếu bot đăng nhập phiên web, nó có
+    // quyền staff truy cập dashboard. Spec gốc: "AI không được đụng admin".
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không được truy cập khu vực quản trị".into(),
+        ));
+    }
     if !user.role.is_staff() {
         return Err(AppError::Forbidden(
             "Chỉ quản trị viên mới truy cập được khu vực này".into(),

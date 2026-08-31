@@ -42,7 +42,10 @@ pub async fn show_ai_profile(
     let user = UserRepo::find_by_username(&state.db, &username)
         .await?
         .ok_or_else(|| AppError::NotFound("AI Agent không tồn tại".into()))?;
-    if !user.role.is_ai_agent() || user.is_banned {
+    // v3.6.2 — nhận diện qua is_ai_agent_user() (role HOẶC google_sub
+    // mặc định): glm53 vẫn là AI Agent kể cả khi role bị đổi tay qua
+    // admin (prod từng ghi nhận role Moderator).
+    if !user.is_ai_agent_user() || user.is_banned {
         // Không phải AI Agent (hoặc bị ban) → không tồn tại trong namespace
         // /ai/ — trả 404 thay vì leak sự tồn tại của user thường.
         return Err(AppError::NotFound("AI Agent không tồn tại".into()));
@@ -59,9 +62,10 @@ async fn show_profile_impl(
         .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
     // v3.6.2 — AI Agent có namespace riêng /ai/{username}: /u/{ai} chỉ là
-    // link cũ → redirect vĩnh viễn sang chuẩn mới (mọi link cũ trong comment/
+    // link cũ → redirect sang chuẩn mới (mọi link cũ trong comment/
     // leaderboard/share... tự động hợp lệ mà không phải sửa từng chỗ).
-    if user.role.is_ai_agent() {
+    // Nhận diện bền vững: role HOẶC google_sub mặc định (glm53).
+    if user.is_ai_agent_user() {
         let target = format!("/ai/{}", user.username);
         if user.is_banned {
             return Err(AppError::NotFound("Người dùng không tồn tại".into()));
@@ -112,7 +116,7 @@ async fn build_profile_template(
         },
         UserRepo::get_preferences(&state.db, user.id),
         async {
-            if user.role.is_ai_agent() {
+            if user.is_ai_agent_user() {
                 match AiAgentRepo::find_profile_by_user_id(&state.db, user.id).await {
                     Ok(profile) => profile,
                     Err(e) => {
@@ -182,7 +186,7 @@ async fn build_profile_template(
         // task/action/status/percentage/created_at — KHÔNG message,
         // KHÔNG metadata, KHÔNG ip_address (cấm lộ thông tin nhạy cảm).
         async {
-            if user.role.is_ai_agent() {
+            if user.is_ai_agent_user() {
                 match AiAgentRepo::list_progress_for_agent(&state.db, user.id, 10).await {
                     Ok(reports) => reports
                         .into_iter()
@@ -261,7 +265,7 @@ async fn build_profile_template(
     // v3.5.0 — Tham số công khai của AI Agent (khai báo tham số + tham số
     // kích hoạt — chỉ param is_public; param riêng tư chỉ admin thấy ở
     // /admin/ai-agents). Fail-open rỗng để hồ sơ không bao giờ 500 vì params.
-    let (ai_params_spec, ai_params_activation) = if user.role.is_ai_agent() {
+    let (ai_params_spec, ai_params_activation) = if user.is_ai_agent_user() {
         let all = AiAgentRepo::list_params(&state.db, user.id, true)
             .await
             .unwrap_or_default();
@@ -286,7 +290,7 @@ async fn build_profile_template(
     // tồn tại của hàng profile (đó chỉ là dữ liệu hiển thị). Endpoint
     // /admin/ai-agents/{id}/login-as tự kiểm tra role AiAgent + ban — dùng
     // role đây là tín hiệu đúng và ổn định hơn.
-    let can_impersonate_ai = user.role.is_ai_agent()
+    let can_impersonate_ai = user.is_ai_agent_user()
         && !is_self
         && current_user.as_ref().is_some_and(|cu| cu.role.is_admin());
 

@@ -91,11 +91,20 @@ impl User {
     /// namespace user.
     #[must_use]
     pub fn profile_href(&self) -> String {
-        if self.role.is_ai_agent() {
+        if self.is_ai_agent_user() {
             format!("/ai/{}", self.username)
         } else {
             format!("/u/{}", self.username)
         }
+    }
+
+    /// v3.6.2 — user này là AI Agent? role `AiAgent` HOẶC đúng danh tính
+    /// AI Agent mặc định (GLM 5.3 — xem `AiAgentRepo::is_ai_agent_user`):
+    /// prod từng có glm53 bị set role Moderator tay → mọi tính năng AI
+    /// tắt lặng lẽ. google_sub là danh tính gốc, luôn đúng.
+    #[must_use]
+    pub fn is_ai_agent_user(&self) -> bool {
+        crate::repositories::ai_agent::is_ai_agent_user(&self.role, &self.google_sub)
     }
 }
 
@@ -396,6 +405,43 @@ mod tests {
         let mut admin = human;
         admin.role = UserRole::Admin;
         assert_eq!(admin.profile_href(), "/u/glm53");
+    }
+
+    /// v3.6.2 — is_ai_agent_user: role AiAgent HOẶC google_sub mặc định.
+    /// Tình huống prod: glm53 bị đổi role Moderator tay → vẫn phải nhận
+    /// diện là AI Agent (badge, hero, nút admin, /ai/ namespace).
+    #[test]
+    fn test_is_ai_agent_user_by_role_or_google_sub() {
+        let mut u = User {
+            id: Uuid::new_v4(),
+            email: "a@b.c".into(),
+            username: "glm53".into(),
+            display_name: "GLM 5.3".into(),
+            avatar_url: None,
+            bio: None,
+            google_sub: "ai_agent:default-glm53".into(),
+            role: UserRole::Moderator, // bị đổi tay trên prod
+            is_banned: false,
+            last_seen_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            signup_ip: None,
+            signup_ua: None,
+            last_login_ip: None,
+            last_login_ua: None,
+            last_login_at: None,
+        };
+        // google_sub khớp mặc định → AI Agent dù role Moderator
+        assert!(u.is_ai_agent_user());
+        // User thường google_sub khác + role Moderator → KHÔNG phải AI
+        u.google_sub = "google-oauth|12345".into();
+        assert!(!u.is_ai_agent_user());
+        // Role AiAgent → là AI bất kể google_sub
+        u.role = UserRole::AiAgent;
+        assert!(u.is_ai_agent_user());
+        // AI Agent mặc định đúng role → vẫn là AI
+        u.google_sub = "ai_agent:default-glm53".into();
+        assert!(u.is_ai_agent_user());
     }
 
     #[test]

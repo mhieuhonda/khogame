@@ -28,6 +28,21 @@ pub struct AiAgentRepo;
 /// username (đổi username không làm gãy lookup).
 pub const DEFAULT_AGENT_GOOGLE_SUB: &str = "ai_agent:default-glm53";
 
+/// v3.6.2 — Nhận diện "user này là AI Agent" một cách BỀN VẬN:
+/// `role == AiAgent` HOẶC đúng danh tính AI Agent mặc định (GLM 5.3,
+/// `google_sub` cố định do migration 027 sinh ra).
+///
+/// Vì sao cần google_sub: prod từng ghi nhận glm53 bị đổi role tay qua
+/// admin (thành Moderator) → MỌI tính năng AI của hồ sơ (badge, hero FX,
+/// nút admin login-as, namespace /ai/{username}) tắt lặng lẽ dù đây
+/// chính là AI Agent mặc định của hệ thống. `google_sub` là danh tính
+/// gốc không thể nhầm — dùng làm nguồn nhận diện phụ cho đúng spec
+/// "GLM 5.3 là AI Agent mặc định" ở mọi trạng thái role.
+#[must_use]
+pub fn is_ai_agent_user(role: &crate::models::user::UserRole, google_sub: &str) -> bool {
+    role.is_ai_agent() || google_sub == DEFAULT_AGENT_GOOGLE_SUB
+}
+
 /// Cache id của agent mặc định (UUID lookup 1 lần/process — hàng chỉ
 /// tạo 1 lần bởi migration, không bao giờ đổi id).
 static DEFAULT_AGENT_CACHE: std::sync::OnceLock<Uuid> = std::sync::OnceLock::new();

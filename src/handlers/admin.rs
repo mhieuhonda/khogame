@@ -1797,7 +1797,10 @@ pub async fn impersonate_ai_agent(
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if target.role != crate::models::user::UserRole::AiAgent {
+    // v3.6.2 — nhận diện bền vững: role AiAgent HOẶC google_sub của AI
+    // Agent mặc định (glm53 từng bị đổi role tay trên prod → endpoint
+    // từ chối oan dù đây chính là AI Agent cần đăng nhập thay).
+    if !target.is_ai_agent_user() {
         return Err(AppError::BadRequest(
             "Chỉ được đăng nhập với tư cách TÀI KHOẢN AI AGENT".into(),
         ));

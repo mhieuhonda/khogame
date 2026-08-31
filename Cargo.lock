@@ -1322,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "khogame"
-version = "3.6.2"
+version = "3.6.3"
 dependencies = [
  "anyhow",
  "argon2",
