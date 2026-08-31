@@ -810,3 +810,61 @@ Work Log:
 Stage Summary:
 - Commit + tag v3.6.3: prod glm53 luôn là AI Agent mọi trạng thái role;
   vá hole AI-Agent-staff vào admin.
+
+---
+## 2026-08-31 — v3.7.0: KHUNG AVATAR (Rồng Lửa 5000 XP) + shop x3 + admin sửa AI Agent + fix GH Actions
+
+**Nhiệm vụ**: (1) fix GitHub Actions triệt để — ưu tiên 1; (2) fix admin
+đăng nhập không vào được tài khoản AI Agent; (3) admin sửa thông tin
+chi tiết/thông số AI Agent; (4) thêm nhiều vật phẩm cửa hàng; (5) thêm
+khung avatar nhiều kiểu — đặc biệt khung Rồng Lửa bán cực đắt, vẽ chuẩn,
+NHÌN để fix; (6) quét-fix UI/UX desktop + mobile; (7) quét bảo mật;
+(8) tạo bản phát hành.
+
+**GitHub Actions**: quét 500 run API — v3.6.0→v3.6.3 xanh đủ 3 workflow;
+fail cũ (Release v3.4.2 bash -e, CD 2026-08-30 verify 3') đã được các
+bản trước vá. Fix còn lại latent v3.7.0: release.yml shell injection
+qua tag name (tag git hợp lệ chứa `$(`/backtick — interpolate thẳng
+vào run: = RCE với GITHUB_TOKEN) → mọi bước truyền TAG qua env + regex
+siết `[A-Za-z0-9._-]`; deploy.yml verify thêm điều kiện trigger.queued
++ healthy-wait fail-fast exited/stopped:unhealthy.
+
+**Xây env thật để NHÌN**: Rust 1.98.0 (rustup) + PostgreSQL 17.6
+user-space (zonky binary, port 5433) + migrate 36 file. Phát hiện
+sandbox env `DATABASE_URL=file:...` đè .env (dotenvy không override) →
+app nối nhầm localhost:5432 — relaunch bằng `env -u`. Dựng user test
+(admin + user 999999 XP) bằng session thật để browse.
+
+**Khung avatar** (migration 036 + Rust + CSS): 6 khung — Đồng 150 /
+Bạc 300 / Vàng 600 / Neon 900 / Phượng Hoàng 1500 / **Rồng Lửa 5000 XP
+(đắt nhất, unit-test guard)**. Vẽ thuần CSS: conic metallic ×3, neon
+pulse, phoenix xoay, dragon 2-lớp vảy+lửa xoay 3.2s + flicker hào quang;
+@property --frame-angle; prefers-reduced-motion tôn trọng. Bẫy đã né:
+pseudo không render trên <img> → class đặt trên thẻ bọc; chat.js dùng
+whitelist class cứng; session cache invalidate khi mua để hiện ngay.
+Hiển thị 3 vị trí (profile 96px / header 32px / chat) — verify bằng
+screenshot cả 3.
+
+**Shop**: tách 2 khu (Khung Avatar có swatch preview / Booster);
+Rồng Lửa hero card full-width grid-areas + nhãn "👑 ĐẮT NHẤT CỬA HÀNG";
++2 vật phẩm mới (name_glow_7, xp_boost_3d); duration_hours từ DB
+(guard ≤0); mua frame → invalidate cache + toast riêng.
+
+**Admin sửa AI Agent**: trang /admin/ai-agents/{id}/edit (GET+POST)
+sửa display_name/model/vendor/version/caps/màu/privacy/verified/bio/
+avatar + param edit inline POST params/{param_id}/edit; audit log;
+validation tiếng Việt; test thật: sửa bio ✓, sửa param ✓, khôi phục
+dữ liệu test bằng chính endpoint mới.
+
+**Login-as AI Agent**: verify end-to-end (impersonate → /admin 403
+đúng spec → stop khôi phục admin); password login /auth/ai/login sai
+đúng → error thân thiện. Hardening: verify_password_login + 4 handler
+admin đổi sang is_ai_agent_user() (chống role drift — root cause lịch
+sử của bug này).
+
+**UI/UX**: fix tương phản tên trên cover tối (light mode chữ trắng +
+shadow — nhìn trước/sau bằng screenshot); mobile 390px kiểm tra
+home/shop/profile — clean, không overflow; desktop 1280px toàn bộ.
+
+**Kiểm định**: fmt sạch · clippy -D warnings sạch · 362/362 test ·
+rustdoc -D warnings sạch trên Rust 1.98.0. Smoke 25+ request thật.

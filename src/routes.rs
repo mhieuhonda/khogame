@@ -468,6 +468,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/ai-agents/{user_id}/params/{param_id}/delete",
             post(handlers::admin::ai_agent_delete_param),
         )
+        // v3.7.0 — SỬA thông tin chi tiết + thông số của AI Agent
+        .route(
+            "/admin/ai-agents/{user_id}/edit",
+            get(handlers::admin::edit_ai_agent_form).post(handlers::admin::edit_ai_agent_submit),
+        )
+        .route(
+            "/admin/ai-agents/{user_id}/params/{param_id}/edit",
+            post(handlers::admin::ai_agent_edit_param),
+        )
         // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
         .route(
             "/admin/ai-agents/{user_id}/login-as",

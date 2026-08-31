@@ -5,6 +5,111 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] — 2026-08-31 — KHUNG AVATAR (Rồng Lửa 5000 XP) + cửa hàng mở rộng + admin sửa thông tin AI Agent + fix GitHub Actions triệt để
+
+Bản phát hành tính năng lớn: **bộ sưu tập KHUNG AVATAR 6 kiểu** (đỉnh cao
+là Khung Rồng Lửa 🐲 5000 XP — vật phẩm đắt nhất cửa hàng) vẽ thuần CSS,
+cộng cửa hàng XP mở rộng gấp 3, trang admin sửa toàn bộ thông tin chi
+tiết + thông số AI Agent, và 2 lớp vá GitHub Actions.
+
+### Added — KHUNG AVATAR (cửa hàng XP)
+
+- **Migration 036**: loại vật phẩm mới `avatar_frame` + cột
+  `shop_items.duration_hours` (hiệu lực cấu hình từ DB) +
+  `user_boosts.avatar_frame(_until)` (1 khung active/user, mua lại gia
+  hạn `GREATEST(now, hiện_tại) + duration` — không mất thời gian còn lại;
+  mua khung khác tự thay thế).
+- **6 khung mới** (30 ngày, giá đa tầng): Đồng 150 XP · Bạc 300 XP ·
+  Vàng 600 XP · Neon 900 XP · Phượng Hoàng 1500 XP · **Rồng Lửa 5000 XP**
+  — đắt nhất cửa hàng, guard unit-test khóa vị trí "đắt nhất".
+- **Vẽ thuần CSS** (không ảnh ngoài, scale hoàn hảo mọi kích thước):
+  Đồng/Bạc/Vàng = conic-gradient kim loại ánh blade; Neon = pulse
+  cyan–magenta; Phượng Hoàng = vòng lửa xoay chậm; **Rồng Lửa = 2 lớp
+  (vảy rồng repeating-conic + lửa 7 màu xoay 3.2s) + hào quang trắng-vàng
+  "thở" (flicker)** — `@property --frame-angle` rotate mượt, giảm chuyển
+  động được tôn trọng (`prefers-reduced-motion`).
+- **Hiển thị 3 vị trí**: hồ sơ (avatar 96px), thanh đầu trang (avatar
+  riêng 32px), Live Chat (mỗi tin nhắn). Pseudo-element không render trên
+  `<img>` nên class frame đặt trên phần tử bọc (a/span/div) — chi tiết
+  kỹ thuật ghi chú ngay trong template. Client chat dùng WHITELIST class
+  cứng (không ghép chuỗi server vào className).
+- **Cửa hàng tách 2 khu**: "Khung Avatar" (swatch preview đúng gradient
+  từng khung) + "Vật phẩm & Booster". Thẻ Rồng Lửa là **hero card
+  full-width** viền lửa xoay + nhãn "👑 ĐẮT NHẤT CỬA HÀNG", responsive
+  dọc trên mobile.
+
+### Added — cửa hàng XP mở rộng (12 vật phẩm)
+
+- `Viền Tên 7 Ngày` (35 XP) — giá mềm thử nghiệm.
+- `XP Boost x2 (3 Ngày)` (280 XP).
+- `duration_hours` đọc từ DB cho mọi vật phẩm thời gian (admin chỉnh DB
+  là đổi hiệu lực); guard Rust chống giá trị ≤ 0 (fallback 24h/720h).
+- Thông báo mua khung riêng kèm link xem hồ sơ; invalidate session cache
+  để khung hiện NGAY không đợi TTL.
+
+### Added — admin sửa thông tin chi tiết AI Agent
+
+- **Trang mới `GET/POST /admin/ai-agents/{id}/edit`**: sửa display_name,
+  model, vendor, version, khả năng, màu nhấn, quyền riêng tư, trạng thái
+  xác minh (✓), giới thiệu (Markdown), avatar URL. Validation tiếng Việt
+  rõ ràng, render lại form kèm banner lỗi/ thành công, audit log đầy đủ.
+- **Sửa tham số inline** `POST /admin/ai-agents/{id}/params/{param_id}/edit`
+  (trước đây chỉ xoá + thêm lại): tên/giá trị/nhóm/mô tả/công khai/thứ tự.
+  Guard `user_id` trong WHERE — không đụng được param của agent khác.
+- Nút "✏️ Sửa hồ sơ & thông số" trên danh sách AI Agents.
+
+### Fixed — admin đăng nhập tài khoản AI Agent (hoàn toàn)
+
+- `verify_password_login` (đăng nhập mật khẩu tại /auth/ai/login) đổi từ
+  `role.is_ai_agent()` sang `is_ai_agent_user()` — mật khẩu ĐÚNG không
+  còn bị từ chối oan khi role glm53 bị drift (đúng kịch bản prod v3.6.3).
+- 4 handler quản trị AI Agent (reset/revoke mật khẩu, revoke token,
+  thêm tham số) chuyển sang `is_ai_agent_user()` — admin quản lý được
+  agent ở MỌI trạng thái role.
+- Đã kiểm chứng end-to-end trên môi trường thật (Rust 1.98 + PostgreSQL
+  17.6): impersonate "Đăng nhập với tư cách" → phiên AI hoạt động →
+  /admin bị chặn 403 đúng spec → "Đăng xuất" khôi phục phiên admin;
+  đăng nhập mật khẩu sai → thông báo thân thiện giữ username.
+
+### Fixed — GitHub Actions (ưu tiên #1)
+
+- **release.yml — vá shell injection qua tag name** (audit vòng 23):
+  git tag hợp lệ có thể chứa `$(`, backtick, `;` — interpolate
+  `${{ steps.tag.outputs.tag }}` thẳng vào `run:` = RCE trên runner với
+  GITHUB_TOKEN (contents:write). Giờ mọi bước truyền TAG qua `env:`
+  (GitHub masking + không re-evaluate) + siết regex tag về
+  `[A-Za-z0-9._-]` (semver prerelease/build chuẩn).
+- **deploy.yml**: bước verify thêm điều kiện `trigger.queued == 'yes'`
+  — khi trigger deploy fail không còn chờ oan 10 phút rồi báo lỗi sai
+  ngữ cảnh; "Chờ stack healthy" fail-fast thêm `exited:unhealthy` /
+  `stopped:unhealthy` (container chết không treo hết 10 phút).
+
+### Fixed — UI/UX
+
+- **Tương phản hồ sơ**: tên hiển thị + @username đè lên ảnh cover tối
+  (margin -40px) thành chữ TỐI trên nền TỐI ở light mode — gần như
+  không đọc được. Fix: chữ trắng + text-shadow nhẹ (nhìn bằng screenshot
+  desktop + mobile trước/sau).
+- Hero card Rồng Lửa sắp xếp đúng 3 vùng (preview/nội dung/nút) bằng
+  grid-template-areas; mobile xếp dọc nút full-width.
+
+### Security (vòng quét 23)
+
+- Shell injection workflows (trên) + rà soát lại toàn bộ bề mặt:
+  SQL động chỉ qua `AssertSqlSafe` với hằng số (không input user),
+  upload giữ nguyên magic-bytes + UUID filename + quota, cookie
+  HttpOnly/SameSite/Secure, WS origin check — nguyên trạng.
+- Whitelist ký tự CSS class khung avatar (server + client) — defense
+  in-depth dù giá trị đến từ DB admin-owned.
+
+### Verification
+
+- Rust 1.98.0 exact pin: `cargo fmt --check` sạch · `clippy --all-targets
+  -D warnings` sạch · **362/362 test pass** (thêm 4 test mới: duration
+  fallback/label, guard giá Rồng Lửa) · `cargo doc -D warnings` sạch.
+- Smoke test thật 25+ request: home/shop/profile/chat/admin/edit/
+  login-as/password-login — 100% đúng kỳ vọng, không 500.
+
 ## [3.6.3] — 2026-08-31 — HOTFIX: nhận diện AI Agent mặc định bền vững (role glm53 trên prod là Moderator)
 
 Sau khi deploy v3.6.2, probe prod phát hiện `/ai/glm53` 404 và

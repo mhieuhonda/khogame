@@ -376,6 +376,33 @@ impl AiAgentRepo {
         Ok(c)
     }
 
+    /// v3.7.0 — lấy 1 AI Agent theo user_id (trang admin edit).
+    /// Nhận diện BỀN VỮNG: role AiAgent HOẶC google_sub default agent
+    /// (glm53 có thể bị đổi role tay trên prod — cùng chính sách với
+    /// `is_ai_agent_user`).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi DB fail; `AppError::NotFound` khi không tìm thấy.
+    pub async fn find_agent_by_id(pool: &PgPool, user_id: Uuid) -> AppResult<AiAgentWithProfile> {
+        let row = sqlx::query_as::<_, AiAgentWithProfile>(
+            r"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
+                     u.is_banned, u.created_at, u.last_seen_at,
+                     p.model_name, p.vendor, p.version, p.capabilities,
+                     p.privacy_level, p.accent_color, p.verified
+              FROM users u
+              JOIN ai_agent_profiles p ON p.user_id = u.id
+              WHERE u.id = $1
+                AND (u.role = 'ai_agent' OR u.google_sub = $2)
+              LIMIT 1",
+        )
+        .bind(user_id)
+        .bind(DEFAULT_AGENT_GOOGLE_SUB)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy AI Agent này".into()))?;
+        Ok(row)
+    }
+
     /// AI Agent tự cập nhật hồ sơ của mình.
     /// # Errors
     ///
@@ -716,6 +743,63 @@ impl AiAgentRepo {
             .bind(user_id)
             .execute(pool)
             .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// v3.7.0 — SỬA 1 tham số theo id (admin edit inline ở /admin/ai-agents).
+    /// Guard `user_id` trong WHERE — param của agent khác không đụng được.
+    /// Group chỉ nhận "spec" | "activation" (như upsert_param).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi key/value không hợp lệ hoặc DB fail.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn admin_update_param(
+        pool: &PgPool,
+        user_id: Uuid,
+        param_id: i64,
+        param_key: &str,
+        param_value: &str,
+        param_group: &str,
+        description: &str,
+        is_public: bool,
+        display_order: i32,
+        updated_by: Uuid,
+    ) -> AppResult<bool> {
+        let key = param_key.trim();
+        let value = param_value.trim();
+        if key.is_empty() || key.chars().count() > 100 {
+            return Err(AppError::BadRequest(
+                "Tên tham số không được trống, tối đa 100 ký tự".into(),
+            ));
+        }
+        if value.is_empty() || value.chars().count() > 500 {
+            return Err(AppError::BadRequest(
+                "Giá trị tham số không được trống, tối đa 500 ký tự".into(),
+            ));
+        }
+        let group = match param_group {
+            "activation" => "activation",
+            _ => "spec",
+        };
+        let descr: String = description.chars().take(500).collect();
+        let res = sqlx::query(
+            r#"UPDATE ai_agent_params
+               SET param_key = $3, param_value = $4, param_group = $5,
+                   description = $6, is_public = $7, display_order = $8,
+                   updated_by = $9, updated_at = NOW()
+               WHERE id = $1 AND user_id = $2"#,
+        )
+        .bind(param_id)
+        .bind(user_id)
+        .bind(key)
+        .bind(value)
+        .bind(group)
+        .bind(descr)
+        .bind(is_public)
+        .bind(display_order)
+        .bind(updated_by)
+        .execute(pool)
+        .await?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -1112,7 +1196,14 @@ impl AiAgentRepo {
             let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         };
-        if !user.role.is_ai_agent() || user.is_banned {
+        // v3.7.0 FIX (bug "admin ấn đăng nhập nhưng không vào được tài khoản
+        // AI Agent" — đợt 2): check role TRƯỚC ĐÂY dùng `role.is_ai_agent()`
+        // — khi glm53 bị đổi role tay trên prod (data drift Moderator, đúng
+        // kịch bản v3.6.3 đã xử lý cho impersonate) thì mật khẩu ĐÚNG vẫn bị
+        // từ chối "Tên đăng nhập hoặc mật khẩu không đúng". Dùng
+        // is_ai_agent_user() — role AiAgent HOẶC google_sub default agent —
+        // nhất quán với impersonate + route /ai/*.
+        if !user.is_ai_agent_user() || user.is_banned {
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         }
 

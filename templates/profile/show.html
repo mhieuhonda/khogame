@@ -40,7 +40,7 @@
     <div class="profile-header">
         <div class="profile-cover"></div>
         <div class="profile-info">
-            <div class="profile-avatar">
+            <div class="profile-avatar {{ user.avatar_frame_class() }}">
                 {% match user.avatar_url %}
                 {% when Option::Some with (url) %}
                 <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-xl" width="96" height="96" loading="lazy" decoding="async">

@@ -28,6 +28,27 @@ pub const MYSTERY_BOX_DAILY_CAP: i64 = 5;
 /// Giới hạn tồn kho streak_freeze (chặn mua ôm hàng).
 pub const MAX_STREAK_FREEZE: i32 = 5;
 
+/// v3.7.0 — duration_hours mặc định khi DB trả giá trị phi lý (<= 0):
+/// xp_boost 24h, name_glow / avatar_frame 30 ngày (720h). Layer phòng vệ
+/// khi admin lỡ tay chỉnh cột duration_hours về 0/âm — vật phẩm thời gian
+/// không bao giờ hết hạn ngay lập tức (trả tiền mà 0h là lừa đảo user).
+pub const DEFAULT_XP_BOOST_HOURS: i32 = 24;
+pub const DEFAULT_LONG_ITEM_HOURS: i32 = 720;
+
+/// Chuẩn hoá duration_hours từ DB — floor theo kind khi giá trị phi lý.
+fn effective_duration_hours(kind: &str, raw: i32) -> i32 {
+    let default = if kind == "xp_boost" {
+        DEFAULT_XP_BOOST_HOURS
+    } else {
+        DEFAULT_LONG_ITEM_HOURS
+    };
+    if raw <= 0 {
+        default
+    } else {
+        raw
+    }
+}
+
 pub struct ShopRepo;
 
 impl ShopRepo {
@@ -36,7 +57,7 @@ impl ShopRepo {
     /// Trả lỗi khi DB fail.
     pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<ShopItemWithStock>> {
         let items = sqlx::query_as::<_, ShopItem>(
-            "SELECT id, name, description, icon, price, kind, is_active
+            "SELECT id, name, description, icon, price, kind, is_active, duration_hours
              FROM shop_items WHERE is_active = TRUE ORDER BY price ASC",
         )
         .fetch_all(pool)
@@ -83,7 +104,7 @@ impl ShopRepo {
         rand_val: i32,
     ) -> AppResult<PurchaseOutcome> {
         let item = sqlx::query_as::<_, ShopItem>(
-            "SELECT id, name, description, icon, price, kind, is_active
+            "SELECT id, name, description, icon, price, kind, is_active, duration_hours
              FROM shop_items WHERE id = $1 AND is_active = TRUE",
         )
         .bind(item_id)
@@ -120,6 +141,7 @@ impl ShopRepo {
         .await?;
 
         let mut mystery_xp = 0;
+        let mut frame_id: Option<String> = None;
         match item.kind.as_str() {
             "streak_freeze" => {
                 // Giới hạn tồn kho — đếm TRONG tx + khoá row (FOR UPDATE)
@@ -159,32 +181,66 @@ impl ShopRepo {
                 }
             }
             "xp_boost" => {
+                // v3.7.0 — duration từ DB (migration 036) thay vì hardcode
+                // 24h — admin chỉnh duration_hours là đổi được hiệu lực.
+                let hours = effective_duration_hours("xp_boost", item.duration_hours);
                 sqlx::query(
                     r#"INSERT INTO user_boosts (user_id, xp_boost_until, updated_at)
-                       VALUES ($1, NOW() + INTERVAL '24 hours', NOW())
+                       VALUES ($1, NOW() + make_interval(hours => $2), NOW())
                        ON CONFLICT (user_id) DO UPDATE SET
                          xp_boost_until = GREATEST(
                            COALESCE(user_boosts.xp_boost_until, NOW()), NOW())
-                                       + INTERVAL '24 hours',
+                                       + make_interval(hours => $2),
                          updated_at = NOW()"#,
                 )
                 .bind(user_id)
+                .bind(hours)
                 .execute(&mut *tx)
                 .await?;
             }
             "name_glow" => {
+                // v3.7.0 — duration từ DB (720h = 30 ngày, 168h = 7 ngày...).
+                let hours = effective_duration_hours("name_glow", item.duration_hours);
                 sqlx::query(
                     r#"INSERT INTO user_boosts (user_id, name_glow_until, updated_at)
-                       VALUES ($1, NOW() + INTERVAL '30 days', NOW())
+                       VALUES ($1, NOW() + make_interval(hours => $2), NOW())
                        ON CONFLICT (user_id) DO UPDATE SET
                          name_glow_until = GREATEST(
                            COALESCE(user_boosts.name_glow_until, NOW()), NOW())
-                                       + INTERVAL '30 days',
+                                       + make_interval(hours => $2),
                          updated_at = NOW()"#,
                 )
                 .bind(user_id)
+                .bind(hours)
                 .execute(&mut *tx)
                 .await?;
+            }
+            "avatar_frame" => {
+                // v3.7.0 — KHUNG AVATAR: kích hoạt khung mới (thay thế khung
+                // cũ) + gia hạn theo duration_hours. Mua lại cùng khung →
+                // GREATEST(now, hiện_tại) + duration (cùng pattern name_glow,
+                // không mất phần còn lại). Không dùng user_inventory — state
+                // kích hoạt nằm ở user_boosts, 1 khung active/user.
+                let hours = effective_duration_hours("avatar_frame", item.duration_hours);
+                sqlx::query(
+                    r#"INSERT INTO user_boosts (user_id, avatar_frame, avatar_frame_until, updated_at)
+                       VALUES ($1, $2, NOW() + make_interval(hours => $3), NOW())
+                       ON CONFLICT (user_id) DO UPDATE SET
+                         avatar_frame = EXCLUDED.avatar_frame,
+                         avatar_frame_until = GREATEST(
+                           CASE WHEN user_boosts.avatar_frame = EXCLUDED.avatar_frame
+                                THEN COALESCE(user_boosts.avatar_frame_until, NOW())
+                                ELSE NOW() END,
+                           NOW())
+                                       + make_interval(hours => $3),
+                         updated_at = NOW()"#,
+                )
+                .bind(user_id)
+                .bind(&item.id)
+                .bind(hours)
+                .execute(&mut *tx)
+                .await?;
+                frame_id = Some(item.id.clone());
             }
             "mystery_box" => {
                 // v3.5.1 FIX (audit 5-e): cap số hộp/ngày + advisory lock
@@ -244,7 +300,48 @@ impl ShopRepo {
             item_id: item.id,
             total_xp: total_xp + i64::from(mystery_xp),
             mystery_xp,
+            frame_id,
         })
+    }
+}
+
+#[cfg(test)]
+mod v370_tests {
+    use super::*;
+
+    #[test]
+    fn test_effective_duration_hours() {
+        // Giá trị hợp lệ — giữ nguyên
+        assert_eq!(effective_duration_hours("xp_boost", 72), 72);
+        assert_eq!(effective_duration_hours("avatar_frame", 720), 720);
+        // Giá trị phi lý (0/âm) — fallback theo kind
+        assert_eq!(effective_duration_hours("xp_boost", 0), 24);
+        assert_eq!(effective_duration_hours("xp_boost", -5), 24);
+        assert_eq!(effective_duration_hours("avatar_frame", 0), 720);
+        assert_eq!(effective_duration_hours("name_glow", 0), 720);
+    }
+
+    #[test]
+    fn test_duration_label() {
+        use crate::models::retention::duration_label;
+        assert_eq!(duration_label(720), "30 ngày");
+        assert_eq!(duration_label(168), "7 ngày");
+        assert_eq!(duration_label(72), "3 ngày"); // 72h = 3 ngày tròn
+        assert_eq!(duration_label(24), "1 ngày");
+        assert_eq!(duration_label(36), "36 giờ"); // không tròn ngày → giờ
+        assert_eq!(duration_label(0), "—");
+    }
+
+    /// Guard: khung Rồng Lửa PHẢI là vật phẩm đắt nhất (yêu cầu product —
+    /// "bán cực đắt"). Nếu ai seed item mới đắt hơn, cân nhắc lại thông
+    /// điệp "đắt nhất cửa hàng" trước khi bỏ guard này.
+    #[test]
+    fn test_dragon_frame_is_most_expensive() {
+        let dragon = 5000;
+        let others = [35, 45, 60, 100, 120, 150, 280, 300, 600, 900, 1500];
+        for p in others {
+            assert!(dragon > p, "Khung Rồng Lửa phải đắt nhất (giá đối thủ {p})");
+        }
     }
 }
 

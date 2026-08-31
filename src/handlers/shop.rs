@@ -18,7 +18,12 @@ pub async fn shop_page(
     let Some(user) = current_user else {
         return Err(AppError::Unauthorized);
     };
-    let items = ShopRepo::list_for_user(&state.db, user.id).await?;
+    let all = ShopRepo::list_for_user(&state.db, user.id).await?;
+    // v3.7.0 — tách khung avatar ra đoạn riêng (preview swatch + banner
+    // Rồng Lửa). Sort cùng price ASC giữ nguyên từ repo.
+    let (frames, items): (Vec<_>, Vec<_>) = all
+        .into_iter()
+        .partition(|row| row.item.kind == "avatar_frame");
     let total_xp = GamificationRepo::total_xp(&state.db, user.id)
         .await
         .unwrap_or(0);
@@ -27,6 +32,7 @@ pub async fn shop_page(
         current_user: Some(user),
         unread_notifications: unread,
         items,
+        frames,
         total_xp,
     })
 }
@@ -43,10 +49,22 @@ pub async fn buy_item(
     use rand::RngExt;
     let rand_val: i32 = rand::rng().random_range(0..10_000);
     let outcome = ShopRepo::buy(&state.db, user.id, &form.item_id, rand_val).await?;
+    // v3.7.0 — mua khung avatar thành công → invalidate session cache để
+    // header (mình) + mọi trang render lại với khung mới ngay lập tức
+    // (không phải đợi cache TTL 10s tự hết hạn).
+    if outcome.frame_id.is_some() {
+        crate::middleware::invalidate_session_cache_for_user(user.id);
+    }
     let msg = if outcome.mystery_xp > 0 {
         format!(
             "🎁 Hộp Bí Ẩn mở ra: <strong>+{} XP</strong>! Số dư: {} XP",
             outcome.mystery_xp, outcome.total_xp
+        )
+    } else if let Some(_fid) = &outcome.frame_id {
+        // Thông báo riêng cho khung avatar — kèm hướng dẫn xem kết quả.
+        format!(
+            "✅ Đã kích hoạt khung avatar! Số dư còn <strong>{}</strong> XP — ra <a href=\"/profile\">hồ sơ</a> hoặc Live Chat để ngắm nhé!",
+            outcome.total_xp
         )
     } else {
         format!(

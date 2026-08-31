@@ -67,9 +67,24 @@
         }
     }
 
+    // v3.7.0 — khung avatar (cửa hàng XP, còn hạn). WHITELIST cứng:
+    // không bao giờ ghép chuỗi server thẳng vào className — value lạ
+    // (item mới chưa có trong whitelist) bị bỏ qua an toàn.
+    var FRAME_CLASSES = {
+        frame_bronze: 'avatar-frame avatar-frame-bronze',
+        frame_silver: 'avatar-frame avatar-frame-silver',
+        frame_gold: 'avatar-frame avatar-frame-gold',
+        frame_neon: 'avatar-frame avatar-frame-neon',
+        frame_phoenix: 'avatar-frame avatar-frame-phoenix',
+        frame_dragon_fire: 'avatar-frame avatar-frame-dragon_fire'
+    };
+
     // Avatar node — dùng DOM API an toàn thay vì innerHTML
     function avatarNode(msg) {
-        var wrap = el('span', 'chat-msg-avatar');
+        // v3.7.0 — khung avatar: class đặt trên WRAP span (::before không
+        // render trên <img>) — CSS vẽ ring quanh avatar 32px.
+        var frameClass = FRAME_CLASSES[msg.avatar_frame] || '';
+        var wrap = el('span', 'chat-msg-avatar' + (frameClass ? ' ' + frameClass : ''));
         if (msg.avatar_url) {
             var img = document.createElement('img');
             img.src = msg.avatar_url;

@@ -38,6 +38,11 @@ pub struct ChatMessageWithUser {
     /// v3.0.0 — Viền tên phát sáng (mua "Viền Tên 30 Ngày" ở cửa hàng XP,
     /// còn hạn: user_boosts.name_glow_until > NOW()).
     pub name_glow: bool,
+    /// v3.7.0 — Khung avatar đang kích hoạt (id item `frame_*` từ cửa hàng,
+    /// còn hạn: user_boosts.avatar_frame_until > NOW()). None = không có.
+    /// Client render class `avatar-frame-<id>` (whitelist, xem chat.js).
+    #[sqlx(default)]
+    pub avatar_frame: Option<String>,
 }
 
 impl ChatMessageWithUser {

@@ -38,7 +38,8 @@ impl ChatRepo {
                 i.id, i.user_id, i.content, i.is_deleted, i.created_at,
                 u.username, u.display_name, u.avatar_url,
                 u.role::text AS role,
-                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow
+                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow,
+                CASE WHEN b.avatar_frame_until > NOW() THEN b.avatar_frame END AS avatar_frame
             FROM inserted i
             JOIN users u ON u.id = i.user_id
             LEFT JOIN user_boosts b ON b.user_id = u.id
@@ -66,7 +67,8 @@ impl ChatRepo {
                 m.id, m.user_id, m.content, m.is_deleted, m.created_at,
                 u.username, u.display_name, u.avatar_url,
                 u.role::text AS role,
-                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow
+                COALESCE(b.name_glow_until > NOW(), FALSE) AS name_glow,
+                CASE WHEN b.avatar_frame_until > NOW() THEN b.avatar_frame END AS avatar_frame
             FROM chat_messages m
             JOIN users u ON u.id = m.user_id
             LEFT JOIN user_boosts b ON b.user_id = m.user_id

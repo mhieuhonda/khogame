@@ -1668,6 +1668,7 @@ mod tests_json_ld {
             last_login_ip: None,
             last_login_ua: None,
             last_login_at: None,
+            avatar_frame: None,
         }
     }
 

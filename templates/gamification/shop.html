@@ -1,7 +1,7 @@
 {% extends "layout.html" %}
 
 {% block title %}Cửa hàng XP{% endblock %}
-{% block description %}Cửa hàng Louis Space — đổi XP lấy Streak Freeze, XP Boost x2, viền tên phát sáng và Hộp Bí Ẩn.{% endblock %}
+{% block description %}Cửa hàng Louis Space — đổi XP lấy Streak Freeze, XP Boost x2, viền tên phát sáng, Hộp Bí Ẩn và bộ sưu tập KHUNG AVATAR hiếm (đỉnh cao: Rồng Lửa).{% endblock %}
 
 {% block content %}
 <section class="content-section">
@@ -18,12 +18,60 @@
         <span class="ach-summary-label">Số dư khả dụng</span>
     </div>
 
+    {# ============================================================
+       KHUNG AVATAR — bộ sưu tập trang trí (v3.7.0)
+       Đắt nhất: Rồng Lửa 5000 XP — vật phẩm hoàng gia.
+       Preview swatch vẽ thuần CSS (frame-swatch-*) — đúng viền thật. #}
+    {% if !frames.is_empty() %}
+    <div class="shop-section-head shop-section-head-frames">
+        <h2 class="shop-section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+            Khung Avatar
+        </h2>
+        <p class="shop-section-sub">Viền trang trí quanh ảnh đại diện — hiện trên hồ sơ, thanh đầu trang và Live Chat. Mua lại cùng khung để gia hạn.</p>
+    </div>
+    <div class="shop-grid shop-grid-frames">
+        {% for row in frames %}
+        <div class="shop-card shop-card-frame{% if row.item.id == "frame_dragon_fire" %} shop-card-dragon{% endif %}" id="shop-{{ row.item.id }}">
+            {% if row.item.id == "frame_dragon_fire" %}<span class="shop-frame-legend">👑 ĐẮT NHẤT CỬA HÀNG</span>{% endif %}
+            <div class="shop-frame-preview-box">
+                <span class="frame-swatch frame-swatch-{{ row.item.frame_css_suffix() }}" aria-hidden="true">{{ row.item.icon }}</span>
+            </div>
+            {% if row.item.id == "frame_dragon_fire" %}<div class="shop-dragon-info">{% endif %}
+            <h3 class="shop-item-name">{{ row.item.name }}</h3>
+            <p class="shop-item-desc">{{ row.item.description }}</p>
+            <p class="shop-item-duration">⏳ Hiệu lực: {{ row.item.duration_label() }}</p>
+            {% if row.item.id == "frame_dragon_fire" %}</div>{% endif %}
+            <button class="btn btn-primary btn-sm"
+                    hx-post="/shop/buy"
+                    hx-vals='{"item_id": "{{ row.item.id }}"}'
+                    hx-target="#shop-result-{{ row.item.id }}"
+                    hx-swap="innerHTML"
+                    hx-disabled-elt="this">{{ row.item.price }} XP — Mua</button>
+            <div id="shop-result-{{ row.item.id }}" aria-live="polite"></div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ============================================================
+       VẬT PHẨM HỮU ÍCH — booster / tiêu dùng #}
+    <div class="shop-section-head">
+        <h2 class="shop-section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            Vật phẩm &amp; Booster
+        </h2>
+        <p class="shop-section-sub">Hỗ trợ học tập, điểm danh và kiếm XP hằng ngày.</p>
+    </div>
     <div class="shop-grid">
         {% for row in items %}
         <div class="shop-card" id="shop-{{ row.item.id }}">
             <div class="shop-item-icon" aria-hidden="true">{{ row.item.icon }}</div>
             <h3 class="shop-item-name">{{ row.item.name }}</h3>
             <p class="shop-item-desc">{{ row.item.description }}</p>
+            {% if !row.item.duration_label().is_empty() %}
+            <p class="shop-item-duration">⏳ Hiệu lực: {{ row.item.duration_label() }}</p>
+            {% endif %}
             {% if row.owned > 0 %}
             <p class="shop-owned">Đang có: <strong>{{ row.owned }}</strong></p>
             {% endif %}
@@ -38,6 +86,6 @@
         {% endfor %}
     </div>
 
-    <p class="achievements-hint">❄️ Streak Freeze tự động kích hoạt khi bạn lỡ điểm danh 1 ngày. ⚡ XP Boost áp dụng cho MỌI nguồn XP (kể cả điểm danh).</p>
+    <p class="achievements-hint">❄️ Streak Freeze tự động kích hoạt khi bạn lỡ điểm danh 1 ngày. ⚡ XP Boost áp dụng cho MỌI nguồn XP (kể cả điểm danh). 🐲 Khung Rồng Lửa chỉ dành cho người huyền thoại — khoe ngay trên Live Chat!</p>
 </section>
 {% endblock %}

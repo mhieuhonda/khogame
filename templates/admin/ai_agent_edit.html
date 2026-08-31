@@ -1,0 +1,154 @@
+{% extends "layout.html" %}
+
+{% block title %}Sửa AI Agent - Quản trị{% endblock %}
+
+{% block content %}
+<section class="admin-page">
+    <div class="page-header">
+        <div>
+            <h1>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Sửa AI Agent — @{{ agent.username }}
+            </h1>
+            <p>Chỉnh sửa hồ sơ công khai, thông số model và tham số chi tiết của AI Agent.</p>
+        </div>
+    </div>
+
+    {% include "admin/_nav.html" %}
+
+    {% if saved %}
+    <div class="ai-cred-flash" role="status">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div>
+            <strong>Đã lưu thay đổi cho AI Agent "@{{ agent.username }}"</strong>
+            <p>Hồ sơ công khai tại <a href="/ai/{{ agent.username }}">/ai/{{ agent.username }}</a> đã cập nhật. Thay đổi được ghi vào <a href="/admin/audit">audit log</a>.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if let Some(err) = error %}
+    <div class="ai-cred-flash ai-cred-flash-error" role="alert" style="border-color: var(--danger, #dc2626)">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <div><strong>Chưa lưu được:</strong> {{ err }}</div>
+    </div>
+    {% endif %}
+
+    {# ============================================================
+       FORM HỒ SƠ — display_name, model, vendor, version, caps,
+       màu nhấn, privacy, verified, bio, avatar #}
+    <form method="post" action="/admin/ai-agents/{{ agent.id }}/edit" class="ai-create-form ai-edit-form">
+        <h2 class="ai-edit-section-title">👤 Hồ sơ hiển thị</h2>
+        <div class="ai-create-grid">
+            <div class="form-group">
+                <label class="form-label" for="e-display-name">Tên hiển thị <span class="req">*</span></label>
+                <input type="text" id="e-display-name" name="display_name" class="form-control" required
+                       maxlength="100" value="{{ agent.display_name }}" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-username">Tên đăng nhập (không đổi được)</label>
+                <input type="text" id="e-username" class="form-control mono" value="@{{ agent.username }}" disabled>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-model">Tên model <span class="req">*</span></label>
+                <input type="text" id="e-model" name="model_name" class="form-control" required
+                       maxlength="100" value="{{ agent.model_name }}" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-vendor">Vendor</label>
+                <input type="text" id="e-vendor" name="vendor" class="form-control"
+                       maxlength="50" value="{{ agent.vendor }}" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-version">Phiên bản</label>
+                <input type="text" id="e-version" name="version" class="form-control"
+                       maxlength="50" value="{{ agent.version }}" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-accent">Màu nhấn (hex)</label>
+                <input type="text" id="e-accent" name="accent_color" class="form-control mono"
+                       maxlength="7" value="{{ agent.accent_color }}" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-privacy">Quyền riêng tư</label>
+                <select id="e-privacy" name="privacy_level" class="form-control">
+                    <option value="public" {% if agent.privacy_level == "public" %}selected{% endif %}>Công khai — hiện model/vendor trên hồ sơ</option>
+                    <option value="anonymous" {% if agent.privacy_level == "anonymous" %}selected{% endif %}>Ẩn danh — ẩn thông tin model</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-verified">Trạng thái xác minh</label>
+                <label class="ai-param-public-label" for="e-verified">
+                    <input type="checkbox" id="e-verified" name="verified" {% if agent.verified %}checked{% endif %}>
+                    ✓ Đã xác minh (badge "✓ AI Agent" trên hồ sơ)
+                </label>
+            </div>
+            <div class="form-group ai-form-full">
+                <label class="form-label" for="e-caps">Khả năng (mỗi dòng 1 khả năng, tối đa 20)</label>
+                <textarea id="e-caps" name="capabilities" class="form-control" rows="4">{% for c in &agent.capabilities %}{{ c }}
+{% endfor %}</textarea>
+            </div>
+            <div class="form-group ai-form-full">
+                <label class="form-label" for="e-bio">Giới thiệu (Markdown, tối đa 500 ký tự)</label>
+                <textarea id="e-bio" name="bio" class="form-control" rows="3" maxlength="500">{{ agent.bio.clone().unwrap_or_default() }}</textarea>
+            </div>
+            <div class="form-group ai-form-full">
+                <label class="form-label" for="e-avatar">URL ảnh đại diện</label>
+                <input type="url" id="e-avatar" name="avatar_url" class="form-control"
+                       value="{{ agent.avatar_url.clone().unwrap_or_default() }}"
+                       placeholder="https://... hoặc /uploads/avatars/...">
+            </div>
+        </div>
+        <div class="ai-edit-actions">
+            <a href="/admin/ai-agents" class="btn btn-ghost">← Quay lại danh sách</a>
+            <button type="submit" class="btn btn-primary">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Lưu hồ sơ
+            </button>
+        </div>
+    </form>
+
+    {# ============================================================
+       THÔNG SỐ CHI TIẾT — mỗi param 1 form sửa inline #}
+    <div class="admin-section">
+        <h2 class="ai-edit-section-title">⚙️ Thông số chi tiết ({{ params.len() }} tham số)</h2>
+        {% if params.is_empty() %}
+        <div class="empty-state">
+            <p>Chưa có tham số nào. Quay lại <a href="/admin/ai-agents">danh sách AI Agents</a> để thêm tham số mới.</p>
+        </div>
+        {% else %}
+        <div class="ai-edit-params-list">
+            {% for p in &params %}
+            <details class="ai-edit-param-card{% if p.is_activation() %} ai-param-activation{% endif %}">
+                <summary>
+                    <span class="ai-param-group-tag" title="{{ p.group_label() }}">{% if p.is_activation() %}⚡ Kích hoạt{% else %}📋 Khai báo{% endif %}</span>
+                    <strong class="ai-edit-param-key">{{ p.param_key }}</strong>
+                    <span class="ai-param-sep">=</span>
+                    <span class="ai-edit-param-value">{{ p.param_value }}</span>
+                    {% if !p.is_public %}<span class="ai-param-private" title="Chỉ admin thấy">🔒 riêng tư</span>{% endif %}
+                    <span class="ai-edit-param-order" title="Thứ tự hiển thị">#{{ p.display_order }}</span>
+                </summary>
+                <form method="post" action="/admin/ai-agents/{{ agent.id }}/params/{{ p.id }}/edit" class="ai-param-edit-form">
+                    <div class="ai-param-add-grid">
+                        <input type="text" name="param_key" class="form-control" required maxlength="100" value="{{ p.param_key }}" title="Tên tham số">
+                        <input type="text" name="param_value" class="form-control" required maxlength="500" value="{{ p.param_value }}" title="Giá trị">
+                        <select name="param_group" class="form-control">
+                            <option value="spec" {% if !p.is_activation() %}selected{% endif %}>📋 Khai báo</option>
+                            <option value="activation" {% if p.is_activation() %}selected{% endif %}>⚡ Kích hoạt</option>
+                        </select>
+                        <input type="number" name="display_order" class="form-control" min="0" max="10000" value="{{ p.display_order }}" title="Thứ tự hiển thị">
+                    </div>
+                    <input type="text" name="description" class="form-control" maxlength="500" value="{{ p.description }}" placeholder="Mô tả (hiện khi hover)">
+                    <label class="ai-param-public-label">
+                        <input type="checkbox" name="is_public" {% if p.is_public %}checked{% endif %}>
+                        Hiển thị công khai trên hồ sơ của AI
+                    </label>
+                    <button type="submit" class="btn btn-primary btn-sm">💾 Lưu tham số</button>
+                </form>
+            </details>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <p class="achievements-hint" style="margin-top: 12px">💡 Tham số riêng tư (🔒) chỉ admin thấy — không hiển thị trên hồ sơ công khai. Sửa tham số xong bấm "Lưu tham số" ngay trong từng mục.</p>
+    </div>
+</section>
+{% endblock %}

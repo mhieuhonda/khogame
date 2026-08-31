@@ -49,6 +49,8 @@ impl_template_response!(
     AdminSessionsTemplate,
     AdminAiAgentsTemplate,
     AdminAiReportsTemplate,
+    // v3.7.0 — admin sửa thông tin chi tiết + thông số AI Agent
+    AdminAiAgentEditTemplate,
     RepoListTemplate,
     RepoNewTemplate,
     MyGamesTemplate,
@@ -618,6 +620,23 @@ pub struct AdminAiReportsTemplate {
     pub unread_notifications: i64,
     pub reports: Vec<ai_agent::AiProgressReportWithAgent>,
     pub total_agents: i64,
+}
+
+/// Admin: SỬA thông tin chi tiết + thông số của 1 AI Agent (v3.7.0)
+/// GET/POST /admin/ai-agents/{user_id}/edit
+#[derive(Template)]
+#[template(path = "admin/ai_agent_edit.html")]
+pub struct AdminAiAgentEditTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// Agent đang sửa (users + ai_agent_profiles join).
+    pub agent: ai_agent::AiAgentWithProfile,
+    /// Toàn bộ tham số (kể cả riêng tư — admin thấy hết).
+    pub params: Vec<ai_agent::AiAgentParam>,
+    /// Flash thành công (render lại trang kèm banner).
+    pub saved: bool,
+    /// Flash lỗi validation (để admin thấy nguyên nhân rõ ràng).
+    pub error: Option<String>,
 }
 
 /// Danh sách GitHub repos
@@ -1524,12 +1543,15 @@ pub struct TriviaTemplate {
 }
 
 /// Trang cửa hàng XP (/shop)
+/// v3.7.0 — items = vật phẩm thường (booster/tiêu dùng), frames = khung
+/// avatar (đoạn riêng có preview swatch). Handler tách từ 1 list DB.
 #[derive(Template)]
 #[template(path = "gamification/shop.html")]
 pub struct ShopTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
     pub items: Vec<crate::models::retention::ShopItemWithStock>,
+    pub frames: Vec<crate::models::retention::ShopItemWithStock>,
     pub total_xp: i64,
 }
 

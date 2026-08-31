@@ -197,6 +197,9 @@ pub struct TriviaAnswerResult {
 // ============================================================
 
 /// Vật phẩm cửa hàng (bảng shop_items).
+/// v3.7.0 — thêm `duration_hours`: thời hạn hiệu lực (giờ) của vật phẩm
+/// dạng thời gian (xp_boost / name_glow / avatar_frame). Migration 036
+/// thêm cột; DB là nguồn sự thật (admin chỉnh giá trị sẽ đổi hiệu lực).
 #[derive(Debug, Clone, Serialize, FromRow)]
 pub struct ShopItem {
     pub id: String,
@@ -206,6 +209,7 @@ pub struct ShopItem {
     pub price: i32,
     pub kind: String,
     pub is_active: bool,
+    pub duration_hours: i32,
 }
 
 /// Vật phẩm + tồn kho của user (render trang shop).
@@ -223,6 +227,57 @@ pub struct PurchaseOutcome {
     pub total_xp: i64,
     /// Mystery box: XP nhận được (0 với vật phẩm khác).
     pub mystery_xp: i32,
+    /// v3.7.0 — avatar frame vừa kích hoạt (kind = avatar_frame):
+    /// `Some(item_id)` để handler hiển thị thông báo riêng + client
+    /// refresh hồ sơ. None với các kind khác.
+    pub frame_id: Option<String>,
+}
+
+/// v3.7.0 — nhãn thời hạn thân thiện (vd "30 ngày", "72 giờ") dùng cho
+/// render cửa hàng. Đặt ở model để template gọi trực tiếp qua method.
+#[must_use]
+pub fn duration_label(hours: i32) -> String {
+    if hours <= 0 {
+        return "—".into();
+    }
+    if hours % 24 == 0 {
+        let d = hours / 24;
+        if d == 7 {
+            "7 ngày".into()
+        } else if d == 30 {
+            "30 ngày".into()
+        } else {
+            format!("{d} ngày")
+        }
+    } else {
+        format!("{hours} giờ")
+    }
+}
+
+impl ShopItem {
+    /// Nhãn thời hạn hiển thị trên thẻ vật phẩm ("24h" kind không thời
+    /// gian → "—").
+    #[must_use]
+    pub fn duration_label(&self) -> String {
+        if matches!(
+            self.kind.as_str(),
+            "xp_boost" | "name_glow" | "avatar_frame"
+        ) {
+            duration_label(self.duration_hours)
+        } else {
+            String::new()
+        }
+    }
+
+    /// v3.7.0 — id khung avatar dạng suffix CSS ("bronze", "dragon_fire"...)
+    /// để render preview swatch trên thẻ khung (class `.frame-swatch-<id>`).
+    #[must_use]
+    pub fn frame_css_suffix(&self) -> String {
+        self.id
+            .strip_prefix("frame_")
+            .unwrap_or(&self.id)
+            .to_string()
+    }
 }
 
 // ============================================================

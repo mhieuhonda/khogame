@@ -353,7 +353,11 @@ jobs:
                 echo "::notice::Deploy thành công — Coolify reports running:healthy"
                 exit 0
                 ;;
-              failed|cancelled|error|degraded:unhealthy)
+              # v3.7.0 — thêm exited/stopped:unhealthy: container chết hẳn
+              # (crash loop OOM, exit code 1) không bao giờ thành running:healthy
+              # — trước đây 2 trạng thái này chỉ chờ hết 10 phút mới fail,
+              # đốt thời gian runner + muộn thông báo cho operator.
+              failed|cancelled|error|degraded:unhealthy|exited:unhealthy|stopped:unhealthy)
                 echo "::error::Coolify stack ở trạng thái $STATUS — web có thể đang down. Check Coolify dashboard + container logs ngay."
                 exit 1
                 ;;
@@ -363,7 +367,12 @@ jobs:
           exit 1
 
       - name: Verify deployed image matches built image
-        if: always() && steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success'
+        # v3.7.0 FIX: thêm điều kiện trigger.queued == 'yes' — trước đây khi
+        # step "Trigger deploy" fail (Coolify 500, curl timeout...), verify
+        # VẪN chạy và chờ CHỜ ĐẦ 10 phút kiểm tra version web rồi mới báo
+        # lỗi sai ngữ cảnh ("web chưa serve version X" trong khi root cause
+        # là deploy CHƯA BAO GIỜ được trigger). Giờ fail ngay + đúng lỗi.
+        if: always() && steps.stale-guard.outputs.skip != 'yes' && steps.verify-secrets.outcome == 'success' && steps.patch.outcome == 'success' && steps.trigger.outputs.queued == 'yes'
         id: verify
         continue-on-error: false
         run: |

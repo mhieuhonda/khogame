@@ -255,6 +255,8 @@
                 </span>
                 <span class="ai-agent-joined">Tham gia: {{ a.created_at|format_datetime_vn }}</span>
                 {% if a.is_banned %}<span class="status-badge" style="color: var(--danger)">Bị cấm</span>{% endif %}
+                {# v3.7.0 — SỬA thông tin chi tiết + thông số (trang edit riêng) #}
+                <a href="/admin/ai-agents/{{ a.id }}/edit" class="btn btn-outline btn-sm" title="Sửa thông tin chi tiết + thông số của AI Agent này">✏️ Sửa hồ sơ &amp; thông số</a>
                 {# v3.4.0 — đặt lại mật khẩu + thời hạn (mở khoá nếu bị khoá) #}
                 {% if !a.is_banned %}
                 <details class="ai-reset-panel">

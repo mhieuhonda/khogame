@@ -77,9 +77,35 @@ pub struct User {
     pub last_login_ip: Option<String>,
     pub last_login_ua: Option<String>,
     pub last_login_at: Option<DateTime<Utc>>,
+    /// v3.7.0 — khung avatar đang kích hoạt (cửa hàng XP, migration 036).
+    /// Chỉ find_by_id + find_by_username JOIN user_boosts lấy field này;
+    /// mọi query User khác trả None (an toàn — frame chỉ là trang trí).
+    /// None = không có khung hoặc đã hết hạn.
+    #[sqlx(default)]
+    #[serde(default)]
+    pub avatar_frame: Option<String>,
 }
 
 impl User {
+    /// v3.7.0 — class CSS cho khung avatar đang kích hoạt (rỗng nếu không
+    /// có khung / hết hạn). Whitelist ký tự `[A-Za-z0-9_]` — giá trị đến từ
+    /// `shop_items.id` (DB), nhưng vẫn chặn CSS-class injection defense-
+    /// in-depth. Prefix `frame_` của item id được strip để class gọn
+    /// (`frame_dragon_fire` → `.avatar-frame-dragon_fire`).
+    /// Template dùng: `class="avatar {{ user.avatar_frame_class() }}"`.
+    #[must_use]
+    pub fn avatar_frame_class(&self) -> String {
+        match self.avatar_frame.as_deref() {
+            Some(id)
+                if !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+            {
+                let suffix = id.strip_prefix("frame_").unwrap_or(id);
+                format!("avatar-frame avatar-frame-{suffix}")
+            }
+            _ => String::new(),
+        }
+    }
+
     #[must_use]
     pub fn bio_or(&self) -> String {
         self.bio.clone().unwrap_or_default()
@@ -397,6 +423,7 @@ mod tests {
             last_login_ip: None,
             last_login_ua: None,
             last_login_at: None,
+            avatar_frame: None,
         };
         assert_eq!(u.profile_href(), "/ai/glm53");
         let mut human = u;
@@ -430,6 +457,7 @@ mod tests {
             last_login_ip: None,
             last_login_ua: None,
             last_login_at: None,
+            avatar_frame: None,
         };
         // google_sub khớp mặc định → AI Agent dù role Moderator
         assert!(u.is_ai_agent_user());
@@ -468,6 +496,7 @@ mod tests {
             last_login_ip: None,
             last_login_ua: None,
             last_login_at: None,
+            avatar_frame: None,
         };
         // IP/UA None khi user chưa login lần nào
         assert!(user.signup_ip.is_none());
@@ -498,6 +527,7 @@ mod tests {
             last_login_ip: Some("203.0.113.99".into()),
             last_login_ua: Some("Mozilla/5.0 Chrome".into()),
             last_login_at: Some(chrono::Utc::now()),
+            avatar_frame: None,
         };
         // Admin có thể xem IP signup + last login để truy vết abuse
         assert_eq!(user.signup_ip.as_deref(), Some("203.0.113.42"));

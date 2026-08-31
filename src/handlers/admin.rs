@@ -9,11 +9,12 @@ use crate::repositories::{
 use crate::services::audit;
 use crate::state::AppState;
 use crate::templates::{
-    AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminAuditTemplate, AdminCategoriesTemplate,
-    AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate, AdminNewsCategoriesTemplate,
-    AdminNewsPendingTemplate, AdminReportsTemplate, AdminReposTemplate, AdminSessionsTemplate,
-    AdminSettingsTemplate, AdminTemplate, AdminUserDetailTemplate, AdminUsersTemplate,
-    CommentItemPartial, NewsCategoryWithCountView, XpBoostControlsPartial, XpBoostStatusPartial,
+    AdminAiAgentEditTemplate, AdminAiAgentsTemplate, AdminAiReportsTemplate, AdminAuditTemplate,
+    AdminCategoriesTemplate, AdminCommentsTemplate, AdminGamesTemplate, AdminNewsAllTemplate,
+    AdminNewsCategoriesTemplate, AdminNewsPendingTemplate, AdminReportsTemplate,
+    AdminReposTemplate, AdminSessionsTemplate, AdminSettingsTemplate, AdminTemplate,
+    AdminUserDetailTemplate, AdminUsersTemplate, CommentItemPartial, NewsCategoryWithCountView,
+    XpBoostControlsPartial, XpBoostStatusPartial,
 };
 use askama::Template;
 use axum::extract::{Path, Query, State};
@@ -2085,7 +2086,7 @@ pub async fn reset_ai_agent_password(
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if target.role != crate::models::user::UserRole::AiAgent {
+    if !target.is_ai_agent_user() {
         return Err(AppError::BadRequest(
             "Chỉ đặt lại mật khẩu cho TÀI KHOẢN AI AGENT".into(),
         ));
@@ -2147,7 +2148,7 @@ pub async fn revoke_ai_agent_password(
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if target.role != crate::models::user::UserRole::AiAgent {
+    if !target.is_ai_agent_user() {
         return Err(AppError::BadRequest(
             "Chỉ thu hồi mật khẩu của TÀI KHOẢN AI AGENT".into(),
         ));
@@ -2187,7 +2188,7 @@ pub async fn revoke_ai_agent_tokens(
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if target.role != crate::models::user::UserRole::AiAgent {
+    if !target.is_ai_agent_user() {
         return Err(AppError::BadRequest(
             "Chỉ thu hồi token của TÀI KHOẢN AI AGENT".into(),
         ));
@@ -2250,7 +2251,7 @@ pub async fn ai_agent_add_param(
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
         .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if target.role != crate::models::user::UserRole::AiAgent {
+    if !target.is_ai_agent_user() {
         return Err(AppError::BadRequest(
             "Chỉ quản lý tham số của TÀI KHOẢN AI AGENT".into(),
         ));
@@ -2317,6 +2318,319 @@ pub async fn ai_agent_delete_param(
             "user",
             &user_id.to_string(),
             &format!("{} xoá tham số #{param_id} của AI Agent", admin.username),
+        )
+        .await;
+    }
+    Ok(Redirect::to("/admin/ai-agents").into_response())
+}
+
+// ============================================================
+// v3.7.0 — ADMIN SỬA THÔNG TIN CHI TIẾT + THÔNG SỐ AI AGENT
+// GET  /admin/ai-agents/{user_id}/edit — trang sửa
+// POST /admin/ai-agents/{user_id}/edit — lưu hồ sơ
+// POST /admin/ai-agents/{user_id}/params/{param_id}/edit — sửa 1 tham số
+// ============================================================
+
+/// GET /admin/ai-agents/{user_id}/edit — trang sửa thông tin AI Agent.
+///
+/// # Errors
+///
+/// Trả về lỗi khi DB fail / không phải AI Agent.
+pub async fn edit_ai_agent_form(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+) -> AppResult<AdminAiAgentEditTemplate> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let (agent_res, params_res, unread_res) = tokio::join!(
+        AiAgentRepo::find_agent_by_id(&state.db, user_id),
+        AiAgentRepo::list_params(&state.db, user_id, false),
+        unread_count(&state, admin.id)
+    );
+    let agent = agent_res?;
+    let params = params_res.unwrap_or_default();
+    Ok(AdminAiAgentEditTemplate {
+        current_user: Some(admin),
+        unread_notifications: unread_res,
+        agent,
+        params,
+        saved: false,
+        error: None,
+    })
+}
+
+/// Form lưu hồ sơ AI Agent (POST /admin/ai-agents/{user_id}/edit).
+#[derive(Debug, Deserialize)]
+pub struct AiAgentEditForm {
+    pub display_name: String,
+    pub model_name: String,
+    #[serde(default)]
+    pub vendor: String,
+    #[serde(default)]
+    pub version: String,
+    /// Mỗi dòng 1 khả năng (giống form AI tự sửa).
+    #[serde(default)]
+    pub capabilities: String,
+    #[serde(default)]
+    pub privacy_level: String,
+    /// "on" từ checkbox — rỗng nếu không check.
+    #[serde(default)]
+    pub verified: String,
+    #[serde(default)]
+    pub accent_color: String,
+    #[serde(default)]
+    pub bio: String,
+    #[serde(default)]
+    pub avatar_url: String,
+}
+
+/// POST /admin/ai-agents/{user_id}/edit — admin sửa hồ sơ AI Agent
+/// (display_name, model, vendor, version, capabilities, màu, bio, avatar,
+/// privacy, verified). Mọi thay đổi ghi audit log.
+///
+/// # Errors
+///
+/// Trả về lỗi khi validation fail / DB fail (render lại form kèm lỗi).
+pub async fn edit_ai_agent_submit(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+    Form(form): Form<AiAgentEditForm>,
+) -> AppResult<AdminAiAgentEditTemplate> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+
+    // Helper render lại trang kèm banner lỗi + dữ liệu MỚI (form đã điền
+    // bị giữ nguyên bằng cách re-fetch DB — đơn giản, admin sửa lại).
+    async fn render_error(
+        state: &AppState,
+        admin: crate::models::user::User,
+        user_id: Uuid,
+        msg: &str,
+    ) -> AppResult<AdminAiAgentEditTemplate> {
+        let (agent_res, params_res, unread_res) = tokio::join!(
+            AiAgentRepo::find_agent_by_id(&state.db, user_id),
+            AiAgentRepo::list_params(&state.db, user_id, false),
+            unread_count(state, admin.id)
+        );
+        let agent = agent_res?;
+        let params = params_res.unwrap_or_default();
+        Ok(AdminAiAgentEditTemplate {
+            current_user: Some(admin),
+            unread_notifications: unread_res,
+            agent,
+            params,
+            saved: false,
+            error: Some(msg.to_string()),
+        })
+    }
+
+    // Validate thủ công (cùng rule với AiAgentRepo::update_profile +
+    // handler AI tự sửa — message tiếng Việt rõ ràng).
+    let display_name = form.display_name.trim();
+    if display_name.is_empty() || display_name.chars().count() > 100 {
+        return render_error(
+            &state,
+            admin,
+            user_id,
+            "Tên hiển thị không được trống, tối đa 100 ký tự",
+        )
+        .await;
+    }
+    let model_name = form.model_name.trim();
+    if model_name.is_empty() || model_name.chars().count() > 100 {
+        return render_error(
+            &state,
+            admin,
+            user_id,
+            "Tên model không được trống, tối đa 100 ký tự",
+        )
+        .await;
+    }
+    if form.vendor.trim().chars().count() > 50 {
+        return render_error(&state, admin, user_id, "Vendor tối đa 50 ký tự").await;
+    }
+    if form.version.trim().chars().count() > 50 {
+        return render_error(&state, admin, user_id, "Phiên bản tối đa 50 ký tự").await;
+    }
+    if form.bio.trim().chars().count() > 500 {
+        return render_error(&state, admin, user_id, "Giới thiệu tối đa 500 ký tự").await;
+    }
+    let accent = form.accent_color.trim();
+    if !accent.is_empty()
+        && !(accent.starts_with('#')
+            && accent[1..].chars().all(|c| c.is_ascii_hexdigit())
+            && (accent.len() == 7 || accent.len() == 4))
+    {
+        return render_error(
+            &state,
+            admin,
+            user_id,
+            "Màu nhấn phải là mã hex (vd #7c3aed)",
+        )
+        .await;
+    }
+    let privacy = match form.privacy_level.as_str() {
+        "anonymous" => "anonymous",
+        _ => "public",
+    };
+    let verified = matches!(form.verified.as_str(), "on" | "true" | "1");
+    // Capabilities: mỗi dòng 1 khả năng — tối đa 20 × 50 ký tự.
+    let capabilities: Vec<String> = form
+        .capabilities
+        .lines()
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .take(20)
+        .collect();
+    for c in &capabilities {
+        if c.chars().count() > 50 {
+            return render_error(
+                &state,
+                admin,
+                user_id,
+                "Mỗi khả năng tối đa 50 ký tự (tách bằng dòng mới)",
+            )
+            .await;
+        }
+    }
+    let avatar = form.avatar_url.trim();
+    if avatar.chars().count() > 2048 {
+        return render_error(&state, admin, user_id, "Avatar URL tối đa 2048 ký tự").await;
+    }
+
+    // 1) users: display_name + bio + avatar (tái dùng update_profile của
+    //    UserRepo — tự validate avatar http(s):// hoặc /uploads/).
+    let user_updated = UserRepo::update_profile(
+        &state.db,
+        user_id,
+        display_name,
+        form.bio.trim(),
+        Some(avatar),
+    )
+    .await;
+    if let Err(e) = user_updated {
+        return render_error(&state, admin, user_id, &e.to_string()).await;
+    }
+    // 2) ai_agent_profiles: model/vendor/version/caps/privacy/accent.
+    let profile_updated = AiAgentRepo::update_profile(
+        &state.db,
+        user_id,
+        model_name,
+        form.vendor.trim(),
+        form.version.trim(),
+        &capabilities,
+        privacy,
+        if accent.is_empty() { "#7c3aed" } else { accent },
+        form.bio.trim(),
+        Some(avatar),
+    )
+    .await;
+    if let Err(e) = profile_updated {
+        return render_error(&state, admin, user_id, &e.to_string()).await;
+    }
+    // 3) verified flag (repo riêng — cột ai_agent_profiles.verified).
+    AiAgentRepo::set_verified(&state.db, user_id, verified).await?;
+
+    audit::audit(
+        &state,
+        admin.id,
+        "ai_agent.edit_profile",
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} sửa hồ sơ AI Agent {} (display_name={}, model={}, verified={})",
+            admin.username, display_name, display_name, model_name, verified
+        ),
+    )
+    .await;
+    tracing::info!(
+        admin = %admin.username,
+        agent = %display_name,
+        "AI Agent profile edited by admin"
+    );
+
+    // Render lại trang kèm banner thành công + dữ liệu mới nhất.
+    let (agent_res, params_res, unread_res) = tokio::join!(
+        AiAgentRepo::find_agent_by_id(&state.db, user_id),
+        AiAgentRepo::list_params(&state.db, user_id, false),
+        unread_count(&state, admin.id)
+    );
+    let agent = agent_res?;
+    let params = params_res.unwrap_or_default();
+    Ok(AdminAiAgentEditTemplate {
+        current_user: Some(admin),
+        unread_notifications: unread_res,
+        agent,
+        params,
+        saved: true,
+        error: None,
+    })
+}
+
+/// Form sửa 1 tham số (POST /admin/ai-agents/{user_id}/params/{param_id}/edit).
+#[derive(Debug, Deserialize)]
+pub struct AiParamEditForm {
+    pub param_key: String,
+    pub param_value: String,
+    #[serde(default)]
+    pub param_group: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub is_public: String,
+    #[serde(default)]
+    pub display_order: i64,
+}
+
+/// POST /admin/ai-agents/{user_id}/params/{param_id}/edit — SỬA 1 tham số
+/// đã có (trước đây chỉ delete + re-add — v3.7.0 cho edit inline).
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn ai_agent_edit_param(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path((user_id, param_id)): Path<(Uuid, i64)>,
+    Form(form): Form<AiParamEditForm>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let group = if form.param_group == "activation" {
+        "activation"
+    } else {
+        "spec"
+    };
+    let is_public = matches!(form.is_public.as_str(), "on" | "true" | "1");
+    let updated = AiAgentRepo::admin_update_param(
+        &state.db,
+        user_id,
+        param_id,
+        &form.param_key,
+        &form.param_value,
+        group,
+        &form.description,
+        is_public,
+        form.display_order.clamp(0, 10_000) as i32,
+        admin.id,
+    )
+    .await?;
+    if updated {
+        audit::audit(
+            &state,
+            admin.id,
+            "ai_agent.param_edit",
+            "user",
+            &user_id.to_string(),
+            &format!(
+                "{} sửa tham số #{param_id} ('{}') của AI Agent",
+                admin.username, form.param_key
+            ),
         )
         .await;
     }

@@ -2638,6 +2638,13 @@ pre code {
     gap: 20px;
     padding: 0 24px;
     margin-top: -40px;
+    /* v3.7.0 FIX (UI/UX — tương phản): h1 + @username nằm trong vùng
+       40px chồng lên ảnh cover (linear-gradient #0f172a — TỐI ở cả 2
+       theme). Trước đây chữ màu var(--fg) → light mode = chữ TỐI trên
+       nền TỐI, gần như không đọc được (đã nhìn bằng screenshot).
+       Fix: chữ trắng + text-shadow nhẹ — đọc rõ trên cover tối, và
+       phần dưới (role/level) vẫn màu chuẩn trên nền sáng. */
+
     /* v2.9.1 FIX — trước đây `align-items: flex-end`: khối meta cao bằng
        phần tử cao nhất của hàng nên khi v2.9.0 thêm Level/XP + Huy hiệu
        showcase vào .profile-meta, cột này vươn lên ~300px, làm TÊN HIỂN
@@ -2647,6 +2654,12 @@ pre code {
        bao nhiêu (đúng kiểu layout hồ sơ X/Twitter). */
     align-items: flex-start;
     flex-wrap: wrap;
+}
+
+.profile-meta h1,
+.profile-meta .profile-username {
+    color: #f8fafc;
+    text-shadow: 0 1px 3px rgba(15, 23, 42, 0.55);
 }
 
 .profile-avatar {
@@ -9752,4 +9765,431 @@ code.ai-agent-username {
 }
 @media (prefers-reduced-motion: reduce) {
     .btn-impersonate-ai { animation: none !important; }
+}
+
+/* ============================================================
+   v3.7.0 — KHUNG AVATAR (cửa hàng XP, migration 036)
+   ============================================================
+   Kỹ thuật:
+   * Class `avatar-frame` đặt trên PHẦN TỬ BỌC (a/span/div) —
+     pseudo-element KHÔNG render trên <img> (replaced element).
+   * Ring vẽ bằng ::before: đĩa gradient đặt Z-SAU nội dung
+     (z-index:-1 + isolation:isolate để không tụt dưới nền trang),
+     chỉ lộ phần vành ngoài avatar → viền tròn hoàn hảo mọi size.
+   * Bronze/Silver/Gold: conic-gradient kim loại tĩnh (sáng/tối xen
+     kẽ như ánh kim chạm khắc).
+   * Neon/Phoenix/Dragon: @property --frame-angle xoay mượt conic
+     gradient (Chrome/Edge/Safari 16.4+; browser cũ → gradient tĩnh,
+     không vỡ layout).
+   * prefers-reduced-motion: tắt toàn bộ animation — chỉ còn màu.
+   ============================================================ */
+
+@property --frame-angle {
+    syntax: "<angle>";
+    inherits: false;
+    initial-value: 0deg;
+}
+
+/* ---- Base: element bọc avatar ---- */
+.avatar-frame {
+    position: relative;
+    isolation: isolate;
+    border-radius: var(--radius-full);
+}
+.avatar-frame::before {
+    content: "";
+    position: absolute;
+    inset: -3px;                      /* ring 32px avatar (header/chat) */
+    border-radius: inherit;
+    z-index: -1;
+    pointer-events: none;
+}
+/* Hồ sơ: container .profile-avatar có 4px viền nền sẵn → ring bám
+   sát mép ngoài border-box, phần gradient phủ lên viền nền cũ */
+.profile-avatar.avatar-frame::before {
+    inset: -4px;
+}
+
+/* ---- 1) BRONZE — kim loại đồng ấm (150 XP) ---- */
+.avatar-frame-bronze::before {
+    background: conic-gradient(from 210deg,
+        #6e3f1d, #c98a4b 12%, #8a5524 26%, #e3a96d 40%,
+        #7a4517 55%, #d99a5b 72%, #6e3f1d 88%, #a96c33);
+    box-shadow: 0 0 6px rgba(184, 115, 51, 0.35);
+}
+
+/* ---- 2) SILVER — bạc sáng lạnh (300 XP) ---- */
+.avatar-frame-silver::before {
+    background: conic-gradient(from 30deg,
+        #8e99a6, #f2f5f9 15%, #8b95a1 30%, #dde4ec 46%,
+        #77828f 62%, #e9eef4 80%, #a6b0bd);
+    box-shadow: 0 0 6px rgba(148, 163, 184, 0.45);
+}
+
+/* ---- 3) GOLD — vàng 24K + glow ấm (600 XP) ---- */
+.avatar-frame-gold::before {
+    background: conic-gradient(from 45deg,
+        #8a5a00, #ffd54a 14%, #a8720a 28%, #ffe98a 44%,
+        #93650b 60%, #f4c542 76%, #8a5a00 90%, #d9a521);
+    box-shadow: 0 0 9px rgba(245, 196, 66, 0.5);
+}
+
+/* ---- 4) NEON — cyberpunk cyan/magenta nhấp nháy (900 XP) ---- */
+.avatar-frame-neon::before {
+    background: conic-gradient(from var(--frame-angle),
+        #22d3ee, #8b5cf6 25%, #f0abfc 50%, #22d3ee 75%, #8b5cf6);
+    box-shadow:
+        0 0 10px rgba(34, 211, 238, 0.55),
+        0 0 18px rgba(168, 85, 247, 0.35);
+    animation: frame-neon-pulse 2.2s ease-in-out infinite;
+}
+@keyframes frame-neon-pulse {
+    0%, 100% { filter: brightness(1); }
+    50%      { filter: brightness(1.45) saturate(1.25); }
+}
+
+/* ---- 5) PHOENIX — vòng lửa cam–đỏ xoay chậm (1500 XP) ---- */
+.avatar-frame-phoenix::before {
+    background: conic-gradient(from var(--frame-angle),
+        #f97316, #fbbf24 12%, #ef4444 26%, #f97316 40%,
+        #fde047 54%, #ef4444 70%, #f97316 86%, #fbbf24);
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.5);
+    animation: frame-rotate 6s linear infinite;
+}
+
+/* ---- 6) DRAGON FIRE 🐲 — HUYỀN THOẠI (5000 XP) ----
+   3 lớp: vảy rồng (repeating-conic alpha) + lửa 7 màu xoay nhanh
+   + hào quang trắng-vàng thở (flicker) — sang trọng nhất cửa hàng. */
+.avatar-frame-dragon_fire::before {
+    background:
+        repeating-conic-gradient(from calc(var(--frame-angle) * -1),
+            rgba(0, 0, 0, 0) 0deg 7deg, rgba(90, 15, 0, 0.4) 7deg 14deg),
+        conic-gradient(from var(--frame-angle),
+            #7f1d1d, #dc2626 10%, #f97316 21%, #fde047 31%,
+            #fb923c 42%, #dc2626 53%, #7f1d1d 63%, #ef4444 74%,
+            #f59e0b 85%, #7f1d1d);
+    box-shadow:
+        0 0 12px rgba(249, 115, 22, 0.65),
+        0 0 28px rgba(220, 38, 38, 0.4);
+    animation: frame-rotate 3.2s linear infinite;
+}
+.avatar-frame-dragon_fire::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    z-index: -1;
+    background: radial-gradient(circle,
+        transparent 56%, rgba(255, 224, 130, 0.55) 68%, transparent 78%);
+    animation: frame-flicker 1.5s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes frame-rotate {
+    to { --frame-angle: 360deg; }
+}
+@keyframes frame-flicker {
+    0%, 100% { opacity: 0.35; }
+    50%      { opacity: 1; }
+}
+
+/* Giảm chuyển động — tắt xoay/nhấp nháy, giữ màu tĩnh */
+@media (prefers-reduced-motion: reduce) {
+    .avatar-frame-neon::before,
+    .avatar-frame-phoenix::before,
+    .avatar-frame-dragon_fire::before,
+    .avatar-frame-dragon_fire::after {
+        animation: none !important;
+    }
+}
+
+/* ============================================================
+   v3.7.0 — CỬA HÀNG: khu KHUNG AVATAR + preview swatch
+   ============================================================ */
+.shop-section-head {
+    margin: 28px 0 14px;
+}
+.shop-section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 1.15rem;
+    margin: 0 0 4px;
+}
+.shop-section-sub {
+    margin: 0;
+    color: var(--fg-muted);
+    font-size: 0.9rem;
+}
+.shop-section-head-frames .shop-section-title {
+    color: var(--warning, #d97706);
+}
+
+.shop-grid-frames {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 14px;
+}
+.shop-card-frame {
+    text-align: center;
+}
+/* Rồng Lửa — HERO CARD full-width: preview trái, nội dung giữa,
+   nút mua phải — sang trọng nhất cửa hàng, không ô lẻ loi */
+.shop-card-dragon {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+        "preview info btn"
+        "preview info btn";
+    align-items: center;
+    gap: 8px 20px;
+    text-align: left;
+    padding: 20px 24px;
+}
+.shop-card-dragon .shop-frame-preview-box {
+    grid-area: preview;
+    padding: 0;
+}
+.shop-card-dragon .shop-dragon-info {
+    grid-area: info;
+    min-width: 0;
+}
+.shop-card-dragon > #shop-result-frame_dragon_fire {
+    grid-column: 1 / -1;
+}
+.shop-card-dragon .frame-swatch {
+    width: 72px;
+    height: 72px;
+    font-size: 34px;
+}
+.shop-card-dragon .shop-item-name {
+    margin: 0 0 4px;
+    font-size: 1.18rem;
+}
+.shop-card-dragon .shop-item-desc {
+    margin: 0 0 6px;
+    max-width: 560px;
+}
+.shop-card-dragon .shop-item-duration {
+    margin: 0;
+}
+.shop-card-dragon > .btn {
+    align-self: center;
+    white-space: nowrap;
+}
+@media (max-width: 700px) {
+    .shop-card-dragon {
+        grid-template-columns: auto 1fr;
+        grid-template-areas:
+            "preview info"
+            "btn btn";
+        gap: 12px 14px;
+        padding: 16px;
+    }
+    .shop-card-dragon > .btn {
+        justify-self: stretch;
+        text-align: center;
+    }
+}
+.shop-frame-preview-box {
+    display: flex;
+    justify-content: center;
+    padding: 14px 0 10px;
+}
+/* Swatch preview: đúng gradient của từng khung — hình tròn 56px,
+   chữ emoji ở giữa = xem trước trung thực trước khi mua */
+.frame-swatch {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    font-size: 26px;
+    background: var(--bg-subtle);
+}
+.frame-swatch::before {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: inherit;
+    z-index: -1;
+}
+.frame-swatch-bronze::before {
+    background: conic-gradient(from 210deg,
+        #6e3f1d, #c98a4b 12%, #8a5524 26%, #e3a96d 40%,
+        #7a4517 55%, #d99a5b 72%, #6e3f1d 88%, #a96c33);
+    box-shadow: 0 0 6px rgba(184, 115, 51, 0.35);
+}
+.frame-swatch-silver::before {
+    background: conic-gradient(from 30deg,
+        #8e99a6, #f2f5f9 15%, #8b95a1 30%, #dde4ec 46%,
+        #77828f 62%, #e9eef4 80%, #a6b0bd);
+    box-shadow: 0 0 6px rgba(148, 163, 184, 0.45);
+}
+.frame-swatch-gold::before {
+    background: conic-gradient(from 45deg,
+        #8a5a00, #ffd54a 14%, #a8720a 28%, #ffe98a 44%,
+        #93650b 60%, #f4c542 76%, #8a5a00 90%, #d9a521);
+    box-shadow: 0 0 9px rgba(245, 196, 66, 0.5);
+}
+.frame-swatch-neon::before {
+    background: conic-gradient(from var(--frame-angle),
+        #22d3ee, #8b5cf6 25%, #f0abfc 50%, #22d3ee 75%, #8b5cf6);
+    box-shadow:
+        0 0 10px rgba(34, 211, 238, 0.55),
+        0 0 18px rgba(168, 85, 247, 0.35);
+    animation: frame-neon-pulse 2.2s ease-in-out infinite;
+}
+.frame-swatch-phoenix::before {
+    background: conic-gradient(from var(--frame-angle),
+        #f97316, #fbbf24 12%, #ef4444 26%, #f97316 40%,
+        #fde047 54%, #ef4444 70%, #f97316 86%, #fbbf24);
+    box-shadow: 0 0 12px rgba(249, 115, 22, 0.5);
+    animation: frame-rotate 6s linear infinite;
+}
+.frame-swatch-dragon_fire::before {
+    background:
+        repeating-conic-gradient(from calc(var(--frame-angle) * -1),
+            rgba(0, 0, 0, 0) 0deg 7deg, rgba(90, 15, 0, 0.4) 7deg 14deg),
+        conic-gradient(from var(--frame-angle),
+            #7f1d1d, #dc2626 10%, #f97316 21%, #fde047 31%,
+            #fb923c 42%, #dc2626 53%, #7f1d1d 63%, #ef4444 74%,
+            #f59e0b 85%, #7f1d1d);
+    box-shadow:
+        0 0 12px rgba(249, 115, 22, 0.65),
+        0 0 28px rgba(220, 38, 38, 0.4);
+    animation: frame-rotate 3.2s linear infinite;
+}
+
+/* Thẻ Rồng Lửa — nổi bật nhất: viền lửa + nhãn vàng "ĐẮT NHẤT" */
+.shop-card-dragon {
+    position: relative;      /* anchor cho nhãn "ĐẮT NHẤT" absolute */
+    border: 2px solid transparent;
+    background:
+        linear-gradient(var(--bg-card, var(--bg-subtle)), var(--bg-card, var(--bg-subtle))) padding-box,
+        conic-gradient(from var(--frame-angle), #7f1d1d, #f97316 25%, #fde047 50%, #dc2626 75%, #7f1d1d) border-box;
+    animation: frame-rotate 4s linear infinite;
+}
+.shop-card-dragon:hover {
+    transform: translateY(-2px);
+}
+.shop-frame-legend {
+    position: absolute;
+    top: -12px;
+    z-index: 2;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #dc2626, #f97316);
+    color: #fff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+}
+.shop-item-duration {
+    margin: 4px 0;
+    font-size: 0.8rem;
+    color: var(--fg-muted);
+}
+@media (max-width: 480px) {
+    .shop-grid-frames {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
+    }
+    .shop-frame-legend {
+        font-size: 0.6rem;
+        padding: 2px 8px;
+    }
+}
+
+/* ============================================================
+   v3.7.0 — TRANG ADMIN SỬA AI AGENT (/admin/ai-agents/{id}/edit)
+   ============================================================ */
+.ai-edit-section-title {
+    font-size: 1.05rem;
+    margin: 22px 0 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+.ai-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin: 18px 0 8px;
+}
+.ai-cred-flash-error {
+    background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
+}
+.ai-edit-params-list {
+    display: grid;
+    gap: 10px;
+}
+.ai-edit-param-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 10px);
+    background: var(--bg-subtle);
+    overflow: hidden;
+}
+.ai-edit-param-card.ai-param-activation {
+    border-left: 3px solid var(--warning, #f59e0b);
+}
+.ai-edit-param-card summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    list-style: none;
+    flex-wrap: wrap;
+}
+.ai-edit-param-card summary::-webkit-details-marker {
+    display: none;
+}
+.ai-edit-param-card summary:hover {
+    background: color-mix(in srgb, var(--fg-muted) 6%, transparent);
+}
+.ai-edit-param-key {
+    word-break: break-word;
+}
+.ai-edit-param-value {
+    color: var(--fg-muted);
+    word-break: break-word;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ai-edit-param-order {
+    margin-left: auto;
+    color: var(--fg-muted);
+    font-size: 0.78rem;
+}
+.ai-param-edit-form {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px 14px;
+    border-top: 1px dashed var(--border);
+    background: var(--bg-card);
+}
+@media (max-width: 640px) {
+    .ai-edit-param-value {
+        max-width: 100%;
+        white-space: normal;
+    }
+    .ai-edit-param-order {
+        display: none;
+    }
+    .ai-edit-actions {
+        flex-direction: column-reverse;
+    }
+    .ai-edit-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
 }

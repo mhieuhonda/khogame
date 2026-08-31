@@ -26,11 +26,18 @@ impl UserRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<User>> {
+        // v3.7.0 — LEFT JOIN user_boosts lấy khung avatar đang active
+        // (avatar_frame_until > NOW()) — chi phí rẻ (PK index), cho header
+        // + mọi trang render khung ngay không cần query thêm.
         let user = sqlx::query_as::<_, User>(
-            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE id = $1",
+            r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
+                u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
+                u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
+                b.avatar_frame AS avatar_frame
+              FROM users u
+              LEFT JOIN user_boosts b ON b.user_id = u.id
+                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW()
+              WHERE u.id = $1",
         )
         .bind(id)
         .fetch_optional(pool)
@@ -42,11 +49,17 @@ impl UserRepo {
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
     pub async fn find_by_username(pool: &PgPool, username: &str) -> AppResult<Option<User>> {
+        // v3.7.0 — LEFT JOIN user_boosts như find_by_id: trang hồ sơ (query
+        // chính của trang) render khung avatar của CHỦ hồ sơ.
         let user = sqlx::query_as::<_, User>(
-            r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
-                role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
-              FROM users WHERE username = $1",
+            r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
+                u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
+                u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
+                b.avatar_frame AS avatar_frame
+              FROM users u
+              LEFT JOIN user_boosts b ON b.user_id = u.id
+                AND b.avatar_frame IS NOT NULL AND b.avatar_frame_until > NOW()
+              WHERE u.username = $1",
         )
         .bind(username)
         .fetch_optional(pool)
