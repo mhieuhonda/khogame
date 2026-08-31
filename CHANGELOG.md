@@ -5,6 +5,96 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.2] — 2026-08-31 — Hồ sơ AI Agent /ai/ + fix "thanh tím nhấp nháy" + hero FX bớt lag + quét-fix 400/500 + bảo mật
+
+Bản fix tập trung 100% vào trải nghiệm người dùng theo phản hồi thực tế:
+**link hồ sơ AI Agent chuyển sang namespace riêng `/ai/{username}`**,
+**thanh mỏng màu tím trên đầu trang không còn nhấp nháy vô hạn**,
+**hồ sơ GLM 5.3 không còn lag trên máy yếu** (hero FX tĩnh mặc định,
+chỉ animate trên máy đủ sức), và quan trọng nhất — **mọi lỗi 400/500
+giờ hiện đúng nguyên nhân tiếng Việt** ("Không đủ XP — cần 100 XP",
+"Chỉ mở được 5 Hộp Bí Ẩn mỗi ngày"...) thay vì "Lỗi kết nối (HTTP 400)"
+vô nghĩa. Build sạch Rust 1.98.0 — 358/358 unit test pass.
+
+### Added
+
+- **Namespace hồ sơ AI Agent `/ai/{username}`**: route mới
+  `GET /ai/{username}` (user thường → 404, AI Agent → hồ sơ đầy đủ với
+  hero FX + nút admin) + `GET /ai/{username}/repos` (fragment repos).
+  Link cũ `/u/{ai_username}` tự động 303 redirect về chuẩn mới — mọi
+  link đã chia sẻ vẫn hoạt động. Static routes `/ai/info`, `/ai/progress`,
+  `/ai/progress.json` (AI internal API) ưu tiên hơn route dynamic —
+  đã verify 401 auth đúng, không xung đột router.
+- **`User::profile_href()`**: helper chuẩn cho template link hồ sơ —
+  AI Agent `/ai/{username}`, user thường `/u/{username}`. Đã áp cho
+  layout (avatar "Hồ sơ của tôi"), game author, admin AI pages,
+  JSON-LD structured data, redirect sau khi AI cập nhật profile,
+  redirect `/profile`. +1 unit test khóa hợp đồng namespace.
+
+### Fixed
+
+- **"Thanh mỏng màu tím trên cùng giật giật liên tục rồi biến mất"**
+  (nguyên nhân + fix đầy đủ):
+  - Root cause 1: `#htmx-progress` kích hoạt cho MỌI request HTMX,
+    kể cả background (`hx-trigger="load"` widget điểm danh chạy trên
+    mọi trang, `revealed` lazy-load reply, `every 1s` polling admin).
+  - Root cause 2: nhiều request song song cùng toggle 1 bar không đếm
+    counter → nhấp nháy loop.
+  - FIX: bar chỉ hiện cho thao tác người dùng chủ động (click/submit);
+    `pendingRequests` counter — bar tắt khi request cuối cùng kết thúc;
+    `requestAnimationFrame` batch + clear timer khi request mới bắt
+    đầu ngay trong lúc fade-out.
+- **Hồ sơ GLM 5.3 lag trên máy yếu — hero FX "tĩnh mặc định"**: 6 lớp
+  full-viewport trước đây animate liên tục cho MỌI máy, trong đó aurora
+  có `filter: blur(52px)` trên mặt phẳng 1.8× viewport (sát thủ GPU),
+  orbs animate `top/left` (layout mỗi frame), scan animate `top`,
+  vignette breathing 7s. Giờ: mọi layer render TĨNH (gradient art giữ
+  nguyên vẻ đẹp); JS `initHeroFx()` chỉ bật class `fx-full` khi máy đủ
+  sức (CPU ≥ 4 lõi + RAM ≥ 4GB + không reduced-motion + probe 45fps
+  trong 0.7s); animation khi chạy chỉ dùng transform/opacity
+  (compositor-only) — bỏ blur lớn, orbs translate3d thay top/left,
+  scan translateY thay top, bỏ vignette breathing, bỏ blur mobile 38px.
+- **"CỰC NHIỀU lỗi 400/500 hiển thị vô nghĩa" — 2 tầng fix**:
+  - Backend: `error_page_mw` giờ xử lý cả request HTMX — rejection của
+    extractor (Path/Query/Form parse fail) trả text/plain thô kiểu
+    "Invalid URL: Cannot parse `id`..." bị thay bằng error partial HTML
+    thân thiện tiếng Việt (giữ nguyên status). Trước đây text thô bị
+    HTMX swap thẳng vào DOM.
+  - Frontend: `htmx:responseError` đọc `.error-message` từ response
+    (DOMParser, an toàn XSS) → toast ĐÚNG nguyên nhân lỗi ("Không đủ XP",
+    "Chỉ mở được 5 Hộp Bí Ẩn mỗi ngày"...) thay vì generic "Lỗi kết nối
+    (HTTP 400)". Message server luôn ưu tiên; fallback generic chỉ khi
+    không đọc được.
+- **500 "chết im lặng" — CatchPanicLayer**: panic trong handler trước
+  đây phá connection (browser thấy ERR_EMPTY_RESPONSE, không có gì để
+  debug). Giờ bắt panic → trả 500 HTML thân thiện + log ERROR đầy đủ.
+- **chat.js selector hỏng từ trước**: `a.avatar-linkref^="/u/"]` là
+  syntax error (thiếu `[`) → querySelector ném exception → currentUser
+  luôn null (không ai phát hiện vì nằm trong try/catch). Fix selector +
+  nhận cả prefix `/ai/` + strip đúng 2 prefix.
+
+### Security (vòng quét 21)
+
+- **Thu hẹp maintenance bypass `/ai/`**: trước đây prefix `/ai/` bypass
+  toàn bộ — bao trùm cả hồ sơ công khai `/ai/{username}` (khách xem
+  profile AI khi site bảo trì). Giờ chỉ bypass đúng 2 endpoint nội bộ
+  AI Agent (`/ai/info`, `/ai/progress`) cần qua bảo trì để báo tiến trình.
+- Pin SHA toàn bộ GitHub Actions third-party (checkout v5, rust-cache,
+  install-action, setup-buildx, login, metadata, build-push) — supply-chain
+  hardening, không còn action nào trôi theo tag mutable.
+- Rà soát lại: 27 check `is_admin` thủ công trong admin handlers,
+  magic-byte upload whitelist, WS Origin check, cookie Secure/HttpOnly/
+  SameSite, `sanitize_redirect` chặn `//` + `/\` + control chars,
+  `escape_like` cho ILIKE, HMAC anon cookie — tất cả nguyên trạng tốt.
+
+### CI/CD
+
+- **deploy.yml verify step**: vòng chờ /health version match tăng từ
+  12×15s = 3 phút → 40×15s = 10 phút (bằng thời gian "Chờ stack
+  healthy") — fix CD fail 2026-08-30 18:25 khi deploy serialize qua
+  concurrency group + pull image lâu làm verify fail oan dù deploy OK.
+- Pin SHA đầy đủ cho mọi action trong 3 workflow (xem Security).
+
 ## [3.6.1] — 2026-08-31 — HOTFIX micro-cache: OnceLock không khởi tạo
 
 Vừa deploy v3.6.0 lên prod, verify bằng curl thấy thiếu header

@@ -118,37 +118,88 @@
     // 3. HTMX ENHANCEMENTS
     // ==========================================
     var progressBar = null;
+    // v3.6.2 — đếm số request ĐANG chạy: nhiều request chồng nhau (page
+    // load bắn 5-10 HTMX song song) trước đây cùng toggle 1 bar → nhấp
+    // nháy liên tục ("thanh tím giật giật trên đầu trang"). Giờ bar chỉ
+    // tắt khi request CUỐI CÙNG kết thúc.
+    var pendingRequests = 0;
+    var progressHideTimer = null;
+
+    // v3.6.2 — CHỈ hiện progress bar cho thao tác người dùng chủ động
+    // (click/submit/change). Background request (hx-trigger="load" của
+    // widget điểm danh chạy trên MỌI trang, "revealed" lazy-load reply,
+    // "every Ns" polling admin) KHÔNG còn nháy thanh tím nữa — nguyên
+    // nhân chính gây "thanh mỏng màu tím ở trên cùng giật giật liên
+    // tục rồi biến mất".
+    function isUserInitiated(evt) {
+        var elt = evt.detail && evt.detail.elt;
+        if (!elt || !elt.getAttribute) return true;
+        var trigger = elt.getAttribute('hx-trigger') || '';
+        if (/every\s+\d/.test(trigger)) return false;  // polling nền
+        if (/\bload\b/.test(trigger)) return false;    // load trang
+        if (/\brevealed\b/.test(trigger)) return false; // lazy-load khi cuộn
+        return true;
+    }
+
+    function showProgress() {
+        if (!progressBar) progressBar = document.getElementById('htmx-progress');
+        if (!progressBar) return;
+        if (progressHideTimer) { clearTimeout(progressHideTimer); progressHideTimer = null; }
+        pendingRequests++;
+        requestAnimationFrame(function() {
+            progressBar.classList.remove('done');
+            progressBar.classList.add('active');
+        });
+    }
+
+    function finishProgress() {
+        pendingRequests = Math.max(0, pendingRequests - 1);
+        if (pendingRequests > 0) return; // vẫn còn request khác đang chạy
+        if (!progressBar) progressBar = document.getElementById('htmx-progress');
+        if (progressBar) {
+            progressBar.classList.add('done');
+            progressHideTimer = setTimeout(function() {
+                pendingRequests = 0;
+                progressBar.classList.remove('active', 'done');
+            }, 250);
+        }
+    }
 
     function initHtmx() {
         if (!window.htmx) return;
 
-        // Progress bar mỏng dưới header khi có request đang chạy
-        document.body.addEventListener('htmx:beforeRequest', function() {
-            if (!progressBar) {
-                progressBar = document.getElementById('htmx-progress');
-            }
-            if (progressBar) {
-                progressBar.classList.remove('done');
-                progressBar.classList.add('active');
-            }
+        // Progress bar mỏng dưới header khi có request người dùng chủ động
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            if (!isUserInitiated(evt)) return;
+            showProgress();
         });
 
-        function finishProgress() {
-            if (!progressBar) progressBar = document.getElementById('htmx-progress');
-            if (progressBar) {
-                progressBar.classList.add('done');
-                setTimeout(function() {
-                    progressBar.classList.remove('active', 'done');
-                }, 250);
-            }
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (!isUserInitiated(evt)) return;
+            finishProgress();
+        });
+
+        // v3.6.2 — lỗi HTMX → toast THÂN THIỆN: đọc message tiếng Việt
+        // server render trong partial lỗi (.error-message) thay vì bắn
+        // "Lỗi kết nối (HTTP 400)" vô nghĩa. Từ giờ mua Hộp XP thiếu tiền
+        // hay hết lượt trong ngày sẽ hiện ĐÚNG lý do ("Không đủ XP — cần
+        // 100 XP...") thay vì báo lỗi kết nối đáng ngờ.
+        function extractServerMessage(xhr) {
+            if (!xhr || !xhr.responseText) return null;
+            try {
+                var doc = new DOMParser().parseFromString(xhr.responseText, 'text/html');
+                var el = doc.querySelector('.error-message');
+                var txt = el ? el.textContent.trim() : '';
+                return txt || null;
+            } catch (e) { return null; }
         }
 
-        document.body.addEventListener('htmx:afterRequest', finishProgress);
-
-        // HTMX error → toast thân thiện (không only console)
         document.body.addEventListener('htmx:responseError', function(evt) {
             var xhr = evt.detail.xhr;
             var status = xhr ? xhr.status : 0;
+            var serverMsg = extractServerMessage(xhr);
+            // Message từ server luôn ưu tiên — là lý do NGHIÊM MÔN của lỗi
+            if (serverMsg) { toast(serverMsg, 'error', 4600); return; }
             var msg = 'Lỗi kết nối (HTTP ' + status + '). Vui lòng thử lại.';
             if (status === 401) {
                 msg = 'Cần đăng nhập để thực hiện hành động này.';
@@ -162,13 +213,14 @@
             toast(msg, 'error', 4200);
         });
 
-        // Swap thành công chứa .error-partial → toast lỗi
+        // Swap thành công chứa .error-partial → toast lỗi (kể cả 200 OK
+        // mà server trả partial lỗi — handler validation tự render)
         document.body.addEventListener('htmx:afterSwap', function(evt) {
             var errBox = evt.detail && evt.detail.target ?
                 evt.detail.target.querySelector : null;
             if (typeof errBox === 'function') {
                 var err = evt.detail.target.querySelector('.error-partial .error-message');
-                if (err) toast(err.textContent, 'error', 4200);
+                if (err) toast(err.textContent, 'error', 4600);
                 var ok = evt.detail.target.querySelector('[data-toast-success]');
                 if (ok) toast(ok.getAttribute('data-toast-success'), 'success');
             }
@@ -1221,4 +1273,46 @@
     input.focus();
     input.select();
   });
+})();
+
+/* v3.6.2 — HERO FX "TĨNH MẶC ĐỊNH" cho hồ sơ AI Agent mặc định (GLM 5.3):
+   CSS mới chỉ animate khi <html> mang class `fx-full`. Hàm này quyết định
+   có bật animation hay không dựa trên sức máy THẬT TẾ:
+     1) Trang có .ai-hero-fx (chỉ trang profile AI mặc định có);
+     2) Không bật reduced-motion (tôn trọng setting OS);
+     3) CPU >= 4 lõi, RAM >= 4GB (navigator.deviceMemory, nếu báo cáo);
+     4) Probe FPS nhanh (~0.7s): nếu < 45fps → coi máy yếu, giữ TĨNH.
+   Máy yếu → hero vẫn đẹp (gradient art tĩnh) nhưng KHÔNG tốn GPU → hết
+   lag khi cuộn trang. Máy mạnh → full animation như cũ. */
+(function () {
+  'use strict';
+  function initHeroFx() {
+    if (!document.querySelector('.ai-hero-fx')) return;
+    var reduce = false;
+    try {
+      reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (e) { /* ignore */ }
+    if (reduce) return;
+    var cores = navigator.hardwareConcurrency || 4;
+    var mem = navigator.deviceMemory || 8; // Chrome báo GiB; Firefox/Safari không có → coi như đủ
+    if (cores < 4 || mem < 4) return; // máy yếu → giữ tĩnh, không probe
+    // Probe: đếm frame trong ~0.7s — nếu không đạt ~45fps thì bỏ qua
+    var start = performance.now();
+    var frames = 0;
+    function tick(now) {
+      frames++;
+      var elapsed = now - start;
+      if (elapsed < 700) { requestAnimationFrame(tick); return; }
+      var fps = frames / (elapsed / 1000);
+      if (fps >= 45) {
+        document.documentElement.classList.add('fx-full');
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initHeroFx);
+  } else {
+    initHeroFx();
+  }
 })();

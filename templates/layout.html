@@ -129,7 +129,7 @@
                     </svg>
                     {% if unread_notifications > 0 %}<span class="badge" aria-label="{{ unread_notifications }} thông báo chưa đọc">{{ unread_notifications }}</span>{% endif %}
                 </a>
-                <a href="/u/{{ user.username }}" class="avatar-link" title="Hồ sơ của tôi">
+                <a href="{{ user.profile_href() }}" class="avatar-link" title="Hồ sơ của tôi">
                     {% match user.avatar_url %}
                     {% when Option::Some with (url) %}
                         <img src="{{ url }}" alt="{{ user.display_name }}" class="avatar avatar-sm" width="32" height="32" decoding="async">

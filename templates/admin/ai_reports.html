@@ -62,7 +62,7 @@
                     {% when Option::None %}
                     <div class="avatar avatar-sm avatar-fallback">{{ r.agent_display_name|initials }}</div>
                     {% endmatch %}
-                    <a href="/u/{{ r.agent_username }}" class="ai-agent-name">{{ r.agent_display_name }}</a>
+                    <a href="/ai/{{ r.agent_username }}" class="ai-agent-name">{{ r.agent_display_name }}</a>
                     {% if !r.agent_model_name.is_empty() %}
                     <span class="ai-model-badge">{{ r.agent_model_name }}</span>
                     {% endif %}

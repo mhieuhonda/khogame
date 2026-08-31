@@ -7,8 +7,9 @@ use crate::repositories::{
 };
 use crate::state::AppState;
 use crate::templates::{BookmarksTemplate, EditProfileTemplate, ProfileTemplate};
+use askama::Template as _;
 use axum::extract::{Path, Query, State};
-use axum::response::{IntoResponse, Redirect};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::Form;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -21,15 +22,66 @@ pub async fn show_profile(
     State(state): State<Arc<AppState>>,
     CurrentUser(current_user): CurrentUser,
     Path(username): Path<String>,
+) -> AppResult<Response> {
+    show_profile_impl(state, current_user, username).await
+}
+
+/// v3.6.2 — Hồ sơ AI Agent tại `/ai/{username}` (namespace riêng cho AI).
+/// User thường truy cập `/ai/{username}` → 404 (namespace này CHỈ dành cho
+/// AI Agent). Link cũ `/u/{ai_username}` được `show_profile` tự redirect
+/// về đây nên mọi link đã chia sẻ trước đó vẫn hoạt động.
+///
+/// Lưu ý routing: `/ai/info`, `/ai/progress`, `/ai/progress.json` là route
+/// tĩnh của AI internal API (nest "/ai") — matchit ưu tiên static hơn
+/// dynamic nên KHÔNG đụng nhau với `/ai/{username}`.
+pub async fn show_ai_profile(
+    State(state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+    Path(username): Path<String>,
 ) -> AppResult<ProfileTemplate> {
     let user = UserRepo::find_by_username(&state.db, &username)
         .await?
+        .ok_or_else(|| AppError::NotFound("AI Agent không tồn tại".into()))?;
+    if !user.role.is_ai_agent() || user.is_banned {
+        // Không phải AI Agent (hoặc bị ban) → không tồn tại trong namespace
+        // /ai/ — trả 404 thay vì leak sự tồn tại của user thường.
+        return Err(AppError::NotFound("AI Agent không tồn tại".into()));
+    }
+    build_profile_template(state, current_user, user).await
+}
+
+async fn show_profile_impl(
+    state: Arc<AppState>,
+    current_user: Option<crate::models::user::User>,
+    username: String,
+) -> AppResult<Response> {
+    let user = UserRepo::find_by_username(&state.db, &username)
+        .await?
         .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    // v3.6.2 — AI Agent có namespace riêng /ai/{username}: /u/{ai} chỉ là
+    // link cũ → redirect vĩnh viễn sang chuẩn mới (mọi link cũ trong comment/
+    // leaderboard/share... tự động hợp lệ mà không phải sửa từng chỗ).
+    if user.role.is_ai_agent() {
+        let target = format!("/ai/{}", user.username);
+        if user.is_banned {
+            return Err(AppError::NotFound("Người dùng không tồn tại".into()));
+        }
+        return Ok(axum::response::Redirect::to(&target).into_response());
+    }
     // Ẩn hồ sơ user bị ban khỏi HTML (API /api/v1/users đã chặn từ trước —
     // thiếu nhất quán giữa 2 giao diện của cùng dữ liệu).
     if user.is_banned {
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
+    let tpl = build_profile_template(state, current_user, user).await?;
+    Ok(axum::response::Html(tpl.render()?).into_response())
+}
+
+async fn build_profile_template(
+    state: Arc<AppState>,
+    current_user: Option<crate::models::user::User>,
+    user: crate::models::user::User,
+) -> AppResult<ProfileTemplate> {
     let is_self = current_user.as_ref().is_some_and(|u| u.id == user.id);
     // v2.7.0 — social_links là query thứ 7 chạy SONG SONG trong cùng
     // wave (không tăng round-trip tuần tự).
@@ -318,7 +370,8 @@ fn build_heatmap_widget(
 
 // ============= My profile redirect =============
 pub async fn my_profile(AuthUser(user): AuthUser) -> Redirect {
-    Redirect::to(&format!("/u/{}", user.username))
+    // v3.6.2 — AI Agent về namespace /ai/ riêng; user thường /u/.
+    Redirect::to(&user.profile_href())
 }
 
 // ============= Edit profile form =============
@@ -495,7 +548,7 @@ pub async fn update_profile(
         // v3.0.0 — onboarding steps avatar/bio (best-effort)
         crate::services::retention::check_profile_onboarding(&db_hook, uid_hook).await;
     });
-    Ok(Redirect::to(&format!("/u/{}", user.username)))
+    Ok(Redirect::to(&user.profile_href()))
 }
 
 // ============= Bookmarks page =============

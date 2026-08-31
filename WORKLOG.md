@@ -747,3 +747,45 @@ OnceLock unset vĩnh viễn → middleware no-op. Fix: helper `micro_cache_map()
 dùng `get_or_init` cho cả 2 nhánh + 4 unit test tower-oneshot (hit/bypass
 session/bypass HTMX/bypass non-allowlist) — chạy 5 lần ổn định. 357/357 test
 pass, clippy -D warnings sạch.
+
+---
+Task ID: v3.6.2-superfix
+Agent: Super Z (main)
+Task: Fix GitHub Actions triệt để (ưu tiên 1) + hồ sơ AI Agent /ai/ + nút
+admin login-as + fix "thanh tím nhấp nháy" + hồ sơ GLM 5.3 bớt lag +
+quét-fix 400/500 + quét bảo mật vòng 21 + release v3.6.2.
+
+Work Log:
+- Clone repo, quét 43k dòng: routes/profile/shop/comments/middleware/
+  templates/3 workflows. Dựng env thật: PostgreSQL 17.6 local + Rust
+  1.98.0, chạy migrate 34 file + smoke test 90 request + deep test
+  (user thật, admin thật, mua hộp XP, bình luận, admin pages, probe
+  prod https://louis.vangioitutien.com).
+- GitHub Actions: xem logs API các run fail lịch sử → nguyên nhân chính
+  verify step 3 phút quá ngắn khi deploy serialize. FIX: verify 40×15s
+  = 10 phút; pin SHA toàn bộ 8 action third-party (checkout/rust-cache/
+  install-action/setup-buildx/login/metadata/build-push).
+- /ai/{username}: route mới + /ai/{username}/repos; /u/{ai} 303 redirect;
+  User::profile_href() + test; template layout/game/admin/profile;
+  json_ld; chat.js fix selector cũ hỏng (a.avatar-linkref syntax error).
+- Thanh tím #htmx-progress: skip background triggers (load/revealed/every)
+  + pendingRequests counter chống nhấp nháy overlap + rAF batch.
+- Hero FX GLM 5.3: tĩnh mặc định, JS initHeroFx() probe (CPU/RAM/reduced-
+  motion/FPS 45) mới thêm .fx-full; bỏ blur(52px); orbs/scan transform-
+  only; bỏ vignette breathing + blur mobile.
+- 400/500: error_page_mw render error partial thân thiện cho HTMX
+  (rejection text/plain thô → HTML tiếng Việt); app.js responseError
+  đọc .error-message từ response → toast đúng nguyên nhân; CatchPanicLayer
+  panic → 500 sạch thay vì connection reset.
+- Bảo mật vòng 21: thu hẹp maintenance bypass /ai/ → chỉ /ai/info +
+  /ai/progress; re-audit 27 is_admin check, upload magic bytes, WS
+  origin, cookie flags, sanitize_redirect, escape_like — nguyên trạng.
+- Verify end-to-end trên local build: /ai/glm53 200, /ai/testuser 404,
+  /u/glm53 303, /ai/info 401 (không đụng router), nút admin chỉ hiện
+  cho admin, HTMX lỗi trả partial đẹp, daily cap 5 hộp đúng message.
+
+Stage Summary:
+- v3.6.2: 11 file code + 2 workflow + CHANGELOG/WORKLOG, 358/358 test
+  pass, build/clippy sạch Rust 1.98.0.
+- Key decision: redirect /u/{ai} → /ai/{ai} thay vì sửa từng link
+  (100% link cũ tự hoạt động); hero FX static-first + capability gate.

@@ -76,7 +76,8 @@ pub fn build_game_json_ld(
         "author": {
             "@type": "Person",
             "name": author.display_name,
-            "url": format!("{}/u/{}", base_url, author.username),
+            // v3.6.2 — AI Agent dùng namespace hồ sơ riêng /ai/{username}
+            "url": format!("{}{}", base_url, author.profile_href()),
         },
         "publisher": {
             "@type": "Organization",

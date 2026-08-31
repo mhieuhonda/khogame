@@ -64,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 — pin SHA (supply-chain)
 
       - name: Verify tag version khớp Cargo.toml (chống image serve sai version)
         # Incident v3.4.2: tag v3.4.2 push nhưng Cargo.toml vẫn 3.4.1 →
@@ -89,7 +89,7 @@ jobs:
           components: clippy
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — pin SHA (supply-chain)
         with:
           workspaces: ". -> target"
           cache-on-failure: true
@@ -134,10 +134,10 @@ jobs:
       image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
       tags: ${{ steps.meta.outputs.tags }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 — pin SHA (supply-chain)
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4 — pin SHA (supply-chain)
         with:
           # BuildKit mặc định — cần cho --mount=type=cache trong Dockerfile.
           # v3.5.1 FIX (audit 5-c): pin version thay vì :latest — image daemon
@@ -146,7 +146,7 @@ jobs:
             image=moby/buildkit:v0.32.2
 
       - name: Đăng nhập GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4 — pin SHA (supply-chain)
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -154,7 +154,7 @@ jobs:
 
       - name: Chuẩn bị tag image
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6 — pin SHA (supply-chain)
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -172,7 +172,7 @@ jobs:
 
       - name: "Build & push (BuildKit cache: gha)"
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7 — pin SHA (supply-chain)
         with:
           context: .
           push: true
@@ -228,7 +228,7 @@ jobs:
       IMAGE_REF: ${{ needs.build-push.outputs.image_ref }}
       PUBLIC_URL: ${{ vars.PUBLIC_URL || 'https://louis.vangioitutien.com' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 — pin SHA (supply-chain)
         with:
           # Cần full tags để so sánh tag hiện tại với tag mới nhất (stale guard)
           fetch-depth: 0
@@ -373,6 +373,15 @@ jobs:
           # khi main + tag CD chạy đồng thời (2 image cùng version, digest
           # khác nhau → exact digest check false-fail). Check version là
           # signal đúng: nếu web trả expected version → deploy OK.
+          #
+          # v3.6.2 FIX (CD fail 2026-08-30 18:25 — "Verify deployed image"
+          # step đỏ): trước đây vòng chờ chỉ 12 × 15s = 3 PHÚT, trong khi
+          # (1) job deploy được serialize qua concurrency group coolify-deploy
+          # (main + tag chạy đua → run này phải đợi run kia PATCH + trigger
+          # xong), (2) Coolify pull image ~250MB + container start ~60-90s.
+          # 3 phút thường không đủ → verify fail OAN dù deploy OK. Giờ chờ
+          # 40 × 15s = 10 PHÚT — bằng đúng thời gian "Chờ stack healthy",
+          # và tính thời gian bắt đầu từ SAU khi trigger (không tính build).
           EXPECTED_VERSION=$(grep -E '^version = "[0-9]' Cargo.toml | head -1 | sed -E 's/.*"([0-9.]+)".*/\1/')
           EXPECTED_IMAGE="${{ env.IMAGE_REF }}"
           echo "Expected version: $EXPECTED_VERSION"
@@ -380,12 +389,12 @@ jobs:
           if [ -z "$EXPECTED_VERSION" ]; then
             echo "::error::Cannot read version from Cargo.toml"; exit 1
           fi
-          for i in $(seq 1 12); do
+          for i in $(seq 1 40); do
             sleep 15
             # 1) Check web /health (primary signal) — dùng PUBLIC_URL (repo
             # variable, fallback domain prod) thay vì hardcode.
             WEB=$(curl -sS --max-time 10 "${PUBLIC_URL}/health" 2>/dev/null || echo "FAIL")
-            echo "[$i/12] Web /health: $WEB"
+            echo "[$i/40] Web /health: $WEB"
             WEB_VERSION=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("version",""))' 2>/dev/null || echo "")
             WEB_STATUS=$(echo "$WEB" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status",""))' 2>/dev/null || echo "")
             if [ "$WEB_STATUS" = "ok" ] && [ "$WEB_VERSION" = "$EXPECTED_VERSION" ]; then
@@ -416,7 +425,7 @@ jobs:
               exit 0
             fi
           done
-          echo "::error::Web chưa serve version $EXPECTED_VERSION sau 3 phút. Last /health: $WEB"
+          echo "::error::Web chưa serve version $EXPECTED_VERSION sau 10 phút. Last /health: $WEB"
           exit 1
 
       - name: Deploy summary

@@ -6,6 +6,7 @@ use crate::middleware::{
 use crate::state::AppState;
 use axum::extract::DefaultBodyLimit;
 use axum::middleware;
+use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::Router;
 use std::sync::Arc;
@@ -108,6 +109,16 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         // Users & profile
         .route("/u/{username}", get(handlers::profile::show_profile))
+        // v3.6.2 — namespace hồ sơ AI Agent: /ai/{username} là đường dẫn
+        // chuẩn cho hồ sơ AI (user thường vào /ai/* → 404). Link cũ
+        // /u/{ai_username} tự redirect sang đây (xem show_profile).
+        // Static routes /ai/info + /ai/progress (nest "/ai") ưu tiên hơn
+        // route dynamic này — không xung đột.
+        .route("/ai/{username}", get(handlers::profile::show_ai_profile))
+        .route(
+            "/ai/{username}/repos",
+            get(handlers::repos::user_repos_fragment),
+        )
         .route(
             "/u/{username}/follow",
             post(handlers::interactions::toggle_follow),
@@ -704,6 +715,31 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .layer(SetRequestIdLayer::new(
             axum::http::HeaderName::from_static("x-request-id"),
             MakeRequestUuid,
+        ))
+        // v3.6.2 FIX (500 "chết im lặng"): panic=unwind chỉ giữ process
+        // sống — task panic vẫn PHÁ connection (hyper không trả response)
+        // → browser hiện ERR_EMPTY_RESPONSE / "không kết nối được server"
+        // thay vì trang lỗi. CatchPanicLayer bắt panic ở handler/middleware
+        // trong → trả 500 HTML thân thiện + log ERROR đầy đủ (kèm panic
+        // message) để truy vết. Đặt NGOÀI micro_cache/rate_limit (chặn cả
+        // panic từ chúng), TRONG compression/timeout.
+        .layer(tower_http::catch_panic::CatchPanicLayer::custom(
+            |_: Box<dyn std::any::Any + Send>| {
+                tracing::error!(
+                    "Handler panic bị bắt — trả 500 thân thiện thay vì connection reset"
+                );
+                (
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    axum::response::Html(
+                        "<!DOCTYPE html><html lang=\"vi\"><head><meta charset=\"utf-8\">\
+                         <title>Lỗi hệ thống - Louis Space</title></head>\
+                         <body style=\"font-family:system-ui,sans-serif;text-align:center;padding:3rem 1rem\">\
+                         <h1>Lỗi hệ thống</h1><p>Đã xảy ra lỗi bất ngờ. Vui lòng thử lại sau ít phút.</p>\
+                         <p><a href=\"/\" style=\"color:#6d5ae0\">Về trang chủ</a></p></body></html>",
+                    ),
+                )
+                    .into_response()
+            },
         ))
         .layer(
             // v3.6.0 PERF — predicate nén tùy chỉnh: giữ default (bỏ body

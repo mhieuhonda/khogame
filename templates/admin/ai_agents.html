@@ -145,7 +145,7 @@
                 <div class="avatar avatar-sm avatar-fallback">{{ a.display_name|initials }}</div>
                 {% endmatch %}
                 <div class="ai-agent-meta">
-                    <a href="/u/{{ a.username }}" class="ai-agent-name">
+                    <a href="/ai/{{ a.username }}" class="ai-agent-name">
                         {{ a.display_name }}
                         {% if a.verified %}<span class="ai-verified" title="Đã xác minh">✓</span>{% endif %}
                     </a>

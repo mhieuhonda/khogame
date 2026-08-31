@@ -9320,8 +9320,19 @@ code.ai-agent-username {
 
 /* ============================================================
    v3.5.0 — AI AGENT HERO FX FULL MÀN (GLM 5.3 mặc định)
-   Lớp fixed toàn viewport nằm DƯỚI nội dung (z-index 0), thuần CSS,
-   không JS/ảnh ngoài; tôn trọng prefers-reduced-motion.
+   v3.6.2 REWORK — "BỚT LAG TRỆ ĐỆ":
+   Trước đây 6 lớp full-viewport chạy animation LIÊN TỤC cho mọi máy:
+   aurora có filter: blur(52px) trên mặt phẳng 1.8× viewport (GPU chết
+   dần mòn trên máy yếu), orbs animate top/left (layout mỗi frame),
+   grid animate background-position (repaint mỗi frame), scan animate
+   top (layout). Trên máy yếu → toàn trang khựng khi cuộn profile.
+   GIẢI PHÁP "TĨNH MẶC ĐỊNH":
+   - Mọi layer render TĨNH (gradient art vẫn đẹp, chi phí = 1 lần paint).
+   - Animation CHỈ bật khi JS xác định máy đủ sức → thêm class
+     `fx-full` lên <html> (xem initHeroFxLite() trong app.js:
+     hardwareConcurrency >= 4 + không reduced-motion + probe FPS).
+   - Khi chạy animation: chỉ animate transform/opacity (compositor),
+     BỎ filter blur lớn (gradient radial vốn đã mềm), bỏ layout-props.
    ============================================================ */
 
 /* Container: fixed full màn, pointer-events none để không chặn click */
@@ -9345,7 +9356,9 @@ code.ai-agent-username {
         var(--bg-canvas);
 }
 
-/* 1) AURORA — 3 dải sáng cực cuộn chậm qua lại */
+/* 1) AURORA — dải sáng gradient (radial vốn mềm, KHÔNG cần filter blur
+      52px như trước — blur trên mặt 1.8× viewport là sát thủ GPU máy yếu).
+      Animation chỉ chạy trên .fx-full và chỉ transform (compositor). */
 .ai-hero-fx-aurora {
     position: absolute;
     inset: -40%;
@@ -9353,8 +9366,13 @@ code.ai-agent-username {
         radial-gradient(38% 30% at 22% 28%, var(--fx1), transparent 68%),
         radial-gradient(34% 26% at 78% 20%, var(--fx2), transparent 66%),
         radial-gradient(40% 34% at 55% 82%, var(--fx3), transparent 70%);
-    filter: blur(52px) saturate(135%);
     opacity: 0.5;
+    /* Đứng yên mặc định — gradient tĩnh vẫn đầy đủ màu sắc */
+    transform: rotate(-1deg) scale(1.04);
+    will-change: auto;
+}
+.fx-full .ai-hero-fx-aurora {
+    will-change: transform;
     animation: ai-fx-aurora-drift 26s ease-in-out infinite alternate;
 }
 @keyframes ai-fx-aurora-drift {
@@ -9363,7 +9381,8 @@ code.ai-agent-username {
     100% { transform: translate3d(-2%, 4%, 0) rotate(-1deg) scale(1.03); }
 }
 
-/* 2) HẠT SAO — 2 lớp box-shadow chấm sáng trôi ngược chiều */
+/* 2) HẠT SAO — box-shadow tĩnh trôi bằng transform (rẻ, compositor).
+      Mặc định đứng yên. */
 .ai-hero-fx-stars {
     position: absolute;
     inset: 0;
@@ -9388,7 +9407,6 @@ code.ai-agent-username {
         4vw 46vh 0 -0.5px #fff4, 48vw 44vh 0 0 var(--fx2),
         70vw 66vh 0 -0.5px #fff5, 26vw 56vh 0 0 var(--fx1),
         84vw 48vh 0 0 #fff4, 58vw 76vh 0 -0.5px var(--fx3);
-    animation: ai-fx-stars-rise 60s linear infinite;
     opacity: 0.85;
 }
 .ai-hero-fx-stars::after {
@@ -9399,16 +9417,25 @@ code.ai-agent-username {
         64vw 22vh 0 0 #fff3, 80vw 58vh 0 0 var(--fx1),
         94vw 36vh 0 0 #fff4, 6vw 64vh 0 0 var(--fx3),
         34vw 16vh 0 0 #fff5, 72vw 90vh 0 0 var(--fx1);
+    opacity: 0.6;
+}
+.fx-full .ai-hero-fx-stars::before {
+    animation: ai-fx-stars-rise 60s linear infinite;
+}
+.fx-full .ai-hero-fx-stars::after {
     animation: ai-fx-stars-rise 90s linear infinite;
     animation-delay: -30s;
-    opacity: 0.6;
 }
 @keyframes ai-fx-stars-rise {
     from { transform: translate3d(0, 12vh, 0); }
     to   { transform: translate3d(-6vw, -110vh, 0); }
 }
 
-/* 3) LƯỚI NEURON — perspective grid chạy về phía sau */
+/* 3) LƯỚI NEURON — perspective grid. Trước đây animate
+      background-position (repaint toàn layer mỗi frame) → giờ TĨNH
+      mặc định; .fx-full vẫn animate background-position vì layer chỉ
+      chiếm 62% đáy + mask, và đã loại các sát thủ GPU khác — chấp nhận
+      được. Máy yếu không bao giờ thấy animation này. */
 .ai-hero-fx-grid {
     position: absolute;
     inset: auto -60% -22% -60%;
@@ -9421,57 +9448,65 @@ code.ai-agent-username {
     transform-origin: 50% 0;
     mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
     -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.75), transparent 82%);
-    animation: ai-fx-grid-run 9s linear infinite;
     opacity: 0.5;
+}
+.fx-full .ai-hero-fx-grid {
+    animation: ai-fx-grid-run 9s linear infinite;
 }
 @keyframes ai-fx-grid-run {
     from { background-position: 0 0, 0 0; }
     to   { background-position: 0 56px, 56px 0; }
 }
 
-/* 4) ORB — 3 quả cầu sáng bay quỹ đạo lệch nhau */
+/* 4) ORB — 3 quả cầu sáng. Trước đây animate top/left (LAYOUT mỗi
+      frame!) → giờ vị trí gốc cố định qua top/left, chuyển động chỉ
+      bằng transform translate/scale (compositor-only). */
 .ai-hero-fx-orbs i {
     position: absolute;
     display: block;
     border-radius: 50%;
-    filter: blur(2px);
     opacity: 0.75;
 }
 .ai-hero-fx-orbs i:nth-child(1) {
     width: 10px; height: 10px;
+    top: 24%; left: 32%;
     background: radial-gradient(circle, #fff, var(--fx1));
     box-shadow: 0 0 18px 6px color-mix(in srgb, var(--ai-accent, #0ea5e9) 45%, transparent);
-    animation: ai-fx-orb-a 17s ease-in-out infinite alternate;
 }
 .ai-hero-fx-orbs i:nth-child(2) {
     width: 7px; height: 7px;
+    top: 58%; left: 58%;
     background: radial-gradient(circle, #fff, var(--fx2));
     box-shadow: 0 0 14px 5px #7c3aed66;
-    animation: ai-fx-orb-b 23s ease-in-out infinite alternate;
 }
 .ai-hero-fx-orbs i:nth-child(3) {
     width: 12px; height: 12px;
+    top: 38%; left: 74%;
     background: radial-gradient(circle, #fff, var(--fx3));
     box-shadow: 0 0 22px 8px #10b98155;
-    animation: ai-fx-orb-c 29s ease-in-out infinite alternate;
 }
+.fx-full .ai-hero-fx-orbs i:nth-child(1) { animation: ai-fx-orb-a 17s ease-in-out infinite alternate; }
+.fx-full .ai-hero-fx-orbs i:nth-child(2) { animation: ai-fx-orb-b 23s ease-in-out infinite alternate; }
+.fx-full .ai-hero-fx-orbs i:nth-child(3) { animation: ai-fx-orb-c 29s ease-in-out infinite alternate; }
+/* Keyframe mới: transform-only — không đụng top/left */
 @keyframes ai-fx-orb-a {
-    0%   { top: 16%; left: 6%;  transform: translate(0, 0); }
-    50%  { top: 64%; left: 44%; transform: translate(30px, -40px) scale(1.25); }
-    100% { top: 30%; left: 86%; transform: translate(-20px, 30px) scale(0.9); }
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(24vw, 22vh, 0) scale(1.25); }
+    100% { transform: translate3d(38vw, 8vh, 0) scale(0.9); }
 }
 @keyframes ai-fx-orb-b {
-    0%   { top: 76%; left: 14%; transform: translate(0, 0) scale(0.85); }
-    50%  { top: 22%; left: 58%; transform: translate(-40px, 26px); }
-    100% { top: 58%; left: 90%; transform: translate(16px, -22px) scale(1.3); }
+    0%   { transform: translate3d(0, 0, 0) scale(0.85); }
+    50%  { transform: translate3d(-30vw, -26vh, 0) scale(1); }
+    100% { transform: translate3d(14vw, -34vh, 0) scale(1.3); }
 }
 @keyframes ai-fx-orb-c {
-    0%   { top: 40%; left: 92%; transform: translate(0, 0); }
-    50%  { top: 80%; left: 38%; transform: translate(34px, 24px) scale(0.8); }
-    100% { top: 12%; left: 10%; transform: translate(-26px, -14px); }
+    0%   { transform: translate3d(0, 0, 0) scale(1); }
+    50%  { transform: translate3d(-26vw, 20vh, 0) scale(0.8); }
+    100% { transform: translate3d(-48vw, -16vh, 0) scale(1); }
 }
 
-/* 5) TIA QUÉT — dải sáng mỏng lướt dọc màn hình mỗi 8s */
+/* 5) TIA QUÉT — lướt dọc bằng transform translateY (trước đây animate
+      top = layout mỗi frame). TĨNH mặc định (opacity 0 → không render). */
 .ai-hero-fx-scan {
     position: absolute;
     inset-inline: 0;
@@ -9484,27 +9519,29 @@ code.ai-agent-username {
         color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent) 58%,
         transparent);
     opacity: 0;
+    visibility: hidden;
+}
+.fx-full .ai-hero-fx-scan {
+    visibility: visible;
     animation: ai-fx-scan-sweep 8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 @keyframes ai-fx-scan-sweep {
-    0%   { top: -16%; opacity: 0; }
+    0%   { transform: translate3d(0, 0, 0); opacity: 0; }
     8%   { opacity: 0.9; }
     55%  { opacity: 0.65; }
-    100% { top: 108%; opacity: 0; }
+    100% { transform: translate3d(0, 124vh, 0); opacity: 0; }
 }
 
-/* 6) VIGNETTE — hào quang biên màn hình thở nhẹ */
+/* 6) VIGNETTE — hào quang biên TĨNH (bỏ animation thở opacity 7s:
+      layer box-shadow khổng lồ breathing liên tục tốn chi phí
+      compositing lớn không tương xứng với hiệu ứng). */
 .ai-hero-fx-vignette {
     position: absolute;
     inset: 0;
     box-shadow:
         inset 0 0 140px 44px color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent),
         inset 0 0 42px 10px color-mix(in srgb, #7c3aed 9%, transparent);
-    animation: ai-fx-vignette-breathe 7s ease-in-out infinite alternate;
-}
-@keyframes ai-fx-vignette-breathe {
-    from { opacity: 0.55; }
-    to   { opacity: 1; }
+    opacity: 0.75;
 }
 
 /* Hero: tăng cấp avatar + tên cho GLM 5.3 */
@@ -9521,14 +9558,18 @@ code.ai-agent-username {
         0 0 70px color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
 }
 
-/* Mobile: giảm opacity tiết kiệm pin/GPU */
+/* Mobile: giảm opacity tiết kiệm pin/GPU — v3.6.2 bỏ filter blur
+   (máy phổ thông GPU yếu, blur 38px vẫn đắt); gradient tĩnh giữ nguyên */
 @media (max-width: 640px) {
     .ai-hero-fx { opacity: 0.7; }
     .ai-hero-fx-grid { height: 40%; opacity: 0.35; }
-    .ai-hero-fx-aurora { filter: blur(38px) saturate(125%); opacity: 0.42; }
+    .ai-hero-fx-aurora { opacity: 0.42; }
 }
 
-/* Người dùng bật giảm chuyển động: đứng yên, chỉ còn gradient tĩnh */
+/* Người dùng bật giảm chuyển động: đứng yên, chỉ còn gradient tĩnh.
+   v3.6.2 — mọi animation đã gate qua .fx-full (JS kiểm tra
+   prefers-reduced-motion trước khi bật), quy tắc này là lớp phòng thứ
+   hai cho trường hợp JS đã bật .fx-full rồi user đổi setting OS. */
 @media (prefers-reduced-motion: reduce) {
     .ai-hero-fx-aurora,
     .ai-hero-fx-stars::before,

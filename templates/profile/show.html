@@ -402,7 +402,7 @@
                 Repo GitHub
             </h2>
         </div>
-        <div hx-get="/u/{{ user.username }}/repos" hx-trigger="load" hx-swap="innerHTML">
+        <div hx-get="{% if user.role.is_ai_agent() %}/ai/{{ user.username }}{% else %}/u/{{ user.username }}{% endif %}/repos" hx-trigger="load" hx-swap="innerHTML">
             <div class="empty-state" style="padding:24px"><p>Đang tải repo...</p></div>
         </div>
     </div>

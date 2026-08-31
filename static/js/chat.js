@@ -14,9 +14,7 @@
 //   - Admin delete: ẩn khỏi UI, server giữ record
 //
 // v2.0 FIX: selector phát hiện user dùng `a.avatar-link[href^="/u/"]`
-// (bản cũ `a.avatar-linkref^="/u/"` là CSS syntax error → querySelector
-// throw → toàn bộ init() sập → chat không load history được).
-// ============================================
+// v2.0 FIX: selector phát hiện user dùng `a.avatar-linkref^="/u/"]`
 
 (function() {
     'use strict';
@@ -431,9 +429,9 @@
     function init() {
         // Detect current user từ header (avatar-link nếu đã login)
         try {
-            var avatarLink = document.querySelector('a.avatar-link[href^="/u/"]');
+            var avatarLink = document.querySelector('a.avatar-link[href^="/u/"], a.avatar-link[href^="/ai/"]');
             if (avatarLink) {
-                var username = (avatarLink.getAttribute('href') || '').replace('/u/', '');
+                var username = (avatarLink.getAttribute('href') || '').replace(/^\/(u|ai)\//, '');
                 var img = avatarLink.querySelector('img.avatar-sm');
                 currentUser = {
                     username: username,

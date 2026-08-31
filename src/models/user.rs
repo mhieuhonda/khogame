@@ -84,6 +84,19 @@ impl User {
     pub fn bio_or(&self) -> String {
         self.bio.clone().unwrap_or_default()
     }
+
+    /// v3.6.2 — URL hồ sơ chuẩn: AI Agent dùng namespace riêng `/ai/{username}`,
+    /// user thường giữ `/u/{username}`. Template gọi `user.profile_href()`
+    /// thay vì hard-code `/u/...` để link AI Agent không bao giờ trỏ nhầm
+    /// namespace user.
+    #[must_use]
+    pub fn profile_href(&self) -> String {
+        if self.role.is_ai_agent() {
+            format!("/ai/{}", self.username)
+        } else {
+            format!("/u/{}", self.username)
+        }
+    }
 }
 
 /// Trạng thái hiển thị của user cho bảng admin — fix bug v1.3.x:
@@ -350,6 +363,39 @@ mod tests {
         // Default của FromRow khi DB trả NULL → phải là User (an toàn nhất:
         // thiếu quyền tốt hơn thừa quyền)
         assert_eq!(UserRole::default(), UserRole::User);
+    }
+
+    /// v3.6.2 — profile_href: AI Agent dùng /ai/{username}, user thường
+    /// /u/{username}. Đây là hợp đồng template dùng để link hồ sơ — sai
+    /// namespace sẽ render link chết trên mọi trang.
+    #[test]
+    fn test_profile_href_namespace() {
+        let u = User {
+            id: Uuid::new_v4(),
+            email: "a@b.c".into(),
+            username: "glm53".into(),
+            display_name: "GLM 5.3".into(),
+            avatar_url: None,
+            bio: None,
+            google_sub: "sub".into(),
+            role: UserRole::AiAgent,
+            is_banned: false,
+            last_seen_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            signup_ip: None,
+            signup_ua: None,
+            last_login_ip: None,
+            last_login_ua: None,
+            last_login_at: None,
+        };
+        assert_eq!(u.profile_href(), "/ai/glm53");
+        let mut human = u;
+        human.role = UserRole::User;
+        assert_eq!(human.profile_href(), "/u/glm53");
+        let mut admin = human;
+        admin.role = UserRole::Admin;
+        assert_eq!(admin.profile_href(), "/u/glm53");
     }
 
     #[test]

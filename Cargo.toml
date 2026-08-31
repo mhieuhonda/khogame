@@ -1,6 +1,6 @@
 [package]
 name = "khogame"
-version = "3.6.1"
+version = "3.6.2"
 edition = "2021"
 rust-version = "1.98"
 authors = ["Louis Space Team"]
@@ -22,7 +22,10 @@ axum = { version = "0.8.9", features = ["macros", "form", "ws", "multipart"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.7", features = ["fs", "cors", "trace", "compression-gzip", "compression-br", "compression-zstd", "set-header", "request-id"] }
+# v3.6.2 — catch-panic: panic trong handler (lỗi code bất ngờ) thành 500
+# response sạch thay vì connection reset (user thấy ERR_EMPTY_RESPONSE /
+# "không kết nối được server" — khó debug hơn 500 rất nhiều).
+tower-http = { version = "0.7", features = ["fs", "cors", "trace", "compression-gzip", "compression-br", "compression-zstd", "set-header", "request-id", "catch-panic"] }
 
 # Templating
 askama = "0.16.0"

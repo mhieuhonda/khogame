@@ -246,7 +246,7 @@ pub async fn maintenance_guard(
     next: Next,
 ) -> Response {
     let path = request.uri().path().to_string();
-    let bypass_prefixes: [&str; 10] = [
+    let bypass_prefixes: [&str; 11] = [
         "/admin",
         "/login",
         "/auth",
@@ -256,7 +256,12 @@ pub async fn maintenance_guard(
         "/maintenance",
         "/api/announcement",
         "/api/preferences",
-        "/ai/",
+        // v3.6.2 — thu hẹp bypass "/ai/" (trước đây phủ cả /ai/{username}
+        // hồ sơ công khai → khi bảo trì khách vẫn xem được profile AI).
+        // Giờ chỉ bypass ĐÚNG endpoint nội bộ AI Agent cần để báo tiến
+        // trình + đăng nhập API (AI không phải staff, phải qua khi bảo trì).
+        "/ai/info",
+        "/ai/progress",
     ];
     if bypass_prefixes
         .iter()
@@ -1695,9 +1700,70 @@ pub async fn error_page_mw(
 
     let response = next.run(request).await;
 
+    // v3.6.2 FIX ("CỰC NHIỀU lỗi 400/500" — text thô trong HTMX swap):
+    // request HTMX bị rejection của extractor (Path/Query/Form parse fail)
+    // trả 400/422 body text/plain thô kiểu "Invalid URL: Cannot parse
+    // `id`... — "Failed to deserialize form body: missing field...".
+    // Trước đây branch này return NGAY với is_htmx → text thô bị HTMX
+    // swap thẳng vào DOM (user thấy lỗi máy móc) hoặc toast generic
+    // "Lỗi kết nối (HTTP 400)". Giờ: render lại body bằng error partial
+    // (giống AppError::into_response) với message thân thiện tiếng Việt
+    // — HTMX swap được fragment đẹp, và app.js đọc được .error-message
+    // để toast đúng nguyên nhân.
+    if is_htmx {
+        let status = response.status().as_u16();
+        if (400..=599).contains(&status) {
+            let ct_is_plain = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|ct| ct.starts_with("text/plain"));
+            let ct_missing = response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .is_none();
+            // Chỉ đè khi body là text/plain (lỗi thô từ rejection/timeout)
+            // — không đè HTML partial đã đẹp của AppError hay JSON API.
+            if ct_is_plain || ct_missing {
+                let info = synthesize_plain_error_info(&request_path, &response).unwrap_or(
+                    crate::error::ErrorPageInfo {
+                        status,
+                        message: "Có lỗi xảy ra khi xử lý yêu cầu.".into(),
+                        request_id: None,
+                    },
+                );
+                #[derive(askama::Template)]
+                #[template(path = "partials/error.html")]
+                struct HxErrorPartial {
+                    status: u16,
+                    message: String,
+                    request_id: Option<String>,
+                }
+                let html = HxErrorPartial {
+                    status: info.status,
+                    message: info.message.clone(),
+                    request_id: info.request_id,
+                }
+                .render()
+                .unwrap_or_else(|_| "Có lỗi xảy ra.".into());
+                let (mut parts, _) = response.into_parts();
+                // Content-Type đã là text/plain → ghi đè thành text/html
+                // để HTMX swap đúng fragment.
+                parts.headers.remove(axum::http::header::CONTENT_TYPE);
+                parts.headers.insert(
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+                );
+                parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+                return Response::from_parts(parts, axum::body::Body::from(html));
+            }
+        }
+        return response;
+    }
+
     // Chỉ can thiệp khi request đến từ browser navigation (không phải
     // HTMX, chấp nhận HTML).
-    if is_htmx || !accepts_html {
+    if !accepts_html {
         return response;
     }
 

@@ -698,7 +698,8 @@ pub async fn update_profile(
         form.avatar_url.as_deref(),
     )
     .await?;
-    Ok(Redirect::to(&format!("/u/{}", user.username)))
+    // v3.6.2 — AI Agent có namespace hồ sơ riêng /ai/{username}
+    Ok(Redirect::to(&format!("/ai/{}", user.username)))
 }
 
 /// # Errors
