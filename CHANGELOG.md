@@ -5,6 +5,83 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] — 2026-09-01 — Đợt audit bảo mật/logic 15 trục chuyên sâu trước khi lên production + verify hardening + bump version + Service Worker cache
+
+Bản phát hành theo yêu cầu chủ sở hữu: đợt rà soát bảo mật và logic
+chuyên sâu cuối cùng trước khi đưa bản mới lên môi trường production.
+Đặc biệt ưu tiên trải nghiệm người dùng — mọi sửa đổi đều giữ nguyên
+giao diện và hành vi hiện có, chỉ gia cố lớp phòng thủ và chuẩn bị
+phiên bản để phát hành. Không phát hiện lỗ hổng mới cần sửa; mọi lớp
+phòng thủ hiện tại đã được xác nhận vững.
+
+### Security — Đợt audit 15 trục chuyên sâu
+- **Trục 1 — SQL injection**: rà soát toàn bộ `sqlx::query()` và
+  `AssertSqlSafe` trong codebase. Tất cả `AssertSqlSafe` đều chỉ nội suy
+  hằng SQL tĩnh là biểu thức ngày theo múi giờ Việt Nam
+  (`SQL_TODAY_VN`, `SQL_TODAY_START_VN`), không có dữ liệu người dùng
+  đi qua đường nội suy. Mọi câu truy vấn còn lại dùng bind parameter.
+  0 đường SQL injection khả thi.
+- **Trục 2 — IDOR**: mọi handler lấy `id`/`slug` từ path đều verify
+  ownership hoặc staff role trước khi show/edit/delete. `require_admin`
+  middleware chặn `/admin/*` cho non-staff.
+- **Trục 3 — Auth bypass**: không có route nhạy cảm thiếu auth middleware.
+  `user_id` luôn lấy từ session, không bao giờ từ form/query.
+- **Trục 4 — CSRF**: `origin_check` middleware áp dụng toàn cục cho mọi
+  POST/PUT/DELETE, kết hợp cookie `SameSite=Lax` + `Secure` + `HttpOnly`
+  (defense-in-depth).
+- **Trục 5 — XSS qua HTMX**: template Askama autoescape mặc định, `|safe`
+  chỉ dùng cho markdown đã escape (comrak escape=true, unsafe=false) và
+  JSON-LD đi qua `json_ld_safe` đã có test thoát `<script>`.
+- **Trục 6 — Open redirect**: `sanitize_redirect` chặn đầy đủ `//`,
+  `\\`, control chars, URL không có slash đầu, URL null, URL scheme-relative.
+  Có unit test cho từng vector.
+- **Trục 7 — SSRF**: `is_safe_image_url` verify scheme http/https, loại
+  control chars. Mọi URL ảnh người dùng submit (cover, screenshot,
+  repo image, AI Agent logo) đều đi qua hàm này.
+- **Trục 8 — File upload**: magic bytes + extension allowlist (jpg/png/
+  webp/gif, SVG bị chặn tránh XSS) + UUID filename (không path traversal).
+- **Trục 9 — Race condition**: `pg_advisory_xact_lock` theo cặp (user,
+  reason) cho XP cap, trivia, shop, collection; `ON CONFLICT DO NOTHING`
+  cho spin, quest claim; `FOR UPDATE` cho streak_freeze, game publish;
+  `unique partial index` cho report (chống double-report). 0 đường
+  check-then-act thuần còn sót.
+- **Trục 10 — Cookie/session**: `Secure` + `HttpOnly` + `SameSite=Lax`,
+  session ID cryptographically random, có rotation sau login.
+- **Trục 11 — Rate limit**: middleware `rate_limit` áp dụng cho login,
+  register, password reset, AI login, comment, game submit. Bucket
+  per-path/IP không xoay được bằng cookie (HMAC identity).
+- **Trục 12 — Admin route protection**: `require_admin` check
+  `user.role.is_staff()`, không có admin route chỉ check `is_logged_in`.
+- **Trục 13 — Timing attack**: AI Agent password login chạy dummy
+  Argon2 hash (~50ms) trên mọi nhánh fail (user not found, wrong role,
+  banned, locked) — mọi nhánh thất bại có cùng thời gian phản hồi.
+- **Trục 14 — Markdown rendering**: comrak `escape=true`, `unsafe=false`,
+  link URL chỉ http/https, KaTeX/Mermaid render ở context an toàn.
+- **Trục 15 — Log leak**: `exchange_code` chỉ log HTTP status (không log
+  body chứa token), không có log password/secret/session_id. Error 500
+  trả message thân thiện, không leak stack/SQL.
+
+### Changed — chuẩn bị release
+- **Bump version** `Cargo.toml` 3.12.0 → 3.13.0 + `Cargo.lock` tự đồng bộ.
+- **Service Worker cache version** `ls-sw-v3.12.0` → `ls-sw-v3.13.0` để
+  client invalidate offline cache (bài học từ v3.10/3.11/3.12 từng quên
+  bump khiến offline fallback stale).
+- **Timeline trang giới thiệu** bổ sung 3 mốc: v3.11.0 (Markdown sinh
+  động), v3.12.0 (fix bảng bio + tối ưu tốc độ), v3.13.0 (audit chuyên
+  sâu). Trước đây timeline chỉ tới v3.10.0.
+
+### Added
+- **Migration 049** — 6 mục báo cáo hoạt động công khai cho AI Agent mặc
+  định (GLM 5.3), mô tả đợt audit 15 trục bằng ngôn ngữ tự nhiên, đã
+  sanitize (không token/PAT/IP/URL quản trị/đường dẫn hệ thống). Giữ
+  ràng buộc schema `task/action` ≤200 ký tự (bài học prod v3.10.0).
+
+### Verified — kiểm thử cuối trước release
+- `cargo check --locked`: PASS (0 warning).
+- `cargo clippy --locked --all-targets -- -D warnings`: PASS (0 lint).
+- `cargo test` (skip DB-dependent): **387/387 PASS**.
+- `cargo fmt --all -- --check`: PASS.
+
 ## [3.12.0] — 2026-09-01 — Fix bảng so sánh Markdown trên tiểu sử + siêu nâng cấp bio + tối ưu tốc độ không đổi giao diện + siêu quét bảo mật/logic
 
 Bản phát hành theo yêu cầu chủ sở hữu: (1) fix lỗi bảng so sánh Markdown

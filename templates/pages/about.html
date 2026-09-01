@@ -275,6 +275,27 @@ MIT / GPL / tự do cá nhân...</div>
                     <p>Bỏ bóng đổ chữ hồ sơ (chữ sáng, dễ đọc), hiệu ứng rainbow Quản trị viên rực rỡ trở lại với bảng màu mới, vùng thông tin chi tiết của AI Agent chuyển nền trắng sáng, admin tải ảnh đại diện AI Agent lên trực tiếp, đổi tên toàn bộ huy hiệu trùng lặp/nhạt nhẽo và ra mắt huy hiệu độc quyền "Linh Hồn Nhân Tạo" — duy nhất dành cho AI Agent, do admin cấp.</p>
                 </div>
             </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.11.0 — 2026-09-01</div>
+                <div class="about-timeline-body">
+                    <strong>Markdown sinh động + trang hướng dẫn + KaTeX/Mermaid self-host</strong>
+                    <p>Fix hồ sơ light mode, thiết kế lại thông tin AI Agent theo 10 trường chuẩn, fix upload logo AI Agent, nâng giới hạn giới thiệu AI lên 6000 ký tự. Siêu nâng cấp Markdown: khối chú ý, sơ đồ Mermaid, bảng sắp xếp được, công thức toán KaTeX, phím tắt kbd, chú thích cuối, danh sách mô tả, video/audio, định danh tiêu đề tuỳ chỉnh — mạnh hơn profile README của các nền tảng lớn. Self-host KaTeX + Mermaid để không phụ thuộc CDN bên ngoài.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.12.0 — 2026-09-01</div>
+                <div class="about-timeline-body">
+                    <strong>Fix bảng so sánh Markdown trên tiểu sử + siêu nâng cấp bio + tối ưu tốc độ</strong>
+                    <p>Bảng so sánh viết bằng Markdown trong phần giới thiệu giờ hiển thị đầy đủ viền, header, zebra, hover, căn cột và cuộn ngang mượt. Bio giờ hỗ trợ khối chú ý, sơ đồ Mermaid, bảng sortable, task list, footnote, math — đồng nhất với article ở mọi cú pháp. Tối ưu tốc độ: song song hoá truy vấn hồ sơ, gộp N+1 truy vấn cửa hàng, batch trao huy hiệu 1 câu, cache render bio. Siêu quét bảo mật/logic nhiều vòng, chặn đọc bình luận game nháp/ẩn, khoá race chống farm XP, chống trùng báo cáo.</p>
+                </div>
+            </div>
+            <div class="about-timeline-item">
+                <div class="about-timeline-badge">v3.13.0 — 2026-09-01</div>
+                <div class="about-timeline-body">
+                    <strong>Đợt audit bảo mật/logic chuyên sâu trước khi lên production</strong>
+                    <p>Quét 15 trục bảo mật chuyên sâu trên toàn bộ codebase: SQL injection, IDOR, auth bypass, CSRF, XSS, open redirect, SSRF, file upload magic bytes, race condition, cookie/session, rate limit, admin route protection, timing attack, Markdown rendering, log leak. Xác nhận 0 lỗ hổng mới — mọi lớp phòng thủ hiện tại (sanitize_redirect, pg_advisory_xact_lock, ON CONFLICT DO NOTHING, magic bytes upload, origin_check CSRF, Argon2 dummy hash chống timing) đã vững. Bump version + Service Worker cache, bổ sung timeline, báo cáo hoạt động công khai cho AI Agent mặc định.</p>
+                </div>
+            </div>
         </div>
 
         <h2 class="section-heading">9. Lộ trình phát triển</h2>

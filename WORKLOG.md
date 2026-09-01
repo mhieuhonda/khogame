@@ -1,6 +1,126 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v3.13.0-pre-prod-audit
+Agent: Super Z (main)
+Task: Đợt audit bảo mật/logic chuyên sâu 15 trục trước khi đưa bản phát
+hành lên môi trường production (Sub VPS — chuẩn bị lên PROD). Yêu cầu
+chủ sở hữu: quét toàn bộ codebase, fix tuyệt đối tất cả lỗi, đặc biệt
+lỗi bảo mật và logic. Ưu tiên xuyên suốt: trải nghiệm người dùng. Sau
+khi hoàn thành, báo cáo công việc vào "Hoạt động gần đây" trên hồ sơ
+của AI Agent mặc định (GLM 5.3) — công khai cho mọi người, phải che
+giấu thông tin nhạy cảm. Rust 1.98 bắt buộc. Tạo bản phát hành tương
+ứng. Mọi commit cấu hình username chủ sở hữu là mhieuhonda.
+
+Work Log:
+- Khởi tạo môi trường: cài Rust 1.98.0 (rustup, profile minimal, rustfmt
+  + clippy component). Git config user.name=mhieuhonda, user.email=
+  mhieuhonda@users.noreply.github.com, credential.helper=store. File
+  ~/.git-credentials có quyền 600. PAT được lưu qua script setup rồi
+  script tự xóa (không echo ra bash output).
+- Clone repo khogame.git về /home/z/my-project/khogame (chỉ main branch,
+  chưa tạo branch feature — release trực tiếp lên main theo pattern
+  repo, có CD qua Coolify).
+- Vòng quét 1: `cargo check --locked` → 0 error. `cargo clippy --locked
+  --all-targets -- -D warnings` → 0 lint. `cargo test` (skip DB) →
+  **387/387 PASS**. `cargo fmt --all -- --check` → clean. Project
+  v3.12.0 đã rất mature sau nhiều đợt super-fix.
+- Vòng quét 2-15: audit sâu 15 trục bảo mật/logic bằng tay (grep pattern
+  + read targeted code). Tổng kết từng trục:
+  * **SQL injection** (trục 1): 4 chỗ dùng `AssertSqlSafe` đều chỉ nội
+    suy hằng `SQL_TODAY_VN`/`SQL_TODAY_START_VN` (compile-time constants
+    chứa expression `(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` —
+    không có dữ liệu user). `lock_sql` cho advisory lock là string tĩnh.
+    Mọi `sqlx::query!`/`query_as!` macro + `query().bind()` đều
+    parameterized. 0 đường injection.
+  * **IDOR + Auth bypass** (trục 2-3): `require_admin` middleware
+    check `user.role.is_staff()`. `user_id` luôn lấy từ session, không
+    bao giờ từ form/query param. Mọi handler lấy `id`/`slug` từ path
+    đều có ownership check (owner OR staff).
+  * **CSRF** (trục 4): `origin_check` middleware áp dụng cho MỌI
+    POST/PUT/DELETE toàn cục qua `middleware::from_fn_with_state`.
+    Cookie `SameSite=Lax` (lax vì OAuth redirect cần Lax, Strict break
+    OAuth) + `Secure` (conditional trên base_url) + `HttpOnly`.
+    Defense-in-depth.
+  * **XSS qua HTMX** (trục 5): `|safe` filter chỉ xuất hiện 3 chỗ trong
+    template — markdown_guide (rendered qua comrak escape=true),
+    game/show JSON-LD (qua `json_ld_safe` có test thoát `<script>`),
+    index JSON-LD (cùng helper). Không có `|safe` trên raw user input.
+  * **Open redirect** (trục 6): `sanitize_redirect` chặn `//evil`,
+    `https://evil`, `\\evil`, `/foo\0`, `/foo\r\nSet-Cookie:`, `foo`
+    (no slash), có unit test `test_sanitize_redirect` cho từng vector.
+  * **SSRF** (trục 7): `is_safe_image_url` verify scheme http/https +
+    loại control chars + chấp nhận internal `/uploads/` URL. Áp cho
+    cover, screenshot, repo_image, AI Agent logo.
+  * **File upload** (trục 8): `storage::save_upload` 3 lớp — extension
+    allowlist (jpg/png/webp/gif, SVG CHẶN tránh XSS), magic bytes
+    matches_magic, UUID filename (no path traversal via filename).
+    Quota reserve/release atomic qua SQL conditional insert.
+  * **Race condition** (trục 9): 4 cơ chế đan xen — `pg_advisory_xact_lock
+    (hashtext(...))` cho xp_cap, trivia, shop, col_quota;
+    `ON CONFLICT DO NOTHING` cho spin, quest claim;
+    `FOR UPDATE` cho streak_freeze, game publish;
+    `unique partial index` cho report. 0 check-then-act thuần.
+  * **Cookie/session** (trục 10): `Secure`+`HttpOnly`+`SameSite=Lax`
+    đồng nhất qua 6 cookie builder. Session ID random. `should_secure_cookie
+    (base_url)` conditional đúng cho dev (http) vs prod (https).
+  * **Rate limit** (trục 11): `rate_limit` middleware với bucket per
+    path+IP, HMAC identity chống xoay cookie tạo bucket mới.
+  * **Admin route** (trục 12): `require_admin` check `is_staff()`,
+    route /admin/* không có route chỉ check `is_logged_in`.
+  * **Timing attack** (trục 13): `verify_password_login` chạy dummy
+    `hash_password(password)` trên 3 nhánh fail (user not found, wrong
+    role/banned, locked) → mọi nhánh đều tốn ~50ms Argon2 work.
+  * **Markdown** (trục 14): comrak `escape=true`, `unsafe=false`. Link
+    URL verify http/https. KaTeX/Mermaid lazy-load với securityLevel
+    strict. KBD/abbr substitution không phá HTML structure (UTF-8
+    boundary-safe `starts_with_ci`).
+  * **Log leak** (trục 15): `exchange_code` chỉ log `status={status}`,
+    comment rõ "Tránh log/echo raw response body — có thể chứa token
+    tạm". 0 log password/secret/session_id. Error 500 trả "Lỗi hệ
+    thống, vui lòng thử lại sau ít phút" + request_id (không leak
+    stack/SQL).
+- Kết luận audit: **0 critical issue, 0 high issue, 0 medium issue,
+  0 low issue cần fix**. Mọi lớp phòng thủ hiện tại đã vững. Đợt này
+  chỉ là verification + bump version + chuẩn bị release.
+- Bump version 3.12.0 → 3.13.0 ở:
+  * `Cargo.toml:3` (version field)
+  * `static/js/sw.js:26` (CACHE_VERSION 'ls-sw-v3.12.0' → 'ls-sw-v3.13.0')
+  * `Cargo.lock` tự đồng bộ khi `cargo check` chạy
+- Bổ sung 3 mốc timeline cho trang /about (v3.11.0, v3.12.0, v3.13.0)
+  — trước đây timeline chỉ tới v3.10.0, thiếu 2 mốc gần đây.
+- Tạo `migrations/049_glm53_activity_report_v3130.sql`: 6 mục báo
+  cáo hoạt động công khai cho AI Agent mặc định GLM 5.3, mô tả đợt
+  audit 15 trục bằng ngôn ngữ tự nhiên. Tất cả task/action ≤200 ký tự
+  (verify bằng script Python — 6/6 OK). Metadata `{"session":
+  "v3.13.0", "public": true}`. `ip_address = NULL` (không để lộ IP
+  nội bộ). Script validator cũng verify KHÔNG có PAT/ghp_/IPv4
+  private/JWT/coolify/Sentinel/API key prefix trong migration.
+- CHANGELOG.md: thêm section `[3.13.0]` đầy đủ ở đầu file (15 trục +
+  Changed + Added + Verified).
+- WORKLOG.md: thêm entry này ở đầu file.
+- Verify final: `cargo check --locked` + `cargo clippy -D warnings`
+  + `cargo test` (skip DB) + `cargo fmt --check` — tất cả PASS như
+  trước, không regression.
+- Sanitize check worklog: KHÔNG echo PAT/coolify token/Sentinel/VPS IP/
+  API key trong bất kỳ log nào. Tất cả credential chỉ lưu trong
+  `~/.git-credentials` (chmod 600) và `/home/z/my-project/.gh_token`
+  (chmod 600). Sẽ khuyến nghị chủ sở hữu rotate sau khi task xong.
+
+Stage Summary:
+- v3.13.0 sẵn sàng tag: đợt audit 15 trục hoàn tất, 0 lỗ hổng mới cần
+  sửa, mọi lớp phòng thủ hiện tại đã vững. Bump version + SW cache +
+  timeline + migration 049 (sanitized activity report cho GLM 5.3) +
+  CHANGELOG + WORKLOG.
+- Chiến lược release: push main → CD Coolify tự deploy → verify
+  /health 200 → mới tag v3.13.0 → GitHub Release. Tránh race CD 2
+  lần chạy như bài học v2.9.1.
+- ⚠️ Khuyến nghị mạnh: sau khi task hoàn thành, rotate GitHub PAT +
+  Coolify Sentinel token + Coolify API token vì đã được chia sẻ trong
+  chat. VPS IP không cần rotate nhưng nên thêm vào firewall allowlist
+  chỉ cho IP tin cậy.
+
+---
 Task ID: v3.11.0-ux-ai-md-superfix
 Agent: Super Z (main)
 Task: Fix lỗi UI hồ sơ (tên trắng mất ở light mode), thiết kế lại thông tin
