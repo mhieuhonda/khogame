@@ -34,6 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY Cargo.toml Cargo.lock ./
 COPY templates/ templates/
 COPY migrations/ migrations/
+# v3.11.0 — markdown guide là compile-time asset (include_str!) — copy
+# cùng lúc templates/migrations cho layer cache nhất quán (build thật
+# có được qua `COPY . .` nhờ whitelist .dockerignore).
+COPY docs/markdown_guide.md docs/
 # Dummy src/ để cargo build dependencies mà không cần source thật.
 # `echo 'fn main() {}' > src/main.rs` hợp lệ (empty crate).
 # lib.rs chỉ có comment — Rust chấp nhận file chỉ chứa comment (empty crate).

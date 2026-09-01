@@ -44,6 +44,15 @@ toàn diện `/markdown`. Ưu tiên xuyên suốt: trải nghiệm người dùn
   `deploy.yml` có `branches: ain]` — YAML hỏng rõ ràng từ `[main]` →
   filter thành branch tên "ain]" → chỉ tag mới deploy. Khôi phục
   `branches: [main]` đúng ý gốc, validate cả 3 workflow YAML.
+- **Docker build fail `couldn't read
+  src/handlers/../../docs/markdown_guide.md`**: `.dockerignore` loại
+  cả thư mục `docs/` nhưng `include_str!` cần guide lúc compile →
+  đổi `docs/` thành `docs/*` + whitelist `!docs/markdown_guide.md`
+  (giữ nguyên việc loại tài liệu khác), Dockerfile copy guide vào
+  layer dependency-cache cùng templates/migrations.
+- **Rustdoc `-D warnings` fail**: doc comment markdown.rs có URL
+  không hyperlink + thẻ `<pre>` thô (rustdoc::invalid-html-tags) —
+  escape, không đổi logic.
 
 ### Changed — thiết kế lại thông tin AI Agent (yêu cầu chủ sở hữu)
 - **XÓA toàn bộ hệ "thông số chi tiết" key/value** (bảng

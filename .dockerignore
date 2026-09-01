@@ -42,11 +42,17 @@ secrets/
 .ssh/
 
 # ─── Docs & metadata (không cần runtime) ────────────────────
+# v3.11.0: docs/markdown_guide.md là TÀI NGUYÊN COMPILE-TIME
+# (include_str! trong handlers::pages::markdown_guide — build /markdown
+# page). Phải giữ trong build context nếu không `cargo build` fail
+# "couldn't read src/handlers/../../docs/markdown_guide.md". Quy tắc:
+# loại cả thư mục docs/ rồi whitelist đúng 1 file cần.
 *.md
 !README.md
 !CHANGELOG.md
 !LICENSE
-docs/
+docs/*
+!docs/markdown_guide.md
 SECURITY.md
 WORKLOG.md
 worklog.md
