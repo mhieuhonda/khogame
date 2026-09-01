@@ -1015,8 +1015,8 @@ fn escape_attr(s: &str) -> String {
 
 /// v3.11.0 — Vimeo embed: link Vimeo đơn độc trong paragraph → iframe
 /// player.vimeo.com (cùng cơ chế embed_youtube). Hỗ trợ:
-///   https://vimeo.com/{id}, https://www.vimeo.com/{id},
-///   https://player.vimeo.com/video/{id} (đã embed-ready).
+///   `<https://vimeo.com/{id}>`, `<https://www.vimeo.com/{id}>`,
+///   `<https://player.vimeo.com/video/{id}>` (đã embed-ready).
 fn embed_vimeo(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -1216,7 +1216,7 @@ fn strip_html_tags_keep_entities(s: &str) -> String {
 
 /// v3.11.0 — Mermaid: ```mermaid code block → `<div class="mermaid">`.
 /// Chạy TRƯỚC các pass code-block (line numbers/copy button/lang label)
-/// — block mermaid không còn là <pre> nên các pass đó bỏ qua.
+/// — block mermaid không còn là `<pre>` nên các pass đó bỏ qua.
 ///
 /// Output comrak + adapter: `<pre class="code-block"><code
 /// class="language-mermaid hljs">NỘI DUNG (escaped)</code></pre>`.
