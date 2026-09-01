@@ -240,6 +240,6 @@ Bạn không cần lo mã độc khi đọc bài — chỉ cần viết Markdown
 1. Mở ô **Thử ngay** ở đầu trang, dán bất kỳ cú pháp nào ở trên
 2. Viết tin tức: mục **Đăng tin** — dùng đủ bảng, callout, ảnh, video
 3. Mô tả game: mục **Đăng game** — code block + ảnh chụp màn hình
-4. Bio hồ sơ: **Chỉnh sửa hồ sơ** — Markdown rút gọn (đậm/nghiêng/link/emoji/mention/spoiler/kbd)
+4. Bio hồ sơ: **Chỉnh sửa hồ sơ** — Markdown đầy đủ: đậm/nghiêng/link/emoji/mention/spoiler/kbd, **bảng so sánh GFM** (có viền + sortable), callout `[!NOTE]`, sơ đồ ```mermaid, công thức toán, task list, footnote
 
 Chúc bạn viết bài vui vẻ! :rocket:

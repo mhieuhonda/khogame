@@ -103,6 +103,16 @@ async fn build_profile_template(
         collections_res,
         unread_res,
         ai_activity_res,
+        // v3.12.0 (perf audit M1): 3 query này TRƯỚC ĐÂY await TUẦN TỰ SAU
+        // wave join (list_achievements ở tính achievements_count, heatmap
+        // cho widget 13 tuần, avatar_frame_state khi is_self) — cộng 2-3
+        // round-trip DB nối đuôi vào TTFB của MỌI lượt xem hồ sơ, trái
+        // chính sách song song hoá của chính file (comment v2.9.2/v2.7.0).
+        // Cả 3 đều chỉ phụ thuộc user.id/is_self đã có sẵn trước wave →
+        // đẩy vào join! là an toàn + cắt latency.
+        ach_catalog_res,
+        heat_rows_res,
+        avatar_frame_res,
     ) = tokio::join!(
         UserRepo::stats(&state.db, user.id),
         GameRepo::by_user(&state.db, user.id, 24, 0),
@@ -204,6 +214,27 @@ async fn build_profile_template(
                 Vec::new()
             }
         },
+        // v3.12.0 — 3 query chuyển từ tuần tự post-join sang song song
+        // (perf audit M1 — chi tiết ở comment list biến).
+        async {
+            GamificationRepo::list_achievements(&state.db)
+                .await
+                .unwrap_or_default()
+        },
+        async {
+            crate::repositories::ActivityRepo::heatmap(&state.db, user.id)
+                .await
+                .unwrap_or_default()
+        },
+        async {
+            if is_self {
+                UserRepo::avatar_frame_state(&state.db, user.id)
+                    .await
+                    .unwrap_or(None)
+            } else {
+                None
+            }
+        },
     );
     let stats = stats_res?;
     let games = games_res?;
@@ -232,18 +263,14 @@ async fn build_profile_template(
         .collect();
     let achievements_count = (
         all_achievements.len(),
-        GamificationRepo::list_achievements(&state.db)
-            .await
-            .unwrap_or_default()
-            .len(),
+        // v3.12.0 — kết quả từ wave song song (perf audit M1).
+        ach_catalog_res.len(),
     );
     let activity = activity_res;
     let collections = collections_res;
     // v3.0.0 — heatmap 13 tuần (dữ liệu thô → grid 7×13)
-    let heat_rows = crate::repositories::ActivityRepo::heatmap(&state.db, user.id)
-        .await
-        .unwrap_or_default();
-    let heatmap = build_heatmap_widget(&heat_rows);
+    // v3.12.0 — kết quả từ wave song song (perf audit M1).
+    let heatmap = build_heatmap_widget(&heat_rows_res);
     // v3.0.0 — completeness: avatar (35%) + bio (35%) + socials (30%)
     let mut completeness_pct = 0i32;
     if user
@@ -288,13 +315,8 @@ async fn build_profile_template(
 
     // v3.8.0 — khung avatar của chính user (nút bật/tắt trên hồ sơ).
     // Some((frame_id, is_visible)): còn hạn khung (kể cả đang ẩn).
-    let avatar_frame_state = if is_self {
-        UserRepo::avatar_frame_state(&state.db, user.id)
-            .await
-            .unwrap_or(None)
-    } else {
-        None
-    };
+    // v3.12.0 — kết quả từ wave song song (perf audit M1).
+    let avatar_frame_state = if is_self { avatar_frame_res } else { None };
 
     Ok(ProfileTemplate {
         current_user,
@@ -333,14 +355,18 @@ pub async fn toggle_avatar_frame(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
 ) -> AppResult<Redirect> {
-    // Đọc trạng thái hiện tại để lật lại (bật → ẩn, ẩn → bật)
+    // v3.12.0 (audit logic L5): read-then-invert (2 query) không atomic —
+    // 2 request song song cùng đọc visible=true rồi cùng ghi false → mất 1
+    // lần toggle. Vẫn cần read để phân biệt "chưa sở hữu" (404-friendly
+    // BadRequest) nhưng LẬT cờ bằng 1 statement `NOT avatar_frame_disabled`
+    // (pattern CommentRepo::toggle_pin) — flip atomic dưới mọi race.
     let current = UserRepo::avatar_frame_state(&state.db, user.id).await?;
-    let Some((_, currently_visible)) = current else {
+    if current.is_none() {
         return Err(AppError::BadRequest(
             "Bạn chưa sở hữu khung avatar nào đang hiệu lực".into(),
         ));
-    };
-    UserRepo::set_avatar_frame_visible(&state.db, user.id, !currently_visible).await?;
+    }
+    UserRepo::flip_avatar_frame_visible(&state.db, user.id).await?;
     Ok(Redirect::to("/profile"))
 }
 

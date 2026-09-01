@@ -998,6 +998,11 @@ impl AiAgentRepo {
         // is_ai_agent_user() — role AiAgent HOẶC google_sub default agent —
         // nhất quán với impersonate + route /ai/*.
         if !user.is_ai_agent_user() || user.is_banned {
+            // v3.12.0 (audit sec #2 — timing): nhánh này return NGAY không
+            // hash — chênh ~50ms + 1 UPDATE so với path verify thật cho phép
+            // đo thời gian phân biệt trạng thái tài khoản. Chạy dummy Argon2
+            // như nhánh user-not-found để mọi early-return đồng bộ thời gian.
+            let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         }
 
@@ -1012,6 +1017,8 @@ impl AiAgentRepo {
         .await?;
         let Some(cred) = cred else {
             // Tài khoản không có mật khẩu (tạo cũ qua /auth/ai/register)
+            // v3.12.0 — dummy hash đồng bộ timing (xem comment ở nhánh trên).
+            let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         };
 

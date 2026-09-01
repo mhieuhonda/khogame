@@ -41,6 +41,10 @@ impl CollectionRepo {
     /// Tạo bộ sưu tập mới (giới hạn 20/user chống spam).
     /// # Errors
     /// Trả lỗi khi đạt giới hạn hoặc DB fail.
+    ///
+    /// v3.12.0 (audit logic L4): COUNT-then-INSERT không atomic — burst tạo
+    /// đồng thời vượt cap vài bộ. Advisory lock theo user (pattern
+    /// award_xp/trivia) xếp hàng request song song, quota bất biến.
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
@@ -48,9 +52,14 @@ impl CollectionRepo {
         description: &str,
         is_public: bool,
     ) -> AppResult<Collection> {
+        let mut tx = pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('col_quota:' || $1::text))")
+            .bind(user_id.to_string())
+            .execute(&mut *tx)
+            .await?;
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM collections WHERE user_id = $1")
             .bind(user_id)
-            .fetch_one(pool)
+            .fetch_one(&mut *tx)
             .await?;
         if count >= 20 {
             return Err(AppError::BadRequest(
@@ -67,8 +76,9 @@ impl CollectionRepo {
         .bind(title)
         .bind(description)
         .bind(is_public)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
         Ok(c)
     }
 

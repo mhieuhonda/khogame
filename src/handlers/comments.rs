@@ -236,6 +236,22 @@ pub async fn list_replies(
     // khi cuộn tới; trước đây yêu cầu đăng nhập → 401 với khách)
     let replies =
         CommentRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
+    // v3.12.0 FIX (HIGH — audit logic pass 1): cùng lỗ hổng với
+    // list_comments_page — replies của comment thuộc game draft/hidden
+    // vẫn được đọc qua endpoint public. Reply luôn cùng game_id với
+    // comment cha (được verify lúc tạo), nên check qua reply đầu tiên
+    // là đủ phủ toàn bộ danh sách; danh sách rỗng thì không có gì lộ.
+    if let Some(first) = replies.first() {
+        if let Some(game) =
+            crate::repositories::GameRepo::find_by_id(&state.db, first.game_id).await?
+        {
+            let is_owner = current_user.as_ref().is_some_and(|u| u.id == game.user_id);
+            let is_staff = current_user.as_ref().is_some_and(|u| u.role.is_staff());
+            if !is_owner && !is_staff && game.status != crate::models::game::GameStatus::Published {
+                return Err(AppError::NotFound("Game không tồn tại".into()));
+            }
+        }
+    }
     // v2.9.1 FIX — trước đây `game_slug: ""` cho mọi reply: partial comment_item
     // luôn render nút "Trả lời" + form reply `hx-post="/games/{slug}/comments"`,
     // slug rỗng → POST "/games//comments" không khớp route nào → 404 khi
@@ -286,6 +302,19 @@ pub async fn list_comments_page(
     let game = crate::repositories::GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
+    // v3.12.0 FIX (HIGH — audit logic pass 1): handler này TRƯỚC ĐÂY không
+    // check `game.status` — mọi luồng anh em (trang show_game, JSON API
+    // game_comments, POST comment) đều chặn game chưa publish, riêng
+    // endpoint load-more HTMX này để lọt: ai biết slug (link cũ, cache
+    // Google) vẫn đọc được toàn bộ bình luận của game draft/hidden/archived
+    // kèm tên + avatar người bình luận dù trang game đã chặn xem. Đồng bộ
+    // guard với create_comment: owner + staff được xem, còn lại chỉ khi
+    // đã Published (404 — không tiết lộ sự tồn tại của game ẩn).
+    let is_owner = current_user.as_ref().is_some_and(|u| u.id == game.user_id);
+    let is_staff = current_user.as_ref().is_some_and(|u| u.role.is_staff());
+    if !is_owner && !is_staff && game.status != crate::models::game::GameStatus::Published {
+        return Err(AppError::NotFound("Game không tồn tại".into()));
+    }
     let page = q.page.unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = 50;
     // FIX v2.8.1: saturating math — page ~4e17 làm (page-1)*per_page tràn

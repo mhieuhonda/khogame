@@ -1670,7 +1670,11 @@ pub async fn preview_markdown(
     AuthUser(_user): AuthUser,
     Form(form): Form<PreviewForm>,
 ) -> AppResult<Response> {
-    if form.text.len() > 20_000 {
+    // v3.12.0 FIX (audit logic L6): trước đây `len()` đếm BYTE nhưng thông
+    // báo nói "ký tự" — tiếng Việt 3 byte/char → bị chặn oan ở ~6.667 ký
+    // tự thật. Chuẩn hoá chars().count() như v3.9.0 đã làm cho review/
+    // collection (cùng lớp bug).
+    if form.text.chars().count() > 20_000 {
         return Err(AppError::BadRequest(
             "Nội dung xem trước tối đa 20.000 ký tự".into(),
         ));

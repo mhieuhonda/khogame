@@ -337,7 +337,8 @@
         document.addEventListener('click', function(e) {
             if (suggestBox && !wrap.contains(e.target)) hideSuggestions();
         });
-        searchInput.closest('form').addEventListener('submit', hideSuggestions);
+        var suggestForm = searchInput.closest && searchInput.closest('form');
+        if (suggestForm) suggestForm.addEventListener('submit', hideSuggestions);
     }
 
     function initSearchShortcut() {
@@ -1330,7 +1331,7 @@
         if (v) return 'v=' + v;
       }
     } catch (e) { /* ignore */ }
-    return 'v3110';
+    return 'v3120';
   }
   var ASSET_VER = detectAssetVersion();
   var katexLoading = false;
@@ -1468,7 +1469,7 @@
   function initSortableTables(root) {
     var scope = root && root.querySelectorAll ? root : document;
     var tables = scope.querySelectorAll(
-      '.prose-md table, .news-content table, .game-content table, .md-guide-content table'
+      '.prose-md table, .news-content table, .game-content table, .md-guide-content table, .bio-md table'
     );
     tables.forEach(function (table) {
       if (table.classList.contains('sortable')) return;
@@ -1507,6 +1508,13 @@
   document.body.addEventListener('htmx:afterSwap', function (evt) {
     if (evt && evt.target instanceof Element) {
       initSortableTables(evt.target);
+      // v3.12.0 FIX: comment cũ hứa "Tất cả chạy lại trên htmx:afterSwap"
+      // nhưng thực tế chỉ re-run sortable — math (KaTeX) và mermaid trong
+      // nội dung swap mới không render tới khi reload trang. Gọi đủ 3
+      // (initMath/initMermaid tự no-op nếu partial không chứa .math/
+      // .mermaid — chi phí 2 querySelector mỗi swap, không đáng kể).
+      initMath(document);
+      initMermaid();
     }
   });
 

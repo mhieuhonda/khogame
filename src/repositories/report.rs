@@ -9,6 +9,14 @@ impl ReportRepo {
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    ///
+    /// v3.12.0 (audit logic L3): check `has_reported` rồi INSERT là
+    /// check-then-act — 2 POST song song cùng user/game đều pass rồi cả
+    /// hai INSERT → 2 report trùng, admin xử lý 2 lần. Migration 047 thêm
+    /// unique partial index `(game_id, reporter_id) WHERE status IN
+    /// ('pending','reviewing')`; `ON CONFLICT DO NOTHING` ở đây biến race
+    /// thành best-effort: request thắng 1 report duy nhất, request thua
+    /// trả về id cũ (lookup lại) — admin vẫn chỉ thấy 1 report.
     pub async fn create(
         pool: &PgPool,
         game_id: Uuid,
@@ -16,16 +24,36 @@ impl ReportRepo {
         reason: &ReportReason,
         description: &str,
     ) -> AppResult<Uuid> {
-        let id: Uuid = sqlx::query_scalar(
+        let inserted: Option<Uuid> = sqlx::query_scalar(
             r"INSERT INTO reports (game_id, reporter_id, reason, description)
-              VALUES ($1, $2, $3, $4) RETURNING id",
+              VALUES ($1, $2, $3, $4)
+              ON CONFLICT (game_id, reporter_id) WHERE status IN ('pending', 'reviewing')
+              DO NOTHING
+              RETURNING id",
         )
         .bind(game_id)
         .bind(reporter_id)
         .bind(reason)
         .bind(description)
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await?;
+
+        let Some(id) = inserted else {
+            // Đã có report pending/reviewing của cùng user+game (race hoặc
+            // double-submit) — trả id của report hiện có, không tạo dup.
+            let existing: Option<Uuid> = sqlx::query_scalar(
+                "SELECT id FROM reports
+                 WHERE game_id = $1 AND reporter_id = $2 AND status IN ('pending', 'reviewing')
+                 ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(game_id)
+            .bind(reporter_id)
+            .fetch_optional(pool)
+            .await?;
+            return existing.ok_or_else(|| {
+                crate::error::AppError::BadRequest("Bạn đã có báo cáo đang chờ xử lý".into())
+            });
+        };
 
         // Notify all admins/moderators — MỘT query INSERT..SELECT thay vì
         // loop INSERT từng staff (N round-trip → 1).

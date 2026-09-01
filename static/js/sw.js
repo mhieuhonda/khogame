@@ -13,7 +13,9 @@
 //   - POST/PUT/PATCH/DELETE: BYPASS (không intercept, gửi thẳng).
 //
 // AN TOÀN:
-//   - Cache version key 'ls-sw-v2.7.0' — bump khi cần invalidate cache
+//   - Cache version key 'ls-sw-v3.12.0' — bump theo app version để
+//     invalidate cache offline khi engine markdown/vendor đổi (v3.12.0:
+//     v3.10/3.11/3.12 quên bump 2 lần — offline fallback stale; giờ đồng bộ).
 //     (vd: schema thay đổi). Activate handler xoá cache cũ.
 //   - Cache 50 entry tối đa cho HTML (LRU-eviction ngầm).
 //   - Static cache KHÔNG giới hạn (immutable, không stale).
@@ -21,7 +23,7 @@
 //   - Opaque responses (CORS) không cache (anonymous origin).
 // ============================================================
 
-var CACHE_VERSION = 'ls-sw-v3.9.0';
+var CACHE_VERSION = 'ls-sw-v3.12.0';
 var STATIC_CACHE = CACHE_VERSION + '-static';
 var HTML_CACHE = CACHE_VERSION + '-html';
 var HTML_CACHE_MAX = 50;

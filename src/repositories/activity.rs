@@ -37,10 +37,20 @@ impl ActivityRepo {
     /// Heatmap 90 ngày gần nhất (bỏ ngày không hoạt động — client fill).
     /// # Errors
     /// Trả lỗi khi DB fail.
+    ///
+    /// v3.12.0 FIX (audit logic M5): trước đây dùng `CURRENT_DATE` — ngày
+    /// theo TIMEZONE CỦA SERVER DB (prod = UTC), trong khi cả hệ thống
+    /// chuẩn hoá "hôm nay" = giờ VN (SQL_TODAY_VN; grid heatmap phía
+    /// caller `build_heatmap_widget` cũng tính theo today_vn()). Trong
+    /// khung 17:00–24:00 UTC (= 00:00–07:00 VN) hai mốc lệch 1 ngày →
+    /// cửa sổ 91 ngày lệch với lưới grid, ô biên bị drop/misalign.
+    /// Đồng bộ: `(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` — đúng
+    /// quy ước dự án, không phụ thuộc TZ cài đặt của DB.
     pub async fn heatmap(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<HeatmapDay>> {
         let rows = sqlx::query_as::<_, HeatmapDay>(
             "SELECT day, activity_count FROM user_activity_days
-             WHERE user_id = $1 AND day >= CURRENT_DATE - $2
+             WHERE user_id = $1
+               AND day >= (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - $2
              ORDER BY day ASC",
         )
         .bind(user_id)

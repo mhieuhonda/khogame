@@ -55,6 +55,11 @@ impl ShopRepo {
     /// Danh sách vật phẩm active + tồn kho của user.
     /// # Errors
     /// Trả lỗi khi DB fail.
+    ///
+    /// v3.12.0 FIX (audit logic pass 1 — M2, N+1): trước đây chạy 1 query
+    /// tồn kho RIÊNG cho từng vật phẩm (shop ~12 items → 12 round-trip
+    /// tuần tự mỗi lượt mở /shop). Giờ đúng 2 query cố định: 1 load items,
+    /// 1 load toàn bộ tồn kho của user rồi map trong Rust bằng HashMap.
     pub async fn list_for_user(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<ShopItemWithStock>> {
         let items = sqlx::query_as::<_, ShopItem>(
             "SELECT id, name, description, icon, price, kind, is_active, duration_hours
@@ -62,17 +67,17 @@ impl ShopRepo {
         )
         .fetch_all(pool)
         .await?;
+        let owned_map: std::collections::HashMap<String, i32> = sqlx::query_as::<_, (String, i32)>(
+            "SELECT item_id, quantity FROM user_inventory WHERE user_id = $1",
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?
+        .into_iter()
+        .collect();
         let mut out = Vec::with_capacity(items.len());
         for item in items {
-            let owned: i32 = sqlx::query_scalar(
-                "SELECT COALESCE(quantity, 0) FROM user_inventory
-                 WHERE user_id = $1 AND item_id = $2",
-            )
-            .bind(user_id)
-            .bind(&item.id)
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or(0);
+            let owned = owned_map.get(&item.id).copied().unwrap_or(0);
             out.push(ShopItemWithStock { item, owned });
         }
         Ok(out)
@@ -115,10 +120,15 @@ impl ShopRepo {
         let mut tx = pool.begin().await?;
         // 1) Trừ XP có điều kiện — atomic, thiếu tiền → BadRequest
         // v3.1.0 — total_xp BIGINT (i64) để hỗ trợ level 500 tỷ.
+        // v3.12.0 (audit logic L1): thêm guard `$2 > 0` — cột price không có
+        // CHECK trong DB, admin lỡ đặt giá 0/âm (data drift/thao tác tay) sẽ
+        // biến UPDATE thành MÁY IN XP (total_xp - (-N) = cộng XP, và
+        // xp_events.amount = -price ghi dương như thưởng). Guard ở câu SQL
+        // chặn tận gốc, không phụ thuộc validation phía handler.
         let total: Option<i64> = sqlx::query_scalar(
             r#"UPDATE user_xp_totals
                SET total_xp = total_xp - $2, updated_at = NOW()
-               WHERE user_id = $1 AND total_xp >= $2
+               WHERE user_id = $1 AND total_xp >= $2 AND $2 > 0
                RETURNING total_xp"#,
         )
         .bind(user_id)

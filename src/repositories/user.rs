@@ -594,6 +594,26 @@ impl UserRepo {
         Ok(res.rows_affected() > 0)
     }
 
+    /// v3.12.0 — LẬT trạng thái hiển thị khung avatar bằng 1 statement
+    /// `NOT avatar_frame_disabled` (atomic). Handler toggle dùng method này
+    /// thay cho read-then-invert qua `set_avatar_frame_visible` — 2 request
+    /// song song trước đây cùng đọc giá trị cũ rồi ghi đè nhau (mất 1 lần
+    /// toggle); flip SQL-side luôn thấy giá trị mới nhất của row.
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn flip_avatar_frame_visible(pool: &PgPool, user_id: Uuid) -> AppResult<bool> {
+        let res = sqlx::query(
+            r"UPDATE user_boosts SET avatar_frame_disabled = NOT avatar_frame_disabled,
+                  updated_at = NOW()
+               WHERE user_id = $1 AND avatar_frame IS NOT NULL
+                 AND avatar_frame_until > NOW()",
+        )
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     async fn ensure_unique_username(pool: &PgPool, base: &str) -> String {
         let base = if base.is_empty() {
             "user".to_string()

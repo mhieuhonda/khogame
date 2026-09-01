@@ -7684,6 +7684,245 @@ textarea:focus-visible,
 }
 .profile-bio.bio-md { margin: 4px 0 8px; }
 
+/* --- 6b) v3.12.0 — FIX LỖI BẢNG SO SÁNH KHÔNG HIỂN THỊ TRÊN TIỂU SỬ ---
+   Gốc rễ: render_bio dùng chung comrak_options() (GFM table ON) nên bảng
+   CÓ render ra <table>…</table> trong bio — nhưng CSS chỉ style bảng cho
+   .prose-md/.news-content/.game-content, .bio-md KHÔNG có rule nào →
+   trình duyệt vẽ table "trần" không viền, không header, không kẻ dòng:
+   các ô dính thành từng dòng text → user thấy "bảng không hiển thị".
+   Ảnh hưởng cả hồ sơ user lẫn hồ sơ AI Agent (cùng khối .profile-bio
+   .bio-md trong profile/show.html) + admin/user_detail (.bio-md).
+   Fix: đồng bộ style bảng với .prose-md (viền, thead nền, zebra, hover,
+   alignment GFM :---:) + display:block overflow-x:auto vì cột bio hẹp
+   (max-width 560px) — bảng so sánh nhiều cột cuộn ngang mượt thay vì vỡ
+   layout. Kích thước chữ tiết chế 0.82em cho vừa khối bio. */
+.bio-md table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.6em 0;
+    font-size: 0.82em;
+    line-height: 1.5;
+    display: block;
+    overflow-x: auto;
+    /* Bảng trong bio thường ngắn — không để nó chiếm cả chiều rộng nếu
+       nội dung hẹp (khác .prose-md: bài viết luôn full-width). */
+    max-width: 100%;
+}
+.bio-md table thead {
+    background: var(--bg-subtle, rgba(0,0,0,0.03));
+}
+.bio-md table th,
+.bio-md table td {
+    border: 1px solid var(--border, #d0d7de);
+    padding: 0.4em 0.65em;
+    text-align: left;
+    vertical-align: top;
+    word-break: normal;
+}
+.bio-md table th {
+    font-weight: 600;
+    white-space: nowrap;
+}
+/* Alignment GFM (:--- / :---: / ---:) — comrak phát align attr */
+.bio-md table th[align="center"],
+.bio-md table td[align="center"] { text-align: center; }
+.bio-md table th[align="right"],
+.bio-md table td[align="right"] { text-align: right; }
+/* Zebra + hover — giúp bảng so sánh nhiều dòng đọc không lệch hàng */
+.bio-md table tbody tr:nth-child(even) {
+    background: var(--bg-subtle, rgba(0,0,0,0.02));
+}
+.bio-md table tbody tr:hover {
+    background: rgba(99, 102, 241, 0.06);
+}
+[data-theme="dark"] .bio-md table tbody tr:hover {
+    background: rgba(129, 140, 248, 0.08);
+}
+/* Bảng trong bio cũng sortable (app.js quét .bio-md table từ v3.12.0) */
+.bio-md table.sortable th[role="columnheader"] {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 20px;
+}
+.bio-md table.sortable th[role="columnheader"]::after {
+    content: "↕";
+    position: absolute;
+    right: 5px;
+    opacity: 0.45;
+    font-size: 0.85em;
+}
+.bio-md table.sortable th[aria-sort="ascending"]::after {
+    content: "↑";
+    opacity: 1;
+}
+.bio-md table.sortable th[aria-sort="descending"]::after {
+    content: "↓";
+    opacity: 1;
+}
+
+/* v3.12.0 — Vá đồng bộ tiếp 9 nhóm element bio render được nhưng trước
+   đây không có style (kết quả quét diff .prose-md vs .bio-md): */
+
+/* Ảnh trong bio — chặn tràn layout cột hồ sơ (max-width 560px) */
+.bio-md img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    margin: 0.4em 0;
+}
+/* Spoiler ||nội dung|| — trước đây hiện THẲNG nội dung (tính năng vỡ) */
+.bio-md .spoiler {
+    background: var(--fg-subtle, #888);
+    color: transparent;
+    border-radius: 3px;
+    padding: 0 0.2em;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none;
+}
+.bio-md .spoiler:hover {
+    background: var(--fg-muted, #666);
+}
+.bio-md .spoiler:focus,
+.bio-md .spoiler:active {
+    background: transparent;
+    color: inherit;
+    outline: 1px dashed var(--accent, #2563eb);
+}
+/* Task list - [ ] / - [x] — bỏ bullet nhân đôi với checkbox */
+.bio-md li:has(> input[type="checkbox"]) {
+    list-style: none;
+    margin-left: -1.3em;
+}
+.bio-md input[type="checkbox"] {
+    margin-right: 0.4em;
+    vertical-align: middle;
+    accent-color: var(--accent, #2563eb);
+    width: 1em;
+    height: 1em;
+    cursor: default;
+}
+/* Phím [[Ctrl]] → <kbd> — tiết chế hơn article nhưng vẫn "hình phím" */
+.bio-md kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.8em;
+    line-height: 1.4;
+    color: var(--fg-default, #eee);
+    background: var(--bg-subtle, #1a2230);
+    border: 1px solid var(--border-default, #2a3242);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    box-shadow: 0 1px 0 var(--border-default, #2a3242);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+/* Math $..$ / $$..$$ — CSS fallback khi KaTeX chưa load (JS tắt/chậm) */
+.bio-md .math.inline,
+.bio-md .math-inline {
+    font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
+    font-style: italic;
+    background: var(--bg-code-inline, rgba(175,184,193,0.2));
+    padding: 0.1em 0.3em;
+    border-radius: 3px;
+}
+.bio-md .math.display,
+.bio-md .math-display {
+    display: block;
+    font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
+    font-style: italic;
+    background: var(--bg-code-inline, rgba(175,184,193,0.2));
+    padding: 0.5em 0.8em;
+    border-radius: 6px;
+    text-align: center;
+    margin: 0.6em 0;
+    overflow-x: auto;
+}
+.bio-md .katex { font-size: 1.02em; }
+.bio-md .katex-display {
+    margin: 0.6em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 3px 0;
+}
+/* Footnotes [^1] — tiết chế: không border-top đậm như article */
+.bio-md .footnotes {
+    margin-top: 1em;
+    padding-top: 0.5em;
+    border-top: 1px solid var(--border-muted, #e5e7eb);
+    font-size: 0.8em;
+    color: var(--fg-muted, #666);
+}
+.bio-md .footnote-ref a { text-decoration: none; }
+.bio-md sup {
+    font-size: 0.75em;
+    line-height: 0;
+    vertical-align: super;
+}
+/* Description list Term\n: Def */
+.bio-md dl {
+    margin: 0.5rem 0;
+    padding-left: 0.8rem;
+    border-left: 3px solid rgba(99, 102, 241, 0.25);
+}
+.bio-md dt {
+    font-weight: 600;
+    margin-top: 0.35rem;
+}
+.bio-md dd {
+    margin: 0.15rem 0 0.4rem 0.9rem;
+    color: var(--text-muted, #4b5563);
+}
+[data-theme="dark"] .bio-md dd { color: #9ca3af; }
+/* Strikethrough màu muted + hr mảnh */
+.bio-md del { color: var(--fg-muted, #999); }
+.bio-md hr {
+    border: none;
+    border-top: 1px solid var(--border, #d0d7de);
+    margin: 0.8em 0;
+    height: 0;
+}
+/* Callout > [!NOTE] (v3.12.0 render_bio) — tiết chế cho cột bio */
+.bio-md blockquote.callout {
+    border-left-width: 4px;
+    border-radius: 6px;
+    padding: 0.6em 0.8em;
+    margin: 0.6em 0;
+}
+/* Mermaid ```mermaid (v3.12.0 render_bio) — co vừa cột bio */
+.bio-md .mermaid {
+    display: flex;
+    justify-content: center;
+    margin: 0.6em 0;
+    padding: 0.5em;
+    background: var(--bg-subtle, rgba(0,0,0,0.03));
+    border-radius: 6px;
+    overflow-x: auto;
+}
+.bio-md .mermaid svg { max-width: 100%; height: auto; }
+/* Token màu syntect (class style) cho code block bio — trước đây 1 màu
+   phẳng vì thiếu selector .bio-md .hljs-* */
+.bio-md .hljs-keyword, .bio-md .keyword { color: #ff7b72; font-weight: 600; }
+.bio-md .hljs-string, .bio-md .string { color: #a5d6ff; }
+.bio-md .hljs-comment, .bio-md .comment { color: #8b949e; font-style: italic; }
+.bio-md .hljs-number, .bio-md .constant { color: #79c0ff; }
+.bio-md .hljs-function, .bio-md .function { color: #d2a8ff; }
+.bio-md .hljs-title, .bio-md .title { color: #d2a8ff; font-weight: 600; }
+.bio-md .hljs-type, .bio-md .type { color: #ffa657; }
+.bio-md .hljs-variable, .bio-md .variable { color: #ffd866; }
+.bio-md .hljs-built_in, .bio-md .builtin { color: #79c0ff; }
+.bio-md .hljs-meta, .bio-md .meta { color: #8b949e; }
+.bio-md .hljs-tag, .bio-md .tag { color: #7ee787; }
+.bio-md .hljs-attr, .bio-md .attribute { color: #79c0ff; }
+[data-theme="light"] .bio-md .hljs-keyword, [data-theme="light"] .bio-md .keyword { color: #cf222e; }
+[data-theme="light"] .bio-md .hljs-string, [data-theme="light"] .bio-md .string { color: #0a3069; }
+[data-theme="light"] .bio-md .hljs-comment, [data-theme="light"] .bio-md .comment { color: #6e7781; }
+[data-theme="light"] .bio-md .hljs-number, [data-theme="light"] .bio-md .constant { color: #0550ae; }
+[data-theme="light"] .bio-md .hljs-title, [data-theme="light"] .bio-md .function { color: #8250df; }
+[data-theme="light"] .bio-md .hljs-type, [data-theme="light"] .bio-md .type { color: #953800; }
+
 /* --- 7) Badge "Hỗ trợ Markdown" trên label form --- */
 .md-support-badge {
     display: inline-block;

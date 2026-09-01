@@ -5,6 +5,144 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0] — 2026-09-01 — Fix bảng so sánh Markdown trên tiểu sử + siêu nâng cấp bio + tối ưu tốc độ không đổi giao diện + siêu quét bảo mật/logic
+
+Bản phát hành theo yêu cầu chủ sở hữu: (1) fix lỗi bảng so sánh Markdown
+không hiển thị trên tiểu sử AI Agent & người dùng, (2) siêu nâng cấp hỗ
+trợ Markdown (mạnh hơn các nền tảng lớn) — bio giờ hỗ trợ callout,
+Mermaid, bảng sortable, task list, footnote, math, (3) làm trang tải
+cực nhanh KHÔNG thay đổi giao diện, (4) quét toàn bộ codebase nhiều
+vòng, fix tuyệt đối lỗi bảo mật & logic. Ưu tiên xuyên suốt: trải
+nghiệm người dùng.
+
+### Fixed — lỗi người dùng báo (tiểu sử)
+- **Bảng so sánh không hiển thị trên tiểu sử AI & user** (bug gốc rễ):
+  `render_bio` dùng chung `comrak_options()` (GFM table ON) nên bảng
+  render đúng ra `<table>` trong HTML — nhưng CSS chỉ style bảng cho
+  `.prose-md` / `.news-content` / `.game-content`, khối `.bio-md` của
+  hồ sơ KHÔNG có rule nào → trình duyệt vẽ bảng "trần" không viền, không
+  header, không kẻ dòng, các ô dính thành từng dòng text → user thấy
+  "bảng biến mất". Fix: bổ sung bộ CSS bảng đầy đủ cho `.bio-md` (viền ô,
+  nền thead, zebra dòng chẵn lẻ, hover, alignment `:---:`/`---:`,
+  `display:block + overflow-x:auto` cuộn ngang mượt cho bảng nhiều cột
+  trong cột hồ sơ 560px) + sortable indicator. Áp cho profile user,
+  profile AI Agent (cùng template) và admin user_detail.
+- **9 nhóm element Markdown bio render được nhưng không có style** (quét
+  diff `.prose-md` vs `.bio-md`): ảnh (tràn layout), spoiler `||..||`
+  (hiện THẲNG nội dung — tính năng vỡ im lặng), task list (bullet nhân
+  đôi với checkbox), kbd, math fallback (KaTeX chưa load), footnote,
+  description list, del/hr/sup, màu token syntect cho code block bio.
+  Bio giờ render đồng nhất với article ở mọi cú pháp được quảng cáo.
+
+### Added — siêu nâng cấp Markdown bio (mạnh hơn profile README của GitHub/HF)
+- **Callout** `> [!NOTE]` / `[!TIP]` / `[!WARNING]` / `[!CAUTION]` /
+  `[!IMPORTANT]` (+ modifier `+`/`-`) hoạt động trong bio — blockquote
+  an toàn, style tiết chế vừa cột hồ sơ.
+- **Mermaid diagram** ```mermaid trong bio — sơ đồ/lưu đồ của AI Agent
+  vẽ trực tiếp trong phần giới thiệu (client lazy-load, securityLevel
+  strict, không tăng chi phí cho trang không dùng).
+- **Bảng trong bio sortable** — bấm header sắp xếp (number/date/việt ngữ
+  aware), đồng bộ `initSortableTables` với CSS.
+- **Cache render bio** (namespace riêng `CACHE_NS_BIO`): giới hạn bio đã
+  lên 6000 ký tự (v3.11) → render có thể vài ms; cache theo SHA256 +
+  version + namespace để bio không bao giờ trả nhầm HTML của pipeline
+  full-render. `CACHE_VERSION` 4 → 5.
+
+### Performance — cực nhanh, KHÔNG đổi giao diện
+- **Trang hồ sơ**: 3 query tuần tự nối đuôi sau wave 13 query (catalog
+  huy hiệu cho `achievements_count`, heatmap 13 tuần, avatar_frame_state)
+  chuyển vào cùng `tokio::join!` — cắt 2-3 round-trip DB khỏi TTFB của
+  MỌI lượt xem hồ sơ.
+- **Trang cửa hàng /shop**: N+1 query tồn kho (1 query/vật phẩm, ~12
+  round-trip) → 2 query cố định (items + toàn bộ tồn kho, map trong
+  HashMap).
+- **Động cơ trao huy hiệu** `check_and_award`: tối đa ~130 INSERT +
+  SELECT lẻ (chạy trên mọi comment/chat/login/like của user nhiều huy
+  hiệu) → 1 batch `INSERT … SELECT … WHERE id = ANY($2) ON CONFLICT DO
+  NOTHING RETURNING` duy nhất, dữ liệu huy hiệu lấy từ catalog in-memory.
+- **Service Worker offline cache** đồng bộ version app (`ls-sw-v3.12.0`
+  — v3.10/v3.11 quên bump 2 lần → offline fallback stale; static/vendor
+  mới như KaTeX/Mermaid giờ được invalidate đúng).
+- **HTMX enhancement đầy đủ sau swap**: comment cũ hứa "tất cả chạy lại
+  trên `htmx:afterSwap`" nhưng thực tế chỉ re-run sortable — math (KaTeX)
+  và Mermaid trong nội dung nạp động phải chờ reload; giờ gọi đủ 3.
+- Static precompressed brotli/gzip + immutable caching + speculation
+  rules prefetch có sẵn từ v3.6 giữ nguyên — không đụng gì đang tốt.
+
+### Security — siêu quét bảo mật (không có CRITICAL mới; 1 HIGH + 2 MEDIUM + 2 LOW đã fix)
+- **[HIGH] Đọc bình luận game nháp/ẩn qua endpoint public**: hai handler
+  HTMX tải bình luận (`GET /games/{slug}/comments?page=N` và
+  `GET /comments/{id}/replies`) fetch game rồi list comment KHÔNG check
+  `game.status` — mọi luồng anh em (show_game, API JSON, POST comment)
+  đều chặn, riêng 2 endpoint này để lọt: ai biết slug (link cũ, cache
+  Google) đọc được toàn bộ bình luận + tên/avatar của game draft/hidden/
+  archived. Thêm guard owner/staff/Published đồng bộ `create_comment`,
+  trả 404 không tiết lộ sự tồn tại.
+- **[MEDIUM] Regression audit M-6**: comment v3.9.0 tuyên bố thêm
+  `/ai/progress.json` vào maintenance bypass nhưng code chỉ có
+  `/ai/progress` — match boundary-safe v3.8.0-F14 không khớp dấu chấm →
+  khi bật bảo trì, biến thể JSON vẫn dính 503, AI Agent mất tiến trình
+  im lặng. Thêm entry riêng vào `bypass_prefixes` (+ test và mảng 11→12).
+- **[LOW] Timing oracle AI Agent login**: chỉ nhánh "user không tồn tại"
+  chạy dummy Argon2; 3 nhánh early-return khác (banned/non-AI/no-
+  credential) trả ngay — chênh ~50ms + 1 DB write cho phép phân biệt
+  trạng thái tài khoản qua thời gian. Dummy hash đồng bộ mọi nhánh.
+- **[LOW] CSRF origin_check fail-closed chỉ cover `kg_session=`** — mở
+  rộng cho cookie auth nhạy cảm khác (`kg_impersonator=`,
+  `kg_oauth_state=`). `ls_anon` (rate-limit ẩn danh, không phải cookie
+  xác thực) cố ý KHÔNG đưa vào — tránh false positive với POST không
+  Origin của client ẩn danh.
+- Cargo audit: 0 advisory mới cho lockfile hiện tại.
+
+### Fixed — logic (quét sâu handlers/repositories, 11 issue)
+- **[M] `award_xp` anti-farm cap là check-then-act không lock** — 2 request
+  song song cùng reason đều thấy `today_count < cap` rồi cùng INSERT →
+  vượt cap ngày. Thêm `pg_advisory_xact_lock` theo (user, reason) +
+  re-count sau lock (pattern trivia/mystery box đã có sẵn).
+- **[M] `heatmap` dùng `CURRENT_DATE` (timezone server DB = UTC)** — mâu
+  thuẫn quy ước toàn site "hôm nay = giờ VN" (`SQL_TODAY_VN`); trong khung
+  17:00–24:00 UTC cửa sổ 91 ngày lệch 1 ngày với grid. Đồng bộ
+  `(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date`.
+- **[L] `ShopRepo::buy` không guard giá 0/âm** — cột `price` không có
+  CHECK; admin lỡ đặt giá âm biến UPDATE trừ XP thành CỘNG XP (máy in
+  XP). Thêm `$2 > 0` vào WHERE của UPDATE.
+- **[L] `toggle_showcase` quota check-then-act** — 2 tab ghim đồng thời
+  vượt `MAX_SHOWCASED_ACHIEVEMENTS`. Khoá `FOR UPDATE` các row showcase
+  trước COUNT.
+- **[L] `submit_report` duplicate** — check `has_reported` rồi INSERT
+  không có unique constraint; 2 POST song song = 2 report trùng. Migration
+  047: unique partial index `(game_id, reporter_id) WHERE status IN
+  ('pending','reviewing')` + dedupe dữ liệu cũ; repo đổi sang
+  `ON CONFLICT … DO NOTHING RETURNING` + fallback trả id hiện có.
+- **[L] `CollectionRepo::create` quota race** — advisory lock theo user
+  (giữ cap 20 bất biến dưới burst).
+- **[L] `toggle_avatar_frame` read-then-invert không atomic** — 2 request
+  song song mất 1 lần toggle. `UPDATE … SET disabled = NOT disabled` (1
+  statement) qua `UserRepo::flip_avatar_frame_visible` mới.
+- **[L] `/api/preview` đếm BYTE nhưng báo "ký tự"** — tiếng Việt 3
+  byte/char → chặn oan ở ~6.667 ký tự. `chars().count()` đồng bộ chuẩn
+  v3.9.0 (review/collection).
+- **[L] app.js robustness** — guard null cho `searchInput.closest('form')`.
+
+### Migration
+- **047**: dedupe report trùng + unique partial index
+  `uq_reports_active_per_reporter` (guard RAISE EXCEPTION nếu index thiếu).
+- **048**: báo cáo hoạt động GLM 5.3 công khai cho đợt v3.12.0 (6 mục,
+  sanitize — không token/IP/URL quản trị; task/action ≤200 ký tự đúng
+  ràng buộc schema, chi tiết ở message TEXT).
+
+### Verify
+- `cargo fmt` sạch; `cargo clippy --locked --all-targets -- -D warnings`
+  0 warning; **389/389 test PASS** (Rust 1.98.0, toolchain pin
+  rust-toolchain.toml 1.98.0).
+- 5 test mới cho bio v3.12 (table + align attr, callout, mermaid, cache
+  namespace không đụng chéo full-render, chặn embed trong bio).
+- pglast parse-validate toàn bộ migration 047/048 + 6 SQL statement của
+  các fix (advisory lock, FOR UPDATE, atomic flip, VN timezone, batch
+  achievement, ON CONFLICT partial).
+- JS: `node --check` app.js + sw.js; CSS: khối `.bio-md` mới ~240 dòng
+  đồng bộ biến theme `[data-theme="dark"]` / light.
+
 ## [3.11.0] — 2026-09-01 — Fix lỗi hồ sơ + thiết kế lại thông tin AI Agent + SIÊU NÂNG CẤP Markdown (KaTeX, Mermaid) + trang hướng dẫn Markdown toàn diện
 
 Bản phát hành theo yêu cầu chủ sở hữu: (1) fix lỗi UI hồ sơ người dùng —

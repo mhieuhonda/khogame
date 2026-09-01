@@ -1005,3 +1005,72 @@ Work Log:
 Stage Summary:
 - 22 file code + 2 migration mới, 0 schema breaking — deploy an toàn.
 - Sẵn sàng commit/tag v3.9.0 → CD deploy + GitHub Release tự tạo từ CHANGELOG. Lesson carried: push main, đợi CD xong rồi mới tag.
+
+---
+Task ID: v3.12.0-md-bio-superfix
+Agent: Super Z (main) + 3 sub-agent audit song song (logic/bảo mật/frontend)
+Task: Fix lỗi bảng so sánh Markdown không hiển thị trên tiểu sử AI & user,
+siêu nâng cấp Markdown bio (callout/mermaid/sortable/cache), tối ưu tốc độ
+cực nhanh KHÔNG đổi giao diện, quét codebase nhiều vòng fix bảo mật + logic,
+release v3.12.0 + deploy + báo cáo hoạt động GLM 5.3.
+
+Work Log:
+- GỐC RỄ BUG BẢNG: render_bio dùng chung comrak_options (table ON) nên
+  HTML <table> CÓ render — nhưng CSS chỉ style bảng cho .prose-md/
+  .news-content/.game-content, .bio-md thiếu hoàn toàn → bảng "trần" không
+  viền/header/zebra, các ô dính thành text → "bảng biến mất". Fix CSS
+  đầy đủ cho .bio-md (bảng + align + zebra + hover + sortable indicator
+  + overflow-x cho cột 560px) áp cho profile user + AI + admin detail.
+- Quét diff .prose-md vs .bio-md (sub-agent frontend): vá tiếp 9 nhóm
+  element bio thiếu style (img, spoiler vỡ im lặng, tasklist, kbd, math
+  fallback, footnote, dl, del/hr/sup, syntect token colors) ~240 dòng CSS
+  theme-aware.
+- render_bio nâng cấp: + convert_callouts, + convert_mermaid_blocks (bio
+  giờ block-level đầy đủ hơn profile README GitHub/HF), CACHE_VERSION 4→5,
+  cache namespace CACHE_NS_FULL/CACHE_NS_BIO — bio cached, không đụng chéo
+  full-render (test chốt contract).
+- app.js: .bio-md table sortable; htmx:afterSwap re-run ĐỦ math+mermaid
+  (trước chỉ sortable — comment hứa sai); guard null closest('form');
+  ASSET_VER fallback v3120. sw.js CACHE_VERSION ls-sw-v3.12.0 (v3.10/3.11
+  quên bump — offline stale).
+- [HIGH] comments.rs: list_comments_page + list_replies không check
+  game.status → đọc bình luận game draft/hidden qua endpoint public (link
+  cũ/cache Google). Guard owner/staff/Published đồng bộ create_comment,
+  404 không tiết lộ tồn tại.
+- [M] middleware.rs: /ai/progress.json thiếu maintenance bypass (regression
+  M-6 — v3.9.0 fix sai cách: match boundary-safe không khớp dấu chấm);
+  origin_check fail-closed mở rộng kg_impersonator/kg_oauth_state.
+- [M] ai_agent.rs login: dummy Argon2 cho mọi nhánh early-return (timing
+  oracle — trước chỉ nhánh user-not-found có).
+- [M] profile.rs: 3 query tuần tự (ach catalog, heatmap, avatar_frame)
+  dồn vào tokio::join! — cắt 2-3 round-trip TTFB mọi lượt xem hồ sơ.
+- [M] shop.rs list_for_user: N+1 tồn kho (~12 round-trip) → 2 query +
+  HashMap map. [M] gamification.rs check_and_award: ~130 INSERT lẻ → 1
+  batch INSERT..SELECT..ANY ON CONFLICT RETURNING + catalog in-memory.
+- [M] award_xp: pg_advisory_xact_lock theo (user,reason) + re-count sau
+  lock (chống burst vượt cap ngày). [M] activity.rs heatmap:
+  CURRENT_DATE → (NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date (đồng bộ
+  quy ước VN, fix lệch biên 17:00-24:00 UTC).
+- [L] shop buy guard price>0 (máy in XP nếu data drift); toggle_showcase
+  FOR UPDATE; CollectionRepo::create advisory lock; toggle_avatar_frame
+  atomic flip (flip_avatar_frame_visible mới); /api/preview byte→char;
+  report.rs ON CONFLICT + migration 047 unique partial index.
+- Migration 047 (dedupe + uq_reports_active_per_reporter + guard RAISE),
+  048 (6 mục báo cáo GLM 5.3 sanitized v3.12.0, task/action ≤200 verify
+  bằng script).
+- LƯU Ý CÔNG CỤ: Read tool có artifact hiển thị nuốt chuỗi "[h" (selector
+  JS a[href^ bị đọc thành aref^) — 3 lần verify bằng grep/git trước khi
+  tin bug; đúng ra KHÔNG có bug selector. Bài học: luôn cross-check
+  git/grep trước khi "fix" tool-output artifact.
+- Verify: cargo fmt sạch; clippy -D warnings 0; 389/389 test PASS (Rust
+  1.98.0); cargo audit 0 vulnerability (3 warning allowlist cũ); pglast
+  parse-validate 047/048 + 6 SQL fix; node --check app.js/sw.js.
+- Deploy: push main → CD Coolify → tag v3.12.0 → GitHub Release → verify
+  /health + hồ sơ GLM 5.3 hiện báo cáo.
+
+Stage Summary:
+- v3.12.0: 1 HIGH + 3 MEDIUM + 8 LOW fix, bio markdown block-level đầy đủ,
+  fix bảng so sánh tiểu sử (yêu cầu chính), perf hot path cắt N round-trip,
+  không thay đổi bất kỳ giao diện/UI nào. Migration test bằng pglast +
+  schema-guard (không có Postgres thật trong env — verify runtime qua
+  /health sau deploy).

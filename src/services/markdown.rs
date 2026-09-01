@@ -47,6 +47,8 @@
 //! | **Abbreviation** `*[X]: def` to `<abbr title>` | ❌ | ✅ (v3.11) |
 //! | **Custom heading ID** `## T {#id}` | ❌ | ✅ (v3.11) |
 //! | **Sortable tables** (client-side) | ❌ | ✅ (v3.11) |
+//! | **Bio tables + callout + mermaid** (hồ sơ) | partial | ✅ (v3.12 — fix
+//!   bảng so sánh trên tiểu sử AI/user; bio pipeline đồng bộ block-level) |
 //! | Raw HTML | ✅ (filtered) | ❌ (always escaped, zero XSS surface) |
 //! | URL scheme allowlist | ✅ | ✅ |
 //! | Link `rel="nofollow ugc noopener noreferrer"` | partial | ✅ |
@@ -439,7 +441,18 @@ fn slugify_heading(text: &str) -> String {
 /// v3.11.0: 3 → 4 (KaTeX-ready math markup giữ nguyên nhưng class khớp CSS,
 /// kbd, abbreviation, custom heading id, Mermaid block, Vimeo + video/audio
 /// embed — toàn bộ thay đổi output).
-const CACHE_VERSION: u8 = 4;
+/// v3.12.0: 4 → 5 (render_bio thêm callout + mermaid + cache — bio pipeline
+/// thay đổi output; cache key thêm namespace để bio/full-render không đụng
+/// nhau dù input giống hệt).
+const CACHE_VERSION: u8 = 5;
+
+/// v3.12.0 — Namespace cache key: cùng 1 input có thể được render qua 2
+/// pipeline khác nhau (full `render()` vs `render_bio()`) cho 2 ngữ cảnh
+/// khác nhau (bài viết vs bio hồ sơ). Trước đây bio không cache nên không
+/// xung đột; khi bio bắt đầu cache, key phải phân biệt pipeline để bio
+/// không trả nhầm HTML của bài viết (và ngược lại).
+const CACHE_NS_FULL: u8 = 1;
+const CACHE_NS_BIO: u8 = 2;
 
 /// Cache entry: rendered HTML + size (bytes) + last access (cho LRU).
 struct CacheEntry {
@@ -515,11 +528,12 @@ fn render_cache() -> &'static Mutex<RenderCache> {
     CACHE.get_or_init(|| Mutex::new(RenderCache::new()))
 }
 
-/// Compute SHA256 của input + cache version byte — làm cache key.
-/// Cache version byte invalidate cache khi markdown engine đổi output.
-fn cache_key(input: &str) -> [u8; 32] {
+/// Compute SHA256 của input + cache version byte + namespace byte — làm
+/// cache key. Version byte invalidate cache khi markdown engine đổi output;
+/// namespace byte tách pipeline full-render vs bio (v3.12.0).
+fn cache_key(input: &str, namespace: u8) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update([CACHE_VERSION]);
+    hasher.update([CACHE_VERSION, namespace]);
     hasher.update(input.as_bytes());
     hasher.finalize().into()
 }
@@ -551,7 +565,7 @@ pub fn render(input: &str) -> String {
         return String::new();
     }
     // === Fast path: cache hit ===
-    let key = cache_key(input);
+    let key = cache_key(input, CACHE_NS_FULL);
     if let Ok(mut cache) = render_cache().lock() {
         if let Some(html) = cache.get(&key) {
             return (*html).clone();
@@ -595,26 +609,66 @@ fn render_uncached(input: &str) -> String {
     post_process_with_abbrs(&html, &toc_entries, &abbrs)
 }
 
-/// v2.5.0 — Render Markdown cho BIO / hồ sơ cá nhân.
+/// v2.5.0 — Render Markdown cho BIO / hồ sơ cá nhân (user + AI Agent).
 ///
-/// Khác `render()` (full article): profile pipeline GIẢM bớt cho phù hợp
-/// ngữ cảnh khối giới thiệu ngắn (~1000 ký tự):
+/// v3.12.0 — pipeline bio MỞ RỘNG: ngoài inline formatting, bio giờ hỗ trợ
+/// BẢNG GFM (CSS `.bio-md table` — fix lỗi bảng so sánh không hiển thị
+/// trên tiểu sử AI & user), callout `> [!NOTE]`, mermaid diagram, task
+/// list, footnote, description list — toàn bộ có CSS riêng cho bio.
+/// Khác `render()` (full article) vẫn GIỮ bio gọn:
 ///   - KHÔNG heading anchor + ToC (bio không cần mục lục / link neo).
-///   - KHÔNG YouTube embed, callout, figure, copy button, lang label,
-///     line number — giữ bio gọn, không lấn chiếm layout trang hồ sơ.
+///   - KHÔNG YouTube/Vimeo/video/audio embed, figure, copy button, lang
+///     label, line number — không iframe trong bio, không lấn chiếm layout
+///     trang hồ sơ.
 ///   - GIỮ: harden_links (rel/target/scheme allowlist — bắt buộc bảo
 ///     mật), spoiler, lazy image, external-link marker, mention
 ///     (@user → /u/user), hashtag (#tag → /search), emoji shortcodes
 ///     và mọi inline formatting (bold/italic/`code`/==mark==/~~strike~~
 ///     /__underline__/H~2~O/:tada:).
 ///
-/// Không cache — bio ngắn (≤1000 ký tự), render ~sub-ms, không đáng
-/// tốn memory cache entry.
+/// v3.12.0 — CACHED: giới hạn bio đã nâng lên 6000 ký tự (v3.11.0) nên
+/// render có thể tới vài ms (comrak parse + syntect + ~10 post-process
+/// passes) trên hồ sơ nhiều lượt xem. Cache dùng chung pool với `render()`
+/// nhưng key có namespace riêng (CACHE_NS_BIO) — bio không trả nhầm HTML
+/// của bài viết. Bio ngắn nên entry nhỏ, LRU eviction chung giữ memory ổn.
 #[must_use]
 pub fn render_bio(input: &str) -> String {
     if input.trim().is_empty() {
         return String::new();
     }
+    // === Fast path: cache hit ===
+    let key = cache_key(input, CACHE_NS_BIO);
+    if let Ok(mut cache) = render_cache().lock() {
+        if let Some(html) = cache.get(&key) {
+            return (*html).clone();
+        }
+    }
+    // === Slow path: render + cache ===
+    let html = render_bio_uncached(input);
+    let html_arc = Arc::new(html);
+    if let Ok(mut cache) = render_cache().lock() {
+        cache.insert(key, Arc::clone(&html_arc));
+    }
+    (*html_arc).clone()
+}
+
+/// Render bio không cache — nội bộ. Pipeline v3.12.0 MỞ RỘNG so với
+/// v2.5.0: bio hồ sơ giờ hỗ trợ NGUYÊN BỘ tính năng block-level của
+/// engine (mạnh hơn profile README của GitHub/HF vốn chỉ render markdown
+/// thuần):
+///   - **Callout** `> [!NOTE]` (+ modifier `+`/`-`): khối chú ý/cảnh báo
+///     có tiêu đề — AI Agent dùng để nhấn mạnh chính sách/ghi chú trong
+///     phần giới thiệu.
+///   - **Mermaid** ```mermaid: sơ đồ/lưu đồ render client-side (initMermaid
+///     quét cả bio vì `.mermaid` nằm trong document). PASS PHẢI chạy trước
+///     các pass code-block để block mermaid thoát khỏi <pre>.
+///   - GIỮ nguyên như v2.5/v3.11: harden_links, math KaTeX (class +
+///     delimiter), spoiler, lazy image, img src allowlist, external-link
+///     marker, kbd, mention/hashtag.
+///   - VẪN KHÔNG (cố ý — bio phải gọn, không lấn chiếm layout hồ sơ):
+///     YouTube/Vimeo/media embed, heading anchor/ToC, copy button, code
+///     lang label, line numbers, figure caption.
+fn render_bio_uncached(input: &str) -> String {
     let opts = comrak_options();
     let highlighter = SyntectHighlighter {
         syntax_set: syntax_set(),
@@ -634,6 +688,14 @@ pub fn render_bio(input: &str) -> String {
     // render được cả trong bio, CSS fallback hiển thị công thức dạng code.
     out = normalize_math_spans(&out);
     out = convert_spoiler_inline(&out);
+    // v3.12.0 — callout `> [!NOTE]` hoạt động trong bio (blockquote an
+    // toàn, không iframe/script).
+    out = convert_callouts(&out);
+    // v3.12.0 — mermaid block → <div class="mermaid">: client lazy-init
+    // quét document-wide nên diagram trong bio render được. Phải chạy
+    // TRƯỚC lazy_images/harden_img_src (không đụng <img>) và không có pass
+    // code-block nào phía sau nên thứ tự an toàn.
+    out = convert_mermaid_blocks(&out);
     out = lazy_images(&out);
     out = harden_img_src(&out);
     out = mark_external_links(&out);
@@ -2781,6 +2843,81 @@ mod tests {
     }
 
     // ============================================================
+    // v3.12.0 — TESTS SIÊU NÂNG CẤP BIO (fix bảng so sánh + callout +
+    // mermaid + cache namespace)
+    // ============================================================
+
+    #[test]
+    fn test_bio_v3120_table_renders() {
+        // Bảng so sánh GFM trong bio: comrak bật extension table chung nên
+        // HTML <table> luôn có — bug từng nằm ở CSS (.bio-md table), test
+        // này chốt contract: pipeline bio KHÔNG được đẻ trôi cú pháp bảng.
+        let out =
+            render_bio("| Tính năng | Trạng thái |\n|-----------|:----------:|\n| Bảng | ✅ |");
+        assert!(out.contains("<table>"), "bio phải render <table>: {out}");
+        assert!(out.contains("<th"), "bio phải có header cell: {out}");
+        assert!(out.contains("<td"), "bio phải có body cell: {out}");
+        // Alignment GFM `:---:` → align="center"
+        assert!(
+            out.contains("align=\"center\""),
+            "alignment GFM phải sang attr align: {out}"
+        );
+    }
+
+    #[test]
+    fn test_bio_v3120_callout() {
+        // v3.12.0 — callout `> [!NOTE]` hoạt động trong bio
+        let out = render_bio("> [!NOTE]\n> Giới thiệu có khối chú ý.");
+        assert!(
+            out.contains("blockquote class=\"callout callout-note\""),
+            "bio phải render callout: {out}"
+        );
+        assert!(out.contains("Ghi chú"), "callout title VN: {out}");
+    }
+
+    #[test]
+    fn test_bio_v3120_mermaid() {
+        // v3.12.0 — mermaid block → <div class="mermaid"> trong bio
+        let out = render_bio("```mermaid\nflowchart TD\nA-->B\n```");
+        assert!(
+            out.contains("<div class=\"mermaid\">"),
+            "bio phải render mermaid div: {out}"
+        );
+        assert!(
+            !out.contains("<pre"),
+            "mermaid không còn là code block: {out}"
+        );
+    }
+
+    #[test]
+    fn test_bio_v3120_cache_not_collide_with_full_render() {
+        // Cache namespace: cùng input qua 2 pipeline phải cho 2 output khác
+        // nhau (render() inject ToC + heading anchor; render_bio() không) —
+        // nếu namespace hỏng, hit chéo cache sẽ trả nhầm HTML.
+        let input = "[toc]\n\n# Mục lục test\n\nNội dung.";
+        let full = render(input);
+        let bio = render_bio(input);
+        assert!(full.contains("toc-list"), "full render có ToC: {full}");
+        assert!(!bio.contains("toc-list"), "bio KHÔNG có ToC: {bio}");
+        // render_bio lặp lại phải ổn định (cache hit không đổi output)
+        assert_eq!(render_bio(input), bio, "bio cache phải deterministic");
+    }
+
+    #[test]
+    fn test_bio_v3120_no_embeds_still() {
+        // Bio VẪN chặn YouTube/Vimeo/media embed (không iframe trong bio)
+        let out = render_bio(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ\nhttps://vimeo.com/76979871\nhttps://example.com/a.mp4",
+        );
+        assert!(
+            !out.contains("youtube-nocookie.com"),
+            "bio không YouTube: {out}"
+        );
+        assert!(!out.contains("player.vimeo.com"), "bio không Vimeo: {out}");
+        assert!(!out.contains("<video"), "bio không video embed: {out}");
+    }
+
+    // ============================================================
     // v3.11.0 — TESTS CHO SIÊU NÂNG CẤP MARKDOWN
     // ============================================================
 
@@ -3016,8 +3153,9 @@ mod tests {
 
     #[test]
     fn test_v3110_cache_version_bumped() {
-        // Bảo hiểm: đổi engine phải bump cache version (4 hiện tại)
-        assert_eq!(CACHE_VERSION, 4);
+        // Bảo hiểm: đổi engine phải bump cache version (5 hiện tại — v3.12.0
+        // bio pipeline thêm callout/mermaid + namespace cache key).
+        assert_eq!(CACHE_VERSION, 5);
     }
 
     #[test]

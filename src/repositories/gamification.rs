@@ -118,8 +118,10 @@ impl GamificationRepo {
     ) -> AppResult<(i64, i32, LevelInfo)> {
         let mut tx = pool.begin().await?;
         // Anti-farm cap: đếm số event cùng reason đã có hôm nay
-        let effective = if amount > 0 {
-            let cap = match reason {
+        // v3.12.0 — cap hoist lên ngoài block để tái dùng ở lock re-check
+        // phía dưới (trước đây nằm trong block if amount > 0).
+        let cap = if amount > 0 {
+            match reason {
                 "comment" => Some(xp::MAX_COMMENT_XP_PER_DAY),
                 "chat_message" => Some(xp::MAX_CHAT_XP_PER_DAY),
                 "received_like" => Some(xp::MAX_RECEIVED_LIKE_XP_PER_DAY),
@@ -131,7 +133,11 @@ impl GamificationRepo {
                 "review" => Some(xp::MAX_REVIEW_XP_PER_DAY),
                 "repo" => Some(xp::MAX_REPO_XP_PER_DAY),
                 _ => None,
-            };
+            }
+        } else {
+            None
+        };
+        let effective = if amount > 0 {
             match cap {
                 Some(cap) => {
                     // SQL động: chỉ nhét hằng SQL_TODAY_START_VN (không có
@@ -157,6 +163,48 @@ impl GamificationRepo {
             }
         } else {
             amount
+        };
+        // v3.12.0 (audit logic M4): anti-farm cap là check-then-act — 2
+        // request song song cùng reason (burst comment/chat) đều thấy
+        // today_count < cap rồi cùng INSERT → cap ngày bị vượt. Lớp chống
+        // farm cùng pattern (trivia/mystery box) đã dùng
+        // pg_advisory_xact_lock; lấy lock THEO (user, reason) NGAY SAU khi
+        // biết có cap, TRƯỚC COUNT → mọi request dồn hàng xoay vòng, mỗi
+        // lần re-COUNT thấy số mới nhất. Lock chỉ tồn tại trong tx này
+        // (xact-scoped tự nhả khi commit/rollback) — không deadlock vì
+        // single-lock ordering.
+        // LƯU Ý: chỉ áp khi effective có thể > 0 (có cap); không-cap path
+        // (checkin, shop_spend...) giữ nguyên hành vi để không thêm
+        // contention cho event không farm-able.
+        let effective = if cap.is_some() && effective > 0 {
+            // SQL tĩnh — không format! cần thiết (clippy::useless_format).
+            let lock_sql =
+                "SELECT pg_advisory_xact_lock(hashtext('xp_cap:' || $1::text || ':' || $2::text));";
+            sqlx::query(lock_sql)
+                .bind(user_id.to_string())
+                .bind(reason)
+                .execute(&mut *tx)
+                .await?;
+            // Re-count sau khi có lock — thấy cả event do request song song
+            // vừa commit (READ COMMITTED thấy snapshot mới mỗi statement).
+            let sql = format!(
+                r"SELECT COUNT(*) FROM xp_events
+                  WHERE user_id = $1 AND reason = $2
+                    AND created_at >= {}",
+                crate::utils::SQL_TODAY_START_VN
+            );
+            let today_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(user_id)
+                .bind(reason)
+                .fetch_one(&mut *tx)
+                .await?;
+            if today_count >= i64::from(cap.unwrap_or(0)) {
+                0
+            } else {
+                effective
+            }
+        } else {
+            effective
         };
         // v3.0.0 — XP Boost (cửa hàng): nhân đôi XP thực cộng (sau cap).
         // Boost 0→0 vẫn 0, không tạo XP từ hư không.
@@ -640,6 +688,19 @@ impl GamificationRepo {
             return Ok(false);
         }
         // Ghim — check quota
+        // v3.12.0 (audit logic L2): COUNT rồi UPDATE là check-then-act —
+        // 2 tab ghim đồng thời cùng đọc count=2 rồi cùng UPDATE → vượt
+        // MAX_SHOWCASED_ACHIEVEMENTS. Khoá các row showcase của user
+        // (FOR UPDATE) trước khi đếm: request sau chờ request trước
+        // commit rồi mới thấy count mới — quota bất biến dưới race.
+        sqlx::query(
+            "SELECT achievement_id FROM user_achievements
+             WHERE user_id = $1 AND is_showcased = TRUE
+             FOR UPDATE",
+        )
+        .bind(user_id)
+        .fetch_all(&mut *tx)
+        .await?;
         let count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM user_achievements
              WHERE user_id = $1 AND is_showcased = TRUE",
@@ -942,15 +1003,38 @@ impl GamificationRepo {
         };
 
         let catalog = Self::list_achievements(pool).await?;
-        let mut granted = Vec::new();
-        for a in &catalog {
-            if met(&a.id) {
-                if let Some(newly) = Self::grant_achievement(pool, user_id, &a.id).await? {
-                    granted.push(newly);
-                }
-            }
+        // v3.12.0 (audit logic M3 — N+1 grant): trước đây loop gọi
+        // grant_achievement() TỪNG huy hiệu đạt điều kiện — mỗi lần = 1
+        // INSERT + 1 SELECT catalog (2 query × ~130 id) chạy trên MỌI
+        // comment/chat/login/like của user có nhiều huy hiệu. Giờ đúng
+        // 1 query duy nhất: batch INSERT ... SELECT ... WHERE id = ANY(...)
+        // ON CONFLICT DO NOTHING RETURNING achievement_id (RETURNING chỉ
+        // trả row MỚI — semantics trùng khớp rows_affected cũ). Dữ liệu
+        // Achievement lấy từ catalog đã load sẵn trong bộ nhớ, không
+        // query lại. Met-check thuần in-memory nên không mất gì.
+        let met_ids: Vec<String> = catalog
+            .iter()
+            .filter(|a| met(&a.id))
+            .map(|a| a.id.clone())
+            .collect();
+        if met_ids.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(granted)
+        let newly_ids: Vec<String> = sqlx::query_scalar(
+            r"INSERT INTO user_achievements (user_id, achievement_id)
+              SELECT $1, id FROM achievements WHERE id = ANY($2)
+              ON CONFLICT (user_id, achievement_id) DO NOTHING
+              RETURNING achievement_id",
+        )
+        .bind(user_id)
+        .bind(&met_ids)
+        .fetch_all(pool)
+        .await?;
+        Ok(catalog
+            .iter()
+            .filter(|a| newly_ids.iter().any(|id| id == &a.id))
+            .cloned()
+            .collect())
     }
 
     /// Bảng xếp hạng top XP (kèm số game + chuỗi hiện tại).

@@ -311,7 +311,7 @@ pub async fn maintenance_guard(
     next: Next,
 ) -> Response {
     let path = request.uri().path().to_string();
-    let bypass_prefixes: [&str; 11] = [
+    let bypass_prefixes: [&str; 12] = [
         "/admin",
         "/login",
         "/auth",
@@ -330,6 +330,13 @@ pub async fn maintenance_guard(
         // nhận 503 oan.
         "/ai/info",
         "/ai/progress",
+        // v3.12.0 FIX (audit sec #1 — regression M-6): v3.9.0 tuyên bố bổ
+        // sung "/ai/progress.json" nhưng chỉ thêm "/ai/progress" — match
+        // boundary-safe của v3.8.0-F14 (`path == p || starts_with("{p}/")`)
+        // KHÔNG khớp dấu chấm → JSON variant vẫn dính 503 khi bảo trì,
+        // AI Agent dùng /ai/progress.json mất tiến trình im lặng. Thêm
+        // entry riêng (exact-match qua nhánh path == p).
+        "/ai/progress.json",
     ];
     // v3.8.0 FIX (security audit F14): match CHÍNH XÁC path hoặc prefix
     // kèm "/". Bản cũ dùng starts_with(p) thuần → "/login-abc",
@@ -2036,12 +2043,22 @@ pub async fn origin_check(
     // stripping headers. AI Agent dùng Bearer token (không cookie) nên
     // không bị ảnh hưởng. Chỉ vô hiệu khi không có cookie (curl dev/test).
     if origin.is_none() && referer.is_none() {
-        let has_session_cookie = request
+        // v3.12.0 (audit sec #4 — defensive): trước đây chỉ check
+        // `kg_session=` — request chỉ mang kg_impersonator / kg_oauth_state
+        // mà thiếu Origin vẫn đi qua. Hôm nay không exploit được (ticket
+        // impersonate bind session hash, oauth state không dùng ở endpoint
+        // đổi-trạng-thái) nhưng để vùng phủ đồng đều: any-cookie-nhạy-cảm
+        // → fail-closed, phòng hờ endpoint tương lai dùng các cookie này.
+        let has_sensitive_cookie = request
             .headers()
             .get(axum::http::header::COOKIE)
             .and_then(|v| v.to_str().ok())
-            .is_some_and(|c| c.contains("kg_session="));
-        if has_session_cookie {
+            .is_some_and(|c| {
+                c.contains("kg_session=")
+                    || c.contains("kg_impersonator=")
+                    || c.contains("kg_oauth_state=")
+            });
+        if has_sensitive_cookie {
             return Err(AppError::Forbidden(
                 "Yêu cầu thiếu thông tin nguồn (Origin/Referer) — bị chặn                  để phòng CSRF".into(),
             ));
