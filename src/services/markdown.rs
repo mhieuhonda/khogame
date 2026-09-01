@@ -661,7 +661,7 @@ pub fn render_bio(input: &str) -> String {
 ///     phần giới thiệu.
 ///   - **Mermaid** ```mermaid: sơ đồ/lưu đồ render client-side (initMermaid
 ///     quét cả bio vì `.mermaid` nằm trong document). PASS PHẢI chạy trước
-///     các pass code-block để block mermaid thoát khỏi <pre>.
+///     các pass code-block để block mermaid thoát khỏi `pre`.
 ///   - GIỮ nguyên như v2.5/v3.11: harden_links, math KaTeX (class +
 ///     delimiter), spoiler, lazy image, img src allowlist, external-link
 ///     marker, kbd, mention/hashtag.

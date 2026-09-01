@@ -1,0 +1,16 @@
+# cargo-audit allowlist — CI chạy `cargo audit --deny warnings` nên mọi
+# advisory KHÔNG ignore ở đây sẽ fail build. Chỉ ignore warning KHÔNG phải
+# vulnerability (unmaintained) với dependency BẬC TRONG không kiểm soát
+# được — phụ thuộc upstream phát hành bản mới thì bỏ entry tương ứng.
+[advisories]
+ignore = [
+    # Bincode unmaintained — transitive (không dùng trực tiếp; không có
+    # CVE, chỉ ngừng bảo trì). Chờ upstream đổi sang bincode 2.x.
+    "RUSTSEC-2025-0141",
+    # yaml-rust unmaintained — transitive của syntect (default-fancy không
+    # parse YAML runtime). Chờ syntect gỡ dependency.
+    "RUSTSEC-2024-0320",
+]
+# Cảnh báo yanked không có advisory ID nên không ignore qua danh sách được:
+# chacha20 0.10.1 từng yanked trong lock — đã bump 0.10.2 (không yanked).
+# Nếu tương lại lock lại dính bản yanked → cargo update -p <crate> là fix.
