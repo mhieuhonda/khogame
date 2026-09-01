@@ -69,6 +69,19 @@ bảo mật toàn codebase. Ưu tiên xuyên suốt: trải nghiệm người d�
   163 huy hiệu trước khi phát hành.
 - Ghi chú trang huy hiệu bỏ con số cứng lỗi thời ("mở khóa 25 huy hiệu").
 
+### Fixed — prod incident trong đợt deploy v3.10.0 (root cause thật)
+- **Migration 044 làm web không serve khi deploy đầu tiên**: bản đầu của
+  migration 044 có 1 trường `action` vượt 200 ký tự, trong khi
+  `ai_progress_reports.task/action` là `VARCHAR(200)` → INSERT fail lúc
+  startup → container crash-loop → stack `degraded:unhealthy`, /health 503.
+  Chẩn đoán bằng cách tái hiện CHUỖI migration 001→044 trên PostgreSQL 17
+  thật (môi trường portable PG 17.2) — bắt đúng lỗi
+  `value too long for type character varying(200)`. Fix: rút gọn task +
+  action ≤200 ký tự (chi tiết đầy đủ chuyển sang `message` TEXT) + thêm
+  GUARD `DO $$ RAISE EXCEPTION` ngay trong migration để mọi lần chỉnh sau
+  vượt limit fail RÕ RÀNG với thông báo có ý nghĩa. Chạy lại chuỗi đầy đủ
+  trên DB mới: **001→044 PASS, 163 huy hiệu duy nhất, 6 report v3.10.0**.
+
 ### Security — siêu quét toàn codebase (lần N+1)
 - **Kết luận: 0 lỗ hổng mới.** Diện rà soát: quyền truy cập mọi handler
   admin (middleware `require_admin` route-layer + check tại handler —

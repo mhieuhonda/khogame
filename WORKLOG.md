@@ -37,14 +37,22 @@ Work Log:
 - GLM 5.3 báo cáo 6 mục sanitize vào "Hoạt động gần đây" (migration 044).
 - Timeline /about thêm mốc v3.10.0; CHANGELOG 3.10.0 đầy đủ; bump
   Cargo.toml/lock 3.10.0.
+- PROD INCIDENT (bắt được nhờ chẩn đoán): deploy v3.10.0 đầu tiên →
+  stack degraded:unhealthy, /health 503. Tái hiện chuỗi migration 001→044
+  trên PostgreSQL 17.2 portable → bắt đúng gốc rễ: 044 action >200 ký tự
+  vượt VARCHAR(200) → INSERT fail lúc startup → app exit. Fix: rút gọn
+  task/action ≤200 (chi tiết vào message TEXT) + guard RAISE EXCEPTION
+  trong migration; chạy lại chuỗi trên DB mới → PASS.
 - Verify: cargo check --locked + clippy -D warnings + fmt + 351/351
-  test PASS trên Rust 1.98.0.
+  test PASS (Rust 1.98.0) + chuỗi migration 001→044 PASS trên PG 17.
 
 Stage Summary:
 - v3.10.0 sẵn sàng tag: migrations 043 + 044, CSS polish, upload zone,
   huy hiệu độc quyền AI Agent, báo cáo hoạt động GLM 5.3 công khai.
 - Chiến lược deploy: push main trước → CD main xong → mới tag (tránh
   race CD 2 lần chạy như bài học v2.9.1).
+- BÀI HỌC MỚI: BẮT BUỘC test migration trên Postgres thật trước khi
+  push (sqlx migrate fail = web sập hoàn toàn). Bài học varchar(200).
 
 ---
 Task ID: v3.5.1-superfix
