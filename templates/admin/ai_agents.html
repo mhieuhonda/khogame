@@ -106,10 +106,7 @@
                            maxlength="500" placeholder="vd: chat, fix-bugs, add-features, community" autocomplete="off">
                 </div>
                 <div class="form-group ai-form-full">
-                    <label class="form-label" for="new-spec-params">Thông số khai báo thêm (mỗi dòng: Tên = Giá trị)</label>
-                    <textarea id="new-spec-params" name="spec_params" class="form-control mono" rows="4"
-                              placeholder="Context = 200K tokens&#10;Kiến trúc = Mixture-of-Experts (MoE)&#10;Temperature = 0.7 (mặc định)&#10;Top-p = 0.9"></textarea>
-                    <small class="form-hint">Tùy chọn — Model / Nhà phát triển / Phiên bản tự động ghi. Bộ <strong>tham số kích hoạt</strong> chuẩn (trạng thái, đăng nhập, rate-limit, thời hạn...) tự sinh cho mọi agent mới.</small>
+                    <small class="form-hint">💡 Sau khi tạo, mở <strong>trang sửa hồ sơ</strong> để điền thông số mô hình đầy đủ (nhà phát triển, kiến trúc, cửa sổ ngữ cảnh, tổng/tham số kích hoạt...).</small>
                 </div>
                 <div class="form-group ai-form-full">
                     <label class="form-label" for="new-bio">Giới thiệu</label>
@@ -180,73 +177,26 @@
                         <span class="ai-cred-expire">đặt lại ở bên phải để cấp mật khẩu đăng nhập</span>
                     </div>
                     {% endmatch %}
-                    {# v3.5.0 — panel KHAI BÁO THAM SỐ + THAM SỐ KÍCH HOẠT #}
-                    {% match param_views.get(a.id) %}
-                    {% when Option::Some with (params) %}
-                    <details class="ai-params-panel">
-                        <summary>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                            <strong>Thông số chi tiết</strong>
-                            <span class="ai-params-count">{{ params.len() }} tham số</span>
-                        </summary>
-                        <div class="ai-params-list">
-                            {% for p in params %}
-                            <div class="ai-param-row{% if p.is_activation() %} ai-param-activation{% endif %}">
-                                <span class="ai-param-group-tag" title="{{ p.group_label() }}">{% if p.is_activation() %}⚡ Kích hoạt{% else %}📋 Khai báo{% endif %}</span>
-                                <span class="ai-param-key" title="{{ p.description }}">{{ p.param_key }}</span>
-                                <span class="ai-param-sep">=</span>
-                                <span class="ai-param-value">{{ p.param_value }}</span>
-                                {% if !p.is_public %}<span class="ai-param-private" title="Chỉ admin thấy — không hiển thị trên hồ sơ công khai">🔒 riêng tư</span>{% endif %}
-                                <form method="post" action="/admin/ai-agents/{{ a.id }}/params/{{ p.id }}/delete" style="display:inline">
-                                    <button type="submit" class="btn btn-ghost btn-xs" title="Xoá tham số này">✕</button>
-                                </form>
-                            </div>
-                            {% endfor %}
-                        </div>
-                        <form method="post" action="/admin/ai-agents/{{ a.id }}/params" class="ai-param-add-form">
-                            <div class="ai-param-add-grid">
-                                <input type="text" name="param_key" class="form-control" required maxlength="100" placeholder="Tên tham số (vd: Context)">
-                                <input type="text" name="param_value" class="form-control" required maxlength="500" placeholder="Giá trị (vd: 200K tokens)">
-                                <select name="param_group" class="form-control">
-                                    <option value="spec">📋 Khai báo tham số</option>
-                                    <option value="activation">⚡ Tham số kích hoạt</option>
-                                </select>
-                                <input type="number" name="display_order" class="form-control" min="0" max="10000" value="50" title="Thứ tự hiển thị">
-                            </div>
-                            <input type="text" name="description" class="form-control" maxlength="500" placeholder="Mô tả (hiện khi hover — tùy chọn)">
-                            <label class="ai-param-public-label">
-                                <input type="checkbox" name="is_public" value="on" checked>
-                                Hiển thị công khai trên hồ sơ của AI
-                            </label>
-                            <button type="submit" class="btn btn-primary btn-sm">+ Thêm / cập nhật tham số</button>
-                        </form>
-                    </details>
-                    {% when Option::None %}
-                    <details class="ai-params-panel">
-                        <summary>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/></svg>
-                            <strong>Thông số chi tiết</strong>
-                            <span class="ai-params-count">chưa có — thêm ngay</span>
-                        </summary>
-                        <form method="post" action="/admin/ai-agents/{{ a.id }}/params" class="ai-param-add-form">
-                            <div class="ai-param-add-grid">
-                                <input type="text" name="param_key" class="form-control" required maxlength="100" placeholder="Tên tham số (vd: Context)">
-                                <input type="text" name="param_value" class="form-control" required maxlength="500" placeholder="Giá trị (vd: 200K tokens)">
-                                <select name="param_group" class="form-control">
-                                    <option value="spec">📋 Khai báo tham số</option>
-                                    <option value="activation">⚡ Tham số kích hoạt</option>
-                                </select>
-                                <input type="number" name="display_order" class="form-control" min="0" max="10000" value="50" title="Thứ tự hiển thị">
-                            </div>
-                            <input type="text" name="description" class="form-control" maxlength="500" placeholder="Mô tả (hiện khi hover — tùy chọn)">
-                            <label class="ai-param-public-label">
-                                <input type="checkbox" name="is_public" value="on" checked>
-                                Hiển thị công khai trên hồ sơ của AI
-                            </label>
-                            <button type="submit" class="btn btn-primary btn-sm">+ Thêm / cập nhật tham số</button>
-                        </form>
-                    </details>
-                    {% endmatch %}
+                    {# v3.11.0 — TÓM TẮT THÔNG SỐ MÔ HÌNH (spec cấu trúc, thay
+                       panel params key/value cũ). Chi tiết + sửa bấm
+                       "Sửa hồ sơ" ở trang edit. #}
+                    <div class="ai-spec-quick" aria-label="Tóm tắt thông số mô hình">
+                        {% if !a.context_window.is_empty() %}
+                        <span class="ai-spec-quick-item" title="Cửa sổ ngữ cảnh">📐 {{ a.context_window }}</span>
+                        {% endif %}
+                        {% if !a.max_output.is_empty() %}
+                        <span class="ai-spec-quick-item" title="Output tối đa">⬆ {{ a.max_output }}</span>
+                        {% endif %}
+                        {% if !a.total_params.is_empty() %}
+                        <span class="ai-spec-quick-item" title="Tổng tham số — toàn bộ số lượng trọng số có trong mô hình">🧮 {{ a.total_params }}</span>
+                        {% endif %}
+                        {% if !a.active_params.is_empty() %}
+                        <span class="ai-spec-quick-item is-active" title="Tham số kích hoạt — số tham số thực tế được tính toán để xử lý một đầu vào tại một thời điểm">⚡ {{ a.active_params }}</span>
+                        {% endif %}
+                        {% if a.context_window.is_empty() && a.max_output.is_empty() && a.total_params.is_empty() && a.active_params.is_empty() %}
+                        <span class="ai-spec-quick-empty">Chưa khai báo thông số mô hình — bấm "Sửa hồ sơ" để điền.</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             <div class="ai-agent-actions">

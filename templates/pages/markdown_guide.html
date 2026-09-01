@@ -1,0 +1,128 @@
+{% extends "layout.html" %}
+
+{% block title %}Hướng dẫn Markdown toàn diện{% endblock %}
+
+{% block content %}
+{# ============================================================
+   v3.11.0 — TRANG HƯỚNG DẪN MARKDOWN TOÀN DIỆN (/markdown)
+   * `rendered` = docs/markdown_guide.md render bằng CHÍNH engine của
+     site (services::markdown::render — cached) → mọi ví dụ hiển thị
+     đúng như thật, không bao giờ lệch pha với engine.
+   * Ô "Thử ngay": gõ Markdown → POST /preview (endpoint đã có) →
+     xem kết quả trực tiếp. Có sẵn 3 snippet mẫu bấm 1 nút.
+   ============================================================ #}
+<section class="static-page md-guide-page">
+    <div class="about-hero">
+        <div class="about-hero-logo">📝</div>
+        <div>
+            <h1>Hướng dẫn Markdown toàn diện</h1>
+            <p>Mọi tính năng Markdown mà Louis Space hỗ trợ — kèm ví dụ render thật và ô thử trực tiếp. Viết tin tức, mô tả game, README và bio đều dùng chung bộ cú pháp này.</p>
+        </div>
+    </div>
+
+    {# ============ Ô THỬ NGAY (playground) ============ #}
+    <div class="md-playground">
+        <div class="md-playground-head">
+            <h2>⚡ Thử ngay</h2>
+            <div class="md-playground-samples">
+                <button type="button" class="btn btn-outline btn-sm" data-md-sample="basics">Cơ bản</button>
+                <button type="button" class="btn btn-outline btn-sm" data-md-sample="rich">Nâng cao</button>
+                <button type="button" class="btn btn-outline btn-sm" data-md-sample="math">Công thức &amp; sơ đồ</button>
+            </div>
+        </div>
+        <div class="md-playground-grid">
+            <div class="md-playground-pane">
+                <label class="form-label" for="md-play-input">Markdown của bạn</label>
+                <textarea id="md-play-input" class="form-control md-play-input" rows="12"
+                          placeholder="Gõ Markdown ở đây… vd: **in đậm**, # Tiêu đề, - [ ] việc cần làm, $E=mc^2$"
+                          spellcheck="false"></textarea>
+                <div class="md-playground-meta">
+                    <span id="md-play-chars" class="muted">0 ký tự</span>
+                    <button type="button" id="md-play-run" class="btn btn-primary btn-sm">Xem trước</button>
+                </div>
+            </div>
+            <div class="md-playground-pane">
+                <span class="form-label">Kết quả render</span>
+                <div id="md-play-output" class="md-playground-output prose-md" aria-live="polite">
+                    <p class="muted">Kết quả hiện ở đây…</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# ============ GUIDE RENDER THẬT ============ #}
+    <div class="form-section md-guide-content prose-md">
+        {{ rendered|safe }}
+    </div>
+</section>
+
+<script>
+(function () {
+    'use strict';
+    var input = document.getElementById('md-play-input');
+    var output = document.getElementById('md-play-output');
+    var runBtn = document.getElementById('md-play-run');
+    var chars = document.getElementById('md-play-chars');
+    if (!input || !output || !runBtn) return;
+
+    var SAMPLES = {
+        basics: '# Tiêu đề lớn\n\nĐoạn văn với **chữ đậm**, *nghiêng*, ~~gạch ngang~~, `code`, ==đánh dấu== và :rocket:\n\n- Mục 1\n- Mục 2\n  - Mục con\n- [x] Việc đã xong\n- [ ] Việc chưa xong\n\n> [!TIP]\n> Đây là callout mẹo!',
+        rich: '## Bảng sắp xếp được\n\n| Game | Điểm |\n|---|---:|\n| Rust | 4,8 |\n| Neon | 4,5 |\n\n> [!WARNING]+\n> Callout mở rộng.\n\n[[Ctrl]] + [[S]] để lưu. Spoiler: >! bí mật !<\n\n*[XP]: Điểm kinh nghiệm\n\nKiếm XP mỗi ngày!\n\nLouis Space\n: nền tảng chia sẻ game Việt',
+        math: 'Công lượng: $E = mc^2$\n\n$$\\sum_{k=1}^{n} k = \\frac{n(n+1)}{2}$$\n\n```mermaid\ngraph TD\n  A[Bắt đầu] --> B{Ok?}\n  B -- Có --> C[Kết thúc]\n  B -- Không --> A\n```\n\nChú thích[^1]\n\n[^1]: Footnote cuối trang.'
+    };
+
+    document.querySelectorAll('[data-md-sample]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            input.value = SAMPLES[btn.getAttribute('data-md-sample')] || '';
+            updateChars();
+            runPreview();
+        });
+    });
+
+    function updateChars() {
+        chars.textContent = input.value.length.toLocaleString('vi-VN') + ' ký tự';
+    }
+
+    var timer = null;
+    function runPreview() {
+        var text = input.value;
+        if (!text.trim()) {
+            output.innerHTML = '<p class="muted">Kết quả hiện ở đây…</p>';
+            return;
+        }
+        runBtn.disabled = true;
+        var body = 'text=' + encodeURIComponent(text);
+        fetch('/preview', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body,
+            credentials: 'same-origin'
+        }).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        }).then(function (data) {
+            output.innerHTML = data.html || '';
+            if (window.kgMarkdownEnhance) {
+                try { window.kgMarkdownEnhance(output); } catch (e) { /* ignore */ }
+            }
+        }).catch(function (err) {
+            output.innerHTML = '<p class="muted">Lỗi xem trước: ' + (err.message || 'không xác định') + '</p>';
+        }).finally(function () {
+            runBtn.disabled = false;
+        });
+    }
+
+    input.addEventListener('input', function () {
+        updateChars();
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(runPreview, 600); // debounce 600ms
+    });
+    runBtn.addEventListener('click', runPreview);
+
+    // Điền sample đầu tiên để người mới thấy ngay kết quả
+    input.value = SAMPLES.basics;
+    updateChars();
+    runPreview();
+})();
+</script>
+{% endblock %}

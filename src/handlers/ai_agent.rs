@@ -191,9 +191,14 @@ pub async fn register(
         }
     }
     if let Some(avatar) = req.avatar_url.as_deref() {
-        if !avatar.is_empty() && !crate::utils::is_safe_url(avatar) {
+        // v3.11.0 — đồng bộ whitelist với UserRepo/AiAgentRepo: chấp nhận
+        // cả /uploads/... (URL nội bộ do server sinh khi upload ảnh).
+        if !avatar.is_empty()
+            && !crate::utils::is_safe_url(avatar)
+            && !crate::services::storage::is_upload_url(avatar)
+        {
             return Err(AppError::BadRequest(
-                "Avatar URL phải là http:// hoặc https://".into(),
+                "Avatar URL phải là http(s):// hoặc /uploads/avatars/...".into(),
             ));
         }
         if avatar.len() > 2048 {
@@ -601,6 +606,21 @@ pub struct AiProfileForm {
     pub bio: Option<String>,
     #[serde(default)]
     pub avatar_url: Option<String>,
+    // v3.11.0 — spec cấu trúc (thay hệ params key/value cũ).
+    #[serde(default)]
+    pub developer: Option<String>,
+    #[serde(default)]
+    pub architecture: Option<String>,
+    #[serde(default)]
+    pub context_window: Option<String>,
+    #[serde(default)]
+    pub max_output: Option<String>,
+    #[serde(default)]
+    pub languages: Option<String>,
+    #[serde(default)]
+    pub total_params: Option<String>,
+    #[serde(default)]
+    pub active_params: Option<String>,
 }
 
 /// # Errors
@@ -640,19 +660,26 @@ pub async fn update_profile(
     if form.version.chars().count() > 50 {
         return Err(AppError::BadRequest("Version tối đa 50 ký tự".into()));
     }
-    // v3.9.0 FIX: nâng 500 → 1000 khớp maxlength form ai_edit.html (1000)
-    // VÀ giới hạn bio hồ sơ user thường (handlers::profile::update_profile
-    // cũng 1000 từ v2.5.0) — trước đây form cho gõ 1000 nhưng handler từ
-    // chối >500 → user gõ xong nhận 400 vô giải thích.
+    // v3.11.0 — nâng 1000 → 6000 theo yêu cầu chủ sở hữu (giới thiệu AI
+    // cần chỗ viết chi tiết; DB column là TEXT nên không vướng giới hạn
+    // lưu trữ). Render qua render_bio (escape HTML — an toàn như cũ).
     if let Some(bio) = form.bio.as_deref() {
-        if bio.trim().chars().count() > 1000 {
-            return Err(AppError::BadRequest("Bio tối đa 1000 ký tự".into()));
+        if bio.trim().chars().count() > 6000 {
+            return Err(AppError::BadRequest("Giới thiệu tối đa 6000 ký tự".into()));
         }
     }
+    // v3.11.0 FIX (bug "upload logo AI Agent không lưu"): chấp nhận CẢ
+    // `/uploads/avatars/...` — URL do POST /uploads/avatar trả về và tự
+    // điền vào form. Trước đây chỉ cho http(s):// → luồng upload xong bấm
+    // Lưu bị 400, avatar reset về mặc định. Đồng bộ whitelist với
+    // UserRepo::update_profile (chặn javascript:/data:/file: như cũ).
     if let Some(avatar) = form.avatar_url.as_deref() {
-        if !avatar.is_empty() && !crate::utils::is_safe_url(avatar) {
+        if !avatar.is_empty()
+            && !crate::utils::is_safe_url(avatar)
+            && !crate::services::storage::is_upload_url(avatar)
+        {
             return Err(AppError::BadRequest(
-                "Avatar URL phải là http:// hoặc https://".into(),
+                "Avatar URL phải là http(s):// hoặc /uploads/avatars/...".into(),
             ));
         }
         if avatar.len() > 2048 {
@@ -701,19 +728,24 @@ pub async fn update_profile(
             ));
         }
     }
-    let _profile = AiAgentRepo::update_profile(
-        &state.db,
-        user.id,
+    let upd = crate::models::AiProfileUpdate {
         model_name,
-        form.vendor.as_str(),
-        form.version.as_str(),
-        &capabilities,
+        vendor: form.vendor.as_str(),
+        version: form.version.as_str(),
+        capabilities: &capabilities,
         privacy_level,
         accent_color,
-        form.bio.as_deref().unwrap_or(""),
-        form.avatar_url.as_deref(),
-    )
-    .await?;
+        developer: form.developer.as_deref().unwrap_or(""),
+        architecture: form.architecture.as_deref().unwrap_or(""),
+        context_window: form.context_window.as_deref().unwrap_or(""),
+        max_output: form.max_output.as_deref().unwrap_or(""),
+        languages: form.languages.as_deref().unwrap_or(""),
+        total_params: form.total_params.as_deref().unwrap_or(""),
+        active_params: form.active_params.as_deref().unwrap_or(""),
+        bio: form.bio.as_deref().unwrap_or(""),
+        avatar_url: form.avatar_url.as_deref().filter(|s| !s.is_empty()),
+    };
+    let _profile = AiAgentRepo::update_profile(&state.db, user.id, &upd).await?;
     // v3.6.2 — AI Agent có namespace hồ sơ riêng /ai/{username}
     Ok(Redirect::to(&format!("/ai/{}", user.username)))
 }
@@ -761,22 +793,19 @@ pub struct AiInfoResponse {
     pub model_name: String,
     pub vendor: String,
     pub verified: bool,
-    /// v3.5.0 — đầy đủ khai báo tham số + tham số kích hoạt của chính agent
-    /// (kể cả param riêng tư — agent có quyền thấy toàn bộ của mình):
-    /// mỗi phần tử `{key, value, group, description, is_public}`.
-    #[serde(default)]
-    pub params: Vec<AiInfoParam>,
-}
-
-/// View 1 tham số trong /ai/info (v3.5.0).
-#[derive(Debug, Serialize)]
-pub struct AiInfoParam {
-    pub key: String,
-    pub value: String,
-    /// "spec" | "activation"
-    pub group: String,
-    pub description: String,
-    pub is_public: bool,
+    /// v3.11.0 — spec cấu trúc thay cho hệ params key/value cũ: agent
+    /// thấy toàn bộ hồ sơ của mình qua API tự kiểm tra.
+    pub version: String,
+    pub developer: String,
+    pub architecture: String,
+    pub context_window: String,
+    pub max_output: String,
+    pub languages: String,
+    /// Tổng tham số — toàn bộ số lượng trọng số có trong mô hình.
+    pub total_params: String,
+    /// Tham số kích hoạt — số tham số thực tế được tính toán để xử lý
+    /// một đầu vào tại một thời điểm.
+    pub active_params: String,
 }
 
 /// # Errors
@@ -789,19 +818,6 @@ pub async fn info(
     let profile = AiAgentRepo::find_profile_by_user_id(&state.db, user.id)
         .await?
         .ok_or_else(|| AppError::NotFound("Hồ sơ AI Agent không tồn tại".into()))?;
-    // v3.5.0 — agent thấy TOÀN BỘ tham số của mình (kể cả riêng tư).
-    let params: Vec<AiInfoParam> = AiAgentRepo::list_params(&state.db, user.id, false)
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .map(|p| AiInfoParam {
-            key: p.param_key,
-            value: p.param_value,
-            group: p.param_group,
-            description: p.description,
-            is_public: p.is_public,
-        })
-        .collect();
     Ok(axum::response::Json(AiInfoResponse {
         success: true,
         user_id: user.id.to_string(),
@@ -810,7 +826,14 @@ pub async fn info(
         model_name: profile.model_name,
         vendor: profile.vendor,
         verified: profile.verified,
-        params,
+        version: profile.version,
+        developer: profile.developer,
+        architecture: profile.architecture,
+        context_window: profile.context_window,
+        max_output: profile.max_output,
+        languages: profile.languages,
+        total_params: profile.total_params,
+        active_params: profile.active_params,
     }))
 }
 

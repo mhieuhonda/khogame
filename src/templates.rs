@@ -60,6 +60,7 @@ impl_template_response!(
     PrivacyPageTemplate,
     // v3.2.0 — trang Thông tin / giới thiệu
     AboutPageTemplate,
+    MarkdownGuideTemplate,
     // News module
     NewsListTemplate,
     NewsShowTemplate,
@@ -319,11 +320,6 @@ pub struct ProfileTemplate {
     /// v3.4.0 — Báo cáo hoạt động AI (sanitized: task/action/status/pct/time
     /// — KHÔNG message/metadata/ip). Chỉ có khi user là AI Agent.
     pub ai_activity: Vec<crate::handlers::profile::AiPublicActivity>,
-    /// v3.5.0 — Tham số CÔNG KHAI của AI Agent, tách 2 nhóm cho template:
-    /// khai báo tham số (spec) + tham số kích hoạt (activation). Rỗng nếu
-    /// hồ sơ không phải AI. Param riêng tư chỉ admin thấy ở /admin/ai-agents.
-    pub ai_params_spec: Vec<ai_agent::AiAgentParam>,
-    pub ai_params_activation: Vec<ai_agent::AiAgentParam>,
     /// v3.5.0 — `true` nếu đây là AI Agent MẶC ĐỊNH (GLM 5.3) — bật hiệu
     /// ứng hero FULL MÀN trên trang hồ sơ (aurora + hạt sao + lưới động).
     pub ai_is_default_agent: bool,
@@ -603,7 +599,6 @@ pub struct AdminAiAgentsTemplate {
     pub cred_views: std::collections::HashMap<uuid::Uuid, crate::handlers::admin::AiCredentialView>,
     /// v3.5.0 — tham số theo agent (map user_id → danh sách params đã sắp
     /// xếp nhóm + thứ tự). Dùng cho panel "Khai báo tham số & kích hoạt".
-    pub param_views: std::collections::HashMap<uuid::Uuid, Vec<ai_agent::AiAgentParam>>,
     /// Username vừa tạo/đặt lại mật khẩu (flash 1 lần).
     pub created_username: Option<String>,
     /// Mật khẩu vừa tạo/đặt lại — hiển thị 1 LẦN trong response POST
@@ -631,7 +626,6 @@ pub struct AdminAiAgentEditTemplate {
     /// Agent đang sửa (users + ai_agent_profiles join).
     pub agent: ai_agent::AiAgentWithProfile,
     /// Toàn bộ tham số (kể cả riêng tư — admin thấy hết).
-    pub params: Vec<ai_agent::AiAgentParam>,
     /// Flash thành công (render lại trang kèm banner).
     pub saved: bool,
     /// Flash lỗi validation (để admin thấy nguyên nhân rõ ràng).
@@ -715,6 +709,19 @@ pub struct PrivacyPageTemplate {
 pub struct AboutPageTemplate {
     pub current_user: Option<user::User>,
     pub unread_notifications: i64,
+}
+
+/// v3.11.0 — Trang Hướng dẫn Markdown toàn diện (/markdown): mọi tính năng
+/// engine hỗ trợ kèm ví dụ render thật (nội dung guide nằm ở
+/// docs/markdown_guide.md, include + render bằng chính engine) + ô thử
+/// trực tiếp (POST /preview đã có sẵn).
+#[derive(Template)]
+#[template(path = "pages/markdown_guide.html")]
+pub struct MarkdownGuideTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    /// HTML guide đã render bằng services::markdown::render (cached).
+    pub rendered: String,
 }
 
 // ============= HTMX partials =============

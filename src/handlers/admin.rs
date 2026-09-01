@@ -1713,15 +1713,13 @@ async fn build_ai_agents_page(
     flash_username: Option<String>,
     flash_password: Option<String>,
 ) -> AppResult<AdminAiAgentsTemplate> {
-    let (agents_res, creds_res, params_res, unread_res) = tokio::join!(
+    let (agents_res, creds_res, unread_res) = tokio::join!(
         AiAgentRepo::list_for_admin(&state.db),
         AiAgentRepo::credentials_map(&state.db),
-        AiAgentRepo::params_map(&state.db),
         unread_count(state, user.id)
     );
     let agents = agents_res.unwrap_or_default();
     let creds = creds_res.unwrap_or_default();
-    let param_views = params_res.unwrap_or_default();
     let now = chrono::Utc::now();
     // Trạng thái mật khẩu hiển thị cho từng agent (không kèm hash)
     let cred_views: std::collections::HashMap<Uuid, AiCredentialView> = creds
@@ -1744,7 +1742,6 @@ async fn build_ai_agents_page(
         unread_notifications: unread_res,
         agents,
         cred_views,
-        param_views,
         created_username: flash_username.filter(|s| !s.is_empty()),
         created_password: flash_password.filter(|s| !s.is_empty()),
     })
@@ -1939,10 +1936,6 @@ pub struct AiAgentCreateForm {
     pub accent_color: String,
     #[serde(default)]
     pub bio: String,
-    /// v3.5.0 — Thông số khai báo thêm, mỗi dòng `Tên = Giá trị`
-    /// (vd `Context = 128K tokens`). Model/Vendor/Phiên bản tự động ghi.
-    #[serde(default)]
-    pub spec_params: String,
 }
 
 /// POST /admin/ai-agents/create — admin tạo tài khoản AI Agent mới với
@@ -1985,83 +1978,6 @@ pub async fn create_ai_agent(
         admin.id,
     )
     .await?;
-
-    // v3.5.0 — Mọi AI Agent mới PHẢI có đầy đủ khai báo tham số + tham số
-    // kích hoạt: (1) spec cơ bản từ form, (2) spec tuỳ biến từ textarea
-    // `Tên = Giá trị`, (3) bộ activation chuẩn (trạng thái, đăng nhập,
-    // rate-limit, thời hạn...). Fail-soft: lỗi seed không chặn tạo agent.
-    {
-        let model = form.model_name.trim();
-        let vendor = form.vendor.trim();
-        let version = form.version.trim();
-        let _ = AiAgentRepo::upsert_param(
-            &state.db,
-            user_id,
-            "Model",
-            model,
-            "spec",
-            "Tên model đầy đủ",
-            true,
-            10,
-            admin.id,
-        )
-        .await;
-        if !vendor.is_empty() {
-            let _ = AiAgentRepo::upsert_param(
-                &state.db,
-                user_id,
-                "Nhà phát triển",
-                vendor,
-                "spec",
-                "Vendor sở hữu model",
-                true,
-                20,
-                admin.id,
-            )
-            .await;
-        }
-        if !version.is_empty() {
-            let _ = AiAgentRepo::upsert_param(
-                &state.db,
-                user_id,
-                "Phiên bản",
-                version,
-                "spec",
-                "Phiên bản hiện đang chạy",
-                true,
-                30,
-                admin.id,
-            )
-            .await;
-        }
-        // Spec tuỳ biến — mỗi dòng `Tên = Giá trị` (tối đa 20 dòng).
-        for (i, line) in form.spec_params.lines().take(20).enumerate() {
-            let line = line.trim();
-            let Some((k, v)) = line.split_once('=') else {
-                continue;
-            };
-            let k = k.trim();
-            let v = v.trim();
-            if k.is_empty() || v.is_empty() {
-                continue;
-            }
-            let _ = AiAgentRepo::upsert_param(
-                &state.db,
-                user_id,
-                k,
-                v,
-                "spec",
-                "Khai báo bởi admin khi tạo tài khoản",
-                true,
-                40 + (i as i32) * 10,
-                admin.id,
-            )
-            .await;
-        }
-        let _ =
-            AiAgentRepo::seed_activation_params(&state.db, user_id, form.expires_days, admin.id)
-                .await;
-    }
 
     audit::audit(
         &state,
@@ -2256,120 +2172,11 @@ pub async fn revoke_ai_agent_tokens(
     Ok(Redirect::to("/admin/ai-agents").into_response())
 }
 
-/// Form thêm/cập nhật tham số (v3.5.0).
-#[derive(Debug, Deserialize)]
-pub struct AiParamForm {
-    pub param_key: String,
-    pub param_value: String,
-    /// "spec" (khai báo tham số) hoặc "activation" (tham số kích hoạt).
-    #[serde(default)]
-    pub param_group: String,
-    #[serde(default)]
-    pub description: String,
-    /// "on" từ checkbox HTML — rỗng nếu không check.
-    #[serde(default)]
-    pub is_public: String,
-    #[serde(default)]
-    pub display_order: i64,
-}
-
-/// POST /admin/ai-agents/{user_id}/params — thêm/cập nhật 1 tham số của
-/// agent (upsert theo tên). v3.5.0 — "AI Agent phải có khai báo tham số,
-/// tham số kích hoạt, đầy đủ thông tin chi tiết".
-///
-/// # Errors
-///
-/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-pub async fn ai_agent_add_param(
-    State(state): State<Arc<AppState>>,
-    AuthUser(admin): AuthUser,
-    Path(user_id): Path<Uuid>,
-    Form(form): Form<AiParamForm>,
-) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
-    }
-    let target = UserRepo::find_by_id(&state.db, user_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
-    if !target.is_ai_agent_user() {
-        return Err(AppError::BadRequest(
-            "Chỉ quản lý tham số của TÀI KHOẢN AI AGENT".into(),
-        ));
-    }
-    let group = if form.param_group == "activation" {
-        "activation"
-    } else {
-        "spec"
-    };
-    let is_public = matches!(form.is_public.as_str(), "on" | "true" | "1");
-    AiAgentRepo::upsert_param(
-        &state.db,
-        user_id,
-        &form.param_key,
-        &form.param_value,
-        group,
-        &form.description,
-        is_public,
-        form.display_order.clamp(0, 10_000) as i32,
-        admin.id,
-    )
-    .await?;
-    audit::audit(
-        &state,
-        admin.id,
-        "ai_agent.param_upsert",
-        "user",
-        &user_id.to_string(),
-        &format!(
-            "{} {} tham số '{}' của AI Agent {}",
-            admin.username,
-            if group == "activation" {
-                "cập nhật tham số kích hoạt"
-            } else {
-                "khai báo tham số"
-            },
-            form.param_key,
-            target.username
-        ),
-    )
-    .await;
-    Ok(Redirect::to("/admin/ai-agents").into_response())
-}
-
-/// POST /admin/ai-agents/{user_id}/params/{param_id}/delete — xoá 1 tham số.
-///
-/// # Errors
-///
-/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-pub async fn ai_agent_delete_param(
-    State(state): State<Arc<AppState>>,
-    AuthUser(admin): AuthUser,
-    Path((user_id, param_id)): Path<(Uuid, i64)>,
-) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
-    }
-    let deleted = AiAgentRepo::delete_param(&state.db, user_id, param_id).await?;
-    if deleted {
-        audit::audit(
-            &state,
-            admin.id,
-            "ai_agent.param_delete",
-            "user",
-            &user_id.to_string(),
-            &format!("{} xoá tham số #{param_id} của AI Agent", admin.username),
-        )
-        .await;
-    }
-    Ok(Redirect::to("/admin/ai-agents").into_response())
-}
-
 // ============================================================
-// v3.7.0 — ADMIN SỬA THÔNG TIN CHI TIẾT + THÔNG SỐ AI AGENT
+// v3.7.0 — ADMIN SỬA HỒ SƠ AI AGENT (v3.11.0: spec cấu trúc 10 trường,
+// thay hệ params key/value cũ — không còn route /params)
 // GET  /admin/ai-agents/{user_id}/edit — trang sửa
-// POST /admin/ai-agents/{user_id}/edit — lưu hồ sơ
-// POST /admin/ai-agents/{user_id}/params/{param_id}/edit — sửa 1 tham số
+// POST /admin/ai-agents/{user_id}/edit — lưu hồ sơ + spec
 // ============================================================
 
 /// GET /admin/ai-agents/{user_id}/edit — trang sửa thông tin AI Agent.
@@ -2385,20 +2192,17 @@ pub async fn edit_ai_agent_form(
     if !admin.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
+    let (agent_res, unread_res, badge_res) = tokio::join!(
         AiAgentRepo::find_agent_by_id(&state.db, user_id),
-        AiAgentRepo::list_params(&state.db, user_id, false),
         unread_count(&state, admin.id),
         // v3.10.0 — huy hiệu độc quyền AI Agent đã cấp chưa?
         GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
     );
     let agent = agent_res?;
-    let params = params_res.unwrap_or_default();
     Ok(AdminAiAgentEditTemplate {
         current_user: Some(admin),
         unread_notifications: unread_res,
         agent,
-        params,
         saved: false,
         error: None,
         has_ai_badge: badge_res.unwrap_or(false),
@@ -2428,6 +2232,21 @@ pub struct AiAgentEditForm {
     pub bio: String,
     #[serde(default)]
     pub avatar_url: String,
+    // v3.11.0 — spec cấu trúc (thay hệ params key/value cũ).
+    #[serde(default)]
+    pub developer: String,
+    #[serde(default)]
+    pub architecture: String,
+    #[serde(default)]
+    pub context_window: String,
+    #[serde(default)]
+    pub max_output: String,
+    #[serde(default)]
+    pub languages: String,
+    #[serde(default)]
+    pub total_params: String,
+    #[serde(default)]
+    pub active_params: String,
 }
 
 /// POST /admin/ai-agents/{user_id}/edit — admin sửa hồ sơ AI Agent
@@ -2455,19 +2274,16 @@ pub async fn edit_ai_agent_submit(
         user_id: Uuid,
         msg: &str,
     ) -> AppResult<AdminAiAgentEditTemplate> {
-        let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
+        let (agent_res, unread_res, badge_res) = tokio::join!(
             AiAgentRepo::find_agent_by_id(&state.db, user_id),
-            AiAgentRepo::list_params(&state.db, user_id, false),
             unread_count(state, admin.id),
             GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
         );
         let agent = agent_res?;
-        let params = params_res.unwrap_or_default();
         Ok(AdminAiAgentEditTemplate {
             current_user: Some(admin),
             unread_notifications: unread_res,
             agent,
-            params,
             saved: false,
             error: Some(msg.to_string()),
             has_ai_badge: badge_res.unwrap_or(false),
@@ -2502,8 +2318,10 @@ pub async fn edit_ai_agent_submit(
     if form.version.trim().chars().count() > 50 {
         return render_error(&state, admin, user_id, "Phiên bản tối đa 50 ký tự").await;
     }
-    if form.bio.trim().chars().count() > 500 {
-        return render_error(&state, admin, user_id, "Giới thiệu tối đa 500 ký tự").await;
+    // v3.11.0 — nâng 500 → 6000 theo yêu cầu chủ sở hữu (đồng bộ với
+    // handler AI tự sửa /profile/ai — trước đây 2 nơi lệch nhau).
+    if form.bio.trim().chars().count() > 6000 {
+        return render_error(&state, admin, user_id, "Giới thiệu tối đa 6000 ký tự").await;
     }
     let accent = form.accent_color.trim();
     if !accent.is_empty()
@@ -2561,20 +2379,28 @@ pub async fn edit_ai_agent_submit(
     if let Err(e) = user_updated {
         return render_error(&state, admin, user_id, &e.to_string()).await;
     }
-    // 2) ai_agent_profiles: model/vendor/version/caps/privacy/accent.
-    let profile_updated = AiAgentRepo::update_profile(
-        &state.db,
-        user_id,
+    // 2) ai_agent_profiles: model/vendor/version/caps/privacy/accent
+    //    + 7 trường spec cấu trúc v3.11.0 (developer, architecture,
+    //    context_window, max_output, languages, total_params,
+    //    active_params). Repo tự validate giới hạn độ dài từng trường.
+    let upd = crate::models::AiProfileUpdate {
         model_name,
-        form.vendor.trim(),
-        form.version.trim(),
-        &capabilities,
-        privacy,
-        if accent.is_empty() { "#7c3aed" } else { accent },
-        form.bio.trim(),
-        Some(avatar),
-    )
-    .await;
+        vendor: form.vendor.trim(),
+        version: form.version.trim(),
+        capabilities: &capabilities,
+        privacy_level: privacy,
+        accent_color: if accent.is_empty() { "#7c3aed" } else { accent },
+        developer: form.developer.trim(),
+        architecture: form.architecture.trim(),
+        context_window: form.context_window.trim(),
+        max_output: form.max_output.trim(),
+        languages: form.languages.trim(),
+        total_params: form.total_params.trim(),
+        active_params: form.active_params.trim(),
+        bio: form.bio.trim(),
+        avatar_url: Some(avatar),
+    };
+    let profile_updated = AiAgentRepo::update_profile(&state.db, user_id, &upd).await;
     if let Err(e) = profile_updated {
         return render_error(&state, admin, user_id, &e.to_string()).await;
     }
@@ -2600,19 +2426,16 @@ pub async fn edit_ai_agent_submit(
     );
 
     // Render lại trang kèm banner thành công + dữ liệu mới nhất.
-    let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
+    let (agent_res, unread_res, badge_res) = tokio::join!(
         AiAgentRepo::find_agent_by_id(&state.db, user_id),
-        AiAgentRepo::list_params(&state.db, user_id, false),
         unread_count(&state, admin.id),
         GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
     );
     let agent = agent_res?;
-    let params = params_res.unwrap_or_default();
     Ok(AdminAiAgentEditTemplate {
         current_user: Some(admin),
         unread_notifications: unread_res,
         agent,
-        params,
         saved: true,
         error: None,
         has_ai_badge: badge_res.unwrap_or(false),
@@ -2706,72 +2529,6 @@ pub async fn toggle_ai_agent_badge(
 
     // Redirect về trang sửa (PRG pattern — refresh không gửi lại POST).
     Ok(Redirect::to(&format!("/admin/ai-agents/{user_id}/edit")).into_response())
-}
-
-/// Form sửa 1 tham số (POST /admin/ai-agents/{user_id}/params/{param_id}/edit).
-#[derive(Debug, Deserialize)]
-pub struct AiParamEditForm {
-    pub param_key: String,
-    pub param_value: String,
-    #[serde(default)]
-    pub param_group: String,
-    #[serde(default)]
-    pub description: String,
-    #[serde(default)]
-    pub is_public: String,
-    #[serde(default)]
-    pub display_order: i64,
-}
-
-/// POST /admin/ai-agents/{user_id}/params/{param_id}/edit — SỬA 1 tham số
-/// đã có (trước đây chỉ delete + re-add — v3.7.0 cho edit inline).
-///
-/// # Errors
-///
-/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-pub async fn ai_agent_edit_param(
-    State(state): State<Arc<AppState>>,
-    AuthUser(admin): AuthUser,
-    Path((user_id, param_id)): Path<(Uuid, i64)>,
-    Form(form): Form<AiParamEditForm>,
-) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
-    }
-    let group = if form.param_group == "activation" {
-        "activation"
-    } else {
-        "spec"
-    };
-    let is_public = matches!(form.is_public.as_str(), "on" | "true" | "1");
-    let updated = AiAgentRepo::admin_update_param(
-        &state.db,
-        user_id,
-        param_id,
-        &form.param_key,
-        &form.param_value,
-        group,
-        &form.description,
-        is_public,
-        form.display_order.clamp(0, 10_000) as i32,
-        admin.id,
-    )
-    .await?;
-    if updated {
-        audit::audit(
-            &state,
-            admin.id,
-            "ai_agent.param_edit",
-            "user",
-            &user_id.to_string(),
-            &format!(
-                "{} sửa tham số #{param_id} ('{}') của AI Agent",
-                admin.username, form.param_key
-            ),
-        )
-        .await;
-    }
-    Ok(Redirect::to("/admin/ai-agents").into_response())
 }
 
 /// POST /impersonate/stop — kết thúc phiên impersonate.

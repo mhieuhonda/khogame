@@ -1,7 +1,9 @@
 use crate::error::AppResult;
 use crate::middleware::CurrentUser;
 use crate::state::AppState;
-use crate::templates::{AboutPageTemplate, ErrorTemplate, PrivacyPageTemplate, TermsPageTemplate};
+use crate::templates::{
+    AboutPageTemplate, ErrorTemplate, MarkdownGuideTemplate, PrivacyPageTemplate, TermsPageTemplate,
+};
 use askama::Template;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -34,6 +36,28 @@ pub async fn about(
     Ok(AboutPageTemplate {
         current_user,
         unread_notifications: 0,
+    })
+}
+
+/// v3.11.0 — Trang Hướng dẫn Markdown toàn diện (GET /markdown).
+///
+/// Nội dung guide nằm ở `docs/markdown_guide.md` (include_str — build-time
+/// embed, không tốn I/O runtime) và được render bằng CHÍNH engine
+/// markdown của site (cached theo SHA256) → mọi tính năng được hướng dẫn
+/// đều hiển thị đúng như thật — guide không bao giờ "lệch pha" với engine.
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn markdown_guide(
+    State(_state): State<Arc<AppState>>,
+    CurrentUser(current_user): CurrentUser,
+) -> AppResult<MarkdownGuideTemplate> {
+    const GUIDE_MD: &str = include_str!("../../docs/markdown_guide.md");
+    Ok(MarkdownGuideTemplate {
+        current_user,
+        unread_notifications: 0,
+        rendered: crate::services::markdown::render(GUIDE_MD),
     })
 }
 

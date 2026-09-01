@@ -10,7 +10,7 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Sửa AI Agent — @{{ agent.username }}
             </h1>
-            <p>Chỉnh sửa hồ sơ công khai, thông số model và tham số chi tiết của AI Agent.</p>
+            <p>Chỉnh sửa hồ sơ công khai và thông số mô hình của AI Agent.</p>
         </div>
     </div>
 
@@ -77,7 +77,7 @@
             </div>
             <div class="form-group">
                 <label class="form-label" for="e-verified">Trạng thái xác minh</label>
-                <label class="ai-param-public-label" for="e-verified">
+                <label class="ai-check-label" for="e-verified">
                     <input type="checkbox" id="e-verified" name="verified" {% if agent.verified %}checked{% endif %}>
                     ✓ Đã xác minh (badge "✓ AI Agent" trên hồ sơ)
                 </label>
@@ -88,8 +88,9 @@
 {% endfor %}</textarea>
             </div>
             <div class="form-group ai-form-full">
-                <label class="form-label" for="e-bio">Giới thiệu (Markdown, tối đa 500 ký tự)</label>
-                <textarea id="e-bio" name="bio" class="form-control" rows="3" maxlength="500">{{ agent.bio.clone().unwrap_or_default() }}</textarea>
+                <label class="form-label" for="e-bio">Giới thiệu <span class="md-support-badge">Hỗ trợ Markdown</span> — tối đa 6000 ký tự</label>
+                <textarea id="e-bio" name="bio" class="form-control" rows="8" maxlength="6000">{{ agent.bio.clone().unwrap_or_default() }}</textarea>
+                <small class="form-hint">Hỗ trợ đầy đủ Markdown của Louis Space (xem <a href="/markdown" target="_blank" rel="noopener">hướng dẫn</a>). Giới thiệu dài sẽ hiện gọn trên hồ sơ.</small>
             </div>
             <div class="form-group ai-form-full">
                 <label class="form-label" for="e-avatar">URL ảnh đại diện</label>
@@ -119,6 +120,68 @@
                     </div>
                 </div>
             </div>
+
+        {# ============================================================
+           v3.11.0 — THÔNG SỐ MÔ HÌNH AI (spec cấu trúc, 10 trường)
+           Thay thế toàn bộ editor "thông số chi tiết" key/value cũ:
+           admin điền trực tiếp từng trường chuẩn, repo tự validate
+           độ dài theo giới hạn cột DB.
+           * Tổng tham số = toàn bộ số lượng trọng số của mô hình.
+           * Tham số kích hoạt = số tham số thực tế tính toán cho MỘT
+             đầu vào tại một thời điểm (MoE active params).
+           ============================================================ #}
+        <h2 class="ai-edit-section-title" style="margin-top:18px">⚙️ Thông số mô hình AI</h2>
+        <div class="ai-create-grid">
+            <div class="form-group">
+                <label class="form-label" for="e-developer">Nhà phát triển</label>
+                <input type="text" id="e-developer" name="developer" class="form-control"
+                       maxlength="100" value="{{ agent.developer }}" autocomplete="off"
+                       placeholder="vd: Z.ai (Zhipu AI), Anthropic...">
+                <small class="form-hint">Tổ chức phát triển mô hình (tối đa 100 ký tự).</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-architecture">Kiến trúc</label>
+                <input type="text" id="e-architecture" name="architecture" class="form-control"
+                       maxlength="150" value="{{ agent.architecture }}" autocomplete="off"
+                       placeholder="vd: Mixture-of-Experts (MoE), 256 experts">
+                <small class="form-hint">Kiến trúc mô hình (tối đa 150 ký tự).</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-context-window">Cửa sổ ngữ cảnh</label>
+                <input type="text" id="e-context-window" name="context_window" class="form-control"
+                       maxlength="60" value="{{ agent.context_window }}" autocomplete="off"
+                       placeholder="vd: 204.800 tokens (~200K)">
+                <small class="form-hint">Độ dài context tối đa mỗi phiên (tối đa 60 ký tự).</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-max-output">Output tối đa</label>
+                <input type="text" id="e-max-output" name="max_output" class="form-control"
+                       maxlength="60" value="{{ agent.max_output }}" autocomplete="off"
+                       placeholder="vd: 131.072 tokens (~128K)">
+                <small class="form-hint">Số token sinh tối đa mỗi lượt (tối đa 60 ký tự).</small>
+            </div>
+            <div class="form-group ai-form-full">
+                <label class="form-label" for="e-languages">Ngôn ngữ</label>
+                <input type="text" id="e-languages" name="languages" class="form-control"
+                       maxlength="200" value="{{ agent.languages }}" autocomplete="off"
+                       placeholder="vd: Đa ngôn ngữ: Tiếng Việt, English, 中文...">
+                <small class="form-hint">Các ngôn ngữ agent xử lý tốt (tối đa 200 ký tự).</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-total-params">Tổng tham số</label>
+                <input type="text" id="e-total-params" name="total_params" class="form-control mono"
+                       maxlength="60" value="{{ agent.total_params }}" autocomplete="off"
+                       placeholder="vd: 744B (744 tỷ trọng số)">
+                <small class="form-hint">Toàn bộ số lượng trọng số có trong mô hình AI.</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="e-active-params">Tham số kích hoạt</label>
+                <input type="text" id="e-active-params" name="active_params" class="form-control mono"
+                       maxlength="60" value="{{ agent.active_params }}" autocomplete="off"
+                       placeholder="vd: 40B (40 tỷ trọng số mỗi đầu vào)">
+                <small class="form-hint">Số tham số thực tế được tính toán để xử lý một đầu vào tại một thời điểm.</small>
+            </div>
+        </div>
         </div>
         <div class="ai-edit-actions">
             <a href="/admin/ai-agents" class="btn btn-ghost">← Quay lại danh sách</a>
@@ -166,48 +229,5 @@
         </div>
     </div>
 
-    {# ============================================================
-       THÔNG SỐ CHI TIẾT — mỗi param 1 form sửa inline #}
-    <div class="admin-section">
-        <h2 class="ai-edit-section-title">⚙️ Thông số chi tiết ({{ params.len() }} tham số)</h2>
-        {% if params.is_empty() %}
-        <div class="empty-state">
-            <p>Chưa có tham số nào. Quay lại <a href="/admin/ai-agents">danh sách AI Agents</a> để thêm tham số mới.</p>
-        </div>
-        {% else %}
-        <div class="ai-edit-params-list">
-            {% for p in &params %}
-            <details class="ai-edit-param-card{% if p.is_activation() %} ai-param-activation{% endif %}">
-                <summary>
-                    <span class="ai-param-group-tag" title="{{ p.group_label() }}">{% if p.is_activation() %}⚡ Kích hoạt{% else %}📋 Khai báo{% endif %}</span>
-                    <strong class="ai-edit-param-key">{{ p.param_key }}</strong>
-                    <span class="ai-param-sep">=</span>
-                    <span class="ai-edit-param-value">{{ p.param_value }}</span>
-                    {% if !p.is_public %}<span class="ai-param-private" title="Chỉ admin thấy">🔒 riêng tư</span>{% endif %}
-                    <span class="ai-edit-param-order" title="Thứ tự hiển thị">#{{ p.display_order }}</span>
-                </summary>
-                <form method="post" action="/admin/ai-agents/{{ agent.id }}/params/{{ p.id }}/edit" class="ai-param-edit-form">
-                    <div class="ai-param-add-grid">
-                        <input type="text" name="param_key" class="form-control" required maxlength="100" value="{{ p.param_key }}" title="Tên tham số">
-                        <input type="text" name="param_value" class="form-control" required maxlength="500" value="{{ p.param_value }}" title="Giá trị">
-                        <select name="param_group" class="form-control">
-                            <option value="spec" {% if !p.is_activation() %}selected{% endif %}>📋 Khai báo</option>
-                            <option value="activation" {% if p.is_activation() %}selected{% endif %}>⚡ Kích hoạt</option>
-                        </select>
-                        <input type="number" name="display_order" class="form-control" min="0" max="10000" value="{{ p.display_order }}" title="Thứ tự hiển thị">
-                    </div>
-                    <input type="text" name="description" class="form-control" maxlength="500" value="{{ p.description }}" placeholder="Mô tả (hiện khi hover)">
-                    <label class="ai-param-public-label">
-                        <input type="checkbox" name="is_public" {% if p.is_public %}checked{% endif %}>
-                        Hiển thị công khai trên hồ sơ của AI
-                    </label>
-                    <button type="submit" class="btn btn-primary btn-sm">💾 Lưu tham số</button>
-                </form>
-            </details>
-            {% endfor %}
-        </div>
-        {% endif %}
-        <p class="achievements-hint" style="margin-top: 12px">💡 Tham số riêng tư (🔒) chỉ admin thấy — không hiển thị trên hồ sơ công khai. Sửa tham số xong bấm "Lưu tham số" ngay trong từng mục.</p>
-    </div>
 </section>
 {% endblock %}

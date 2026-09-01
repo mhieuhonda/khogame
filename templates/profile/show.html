@@ -88,82 +88,129 @@
 
                 {% match ai_profile %}
                 {% when Option::Some with (p) %}
-                {# Hồ sơ AI: hiện model_name + vendor nếu public, ẩn nếu anonymous #}
+                {# ============================================================
+                   v3.11.0 — CARD "THÔNG TIN MÔ HÌNH AI" (thiết kế lại toàn bộ)
+                   Thay thế 2 khối cũ: .ai-profile-info (dòng meta rời rạc)
+                   + .ai-params-card (bảng key/value 2 nhóm lộn xộn).
+
+                   spec đúng 10 trường theo yêu cầu chủ sở hữu:
+                     Model, Vendor, Khả năng, Nhà phát triển, Kiến trúc,
+                     Cửa sổ ngữ cảnh, Output tối đa, Ngôn ngữ,
+                     Tổng tham số, Tham số kích hoạt.
+
+                   Định nghĩa chuẩn (hiện tooltip + ghi chú):
+                     * TỔNG THAM SỐ = toàn bộ số lượng trọng số có trong
+                       mô hình AI.
+                     * THAM SỐ KÍCH HOẠT = số lượng tham số thực tế được
+                       tính toán để xử lý một đầu vào tại một thời điểm.
+
+                   Trường rỗng tự ẩn (AI không bắt buộc khai báo đủ).
+                   privacy_level = anonymous → chỉ hiện ghi chú ẩn danh.
+                   ============================================================ #}
+                {% if p.privacy_level == "public" %}
+                <div class="ai-spec-card" aria-label="Thông tin mô hình AI">
+                    <div class="ai-spec-head">
+                        <span class="ai-spec-title">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3m6 0V1M9 20v3m6 0v-3M1 9h3m0 6H1m19-6h3m0 6h-3"/></svg>
+                            Thông tin mô hình AI
+                        </span>
+                        {% if p.verified %}
+                        <span class="ai-spec-verified" title="Tài khoản AI Agent đã được hệ thống xác minh">✓ Đã xác minh</span>
+                        {% endif %}
+                    </div>
+                    <dl class="ai-spec-grid">
+                        <div class="ai-spec-item">
+                            <dt>Model</dt>
+                            <dd><span class="ai-spec-model" style="background: {{ p.accent_color }}1f; color: {{ p.accent_color }}; border-color: {{ p.accent_color }}4d">{{ p.model_name }}</span></dd>
+                        </div>
+                        {% if !p.vendor.is_empty() %}
+                        <div class="ai-spec-item">
+                            <dt>Vendor</dt>
+                            <dd>{{ p.vendor }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !p.developer.is_empty() %}
+                        <div class="ai-spec-item">
+                            <dt>Nhà phát triển</dt>
+                            <dd>{{ p.developer }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !p.architecture.is_empty() %}
+                        <div class="ai-spec-item">
+                            <dt>Kiến trúc</dt>
+                            <dd>{{ p.architecture }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !p.context_window.is_empty() %}
+                        <div class="ai-spec-item">
+                            <dt>Cửa sổ ngữ cảnh</dt>
+                            <dd>{{ p.context_window }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !p.max_output.is_empty() %}
+                        <div class="ai-spec-item">
+                            <dt>Output tối đa</dt>
+                            <dd>{{ p.max_output }}</dd>
+                        </div>
+                        {% endif %}
+                        {% if !p.languages.is_empty() %}
+                        <div class="ai-spec-item ai-spec-wide">
+                            <dt>Ngôn ngữ</dt>
+                            <dd>{{ p.languages }}</dd>
+                        </div>
+                        {% endif %}
+                    </dl>
+                    {# Hai thông số "đắt giá" của mô hình — nổi bật dạng 2 ô
+                       thống kê (chỉ hiện khi có dữ liệu). #}
+                    {% if !p.total_params.is_empty() || !p.active_params.is_empty() %}
+                    <div class="ai-spec-stats">
+                        {% if !p.total_params.is_empty() %}
+                        <div class="ai-spec-stat" title="Tổng tham số — toàn bộ số lượng trọng số có trong mô hình AI">
+                            <span class="ai-spec-stat-label">Tổng tham số</span>
+                            <span class="ai-spec-stat-value">{{ p.total_params }}</span>
+                            <span class="ai-spec-stat-hint">toàn bộ trọng số của mô hình</span>
+                        </div>
+                        {% endif %}
+                        {% if !p.active_params.is_empty() %}
+                        <div class="ai-spec-stat is-active" title="Tham số kích hoạt — số lượng tham số thực tế được tính toán để xử lý một đầu vào tại một thời điểm">
+                            <span class="ai-spec-stat-label">⚡ Tham số kích hoạt</span>
+                            <span class="ai-spec-stat-value">{{ p.active_params }}</span>
+                            <span class="ai-spec-stat-hint">thực tế tính toán mỗi đầu vào</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if !p.capabilities.is_empty() %}
+                    <div class="ai-spec-caps">
+                        <span class="ai-spec-caps-label">Khả năng</span>
+                        <div class="ai-spec-caps-list">
+                            {% for c in &p.capabilities %}
+                            <span class="ai-cap-chip">{{ c }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="ai-spec-foot">
+                        {% if !p.version.is_empty() %}
+                        <span class="ai-spec-foot-item" title="Phiên bản model">🏷 {{ p.version }}</span>
+                        {% endif %}
+                        {% match p.last_active_at %}
+                        {% when Option::Some with (last) %}
+                        <span class="ai-spec-foot-item" title="Lần hoạt động gần nhất của agent">🕒 Hoạt động cuối: {{ last.to_rfc3339()|time_ago }}</span>
+                        {% when Option::None %}
+                        {% endmatch %}
+                    </div>
+                </div>
+                {% else %}
                 <div class="ai-profile-info">
-                    {% if p.privacy_level == "public" %}
-                    <span class="ai-meta-line">
-                        <span class="ai-meta-label">Model:</span>
-                        <span class="ai-model-tag" style="background: {{ p.accent_color }}20; color: {{ p.accent_color }}; border-color: {{ p.accent_color }}40">{{ p.model_name }}</span>
-                    </span>
-                    {% if !p.vendor.is_empty() %}
-                    <span class="ai-meta-line">
-                        <span class="ai-meta-label">Vendor:</span>
-                        <span class="ai-vendor-text">{{ p.vendor }}</span>
-                    </span>
-                    {% endif %}
-                    {% if !p.version.is_empty() %}
-                    <span class="ai-meta-line">
-                        <span class="ai-meta-label">Phiên bản:</span>
-                        <span class="ai-version-text">{{ p.version }}</span>
-                    </span>
-                    {% endif %}
-                    {% else %}
                     <span class="ai-meta-line ai-anonymous-note">
                         AI Agent ẩn danh — thông tin model đã được ẩn theo yêu cầu của AI.
                     </span>
-                    {% endif %}
-                    {% if !p.capabilities.is_empty() %}
-                    <span class="ai-meta-line ai-caps">
-                        <span class="ai-meta-label">Khả năng:</span>
-                        {% for c in &p.capabilities %}
-                        <span class="ai-cap-chip">{{ c }}</span>
-                        {% endfor %}
-                    </span>
-                    {% endif %}
-                    {% match p.last_active_at %}
-                    {% when Option::Some with (last) %}
-                    <span class="ai-meta-line">
-                        <span class="ai-meta-label">Hoạt động cuối:</span>
-                        <span>{{ last.to_rfc3339()|time_ago }}</span>
-                    </span>
-                    {% when Option::None %}
-                    {% endmatch %}
-                </div>
-                {# === v3.5.0 — KHAI BÁO THAM SỐ + THAM SỐ KÍCH HOẠT ===
-                   Chỉ render param is_public (lọc ở handler). Hai nhóm
-                   đã tách sẵn: spec (khai báo model) + activation (kích
-                   hoạt hệ thống) — "đầy đủ thông tin chi tiết" AI Agent. #}
-                {% if !ai_params_spec.is_empty() || !ai_params_activation.is_empty() %}
-                <div class="ai-params-card" aria-label="Thông số chi tiết AI Agent">
-                    <div class="ai-params-card-head">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.22 4.22l2.83 2.83m9.9 9.9 2.83 2.83M1 12h4m14 0h4M4.22 19.78l2.83-2.83m9.9-9.9 2.83-2.83"/></svg>
-                        <span>Thông số chi tiết</span>
-                        <span class="ai-params-total">{{ ai_params_spec.len() + ai_params_activation.len() }} tham số</span>
-                    </div>
-                    {% if !ai_params_spec.is_empty() %}
-                    <div class="ai-params-group-head">📋 Khai báo tham số</div>
-                    <dl class="ai-params-table">
-                        {% for q in &ai_params_spec %}
-                        <div class="ai-params-row" title="{{ q.description }}">
-                            <dt>{{ q.param_key }}</dt>
-                            <dd>{{ q.param_value }}</dd>
-                        </div>
-                        {% endfor %}
-                    </dl>
-                    {% endif %}
-                    {% if !ai_params_activation.is_empty() %}
-                    <div class="ai-params-group-head is-activation">⚡ Tham số kích hoạt</div>
-                    <dl class="ai-params-table">
-                        {% for q in &ai_params_activation %}
-                        <div class="ai-params-row" title="{{ q.description }}">
-                            <dt>{{ q.param_key }}</dt>
-                            <dd>{{ q.param_value }}</dd>
-                        </div>
-                        {% endfor %}
-                    </dl>
-                    {% endif %}
                 </div>
                 {% endif %}
+                {% when Option::None %}
+                {% endmatch %}
+
                 {# === v3.4.0 — BÁO CÁO HOẠT ĐỘNG AI (sanitized) ===
                    Chỉ hiện task/action/trạng thái/phần trăm/thời gian.
                    Message + metadata + IP bị LOẠI ở handler — không render
@@ -199,8 +246,6 @@
                     </ul>
                 </div>
                 {% endif %}
-                {% when Option::None %}
-                {% endmatch %}
 
                 {% if !user.bio.clone().unwrap_or_default().is_empty() %}
                 {# v2.5.0 — Bio hỗ trợ Markdown (render_bio: bold/italic/link/emoji/@mention/#hashtag, escape HTML raw) #}

@@ -5,6 +5,122 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0] — 2026-09-01 — Fix lỗi hồ sơ + thiết kế lại thông tin AI Agent + SIÊU NÂNG CẤP Markdown (KaTeX, Mermaid) + trang hướng dẫn Markdown toàn diện
+
+Bản phát hành theo yêu cầu chủ sở hữu: (1) fix lỗi UI hồ sơ người dùng —
+tên/@username màu trắng biến mất khi bật chế độ sáng, (2) xóa bỏ toàn bộ
+hệ "thông số chi tiết" key/value lộn xộn của AI Agent và thay bằng đúng
+10 trường cấu trúc chuẩn (đúng định nghĩa Tổng tham số / Tham số kích
+hoạt), (3) fix lỗi tải logo AI Agent không lưu được, (4) nâng giới hạn
+giới thiệu AI 500 → 6000 ký tự, (5) siêu nâng cấp Markdown với KaTeX +
+Mermaid self-hosted + hàng loạt cú pháp mới, (6) trang hướng dẫn Markdown
+toàn diện `/markdown`. Ưu tiên xuyên suốt: trải nghiệm người dùng.
+
+### Fixed — lỗi người dùng báo
+- **Tên hồ sơ biến mất ở chế độ sáng** (bug tồn tại từ v3.10.0): chữ
+  `#ffffff` của tên + @username được v3.10.0 định vị dựa trên giả định
+  "luôn nằm trên cover tối" — đo bằng browser thật cho thấy @username
+  chỉ 22% chồng lên cover (78% treo dưới nền sáng) và trên mobile
+  (≤640px layout cột) khối tên nằm HOÀN TOÀN dưới cover → light mode =
+  trắng trên trắng. Sửa 3 tầng: (a) nới overlap 40px → 62px — khối tên
+  nằm trọn trên cover ở desktop, (b) @username thành chip tối bán
+  trong suốt (backdrop-blur) đọc được trên mọi nền — bảo hiểm khi tên
+  dài 2 dòng, (c) mobile đổi màu theme-aware (`--fg-default` /
+  `--fg-muted`) — luôn đúng tương phản cả 2 theme. Kèm scrim text-shadow
+  mềm cho h1 thường (tách khỏi `.rainbow-text` để gradient admin không
+  bị xỉn). Đã kiểm thử trực quan 4 tổ hợp desktop/mobile × sáng/tối.
+- **Tải logo AI Agent không lưu được** (bug gốc rễ): `POST /uploads/avatar`
+  trả về URL nội bộ `/uploads/avatars/...` nhưng tầng lưu hồ sơ AI
+  (`AiAgentRepo::update_profile` + handler `/profile/ai` + register) chỉ
+  chấp nhận `http(s)://` → từ chối chính URL do hệ thống sinh → bấm Lưu
+  là 400, avatar reset về mặc định. Đã đồng bộ whitelist `http(s):// +
+  /uploads/...` ở cả 3 nơi (khớp `UserRepo::update_profile` từ trước).
+- **CSS math không bao giờ khớp output comrak**: engine phát
+  `data-math-style="inline"` nhưng CSS nhắm `.math-inline` → công thức
+  không được trang trí bao giờ. Đã chuẩn hoá span math sang
+  `class="math inline|display"` + bọc lại delimiter `\\(...\\)` cho
+  KaTeX auto-render client-side quét được.
+- **CD không trigger khi push main** (lỗi nằm lặng từ v3.5.1):
+  `deploy.yml` có `branches: ain]` — YAML hỏng rõ ràng từ `[main]` →
+  filter thành branch tên "ain]" → chỉ tag mới deploy. Khôi phục
+  `branches: [main]` đúng ý gốc, validate cả 3 workflow YAML.
+
+### Changed — thiết kế lại thông tin AI Agent (yêu cầu chủ sở hữu)
+- **XÓA toàn bộ hệ "thông số chi tiết" key/value** (bảng
+  `ai_agent_params` + 5 route admin + editor 2 cột + UI công khai 2
+  nhóm): dữ liệu cũ trộn thông số lấy mẫu (Temperature, Top-p) với trạng
+  thái hệ thống (rate-limit, TTL phiên, cơ chế cấp mật khẩu) — trình bày
+  lộn xộn và "tham số kích hoạt" bị hiểu sai hoàn toàn.
+- **THAY BẰNG đúng 10 trường cấu trúc** (migration 045 — cột trực tiếp
+  trên `ai_agent_profiles`): Model, Vendor, Khả năng, Nhà phát triển,
+  Kiến trúc, Cửa sổ ngữ cảnh, Output tối đa, Ngôn ngữ, **Tổng tham số**,
+  **Tham số kích hoạt** — với định nghĩa chuẩn: Tổng tham số = toàn bộ
+  số lượng trọng số có trong mô hình AI; Tham số kích hoạt = số lượng
+  tham số thực tế được tính toán để xử lý MỘT đầu vào tại một thời điểm
+  (hiện tooltip + ghi chú ngay trên hồ sơ). Seed GLM 5.3 bằng spec thật
+  của dòng GLM-5: MoE 744B tổng / 40B active, 256 experts, context
+  204.800 tokens, output 131.072 tokens.
+- **Hồ sơ công khai**: một card "Thông tin mô hình AI" gọn (grid 2 cột
+  tự ẩn trường trống, 2 ô thống kê nổi bật cho tổng/kích hoạt, chips
+  khả năng, chân card phiên bản + hoạt động cuối) — theme-aware thay vì
+  nền trắng cố định v3.10.0 gây chói ở dark mode. Trang admin sửa hồ sơ
+  AI đổi sang form 10 trường chuẩn với hint đúng nghĩa từng trường;
+  trang danh sách admin thay panel params bằng tóm tắt spec nhanh.
+- **Giới hạn giới thiệu AI: 500 → 6000 ký tự** (đồng bộ cả trang AI tự
+  sửa `/profile/ai` — trước đây 1000 — và trang admin sửa hộ — trước đây
+  500, 2 nơi lệch nhau).
+
+### Added — SIÊU NÂNG CẤP MARKDOWN (v3.11.0)
+- **Công thức toán KaTeX render THẬT** — self-hosted
+  `/static/vendor/katex/` (JS 277KB + CSS 23KB + 20 fonts woff2, lazy:
+  chỉ inject khi trang có `.math`), auto-render chạy cả sau swap HTMX,
+  fallback CSS hiển thị dạng code dễ đọc khi tắt JS. `$...$` inline +
+  `$$...$$` display.
+- **Sơ đồ Mermaid** — self-hosted `/static/vendor/mermaid/` (2.7MB br
+  ~700KB, lazy-load chỉ khi trang có block ` ```mermaid `), theme theo
+  dark/light của site, `securityLevel: 'strict'`, strip tag syntect khỏi
+  div (mermaid v11 đọc innerHTML — đã fix + test e2e browser thật),
+  `<noscript>` dự phòng.
+- **Cú pháp mới**: `[[Ctrl]]` → `<kbd>` (phím bàn phím, hoạt động cả
+  trong bio); `*[XP]: định nghĩa` → `<abbr title>` Pandoc-style
+  (word-boundary, escape attribute, bỏ qua code block); heading custom
+  id `## Tiêu đề {#id-rieng}` (adapter + ToC dùng đúng id); **Vimeo
+  embed** (bare link → player.vimeo.com iframe sandbox); **video/audio
+  file embed** (bare link/ảnh `.mp4 .webm .mov .m4v .mp3 .wav .m4a
+  .aac .flac` → `<video>/<audio>` controls); **bảng sắp xếp được**
+  (bấm header — so sánh number/date kiểu Việt Nam + locale tiếng Việt).
+- **Trang hướng dẫn Markdown toàn diện `/markdown`** (route + template +
+  handler): nội dung `docs/markdown_guide.md` render bằng CHÍNH engine
+  của site (include_str — không bao giờ lệch pha với engine) hướng dẫn
+  TOÀN BỘ tính năng kèm ví dụ render thật + **ô "Thử ngay"** (gõ → POST
+  /preview debounce 600ms → kết quả live + 3 snippet mẫu 1 nút bấm).
+  Mục "Viết Markdown" mới trong trang Giới thiệu; mọi form MD (đăng tin,
+  mô tả game, bio user, bio AI) có link tới hướng dẫn.
+- **CSP mở rộng tối thiểu cho media**: `media-src 'self' https:` (media
+  thụ động, cùng lớp rủi ro img-src) + `frame-src
+  https://player.vimeo.com` (iframe sandbox + strict-origin). KaTeX +
+  Mermaid self-hosted rơi vào 'self' sẵn có — script-src KHÔNG nới.
+
+### Security — siêu quét vòng N (0 lỗ hổng mới)
+- Quét secret toàn repo: PAT/token/IP-management KHÔNG có trong mã
+  nguồn (đã verify bằng grep toàn tree).
+- Kiểm thử XSS các đường mới (math span, abbreviation term, kbd nội
+  dung, mermaid div) — comrak escape trước post-process, term bị chặn
+  ký tự nguy hiểm ở pre-process, kbd chặn tag lồng — tất cả có test
+  regression.
+- Migration 045/046 đã chạy THẬT trên PostgreSQL 17.5 (build từ source
+  zonky binaries): chuỗi 001→046 sạch từ DB rỗng + re-run idempotent +
+  guard độ dài task/action VARCHAR(200) (bài học prod incident v3.10.0).
+- 382/382 test PASS, `cargo fmt` + `cargo clippy -D warnings` sạch trên
+  Rust 1.98.0.
+
+### GLM 5.3 — báo cáo hoạt động công khai (migration 046)
+8 mục sanitized vào "Hoạt động gần đây" trên hồ sơ GLM 5.3 (công khai):
+fix tên trắng light mode, card thông tin mô hình mới, fix upload logo,
+nâng 6000 ký tự, KaTeX + Mermaid, cú pháp mở rộng, trang hướng dẫn
+/markdown, siêu quét bảo mật + fix CD. Không chứa token/IP/đường dẫn
+hệ thống nào.
+
 ## [3.10.0] — 2026-09-01 — Polish hồ sơ (bỏ bóng chữ, rainbow rực rỡ, thông số trắng) + upload avatar AI Agent + tinh chỉnh danh mục huy hiệu + siêu quét bảo mật
 
 Bản phát hành theo yêu cầu chủ sở hữu: bỏ đổ bóng chữ hồ sơ (quá tối, khó

@@ -1302,3 +1302,214 @@
 /* v3.9.0 — Hero FX hồ sơ GLM 5.3 đã bị XÓA hoàn toàn theo yêu cầu của
    chủ sở hữu (hồ sơ hiển thị sạch, không hiệu ứng). IIFE initHeroFx cũ
    (probe FPS/CPU thêm class fx-full) là dead code — đã gỡ. */
+
+/* ============================================================
+   v3.11.0 — MARKDOWN SIÊU NÂNG CẤP (client side)
+   1. Math (KaTeX self-hosted) — lazy: chỉ inject katex.min.css/js +
+      auto-render khi trang THẬT SỰ có công thức (.math.inline/.display).
+      Server render `<span class="math inline">\(..\)</span>` (comrak
+      math_dollars) — auto-render quét text node, thay bằng .katex.
+   2. Mermaid — lazy: chỉ inject mermaid.min.js (~2.7MB, br ~700KB,
+      cache immutable) khi trang có block ```mermaid. Theme theo
+      dark/light của site, securityLevel 'strict'.
+   3. Sortable tables — GFM table trong prose: bấm header sắp xếp
+      (number/date/việt ngữ aware), không dependency.
+   Tất cả chạy lại trên htmx:afterSwap (partial swap HTMX).
+   ============================================================ */
+(function () {
+  'use strict';
+
+  // Cache-bust version: kế thừa từ ?v= của chính app.js (server render
+  // bằng CARGO_PKG_VERSION) — bump version của app là tự invalidate cache
+  // vendor. Fallback cho trang tĩnh.
+  function detectAssetVersion() {
+    try {
+      var m = document.querySelector('script[src*="/static/js/app.js?v="]');
+      if (m) {
+        var v = (m.getAttribute('src').split('?v=')[1] || '').split('&')[0];
+        if (v) return 'v=' + v;
+      }
+    } catch (e) { /* ignore */ }
+    return 'v3110';
+  }
+  var ASSET_VER = detectAssetVersion();
+  var katexLoading = false;
+  var mermaidLoading = false;
+
+  function injectCss(href) {
+    if (document.querySelector('link[href^="' + href + '"]')) return;
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href + '?' + ASSET_VER;
+    document.head.appendChild(link);
+  }
+
+  function injectScript(src, onload) {
+    if (document.querySelector('script[src^="' + src + '"]')) {
+      onload();
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = src + '?' + ASSET_VER;
+    s.async = true;
+    s.onload = onload;
+    s.onerror = function () { /* im lặng — math fallback CSS hiển thị dạng code */ };
+    document.head.appendChild(s);
+  }
+
+  function hasMath(root) {
+    return !!(root.querySelector && root.querySelector('.math.inline, .math.display'));
+  }
+
+  function runAutoRender() {
+    if (typeof window.renderMathInElement !== 'function') return;
+    try {
+      window.renderMathInElement(document.body, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true }
+        ],
+        ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code', 'kbd'],
+        throwOnError: false
+      });
+    } catch (err) { /* fallback CSS */ }
+  }
+
+  function initMath() {
+    if (!hasMath(document)) return;
+    injectCss('/static/vendor/katex/katex.min.css');
+    if (katexLoading) return;
+    katexLoading = true;
+    injectScript('/static/vendor/katex/katex.min.js', function () {
+      injectScript('/static/vendor/katex/auto-render.min.js', function () {
+        katexLoading = false;
+        runAutoRender();
+      });
+    });
+  }
+
+  function isDarkTheme() {
+    var el = document.documentElement;
+    return el && el.getAttribute('data-theme') === 'dark';
+  }
+
+  function initMermaid() {
+    var blocks = document.querySelectorAll('.mermaid');
+    if (!blocks.length) return;
+    if (mermaidLoading) return;
+    mermaidLoading = true;
+    injectScript('/static/vendor/mermaid/mermaid.min.js', function () {
+      mermaidLoading = false;
+      if (!window.mermaid) return;
+      try {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: isDarkTheme() ? 'dark' : 'default',
+          fontFamily: getComputedStyle(document.body).fontFamily || 'inherit'
+        });
+        window.mermaid.run({ querySelector: '.mermaid' }).catch(function () {});
+      } catch (err) {
+        // Diagram lỗi cú pháp → mermaid tự hiển thị lỗi trong block, an toàn.
+      }
+    });
+  }
+
+  function cellValue(td) {
+    return (td.getAttribute('data-sort') || td.textContent || '').trim();
+  }
+
+  function makeComparator(dir) {
+    return function (a, b) {
+      var va = a.v, vb = b.v;
+      // Số (kể cả có dấu phẩy nghìn/dấu chấm thập phân VN)
+      var na = va.replace(/[.,\s]/g, '');
+      var bothNumeric = /^\-?\d+(\.\d+)?$/.test(va) && /^\-?\d+(\.\d+)?$/.test(vb);
+      var bothVN = /^-?[\d\.\,\s]+$/.test(va) && /^-?[\d\.\,\s]+$/.test(vb);
+      var cmp;
+      if (bothNumeric || bothVN) {
+        var pa = parseFloat(va.replace(/\./g, '').replace(',', '.'));
+        var pb = parseFloat(vb.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(pa) && !isNaN(pb)) {
+          cmp = pa === pb ? 0 : (pa < pb ? -1 : 1);
+          return dir === 'asc' ? cmp : -cmp;
+        }
+      }
+      void na;
+      // Chuỗi — locale-aware (tiếng Việt có dấu so đúng thứ tự từ điển)
+      cmp = va.localeCompare(vb, 'vi', { numeric: true, sensitivity: 'base' });
+      return dir === 'asc' ? cmp : -cmp;
+    };
+  }
+
+  function sortTable(table, th) {
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.prototype.slice.call(table.querySelectorAll('thead th'));
+    var colIndex = headers.indexOf(th);
+    if (colIndex < 0) return;
+    var current = th.getAttribute('aria-sort');
+    var dir = current === 'ascending' ? 'desc' : 'asc';
+    headers.forEach(function (h) { h.removeAttribute('aria-sort'); });
+    th.setAttribute('aria-sort', dir === 'asc' ? 'ascending' : 'descending');
+
+    var rows = Array.prototype.slice.call(tbody.rows);
+    var keyed = rows.map(function (row) {
+      var td = row.cells[colIndex];
+      return { row: row, v: td ? cellValue(td) : '' };
+    });
+    keyed.sort(makeComparator(dir));
+    var frag = document.createDocumentFragment();
+    keyed.forEach(function (k) { frag.appendChild(k.row); });
+    tbody.appendChild(frag);
+  }
+
+  function initSortableTables(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var tables = scope.querySelectorAll(
+      '.prose-md table, .news-content table, .game-content table, .md-guide-content table'
+    );
+    tables.forEach(function (table) {
+      if (table.classList.contains('sortable')) return;
+      var thead = table.tHead;
+      if (!thead || !thead.rows.length) return;
+      if (table.tBodies.length === 0 || table.tBodies[0].rows.length < 2) return;
+      table.classList.add('sortable');
+      Array.prototype.forEach.call(thead.rows[0].cells, function (th) {
+        th.setAttribute('role', 'columnheader');
+        th.setAttribute('tabindex', '0');
+        th.title = 'Bấm để sắp xếp theo cột này';
+        th.addEventListener('click', function () { sortTable(table, th); });
+        th.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            sortTable(table, th);
+          }
+        });
+      });
+    });
+  }
+
+  function initMarkdownEnhancements(root) {
+    initMath(root || document);
+    initMermaid();
+    initSortableTables(root || document);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { initMarkdownEnhancements(document); });
+  } else {
+    initMarkdownEnhancements(document);
+  }
+
+  // HTMX swap partial (comment pagination, news lazy...) — enhance lại.
+  document.body.addEventListener('htmx:afterSwap', function (evt) {
+    if (evt && evt.target instanceof Element) {
+      initSortableTables(evt.target);
+    }
+  });
+
+  // Public cho debug + re-run thủ công.
+  window.kgMarkdownEnhance = initMarkdownEnhancements;
+})();

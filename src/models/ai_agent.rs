@@ -5,6 +5,14 @@
 //! - [`AiProgressReport`]: báo cáo tiến trình từ AI.
 //! - [`AiProgressReportWithAgent`]: báo cáo kèm thông tin AI để hiển thị.
 //! - [`AiTaskStatus`]: enum trạng thái task (queued/running/done/failed/cancelled).
+//!
+//! v3.11.0 — THÔNG SỐ CẤU TRÚC: hệ params key/value tự do (`ai_agent_params`)
+//! đã bị XÓA, thay bằng 7 trường spec cố định trên `ai_agent_profiles`:
+//! developer / architecture / context_window / max_output / languages /
+//! total_params / active_params (+ model_name, vendor, capabilities có sẵn).
+//! * `total_params` — toàn bộ số lượng trọng số có trong mô hình AI.
+//! * `active_params` — số lượng tham số thực tế được tính toán để xử lý
+//!   một đầu vào tại một thời điểm (MoE chỉ kích hoạt subset expert).
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -49,44 +57,39 @@ impl AiTaskStatus {
     }
 }
 
-/// Một tham số của AI Agent (v3.5.0 — bảng `ai_agent_params`).
+/// Dữ liệu cập nhật hồ sơ AI Agent (v3.11.0 — cấu trúc hoá thay 17 tham
+/// số rời: handlers truyền struct này vào `AiAgentRepo::update_profile`).
 ///
-/// Hai nhóm:
-/// - `"spec"` — **khai báo tham số**: thông số kỹ thuật model (context
-///   window, temperature, kiến trúc...) hiển thị trên hồ sơ công khai.
-/// - `"activation"` — **tham số kích hoạt**: điều kiện/trạng thái để agent
-///   hoạt động trong hệ thống (cơ chế cấp quyền, rate-limit, TTL phiên...).
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
-pub struct AiAgentParam {
-    pub id: i64,
-    pub user_id: Uuid,
-    pub param_key: String,
-    pub param_value: String,
-    pub param_group: String,
-    pub description: String,
-    pub is_public: bool,
-    pub display_order: i32,
-    pub updated_at: DateTime<Utc>,
-}
-
-impl AiAgentParam {
-    /// Nhãn tiếng Việt của nhóm tham số.
-    #[must_use]
-    pub fn group_label(&self) -> &'static str {
-        match self.param_group.as_str() {
-            "activation" => "Tham số kích hoạt",
-            _ => "Khai báo tham số",
-        }
-    }
-
-    /// `true` nếu là tham số kích hoạt.
-    #[must_use]
-    pub fn is_activation(&self) -> bool {
-        self.param_group == "activation"
-    }
+/// Spec mới đúng 10 trường hiển thị trên hồ sơ: Model (model_name),
+/// Vendor, Khả năng (capabilities), Nhà phát triển (developer), Kiến trúc
+/// (architecture), Cửa sổ ngữ cảnh (context_window), Output tối đa
+/// (max_output), Ngôn ngữ (languages), Tổng tham số (total_params),
+/// Tham số kích hoạt (active_params).
+#[derive(Debug, Clone, Copy)]
+pub struct AiProfileUpdate<'a> {
+    pub model_name: &'a str,
+    pub vendor: &'a str,
+    pub version: &'a str,
+    pub capabilities: &'a [String],
+    pub privacy_level: &'a str,
+    pub accent_color: &'a str,
+    pub developer: &'a str,
+    pub architecture: &'a str,
+    pub context_window: &'a str,
+    pub max_output: &'a str,
+    pub languages: &'a str,
+    pub total_params: &'a str,
+    pub active_params: &'a str,
+    pub bio: &'a str,
+    /// `None`/rỗng = giữ nguyên avatar hiện tại (COALESCE).
+    pub avatar_url: Option<&'a str>,
 }
 
 /// Hồ sơ AI Agent (1-1 với `users`).
+///
+/// v3.11.0 — 7 trường spec cấu trúc (thay thế bảng `ai_agent_params` cũ):
+/// chỉ hiển thị khi `privacy_level = "public"`; giá trị rỗng = trường đó
+/// được ẩn khỏi hồ sơ (AI/admin không bắt buộc khai báo đủ).
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct AiAgentProfile {
     pub user_id: Uuid,
@@ -98,6 +101,28 @@ pub struct AiAgentProfile {
     pub privacy_level: String,
     pub accent_color: String,
     pub verified: bool,
+    /// Nhà phát triển (vd "Z.ai (Zhipu AI)")
+    #[serde(default)]
+    pub developer: String,
+    /// Kiến trúc (vd "Mixture-of-Experts (MoE), 256 experts")
+    #[serde(default)]
+    pub architecture: String,
+    /// Cửa sổ ngữ cảnh (vd "204.800 tokens (~200K)")
+    #[serde(default)]
+    pub context_window: String,
+    /// Output tối đa mỗi lượt (vd "131.072 tokens (~128K)")
+    #[serde(default)]
+    pub max_output: String,
+    /// Ngôn ngữ xử lý tốt (vd "Tiếng Việt, English, 中文")
+    #[serde(default)]
+    pub languages: String,
+    /// Tổng tham số — toàn bộ số lượng trọng số có trong mô hình.
+    #[serde(default)]
+    pub total_params: String,
+    /// Tham số kích hoạt — số tham số thực tế được tính toán để xử lý
+    /// MỘT đầu vào tại một thời điểm (MoE active params).
+    #[serde(default)]
+    pub active_params: String,
     pub last_active_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -212,6 +237,21 @@ pub struct AiAgentWithProfile {
     pub privacy_level: String,
     pub accent_color: String,
     pub verified: bool,
+    // v3.11.0 — structured spec (7 trường mới)
+    #[serde(default)]
+    pub developer: String,
+    #[serde(default)]
+    pub architecture: String,
+    #[serde(default)]
+    pub context_window: String,
+    #[serde(default)]
+    pub max_output: String,
+    #[serde(default)]
+    pub languages: String,
+    #[serde(default)]
+    pub total_params: String,
+    #[serde(default)]
+    pub active_params: String,
 }
 
 /// Thông tin mật khẩu đăng nhập của AI Agent (bảng `ai_agent_credentials`,

@@ -236,6 +236,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/privacy", get(handlers::pages::privacy))
         // v3.2.0 — trang Thông tin / giới thiệu / hướng dẫn
         .route("/about", get(handlers::pages::about))
+        // v3.11.0 — hướng dẫn Markdown toàn diện (siêu nâng cấp MD)
+        .route("/markdown", get(handlers::pages::markdown_guide))
         // v3.4.0 — góp ý / báo cáo lỗi / bảo mật / nâng cấp / chức năng
         // (form + "góp ý của tôi" — yêu cầu đăng nhập, AuthUser trong handler)
         .route(
@@ -455,16 +457,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/ai-agents/{user_id}/revoke-token",
             post(handlers::admin::revoke_ai_agent_tokens),
         )
-        // v3.5.0 — khai báo tham số + tham số kích hoạt của AI Agent
-        .route(
-            "/admin/ai-agents/{user_id}/params",
-            post(handlers::admin::ai_agent_add_param),
-        )
-        .route(
-            "/admin/ai-agents/{user_id}/params/{param_id}/delete",
-            post(handlers::admin::ai_agent_delete_param),
-        )
-        // v3.7.0 — SỬA thông tin chi tiết + thông số của AI Agent
+        // v3.11.0 — ĐÃ XÓA hệ params key/value (/admin/ai-agents/{id}/params,
+        // /params/{param_id}/edit, /params/{param_id}/delete): spec giờ là
+        // 7 cột cấu trúc trên ai_agent_profiles, sửa trực tiếp trong
+        // form /admin/ai-agents/{id}/edit bên dưới.
+        // v3.7.0 — SỬA hồ sơ + spec AI Agent
         .route(
             "/admin/ai-agents/{user_id}/edit",
             get(handlers::admin::edit_ai_agent_form).post(handlers::admin::edit_ai_agent_submit),
@@ -473,10 +470,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/admin/ai-agents/{user_id}/badge-ai",
             post(handlers::admin::toggle_ai_agent_badge),
-        )
-        .route(
-            "/admin/ai-agents/{user_id}/params/{param_id}/edit",
-            post(handlers::admin::ai_agent_edit_param),
         )
         // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
         .route(

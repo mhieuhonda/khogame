@@ -15,7 +15,7 @@
 //! | Footnotes `[^1]` | ✅ | ✅ (+ inline `^[...]`) |
 //! | Math `$...$` (KaTeX-style) | ✅ | ✅ |
 //! | Syntax highlighting | ✅ linguist | ✅ syntect (default theme) |
-//! | Spoiler `>!` | ❌ | ✅ |
+//! | Spoiler `\|\|text\|\|` | ❌ | ✅ |
 //! | Callouts `> [!NOTE]` | ✅ | ✅ (+ collapsible `+` / `-` modifiers) |
 //! | YouTube auto-embed | ❌ | ✅ |
 //! | **Heading anchors (click #)** | ✅ | ✅ (v2.3) |
@@ -39,6 +39,14 @@
 //! | **Diff block coloring** | ✅ | ✅ (v2.5 — `+`/`-`/`@@` classes) |
 //! | **Code line numbers** | ✅ | ✅ (v2.5 — CSS counter) |
 //! | **Bio Markdown (hồ sơ)** | ✅ (profile README) | ✅ (v2.5 — `render_bio`) |
+//! | **Math render KaTeX** (client, lazy, self-hosted) | ❌ | ✅ (v3.11) |
+//! | **Mermaid diagrams** (mermaid fence, lazy, self-hosted) | ❌ | ✅ (v3.11) |
+//! | **Vimeo embed** | ❌ | ✅ (v3.11) |
+//! | **Video/audio file embed** (.mp4/.webm/.mp3...) | ❌ | ✅ (v3.11) |
+//! | **Keyboard keys** `[[Ctrl]]` to `<kbd>` | ❌ | ✅ (v3.11) |
+//! | **Abbreviation** `*[X]: def` to `<abbr title>` | ❌ | ✅ (v3.11) |
+//! | **Custom heading ID** `## T {#id}` | ❌ | ✅ (v3.11) |
+//! | **Sortable tables** (client-side) | ❌ | ✅ (v3.11) |
 //! | Raw HTML | ✅ (filtered) | ❌ (always escaped, zero XSS surface) |
 //! | URL scheme allowlist | ✅ | ✅ |
 //! | Link `rel="nofollow ugc noopener noreferrer"` | partial | ✅ |
@@ -106,7 +114,7 @@ fn comrak_options() -> Options<'static> {
     opts.extension.footnotes = true; // [^1]
     opts.extension.multiline_block_quotes = true; // >>>
     opts.extension.math_dollars = true; // $...$ / $$...$$
-    opts.extension.spoiler = true; // >! spoiler !<
+    opts.extension.spoiler = true; // ||spoiler|| (Discord-style)
     opts.extension.description_lists = true; // v2.4 — Term\n: Definition
                                              // Parse-time
                                              // === v2.5.0 — Markdown engine "mạnh hơn nữa" ===
@@ -264,6 +272,9 @@ struct AnchorHeadingAdapter {
     /// `enter`/`exit` (trait method chỉ có `&self`). Sau render, buffer
     /// được snapshot qua `Arc::clone` + `lock().clone()`.
     toc: Arc<Mutex<Vec<TocEntry>>>,
+    /// v3.11.0 — custom heading id: map từ text heading (đã strip cú pháp
+    /// ` {#id}` ở pre-process) → id do tác giả chỉ định. Trống = không có.
+    custom_ids: HashMap<String, String>,
 }
 
 /// Một entry ToC: text + slug + level.
@@ -275,12 +286,39 @@ struct TocEntry {
 }
 
 impl AnchorHeadingAdapter {
-    /// Tạo adapter mới với buffer per-render rỗng.
-    fn new() -> Self {
+    /// v3.11.0 — tạo adapter với map custom heading id.
+    fn with_custom_ids(custom_ids: HashMap<String, String>) -> Self {
         Self {
             toc: Arc::new(Mutex::new(Vec::new())),
+            custom_ids,
         }
     }
+
+    /// Id của heading: custom id nếu tác giả khai báo ` {#id}`, ngược lại
+    /// slug hoá text. Trả về (id, is_custom).
+    fn heading_id(&self, content: &str) -> String {
+        if let Some(custom) = self.custom_ids.get(content) {
+            return custom.clone();
+        }
+        // Fuzzy: heading có inline markup (`**bold**`) — comrak content chỉ
+        // giữ text thuần, map key có thể còn ký tự đánh dấu. Thử strip các
+        // ký tự markdown inline trước khi tra.
+        let stripped: String = strip_inline_marks(content);
+        if let Some(custom) = self.custom_ids.get(&stripped) {
+            return custom.clone();
+        }
+        slugify_heading(content)
+    }
+}
+
+/// Bỏ ký tự đánh dấu markdown inline (bold/italic/code) — dùng để fuzzy
+/// match key custom heading id.
+fn strip_inline_marks(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(c, '*' | '_' | '`' | '~'))
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 impl HeadingAdapter for AnchorHeadingAdapter {
@@ -291,7 +329,9 @@ impl HeadingAdapter for AnchorHeadingAdapter {
         _sourcepos: Option<Sourcepos>,
     ) -> fmt::Result {
         // Slug hoá text heading: giữ [a-z0-9], bỏ còn lại, thay space bằng '-'.
-        let slug = slugify_heading(&heading.content);
+        // v3.11.0 — cú pháp `## Tiêu đề {#id-rieng}`: pre-process đã strip
+        // `{#id}` khỏi text, map custom_ids cho adapter biết id riêng.
+        let slug = self.heading_id(&heading.content);
         // Lưu vào buffer cho ToC (nếu input có [toc] marker)
         if let Ok(mut buf) = self.toc.lock() {
             buf.push(TocEntry {
@@ -311,7 +351,7 @@ impl HeadingAdapter for AnchorHeadingAdapter {
         write!(
             output,
             "<a class=\"heading-anchor\" href=\"#{}\" aria-label=\"Link tới mục này\" aria-hidden=\"true\"></a></h{}>",
-            slugify_heading(&heading.content),
+            self.heading_id(&heading.content),
             heading.level
         )
     }
@@ -396,7 +436,10 @@ fn slugify_heading(text: &str) -> String {
 /// toàn bộ cache cũ (vd: thay đổi post-process logic, thêm class CSS mới).
 /// v2.5.0: 2 → 3 (emoji shortcodes, underline/sub/highlight/insert, mention,
 /// hashtag, diff highlight, line numbers).
-const CACHE_VERSION: u8 = 3;
+/// v3.11.0: 3 → 4 (KaTeX-ready math markup giữ nguyên nhưng class khớp CSS,
+/// kbd, abbreviation, custom heading id, Mermaid block, Vimeo + video/audio
+/// embed — toàn bộ thay đổi output).
+const CACHE_VERSION: u8 = 4;
 
 /// Cache entry: rendered HTML + size (bytes) + last access (cho LRU).
 struct CacheEntry {
@@ -525,11 +568,16 @@ pub fn render(input: &str) -> String {
 
 /// Render không cache — nội bộ + test. Áp dụng comrak + post-process đầy đủ.
 fn render_uncached(input: &str) -> String {
+    // v3.11.0 — PRE-PROCESS (trước comrak):
+    //   1. ` {#custom-id}` cuối heading → strip khỏi text, map cho adapter.
+    //   2. `*[ABBR]: định nghĩa` → bỏ dòng khỏi input, thu thập để thay
+    //      thế <abbr> trong post-process.
+    let (input, custom_ids, abbrs) = pre_process_input(input);
     let opts = comrak_options();
     let highlighter = SyntectHighlighter {
         syntax_set: syntax_set(),
     };
-    let heading_adapter = AnchorHeadingAdapter::new();
+    let heading_adapter = AnchorHeadingAdapter::with_custom_ids(custom_ids);
     let plugins = Plugins {
         render: RenderPlugins {
             codefence_syntax_highlighter: Some(&highlighter),
@@ -537,14 +585,14 @@ fn render_uncached(input: &str) -> String {
             heading_adapter: Some(&heading_adapter),
         },
     };
-    let html = markdown_to_html_with_plugins(input, &opts, &plugins);
+    let html = markdown_to_html_with_plugins(&input, &opts, &plugins);
     // Snapshot ToC entries đã gom được trong phase render.
     let toc_entries: Vec<TocEntry> = heading_adapter
         .toc
         .lock()
         .map(|b| b.clone())
         .unwrap_or_default();
-    post_process(&html, &toc_entries)
+    post_process_with_abbrs(&html, &toc_entries, &abbrs)
 }
 
 /// v2.5.0 — Render Markdown cho BIO / hồ sơ cá nhân.
@@ -582,10 +630,15 @@ pub fn render_bio(input: &str) -> String {
     };
     let html = markdown_to_html_with_plugins(input, &opts, &plugins);
     let mut out = harden_links(&html);
+    // v3.11.0 — math span chuẩn hoá (class + delimiter): KaTeX client
+    // render được cả trong bio, CSS fallback hiển thị công thức dạng code.
+    out = normalize_math_spans(&out);
     out = convert_spoiler_inline(&out);
     out = lazy_images(&out);
     out = harden_img_src(&out);
     out = mark_external_links(&out);
+    // v3.11.0 — `[[Ctrl]]` → <kbd> cũng hoạt động trong bio (inline an toàn).
+    out = convert_kbd(&out);
     out = linkify_mentions_hashtags(&out);
     out
 }
@@ -594,18 +647,35 @@ pub fn render_bio(input: &str) -> String {
 /// callout, YouTube embed, lazy `<img>`, external link marker, copy
 /// button cho code block, thay thế `[toc]` marker, figure caption,
 /// code lang label.
-fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
+fn post_process_with_abbrs(
+    html: &str,
+    toc_entries: &[TocEntry],
+    abbrs: &[(String, String)],
+) -> String {
     let mut out = html.to_string();
     out = harden_links(&out);
+    // v3.11.0 — chuẩn hoá span math của comrak (`data-math-style`) thành
+    // `class="math inline/display"` + bọc lại delimiter \( \) \[ \] để
+    // KaTeX auto-render client-side quét ra — đồng thời CSS fallback
+    // (không JS) hiển thị công thức dạng code dễ đọc.
+    out = normalize_math_spans(&out);
     out = convert_spoiler_inline(&out);
     out = convert_callouts(&out);
     out = embed_youtube(&out);
+    // v3.11.0 — Vimeo + video/audio file embed (bare link / image syntax).
+    out = embed_vimeo(&out);
+    out = embed_media_links(&out);
+    // v3.11.0 — Mermaid: PHẢI chạy TRƯỚC các pass code-block (line number,
+    // copy button, lang label) vì block mermaid không còn là <pre>.
+    out = convert_mermaid_blocks(&out);
     out = lazy_images(&out);
     // v3.4.2 — lọc scheme img src SAU lazy_images (pass cuối cùng sinh
     // <img src>) để mọi ảnh trong output đều http(s)/relative an toàn.
     out = harden_img_src(&out);
     out = wrap_image_figures(&out);
     out = mark_external_links(&out);
+    // v3.11.0 — `[[Ctrl]]` → <kbd> (bỏ qua nội dung <pre>/<code>).
+    out = convert_kbd(&out);
     // v2.5.0 — line numbers PHẢI chạy trước khi wrap copy-button (pass
     // này thao tác trên `<pre class="code-block">` "trần").
     out = add_code_line_numbers(&out);
@@ -613,9 +683,591 @@ fn post_process(html: &str, toc_entries: &[TocEntry]) -> String {
     out = add_code_lang_label(&out);
     out = improve_footnote_backrefs(&out);
     out = inject_toc(&out, toc_entries);
+    // v3.11.0 — abbreviation <abbr> chạy sau ToC (không đụng href) và
+    // trước mention/hashtag (2 pass cuối cùng thao tác text node thuần).
+    out = apply_abbreviations(&out, abbrs);
     // v2.5.0 — mention/hashtag chạy CUỐI: mọi text node đã ổn định, các
     // pass phía trước không sinh text @/# mới (chỉ markup).
     out = linkify_mentions_hashtags(&out);
+    out
+}
+
+// ============================================================
+// v3.11.0 — PRE-PROCESS (chạy trên markdown input TRƯỚC comrak)
+// ============================================================
+
+/// Thu thập cú pháp mở rộng cần bỏ khỏi input trước khi parse:
+///
+/// 1. **Custom heading id**: `## Tiêu đề {#id-rieng}` — strip ` {#id}`
+///    khỏi dòng heading (text hiển thị sạch), trả map text → custom id
+///    cho `AnchorHeadingAdapter`. Lần đầu gặp text trùng → bản ĐẦU thắng
+///    (nhất quán với slug trùng lặp của comrak).
+///
+/// 2. **Abbreviation** (Pandoc-style): dòng dạng `*[HTML]: HyperText
+///    Markup Language` → bỏ khỏi input (không thành paragraph rác),
+///    trả list (term, definition) để post-process bọc `<abbr title>`.
+///
+/// Trả về (input đã làm sạch, custom_ids, abbreviations).
+fn pre_process_input(input: &str) -> (String, HashMap<String, String>, Vec<(String, String)>) {
+    let mut custom_ids: HashMap<String, String> = HashMap::new();
+    let mut abbrs: Vec<(String, String)> = Vec::new();
+    let mut out_lines: Vec<String> = Vec::with_capacity(input.lines().count());
+
+    let mut in_code_block = false;
+    for line in input.lines() {
+        let trimmed = line.trim_start();
+        // Fenced code block: KHÔNG pre-process bên trong (cú pháp heading/
+        // abbr trong code là nội dung code, không phải markdown).
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_code_block = !in_code_block;
+            out_lines.push(line.to_string());
+            continue;
+        }
+        if in_code_block {
+            out_lines.push(line.to_string());
+            continue;
+        }
+
+        // 1) Custom heading id: `^#{1,6} text {#id}$`
+        if trimmed.starts_with('#') {
+            if let Some((text, custom_id)) = strip_custom_heading_id(trimmed) {
+                if !custom_ids.contains_key(&text) {
+                    custom_ids.insert(text.clone(), custom_id);
+                }
+                let hashes_len = trimmed.chars().take_while(|c| *c == '#').count();
+                let lead: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+                out_lines.push(format!("{}{} {}", lead, "#".repeat(hashes_len), text));
+                continue;
+            }
+        }
+
+        // 2) Abbreviation: `*[TERM]: definition`
+        if let Some(rest) = trimmed.strip_prefix("*[") {
+            if let Some((term, def)) = rest.split_once("]:") {
+                let term = term.trim();
+                let def = def.trim();
+                // Term hợp lệ: 1..=60 ký tự, KHÔNG chứa ký tự nguy hiểm
+                // cho HTML (`[` `]` `<` `>` `&` `"` `'`) — term được chèn
+                // vào output, chặn sớm mọi vector breakout (defense-in-
+                // depth: text node đã escaped nên term có tag vốn không
+                // match, nhưng chặn ở nguồn chắc chắn hơn).
+                if !term.is_empty()
+                    && term.chars().count() <= 60
+                    && !term
+                        .chars()
+                        .any(|c| matches!(c, '[' | ']' | '<' | '>' | '&' | '"' | '\''))
+                    && !def.is_empty()
+                    && def.chars().count() <= 200
+                    && !abbrs.iter().any(|(t, _)| t == term)
+                {
+                    abbrs.push((term.to_string(), def.to_string()));
+                    continue; // bỏ dòng khỏi input
+                }
+            }
+        }
+
+        out_lines.push(line.to_string());
+    }
+
+    let mut cleaned = out_lines.join("\n");
+    if input.ends_with('\n') {
+        cleaned.push('\n');
+    }
+    (cleaned, custom_ids, abbrs)
+}
+
+/// `## Tiêu đề {#id-rieng}` → `Some(("Tiêu đề", "id-rieng"))`.
+/// Id chỉ nhận [A-Za-z0-9_-], 1..=80 ký tự (id lạ có thể vỡ HTML attr).
+fn strip_custom_heading_id(line: &str) -> Option<(String, String)> {
+    let hashes_len = line.chars().take_while(|c| *c == '#').count();
+    if hashes_len == 0 || hashes_len > 6 {
+        return None;
+    }
+    let after_hashes = line[hashes_len..].trim_start();
+    // Tìm ` {#...}` ở CUỐI dòng.
+    let close = after_hashes.rfind('}')?;
+    let open = after_hashes[..close].rfind("{#")?;
+    // Phải nằm sát cuối (chỉ whitespace sau `}`).
+    if !after_hashes[close + 1..].trim().is_empty() {
+        return None;
+    }
+    let id = &after_hashes[open + 2..close];
+    if id.is_empty()
+        || id.len() > 80
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return None;
+    }
+    let text = after_hashes[..open].trim_end();
+    if text.is_empty() {
+        return None;
+    }
+    Some((text.to_string(), id.to_string()))
+}
+
+// ============================================================
+// v3.11.0 — POST-PROCESS MỚI (chạy trên HTML output)
+// ============================================================
+
+/// v3.11.0 — comrak (math_dollars) phát `<span data-math-style="inline">
+/// CONTENT</span>` KHÔNG kèm delimiter. KaTeX auto-render quét delimiter
+/// `\(...\)` / `\[...\]` trong text node — nên ta:
+///   * thêm class `math inline|display` (CSS fallback + JS detection),
+///   * bọc lại nội dung bằng delimiter tương ứng.
+///
+/// Nội dung giữ nguyên trạng thái escape (textContent client decode).
+fn normalize_math_spans(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    const ATTR_INLINE: &str = "data-math-style=\"inline\"";
+    const ATTR_DISPLAY: &str = "data-math-style=\"display\"";
+    while let Some(pos) = rest.find("data-math-style=") {
+        // Xác định tag mở span chứa attr này.
+        let span_start = rest[..pos].rfind("<span ").map(|p| p + 1).unwrap_or(0);
+        let _ = span_start;
+        let tag_open = rest[..pos].rfind('<').unwrap_or(0);
+        let tag_close = match rest[pos..].find('>') {
+            Some(p) => pos + p,
+            None => break,
+        };
+        let open_tag = &rest[tag_open..=tag_close];
+        let is_inline = open_tag.contains(ATTR_INLINE);
+        let is_display = open_tag.contains(ATTR_DISPLAY);
+        if !is_inline && !is_display {
+            // Attr lạ — copy qua.
+            out.push_str(&rest[..tag_close + 1]);
+            rest = &rest[tag_close + 1..];
+            continue;
+        }
+        // Tìm </span> đóng.
+        const CLOSE: &str = "</span>";
+        let span_end = match rest[tag_close + 1..].find(CLOSE) {
+            Some(p) => tag_close + 1 + p,
+            None => break,
+        };
+        let content = &rest[tag_close + 1..span_end];
+        let (class, open_delim, close_delim) = if is_inline {
+            ("math inline", "\\(", "\\)")
+        } else {
+            ("math display", "\\[", "\\]")
+        };
+        out.push_str(&rest[..tag_open]);
+        out.push_str(&format!(
+            "<span class=\"{class}\">{open_delim}{content}{close_delim}"
+        ));
+        out.push_str(CLOSE);
+        rest = &rest[span_end + CLOSE.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `[[Ctrl]]` → `<kbd>Ctrl</kbd>` — cú pháp phím bàn phím (GitHub-style
+/// `[[kbd]]` của GitLab/Pandoc). Chỉ thay trong TEXT node — bỏ qua toàn
+/// bộ nội dung `<pre ...>...</pre>` / `<code ...>...</code>` / thuộc tính
+/// thẻ. Nội dung giữa `[[` `]]` tối đa 30 ký tự, không chứa `[`/`]<`/`>`
+/// (chặn lồng nhau/bẻ HTML).
+fn convert_kbd(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    // Vị trí của thẻ mở code/pre đang bao quanh con trỏ hiện tại.
+    let mut code_depth = 0usize;
+    while i < bytes.len() {
+        // Theo dõi mở/đóng <code>/<pre> (output comrak luôn lowercase tag).
+        if bytes[i] == b'<' {
+            if starts_with_ci(&html[i..], "<code") || starts_with_ci(&html[i..], "<pre") {
+                code_depth += 1;
+            } else if starts_with_ci(&html[i..], "</code") || starts_with_ci(&html[i..], "</pre") {
+                code_depth = code_depth.saturating_sub(1);
+            }
+        }
+        if code_depth == 0 && bytes[i] == b'[' && i + 1 < bytes.len() && bytes[i + 1] == b'[' {
+            // Tìm đóng `]]`.
+            if let Some(close) = html[i + 2..].find("]]") {
+                let inner = &html[i + 2..i + 2 + close];
+                // Điều kiện an toàn: ngắn, không ký tự nguy hiểm.
+                if !inner.is_empty()
+                    && inner.chars().count() <= 30
+                    && !inner.contains('[')
+                    && !inner.contains(']')
+                    && !inner.contains('<')
+                    && !inner.contains('>')
+                    && !inner.contains('\n')
+                {
+                    out.push_str("<kbd>");
+                    out.push_str(inner);
+                    out.push_str("</kbd>");
+                    i = i + 2 + close + 2;
+                    continue;
+                }
+            }
+        }
+        let ch = html[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Case-insensitive prefix check (ASCII tags). Soi trên BYTES để không
+/// bao giờ cắt giữa ký tự UTF-8 đa byte (tiếng Việt) — bug panic
+/// "not a char boundary" khi test với văn bản có dấu.
+fn starts_with_ci(haystack: &str, prefix: &str) -> bool {
+    let h = haystack.as_bytes();
+    let p = prefix.as_bytes();
+    h.len() >= p.len() && h[..p.len()].eq_ignore_ascii_case(p)
+}
+
+/// Bọc abbreviation: mọi xuất hiện NGUYÊN TỪ của term trong text node
+/// (ngoài code/pre/thead?) → `<abbr title="định nghĩa">term</abbr>`.
+/// Chỉ chạy khi có định nghĩa (pass no-op khi abbrs rỗng). Term xuất hiện
+/// trong thuộc tính/href KHÔNG bị thay (chỉ scan text giữa `>` và `<`).
+fn apply_abbreviations(html: &str, abbrs: &[(String, String)]) -> String {
+    if abbrs.is_empty() {
+        return html.to_string();
+    }
+    let mut out = String::with_capacity(html.len());
+    let bytes = html.as_bytes();
+    let mut i = 0;
+    let mut code_depth = 0usize;
+    while i < bytes.len() {
+        let ch = html[i..].chars().next().unwrap();
+        if ch == '<' {
+            // Copy nguyên tag cho tới `>` (thuộc tính không bị thay).
+            // LƯU Ý: find() trả offset QUAN HỆ TỚI html[i..] — phải cộng i
+            // để được vị trí tuyệt đối (bug panic "byte range starts at X
+            // but ends at Y" nếu quên).
+            if let Some(gt_rel) = html[i..].find('>') {
+                let gt = i + gt_rel;
+                let tag = &html[i..=gt];
+                if starts_with_ci(tag, "<code") || starts_with_ci(tag, "<pre") {
+                    code_depth += 1;
+                } else if starts_with_ci(tag, "</code") || starts_with_ci(tag, "</pre") {
+                    code_depth = code_depth.saturating_sub(1);
+                }
+                out.push_str(tag);
+                i = gt + 1;
+                continue;
+            }
+        }
+        if code_depth > 0 {
+            out.push(ch);
+            i += ch.len_utf8();
+            continue;
+        }
+        // Text node: gom tới `<` kế tiếp, thay abbreviation bên trong.
+        let text_end = html[i..].find('<').map(|p| i + p).unwrap_or(html.len());
+        let text = &html[i..text_end];
+        let replaced = replace_abbr_in_text(text, abbrs);
+        out.push_str(&replaced);
+        i = text_end;
+    }
+    out
+}
+
+/// Thay nguyên từ term trong 1 đoạn text thuần (đã escape HTML entities).
+/// Word-boundary: ký tự trước/sau không phải chữ/số (đầu/cuối chuỗi tính
+/// là biên). Không thay trong từ dài hơn (vd "HTML5" chứa "HTML" → KHÔNG
+/// thay — tôn trọng từ người viết).
+fn replace_abbr_in_text(text: &str, abbrs: &[(String, String)]) -> String {
+    let mut out = text.to_string();
+    for (term, def) in abbrs {
+        if term.is_empty() || !text.contains(term.as_str()) {
+            continue;
+        }
+        let mut result = String::with_capacity(out.len());
+        let mut rest = out.as_str();
+        while let Some(pos) = rest.find(term.as_str()) {
+            let before_ok = rest[..pos]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric());
+            let after = &rest[pos + term.len()..];
+            let after_ok = after.chars().next().is_none_or(|c| !c.is_alphanumeric());
+            if before_ok && after_ok {
+                let def_esc = escape_attr(def);
+                result.push_str(&rest[..pos]);
+                result.push_str(&format!("<abbr title=\"{def_esc}\">{term}</abbr>"));
+                rest = after;
+            } else {
+                // Không phải nguyên từ — giữ nguyên phần đầu + thử tiếp sau.
+                let keep_len = pos + term.len();
+                result.push_str(&rest[..keep_len]);
+                rest = &rest[keep_len..];
+            }
+        }
+        result.push_str(rest);
+        out = result;
+    }
+    out
+}
+
+/// Escape giá trị cho attribute HTML (", <, >, &).
+fn escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// v3.11.0 — Vimeo embed: link Vimeo đơn độc trong paragraph → iframe
+/// player.vimeo.com (cùng cơ chế embed_youtube). Hỗ trợ:
+///   https://vimeo.com/{id}, https://www.vimeo.com/{id},
+///   https://player.vimeo.com/video/{id} (đã embed-ready).
+fn embed_vimeo(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find("<p><a href=\"") {
+        let close_marker = "</a></p>";
+        let end_p = rest[start..]
+            .find(close_marker)
+            .map(|p| start + p + close_marker.len())
+            .unwrap_or(rest.len());
+        let paragraph = &rest[start..end_p];
+        if let Some(href_start) = paragraph.find("href=\"") {
+            let href_start = href_start + 6;
+            if let Some(href_end) = paragraph[href_start..].find('"') {
+                let href_end = href_start + href_end;
+                let url = &paragraph[href_start..href_end];
+                if let Some(id) = extract_vimeo_id(url) {
+                    out.push_str(&rest[..start]);
+                    out.push_str(&format!(
+                        r#"<div class="video-embed"><iframe src="https://player.vimeo.com/video/{id}" loading="lazy" title="Vimeo player" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>"#
+                    ));
+                    rest = &rest[end_p..];
+                    continue;
+                }
+            }
+        }
+        out.push_str(&rest[..end_p]);
+        rest = &rest[end_p..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Trích video id từ URL Vimeo. Trả về None nếu không phải Vimeo.
+fn extract_vimeo_id(url: &str) -> Option<&str> {
+    // Strip scheme từ URL GỐC rồi cắt host.
+    let stripped = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
+    let after_host = stripped
+        .strip_prefix("www.")
+        .or(Some(stripped))
+        .unwrap_or(stripped);
+    if let Some(rest) = after_host.strip_prefix("vimeo.com/") {
+        if let Some(rest) = rest.strip_prefix("video/") {
+            let id = rest.split(['/', '?', '#']).next().unwrap_or("");
+            return valid_vimeo_id(id);
+        }
+        let id = rest.split(['/', '?', '#']).next().unwrap_or("");
+        return valid_vimeo_id(id);
+    }
+    if let Some(rest) = after_host.strip_prefix("player.vimeo.com/video/") {
+        let id = rest.split(['/', '?', '#']).next().unwrap_or("");
+        return valid_vimeo_id(id);
+    }
+    None
+}
+
+/// Vimeo id hợp lệ: 6..=12 chữ số.
+fn valid_vimeo_id(id: &str) -> Option<&str> {
+    if (6..=12).contains(&id.len()) && id.chars().all(|c| c.is_ascii_digit()) {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// v3.11.0 — Video/audio file embed: link đơn độc (text == href, tức bare
+/// URL được autolink) HOẶC ảnh đơn độc (`![](file.mp4)`) trỏ tới file
+/// media → thay bằng `<video controls>` / `<audio controls>`:
+///   * Video: .mp4 .webm .ogv .ogg(video) .mov .m4v
+///   * Audio: .mp3 .wav .m4a .aac .flac .oga
+///
+/// Chỉ http(s) URL (qua harden_links đã chạy trước — href an toàn scheme).
+fn embed_media_links(html: &str) -> String {
+    const VIDEO_EXTS: [&str; 6] = [".mp4", ".webm", ".ogv", ".mov", ".m4v", ".ogg"];
+    const AUDIO_EXTS: [&str; 5] = [".mp3", ".wav", ".m4a", ".aac", ".flac"];
+
+    let media_kind = |url: &str| -> Option<&'static str> {
+        let lower = url.to_ascii_lowercase();
+        // Bỏ query/fragment trước khi soi extension.
+        let clean = lower.split(['?', '#']).next().unwrap_or(&lower);
+        if VIDEO_EXTS.iter().any(|e| clean.ends_with(e)) {
+            Some("video")
+        } else if AUDIO_EXTS.iter().any(|e| clean.ends_with(e)) {
+            Some("audio")
+        } else {
+            None
+        }
+    };
+
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    // Pass 1: <p><a href="URL">URL</a></p> — bare URL media.
+    while let Some(start) = rest.find("<p><a href=\"") {
+        let close_marker = "</a></p>";
+        let end_p = rest[start..]
+            .find(close_marker)
+            .map(|p| start + p + close_marker.len())
+            .unwrap_or(rest.len());
+        let paragraph = &rest[start..end_p];
+        if let Some(href_start) = paragraph.find("href=\"") {
+            let href_start = href_start + 6;
+            if let Some(href_end) = paragraph[href_start..].find('"') {
+                let href_end = href_start + href_end;
+                let url = &paragraph[href_start..href_end];
+                // Bare link: inner text == href (comrak autolink). harden_links
+                // đã chạy trước và chèn rel/target/class vào tag — extract
+                // inner text bằng `>` ĐÓNG THẺ <a> (>` đầu tiên SAU href,
+                // KHÔNG dùng `>` đầu tiên của paragraph — đó là `>` của <p>).
+                let text = paragraph[href_end..]
+                    .find('>')
+                    .and_then(|gt| {
+                        let text_start = href_end + gt + 1;
+                        paragraph[text_start..]
+                            .find("</a>")
+                            .map(|e| &paragraph[text_start..text_start + e])
+                    })
+                    .unwrap_or("");
+                if text == url {
+                    if let Some(kind) = media_kind(url) {
+                        out.push_str(&rest[..start]);
+                        let url_esc = escape_attr(url);
+                        if kind == "video" {
+                            out.push_str(&format!(
+                                r#"<div class="video-embed video-file"><video controls preload="metadata" src="{url_esc}"></video></div>"#
+                            ));
+                        } else {
+                            out.push_str(&format!(
+                                r#"<div class="audio-embed"><audio controls preload="metadata" src="{url_esc}"></audio></div>"#
+                            ));
+                        }
+                        rest = &rest[end_p..];
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str(&rest[..end_p]);
+        rest = &rest[end_p..];
+    }
+    let out = out + rest;
+
+    // Pass 2: <p><img src="URL" ...></p> — ảnh có đuôi media → player.
+    let mut result = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    while let Some(p_start) = rest.find("<p><img ") {
+        let p_end_marker = "</p>";
+        let p_end = rest[p_start..]
+            .find(p_end_marker)
+            .map(|p| p_start + p + p_end_marker.len())
+            .unwrap_or(rest.len());
+        let paragraph = &rest[p_start..p_end];
+        if let Some(src_idx) = paragraph.find("src=\"") {
+            let src_start = src_idx + 5;
+            if let Some(src_end_rel) = paragraph[src_start..].find('"') {
+                let url = &paragraph[src_start..src_start + src_end_rel];
+                if let Some(kind) = media_kind(url) {
+                    let url_esc = escape_attr(url);
+                    result.push_str(&rest[..p_start]);
+                    if kind == "video" {
+                        result.push_str(&format!(
+                            r#"<div class="video-embed video-file"><video controls preload="metadata" src="{url_esc}"></video></div>"#
+                        ));
+                    } else {
+                        result.push_str(&format!(
+                            r#"<div class="audio-embed"><audio controls preload="metadata" src="{url_esc}"></audio></div>"#
+                        ));
+                    }
+                    rest = &rest[p_end..];
+                    continue;
+                }
+            }
+        }
+        result.push_str(&rest[..p_end]);
+        rest = &rest[p_end..];
+    }
+    result.push_str(rest);
+    result
+}
+
+/// Xoá mọi tag HTML (`<...>`) khỏi chuỗi, GIỮ nguyên entities (&amp; &lt;
+/// &gt;...) — dùng cho nội dung block Mermaid (tag syntect wrap phải đi,
+/// text nguồn giữ escape để textContent client decode đúng).
+fn strip_html_tags_keep_entities(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// v3.11.0 — Mermaid: ```mermaid code block → `<div class="mermaid">`.
+/// Chạy TRƯỚC các pass code-block (line numbers/copy button/lang label)
+/// — block mermaid không còn là <pre> nên các pass đó bỏ qua.
+///
+/// Output comrak + adapter: `<pre class="code-block"><code
+/// class="language-mermaid hljs">NỘI DUNG (escaped)</code></pre>`.
+/// Mermaid client-side đọc textContent (browser tự decode entities).
+/// Không khớp block `text`/plain khác — chỉ language-mermaid.
+fn convert_mermaid_blocks(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    const PRE_OPEN: &str = "<pre class=\"code-block\"><code";
+    while let Some(start) = rest.find(PRE_OPEN) {
+        // Tag `<code ...>` bắt đầu ngay cuối PRE_OPEN. Tìm `>` ĐÓNG TAG
+        // CODE — KHÔNG phải `>` đóng `<pre>` (bug: find('>') từ `start`
+        // trúng `>` của thẻ pre → code_tag không chứa language-mermaid →
+        // block bị bỏ qua nguyên vẹn).
+        let code_tag_start = start + PRE_OPEN.len() - "<code".len();
+        let code_tag_end = match rest[code_tag_start..].find('>') {
+            Some(p) => code_tag_start + p + 1,
+            None => break,
+        };
+        let code_open_tag = &rest[start..code_tag_end];
+        let lower = code_open_tag.to_ascii_lowercase();
+        if !lower.contains("language-mermaid") {
+            // Không phải mermaid — copy nguyên block này (đến </pre>).
+            let pre_end = match rest[code_tag_end..].find("</pre>") {
+                Some(p) => code_tag_end + p + "</pre>".len(),
+                None => rest.len(),
+            };
+            out.push_str(&rest[..pre_end]);
+            rest = &rest[pre_end..];
+            continue;
+        }
+        // Tìm </code></pre> đóng.
+        let close_marker = "</code></pre>";
+        let block_end = match rest[code_tag_end..].find(close_marker) {
+            Some(p) => code_tag_end + p + close_marker.len(),
+            None => rest.len(),
+        };
+        let raw_content = &rest[code_tag_end..block_end - close_marker.len()];
+        // Mermaid client (mermaid.run v11) đọc innerHTML của div — mọi TAG
+        // HTML trong div sẽ vỡ parse ("Syntax error in text"). Syntect wrap
+        // nội dung plain-text trong `<span class="text plain">` — STRIP toàn
+        // bộ tag syntect, GIỮ text + entities đã escape (textContent client
+        // decode đúng nguồn gốc — đã kiểm chứng bằng browser e2e).
+        let content = strip_html_tags_keep_entities(raw_content);
+        out.push_str(&rest[..start]);
+        out.push_str("<div class=\"mermaid-wrapper\"><div class=\"mermaid\">");
+        out.push_str(&content);
+        out.push_str("</div><noscript><p class=\"mermaid-noscript\">Cần bật JavaScript để hiển thị sơ đồ Mermaid.</p></noscript></div>");
+        rest = &rest[block_end..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -2126,5 +2778,335 @@ mod tests {
         assert!(out.contains("code-block"));
         assert!(!out.contains("code-copy-btn"), "bio không copy btn: {out}");
         assert!(!out.contains("code-lang-label"));
+    }
+
+    // ============================================================
+    // v3.11.0 — TESTS CHO SIÊU NÂNG CẤP MARKDOWN
+    // ============================================================
+
+    #[test]
+    fn test_v3110_kbd_basic() {
+        let out = render("Nhấn [[Ctrl]] + [[C]] để copy");
+        assert!(out.contains("<kbd>Ctrl</kbd>"), "got: {out}");
+        assert!(out.contains("<kbd>C</kbd>"));
+    }
+
+    #[test]
+    fn test_v3110_kbd_ignored_inside_code() {
+        // `[[X]]` trong code block KHÔNG được convert
+        let out = render("```\n[[X]]\n```");
+        assert!(
+            !out.contains("<kbd>"),
+            "kbd không được sinh trong <pre>: {out}"
+        );
+        assert!(out.contains("[[X]]"));
+    }
+
+    #[test]
+    fn test_v3110_kbd_dangerous_content_stays_escaped() {
+        // comrak escape `<script>` thành &lt;script&gt; TRƯỚC khi kbd pass
+        // chạy — kbd bọc nội dung đã escape → render ra chữ "<script>"
+        // thuần text, KHÔNG có tag thật trong output.
+        let out = render("[[<script>]]");
+        assert!(
+            !out.contains("<script>"),
+            "không được có tag script thật: {out}"
+        );
+        assert!(
+            out.contains("&lt;script&gt;"),
+            "nội dung phải escape: {out}"
+        );
+    }
+
+    #[test]
+    fn test_v3110_kbd_in_bio() {
+        let out = render_bio("Bio có [[F5]] nè");
+        assert!(out.contains("<kbd>F5</kbd>"), "bio: {out}");
+    }
+
+    #[test]
+    fn test_v3110_custom_heading_id() {
+        let out = render("## Cài đặt nhanh {#cai-dat-rieng}");
+        assert!(
+            out.contains("id=\"cai-dat-rieng\""),
+            "custom id phải được dùng: {out}"
+        );
+        // Text hiển thị KHÔNG còn `{#...}`
+        assert!(!out.contains("{#"));
+        // Anchor link trỏ đúng custom id
+        assert!(out.contains("href=\"#cai-dat-rieng\""));
+    }
+
+    #[test]
+    fn test_v3110_custom_heading_id_in_toc() {
+        let input = "[toc]\n\n## Mục Một {#muc-mot}";
+        let out = render(input);
+        // ToC entry phải link tới custom id
+        assert!(
+            out.contains("href=\"#muc-mot\""),
+            "ToC phải dùng custom id: {out}"
+        );
+    }
+
+    #[test]
+    fn test_v3110_custom_heading_id_invalid_rejected() {
+        // id có ký tự lạ → KHÔNG strip (hiển thị nguyên văn như text)
+        let out = render("## Title {#id lạ}");
+        assert!(!out.contains("id=\"id lạ\""));
+    }
+
+    #[test]
+    fn test_v3110_abbreviation() {
+        let input = "*[XP]: Điểm kinh nghiệm\n\nKiếm XP mỗi ngày nhé!";
+        let out = render(input);
+        assert!(
+            out.contains("<abbr title=\"Điểm kinh nghiệm\">XP</abbr>"),
+            "abbr phải render: {out}"
+        );
+        // Dòng định nghĩa bị bỏ khỏi output
+        assert!(!out.contains("Điểm kinh nghiệm\n"));
+        assert!(!out.contains("<p>[XP]:"));
+    }
+
+    #[test]
+    fn test_v3110_abbreviation_word_boundary() {
+        // "HTML5" chứa "HTML" nhưng là từ khác → KHÔNG thay
+        let input = "*[HTML]: HyperText Markup Language\n\nHTML5 ra mắt rồi, HTML cũ hơn.";
+        let out = render(input);
+        // "HTML5" nguyên vẹn
+        assert!(out.contains("HTML5"));
+        // Từ đơn HTML được bọc
+        assert!(out.matches("<abbr").count() >= 1);
+        assert!(!out.contains("<abbr title=\"HyperText Markup Language\">HTML5</abbr>"));
+    }
+
+    #[test]
+    fn test_v3110_abbreviation_ignored_in_code() {
+        let input = "*[X]: Y\n\n```\nX = X + 1\n```";
+        let out = render(input);
+        assert!(!out.contains("<abbr"), "code block không abbr: {out}");
+    }
+
+    #[test]
+    fn test_v3110_abbreviation_escapes_title() {
+        let input = "*[A]: a\"b<c\n\nA here";
+        let out = render(input);
+        assert!(
+            out.contains("title=\"a&quot;b&lt;c\""),
+            "attr phải escape: {out}"
+        );
+    }
+
+    #[test]
+    fn test_v3110_vimeo_embed() {
+        let out = render("https://vimeo.com/76979871");
+        assert!(
+            out.contains("player.vimeo.com/video/76979871"),
+            "got: {out}"
+        );
+        assert!(out.contains("<iframe"));
+    }
+
+    #[test]
+    fn test_v3110_vimeo_player_url_passthrough() {
+        let out = render("https://player.vimeo.com/video/123456789");
+        assert!(out.contains("player.vimeo.com/video/123456789"));
+    }
+
+    #[test]
+    fn test_v3110_vimeo_invalid_id_rejected() {
+        let out = render("https://vimeo.com/short");
+        assert!(
+            !out.contains("player.vimeo.com"),
+            "id quá ngắn phải từ chối: {out}"
+        );
+    }
+
+    #[test]
+    fn test_v3110_video_file_bare_link() {
+        let out = render("https://example.com/trailer.mp4");
+        assert!(out.contains("<video controls"), "got: {out}");
+        assert!(out.contains("video-embed"));
+        assert!(!out.contains("<a href=\"https://example.com/trailer.mp4\">"));
+    }
+
+    #[test]
+    fn test_v3110_video_file_image_syntax() {
+        let out = render("![](https://example.com/clip.webm)");
+        assert!(out.contains("<video controls"), "img-syntax video: {out}");
+    }
+
+    #[test]
+    fn test_v3110_audio_file_embed() {
+        let out = render("https://example.com/audio.mp3");
+        assert!(out.contains("<audio controls"), "got: {out}");
+        assert!(out.contains("audio-embed"));
+    }
+
+    #[test]
+    fn test_v3110_labeled_video_link_not_converted() {
+        // Link CÓ text riêng → vẫn là link (không tự nhúng)
+        let out = render("[tải video](https://example.com/a.mp4)");
+        // harden_links chèn rel/target vào tag — chỉ so phần đầu href.
+        assert!(out.contains("<a href=\"https://example.com/a.mp4\""));
+        assert!(out.contains(">tải video</a>"));
+        assert!(!out.contains("<video"));
+    }
+
+    #[test]
+    fn test_v3110_query_suffix_video_still_detected() {
+        let out = render("https://example.com/v.mp4?download=1");
+        assert!(
+            out.contains("<video controls"),
+            "query phải bỏ qua khi soi ext: {out}"
+        );
+    }
+
+    #[test]
+    fn test_v3110_mermaid_block_converted() {
+        let out = render("```mermaid\ngraph TD\n  A --> B\n```");
+        assert!(out.contains("<div class=\"mermaid\">"), "got: {out}");
+        assert!(out.contains("mermaid-wrapper"));
+        // KHÔNG còn là code block (không line number/copy cho diagram)
+        assert!(!out.contains("code-block-wrapper"));
+        assert!(!out.contains("code-lang-label"));
+    }
+
+    #[test]
+    fn test_v3110_mermaid_strips_syntect_span_tags() {
+        // mermaid.run đọc innerHTML — tag syntect `<span class="text plain">`
+        // trong div phải được STRIP, text + entities giữ nguyên.
+        let out = render("```mermaid\ngraph TD\n  A --> B\n```");
+        assert!(
+            !out.contains("<div class=\"mermaid\"><span"),
+            "div mermaid không được chứa tag syntect: {out}"
+        );
+        assert!(out.contains("<div class=\"mermaid\">graph TD"));
+        // `-->` giữ dạng escape `--&gt;` (textContent client decode)
+        assert!(out.contains("--&gt;"));
+    }
+
+    #[test]
+    fn test_v3110_mermaid_content_preserved_escaped() {
+        let out = render("```mermaid\nA[x > y]\n```");
+        // Nội dung phải được escape trong HTML (an toàn) nhưng textContent
+        // nguyên vẹn cho mermaid client đọc.
+        assert!(out.contains("A[x &gt; y]"), "escaped content: {out}");
+    }
+
+    #[test]
+    fn test_v3110_other_code_not_mermaid() {
+        let out = render("```rust\nfn main() {}\n```");
+        assert!(out.contains("code-block-wrapper"));
+        assert!(!out.contains("mermaid"));
+    }
+
+    #[test]
+    fn test_v3110_math_classes_match_comrak_output() {
+        let out = render("Công thức $E=mc^2$ nè");
+        // comrak phát class="math inline" — CSS v3.11.0 giờ khớp đúng
+        assert!(out.contains("class=\"math inline\""), "got: {out}");
+    }
+
+    #[test]
+    fn test_v3110_math_display() {
+        let out = render("$$x^2$$");
+        assert!(out.contains("math display"));
+    }
+
+    #[test]
+    fn test_v3110_cache_version_bumped() {
+        // Bảo hiểm: đổi engine phải bump cache version (4 hiện tại)
+        assert_eq!(CACHE_VERSION, 4);
+    }
+
+    #[test]
+    fn test_v3110_pre_process_keeps_code_fences() {
+        // ` {#id}` bên trong fenced code KHÔNG bị strip
+        let input = "```md\n## Title {#id}\n```";
+        let (cleaned, ids, abbrs) = pre_process_input(input);
+        assert!(ids.is_empty(), "không parse id trong code fence");
+        assert!(abbrs.is_empty());
+        assert!(cleaned.contains("{#id}"));
+    }
+
+    #[test]
+    fn test_v3110_strip_custom_heading_id_unit() {
+        assert_eq!(
+            strip_custom_heading_id("## Cài đặt {#cai-dat}"),
+            Some(("Cài đặt".to_string(), "cai-dat".to_string()))
+        );
+        assert_eq!(strip_custom_heading_id("## Không có id"), None);
+        assert_eq!(strip_custom_heading_id("## Id lạ {#a b}"), None);
+        assert_eq!(strip_custom_heading_id("### {#only-id}"), None); // text rỗng
+    }
+
+    #[test]
+    fn test_v3110_vimeo_id_extraction() {
+        assert_eq!(
+            extract_vimeo_id("https://vimeo.com/76979871"),
+            Some("76979871")
+        );
+        assert_eq!(
+            extract_vimeo_id("https://www.vimeo.com/123456?x=1"),
+            Some("123456")
+        );
+        assert_eq!(
+            extract_vimeo_id("https://player.vimeo.com/video/987654321"),
+            Some("987654321")
+        );
+        assert_eq!(extract_vimeo_id("https://youtube.com/watch?v=x"), None);
+        assert_eq!(extract_vimeo_id("https://vimeo.com/abc"), None);
+    }
+
+    #[test]
+    fn test_v3110_guide_document_renders_clean() {
+        // Trang /markdown render guide thật — smoke test bảo vệ
+        const GUIDE_MD: &str = include_str!("../../docs/markdown_guide.md");
+        let out = render(GUIDE_MD);
+        // Không HTML thô lọt qua
+        assert!(out.contains("Hướng dẫn Markdown toàn diện"));
+        // Có ToC (guide chứa [toc])
+        assert!(out.contains("toc") || out.contains("Mục lục"));
+        // Guide dùng kbd
+        assert!(out.contains("<kbd>"));
+        // Guide dùng mermaid
+        assert!(out.contains("<div class=\"mermaid\">"));
+        // Guide dùng math
+        assert!(out.contains("math"));
+        // Guide dùng abbreviation
+        assert!(out.contains("<abbr title="));
+        // Guide dùng custom heading id
+        assert!(out.contains("id=\"cai-dat-nhanh\""));
+    }
+    #[test]
+    fn test_v3110_probe_spoiler_pipe() {
+        let out = render("Kết quả: ||bí mật|| nè");
+        println!("SPOILER_OUT: {out}");
+        assert!(out.contains("spoiler"), "got: {out}");
+    }
+    #[test]
+    fn test_v3110_math_span_xss_neutralized() {
+        // comrak escape nội dung math TRƯỚC khi normalize_math_spans bọc
+        // wrapper — mọi payload tag đều thành text escaped.
+        for input in [
+            "$<script>alert(1)</script>$",
+            "$<img src=x onerror=alert(2)>$",
+            "$$</span><script>alert(3)</script>$$",
+        ] {
+            let out = render(input);
+            assert!(!out.contains("<script"), "XSS leak: {out}");
+            assert!(!out.contains("<img src=x"), "XSS img leak: {out}");
+            assert!(out.contains("&lt;"), "nội dung phải escaped: {out}");
+        }
+    }
+
+    #[test]
+    fn test_v3110_abbr_term_with_tag_is_ignored() {
+        // Term chứa tag → không match text escaped → không bao giờ được
+        // chèn raw vào output (không có đường inject).
+        let out = render("*[<script>]: x\n\n<script> here");
+        assert!(!out.contains("<abbr"), "no abbr for tag-term: {out}");
+        assert!(!out.contains("<script> here</abbr>"));
     }
 }

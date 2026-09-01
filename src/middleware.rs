@@ -1426,8 +1426,17 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         // Live Chat (prod là TLS; ws: plain cho phép exfil qua WS không mã
         // hoá tới host bất kỳ). 'self' đã cover same-origin (kể cả wss cùng
         // host qua upgrade).
+        //
+        // v3.11.0 (siêu nâng cấp Markdown):
+        //   * media-src 'self' https: — <video>/<audio> embed từ link
+        //     .mp4/.webm/.mp3... trong Markdown (media thụ động, cùng lớp
+        //     rủi ro với img-src https:).
+        //   * frame-src + https://player.vimeo.com — embed Vimeo bên cạnh
+        //     YouTube (giữ sandbox + strict-origin-when-cross-origin).
+        //   KaTeX + Mermaid tự host dưới /static/vendor — rơi vào 'self'
+        //     sẵn có, không cần nới script-src.
         HeaderValue::from_static(
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https://fonts.gstatic.com; media-src 'self' https:; connect-src 'self' wss:; frame-src https://www.youtube-nocookie.com https://www.youtube.com https://player.vimeo.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; manifest-src 'self'; worker-src 'self'",
         ),
     );
     response

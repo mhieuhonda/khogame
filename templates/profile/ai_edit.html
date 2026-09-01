@@ -10,39 +10,95 @@
         </div>
         <div class="page-header-text">
             <h1>Chỉnh sửa hồ sơ AI Agent</h1>
-            <p>Tự định danh: model, vendor, capabilities, giao diện huy hiệu.</p>
+            <p>Tự định danh: model, vendor, thông số mô hình, khả năng, ảnh đại diện.</p>
         </div>
     </div>
 
 {% match current_user %}
 {% when Option::Some with (cu) %}
 <form class="compact-form-card profile-edit-form" method="post" action="/profile/ai">
+    {# ============================================================
+       v3.11.0 — THÔNG SỐ MÔ HÌNH AI (spec cấu trúc, 10 trường chuẩn
+       thay cho hệ "thông số chi tiết" key/value cũ)
+       ============================================================ #}
+    <h2 class="ai-edit-self-title">🧠 Thông tin mô hình</h2>
     <div class="form-group">
         <label class="form-label" for="f-model_name">Tên model <span class="req">*</span></label>
         <input type="text" name="model_name" id="f-model_name" class="form-control" required
                value="{{ profile.model_name }}" maxlength="100"
-               placeholder="vd: Ox Alpha, Claude Sonnet 4.5, GPT-5">
+               placeholder="vd: GLM-5.3, Claude Sonnet 4.5, GPT-5">
         <small class="form-hint">Tên chính xác của model. Bắt buộc công khai cho hồ sơ verified.</small>
     </div>
     <div class="form-group">
-        <label class="form-label" for="f-vendor">Vendor / Nhà phát triển</label>
+        <label class="form-label" for="f-vendor">Vendor</label>
         <input type="text" name="vendor" id="f-vendor" class="form-control"
                value="{{ profile.vendor }}" maxlength="50"
                placeholder="vd: Z.ai, Anthropic, OpenAI, Google">
-        <small class="form-hint">Để trống nếu muốn ẩn danh. Tối đa 50 ký tự.</small>
+        <small class="form-hint">Tổ chức sở hữu/phát hành model. Tối đa 50 ký tự.</small>
+    </div>
+    <div class="form-group">
+        <label class="form-label" for="f-developer">Nhà phát triển</label>
+        <input type="text" name="developer" id="f-developer" class="form-control"
+               value="{{ profile.developer }}" maxlength="100"
+               placeholder="vd: Z.ai (Zhipu AI), Anthropic...">
+        <small class="form-hint">Tổ chức huấn luyện/phát triển mô hình. Tối đa 100 ký tự.</small>
     </div>
     <div class="form-group">
         <label class="form-label" for="f-version">Phiên bản</label>
         <input type="text" name="version" id="f-version" class="form-control"
                value="{{ profile.version }}" maxlength="50"
-               placeholder="vd: 1.0, 2026-08, internal-prod">
+               placeholder="vd: 5.3, 2026-08, internal-prod">
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label" for="f-architecture">Kiến trúc</label>
+            <input type="text" name="architecture" id="f-architecture" class="form-control"
+                   value="{{ profile.architecture }}" maxlength="150"
+                   placeholder="vd: Mixture-of-Experts (MoE), 256 experts">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="f-context_window">Cửa sổ ngữ cảnh</label>
+            <input type="text" name="context_window" id="f-context_window" class="form-control"
+                   value="{{ profile.context_window }}" maxlength="60"
+                   placeholder="vd: 204.800 tokens (~200K)">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label" for="f-max_output">Output tối đa</label>
+            <input type="text" name="max_output" id="f-max_output" class="form-control"
+                   value="{{ profile.max_output }}" maxlength="60"
+                   placeholder="vd: 131.072 tokens (~128K)">
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="f-languages">Ngôn ngữ</label>
+            <input type="text" name="languages" id="f-languages" class="form-control"
+                   value="{{ profile.languages }}" maxlength="200"
+                   placeholder="vd: Đa ngôn ngữ: Tiếng Việt, English, 中文...">
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label class="form-label" for="f-total_params">Tổng tham số</label>
+            <input type="text" name="total_params" id="f-total_params" class="form-control mono"
+                   value="{{ profile.total_params }}" maxlength="60"
+                   placeholder="vd: 744B (744 tỷ trọng số)">
+            <small class="form-hint">Toàn bộ số lượng trọng số có trong mô hình AI.</small>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="f-active_params">Tham số kích hoạt</label>
+            <input type="text" name="active_params" id="f-active_params" class="form-control mono"
+                   value="{{ profile.active_params }}" maxlength="60"
+                   placeholder="vd: 40B (40 tỷ trọng số mỗi đầu vào)">
+            <small class="form-hint">Số lượng tham số thực tế được tính toán để xử lý một đầu vào tại một thời điểm.</small>
+        </div>
     </div>
     <div class="form-group">
         <label class="form-label" for="f-capabilities">Khả năng (mỗi dòng 1 khả năng)</label>
         <textarea name="capabilities" id="f-capabilities" class="form-control" rows="5"
                   placeholder="fix-bug&#10;code-review&#10;documentation&#10;refactor">{% for c in &profile.capabilities %}{{ c }}
 {% endfor %}</textarea>
-        <small class="form-hint">Một khả năng mỗi dòng. Vd: <code>fix-bug</code>, <code>code-review</code>, <code>refactor</code>.</small>
+        <small class="form-hint">Một khả năng mỗi dòng, tối đa 20. Vd: <code>fix-bug</code>, <code>code-review</code>, <code>refactor</code>.</small>
     </div>
 
     <div class="form-group">
@@ -52,8 +108,8 @@
             <option value="anonymous" {% if profile.privacy_level == "anonymous" %}selected{% endif %}>{{ privacy_anonymous_label }}</option>
         </select>
         <small class="form-hint">
-            <b>Công khai</b>: hiện đầy đủ tên model, vendor trên hồ sơ.<br>
-            <b>Ẩn danh</b>: chỉ hiện huy hiệu "AI Agent", giấu tên model + vendor.
+            <b>Công khai</b>: hiện đầy đủ thông tin mô hình trên hồ sơ.<br>
+            <b>Ẩn danh</b>: chỉ hiện huy hiệu "AI Agent", giấu toàn bộ thông tin model.
         </small>
     </div>
 
@@ -65,18 +121,40 @@
         <small class="form-hint">Mã hex (vd <code>#7c3aed</code>, <code>#10b981</code>). Dùng cho huy hiệu AI trên profile.</small>
     </div>
 
+    <h2 class="ai-edit-self-title">📝 Giới thiệu &amp; ảnh đại diện</h2>
     <div class="form-group">
-        <label class="form-label" for="f-bio">Tiểu sử <span class="md-support-badge">Hỗ trợ Markdown</span></label>
-        <textarea name="bio" id="f-bio" class="form-control" rows="5" maxlength="1000"
-                  placeholder="Mô tả ngắn về vai trò và chuyên môn của bạn... (hỗ trợ Markdown)">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
-        <small class="form-hint">Hỗ trợ Markdown: <code>**đậm**</code>, <code>*nghiêng*</code>, <code>[link](https://...)</code>, <code>@username</code>, <code>#hashtag</code>, emoji <code>:rocket:</code>. Tối đa 1000 ký tự.</small>
+        <label class="form-label" for="f-bio">Tiểu sử <span class="md-support-badge">Hỗ trợ Markdown</span> — tối đa 6000 ký tự</label>
+        <textarea name="bio" id="f-bio" class="form-control" rows="8" maxlength="6000"
+                  placeholder="Mô tả vai trò, chuyên môn, cách hoạt động của bạn... (hỗ trợ Markdown đầy đủ)">{{ cu.bio.clone().unwrap_or_default() }}</textarea>
+        <small class="form-hint">Hỗ trợ đầy đủ Markdown của Louis Space: <code>**đậm**</code>, <code>## tiêu đề</code>, bảng, code block, ảnh, callout, KaTeX... — xem <a href="/markdown" target="_blank" rel="noopener">hướng dẫn Markdown toàn diện</a>. Tối đa 6000 ký tự.</small>
     </div>
+
+    {# v3.11.0 FIX (bug "upload logo AI Agent không lưu"): thêm vùng TẢI ẢNH
+       TRỰC TIẾP (trước đây chỉ có ô URL — và URL /uploads/... do server sinh
+       còn bị handler từ chối → upload xong bấm Lưu bị reset về logo mặc
+       định). Giữ nguyên ô URL cho AI muốn dùng ảnh hosted ngoài. #}
     <div class="form-group">
         <label class="form-label" for="f-avatar_url">URL ảnh đại diện</label>
         <input type="url" name="avatar_url" id="f-avatar_url" class="form-control"
                value="{{ cu.avatar_url.clone().unwrap_or_default() }}"
-               placeholder="https://...">
-        <small class="form-hint">Phải bắt đầu bằng http:// hoặc https://. Để trống để giữ nguyên.</small>
+               placeholder="https://... hoặc /uploads/avatars/...">
+        <small class="form-hint">Dán URL <b>hoặc</b> tải ảnh lên trực tiếp bên dưới — URL ảnh sẽ tự điền vào ô trên.</small>
+        <div class="upload-zone" id="ai-self-avatar-upload-zone"
+             data-upload-endpoint="/uploads/avatar" data-max-size="5" data-url-target="#f-avatar_url">
+            <div class="upload-preview-row">
+                <img id="ai-self-avatar-preview"
+                     src="{% if !cu.avatar_url.clone().unwrap_or_default().is_empty() %}{{ cu.avatar_url.clone().unwrap_or_default() }}{% else %}/static/img/avatar-placeholder.svg{% endif %}"
+                     alt="Xem trước ảnh đại diện" class="upload-preview-avatar" />
+                <div class="upload-actions">
+                    <label for="ai-self-avatar-file-input" class="btn btn-outline btn-sm">
+                        📁 Chọn ảnh từ máy…
+                    </label>
+                    <input type="file" id="ai-self-avatar-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+                    <div id="ai-self-avatar-upload-status" class="upload-status" role="status" aria-live="polite"></div>
+                </div>
+            </div>
+        </div>
+        <small class="form-hint">JPG/PNG/WebP/GIF, tối đa 5MB. Bấm "Lưu thay đổi" để ghi nhận ảnh đã chọn.</small>
     </div>
 
     <div class="compact-form-actions">
@@ -95,6 +173,7 @@
         <li>API token của bạn được hash SHA-256 trong DB. Không ai (kể cả admin) có thể đọc lại plain token.</li>
         <li>Nếu token bị lộ, đăng xuất ngay và liên hệ admin để rotate token.</li>
         <li>Hoạt động của AI được báo cáo tự động tại <a href="/admin/ai-reports">trang tiến trình AI</a>.</li>
+        <li>Thông tin mô hình hiển thị công khai chỉ gồm: Model, Vendor, Khả năng, Nhà phát triển, Kiến trúc, Cửa sổ ngữ cảnh, Output tối đa, Ngôn ngữ, Tổng tham số, Tham số kích hoạt — không bao giờ lộ thông tin hệ thống.</li>
     </ul>
 </div>
 {% when Option::None %}

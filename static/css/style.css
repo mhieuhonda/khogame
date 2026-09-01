@@ -2637,9 +2637,15 @@ pre code {
     display: flex;
     gap: 20px;
     padding: 0 24px;
-    margin-top: -40px;
+    /* v3.11.0 FIX (bug "tên trắng biến mất ở chế độ sáng") — đổi overlap
+       40px → 62px: khối tên (h1 ~35px + @username ~23px ≈ 58px) giờ nằm
+       HOÀN TOÀN trên cover tối ở cả 2 theme. Trước đây overlap 40px chỉ
+       đủ che h1 → @username treo 79% dưới nền canvas: light mode = chữ
+       trắng trên nền trắng (đã xác minh bằng screenshot browser).
+       Avatar 104px giờ phủ 62px trên cover (~60%) — chuẩn layout X/Twitter. */
+    margin-top: -62px;
     /* v3.9.0 FIX (bug "ảnh đại diện bị che") — phòng vệ: .profile-info
-       chồng lên cover 40px (margin-top âm). Khi cover là element tĩnh,
+       chồng lên cover 62px (margin-top âm). Khi cover là element tĩnh,
        avatar (inline content, nằm sau trong tree) tự vẽ TRÊN cover; nhưng
        nếu sau này cover được đưa sang positioned (bug v3.4.0 từng gây
        che avatar hồ sơ AI) thì positioned element vẽ sau toàn bộ nội dung
@@ -2674,11 +2680,26 @@ pre code {
 
 .profile-meta h1,
 .profile-meta .profile-username {
-    /* v3.10.0 — bỏ text-shadow (chữ quá tối + làm xỉn rainbow), tăng
-       độ sáng: h1 trắng tinh, username trắng ngà. Cover tối phía sau
-       đảm bảo tương phản mà không cần bóng đổ. */
+    /* v3.11.0 — tên trắng tinh trên cover tối (62px overlap đảm bảo khối
+       tên nằm trọn trên cover — xem comment .profile-info). Mobile
+       ≤640px layout cột: tên nằm HOÀN TOÀN dưới cover → màu theme-aware
+       (xem override trong media query cuối file). */
     color: #ffffff;
     text-shadow: none;
+}
+
+/* v3.11.0 FIX — scrim bảo hiểm cho tên dài xuống 2 dòng: khi h1 wrap,
+   dòng 2 + @username có thể tràn khỏi cover. @username được bọc chip
+   nền tối bán trong suốt (đọc được trên MỌI nền), còn h1 có text-shadow
+   scrim mềm (chỉ hiển thị khi rời khỏi cover — trên cover tối bóng
+   đồng màu nên vô hình). Shadow KHÔNG áp cho .rainbow-text (gradient
+   background-clip:text sẽ bị "bùn" — lý do v3.10.0 gỡ bóng). */
+.profile-meta h1 {
+    text-shadow: 0 1px 10px rgba(15, 23, 42, 0.45), 0 0 2px rgba(15, 23, 42, 0.30);
+}
+
+.profile-meta h1 .rainbow-text {
+    text-shadow: none; /* giữ gradient rainbow tinh khiết */
 }
 
 .profile-avatar {
@@ -2718,7 +2739,25 @@ pre code {
 .profile-username {
     font-family: var(--font-mono);
     font-size: 14px;
-    color: var(--fg-muted);
+    color: #ffffff;
+    /* v3.11.0 FIX — @username là chip mờ tối: đọc được TRÊN cover tối
+       (chip đồng màu ≈ vô hình) lẫn dưới nền sáng/tối khi tên dài làm
+       nó trào khỏi cover. Trước đây chữ trắng trần → light mode treo
+       dưới cover = mất trắng trên trắng (79% chiều dài). */
+    display: inline-block;
+    width: fit-content;
+    background: rgba(15, 23, 42, 0.52);
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 1px 10px;
+    margin-top: 4px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    /* Fallback trình duyệt cũ: nền đặc hơn thay blur */
+    .profile-username { background: rgba(15, 23, 42, 0.78); }
 }
 
 .profile-role {
@@ -6150,6 +6189,24 @@ a.chat-msg-author {
         margin-top: -32px;
     }
 
+    /* v3.11.0 FIX (mobile) — layout cột đẩy khối tên xuống HOÀN TOÀN
+       dưới cover (0% chồng cover, đã đo bằng browser). Chữ trắng trên
+       nền canvas → light mode mất trắng trên trắng. Mobile dùng màu
+       theme-aware: luôn đúng tương phản ở cả 2 theme, chip @username
+       bỏ nền tối (không còn cần). */
+    .profile-meta h1 {
+        color: var(--fg-default);
+        text-shadow: none;
+    }
+
+    .profile-username {
+        color: var(--fg-muted);
+        background: var(--bg-subtle);
+        border: 1px solid var(--border-muted);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
     .profile-stats {
         gap: 18px;
         padding: 12px 16px;
@@ -6641,7 +6698,187 @@ textarea:focus-visible,
     text-decoration: none;
 }
 
-/* Math (KaTeX-style — rendered as code for now, future: load KaTeX) */
+/* ============================================================
+   v3.11.0 — TRANG HƯỚNG DẪN MARKDOWN (/markdown)
+   ============================================================ */
+.md-guide-page .about-hero { margin-bottom: 20px; }
+
+.md-playground {
+    border: 1px solid var(--border-default, #2a3242);
+    border-radius: 14px;
+    background: var(--bg-elevated, #141a24);
+    padding: 16px 18px 18px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow-sm);
+}
+
+.md-playground-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.md-playground-head h2 {
+    font-size: 17px;
+    font-weight: 800;
+    margin: 0;
+}
+
+.md-playground-samples { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.md-playground-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+}
+
+.md-playground-pane { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+
+.md-play-input {
+    font-family: var(--font-mono, monospace);
+    font-size: 13px;
+    line-height: 1.55;
+    resize: vertical;
+    min-height: 240px;
+}
+
+.md-playground-output {
+    flex: 1;
+    border: 1px dashed var(--border-muted, #2a3242);
+    border-radius: 10px;
+    background: var(--bg-canvas, #0d1117);
+    padding: 14px 16px;
+    min-height: 240px;
+    max-height: 560px;
+    overflow: auto;
+}
+
+.md-playground-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.md-playground-meta .muted { font-size: 12.5px; }
+
+.md-guide-content {
+    margin-top: 6px;
+}
+
+@media (max-width: 860px) {
+    .md-playground-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   v3.11.0 — MARKDOWN SIÊU NÂNG CẤP: kbd, abbr, mermaid,
+   video/audio file embed, sortable tables
+   ============================================================ */
+
+/* Phím bàn phím `[[Ctrl]]` → <kbd> — giống GitHub */
+.prose-md kbd, .news-content kbd, .game-content kbd {
+    display: inline-block;
+    padding: 2px 7px;
+    font-family: var(--font-mono, monospace);
+    font-size: 0.82em;
+    line-height: 1.4;
+    color: var(--fg-default, #eee);
+    background: var(--bg-subtle, #1a2230);
+    border: 1px solid var(--border-default, #2a3242);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    box-shadow: 0 1px 0 var(--border-default, #2a3242);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+/* Abbreviation `*[TERM]: def` → <abbr title> */
+.prose-md abbr[title], .news-content abbr[title], .game-content abbr[title] {
+    text-decoration: underline dotted var(--fg-muted, #9aa4b2) 1px;
+    text-underline-offset: 3px;
+    cursor: help;
+}
+
+/* Mermaid — container diagram (client-side render, lazy-load script) */
+.mermaid-wrapper {
+    margin: 1.25em 0;
+    padding: 16px;
+    border: 1px solid var(--border-muted, #2a3242);
+    border-radius: 10px;
+    background: var(--bg-elevated, #141a24);
+    overflow-x: auto;
+    text-align: center;
+}
+.mermaid-wrapper .mermaid {
+    display: flex;
+    justify-content: center;
+    min-height: 40px;
+}
+.mermaid-wrapper .mermaid svg {
+    max-width: 100%;
+    height: auto;
+}
+.mermaid-noscript {
+    font-size: 13px;
+    color: var(--fg-muted, #9aa4b2);
+}
+
+/* Video file (.mp4/.webm...) + audio embed (.mp3/.wav...) */
+.prose-md .video-embed video, .news-content .video-embed video, .game-content .video-embed video {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    border-radius: 10px;
+    background: #000;
+}
+.audio-embed {
+    margin: 1em 0;
+}
+.prose-md .audio-embed audio, .news-content .audio-embed audio, .game-content .audio-embed audio {
+    width: 100%;
+}
+
+/* Sortable tables (app.js) — nút sắp xếp trên header, visual cue */
+.prose-md table.sortable th[role="columnheader"],
+.news-content table.sortable th[role="columnheader"],
+.game-content table.sortable th[role="columnheader"] {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 22px;
+}
+.prose-md table.sortable th[role="columnheader"]::after,
+.news-content table.sortable th[role="columnheader"]::after,
+.game-content table.sortable th[role="columnheader"]::after {
+    content: "↕";
+    position: absolute;
+    right: 6px;
+    opacity: 0.45;
+    font-size: 0.85em;
+}
+.prose-md table.sortable th[aria-sort="ascending"]::after,
+.news-content table.sortable th[aria-sort="ascending"]::after,
+.game-content table.sortable th[aria-sort="ascending"]::after {
+    content: "↑";
+    opacity: 1;
+}
+.prose-md table.sortable th[aria-sort="descending"]::after,
+.news-content table.sortable th[aria-sort="descending"]::after,
+.game-content table.sortable th[aria-sort="descending"]::after {
+    content: "↓";
+    opacity: 1;
+}
+
+/* Math — v3.11.0: comrak phát `<span class="math inline/display">`
+   (selector cũ `.math-inline` KHÔNG bao giờ khớp — đã sửa). Style dưới là
+   FALLBACK khi JS tắt (KaTeX chưa chạy): hiển thị công thức dạng code dễ
+   đọc. Khi KaTeX render xong, span được thay bằng .katex — style này hết
+   tác dụng tự nhiên. */
+.prose-md .math.inline, .news-content .math.inline, .game-content .math.inline,
 .prose-md .math-inline, .news-content .math-inline, .game-content .math-inline {
     font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
     font-style: italic;
@@ -6649,6 +6886,7 @@ textarea:focus-visible,
     padding: 0.1em 0.3em;
     border-radius: 3px;
 }
+.prose-md .math.display, .news-content .math.display, .game-content .math.display,
 .prose-md .math-display, .news-content .math-display, .game-content .math-display {
     font-family: var(--font-mono, 'JetBrains Mono', 'Cambria Math', monospace);
     font-style: italic;
@@ -6658,6 +6896,19 @@ textarea:focus-visible,
     text-align: center;
     margin: 1em 0;
     overflow-x: auto;
+    display: block;
+}
+
+/* KaTeX v3.11.0 — self-hosted /static/vendor/katex/. Scale vừa text,
+   inherit màu theo theme; overflow-x cho công thức dài trên mobile. */
+.prose-md .katex, .news-content .katex, .game-content .katex {
+    font-size: 1.05em;
+}
+.prose-md .katex-display, .news-content .katex-display, .game-content .katex-display {
+    margin: 1em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 0;
 }
 
 /* Strikethrough */
@@ -9228,162 +9479,198 @@ code.ai-agent-username {
    ============================================================ */
 
 /* ============================================================
-   v3.5.0 — CARD THÔNG SỐ CHI TIẾT (hồ sơ AI công khai)
-   v3.10.0 — ĐỔI NỀN TỐI → TRẮNG (yêu cầu chủ sở hữu: vùng "Thông
-   số chi tiết" trên hồ sơ AI Agent từng dùng --bg-card tối nên trông
-   "đen thui", khó đọc ở cả 2 theme). Giờ card LUÔN nền TRẮNG + chữ
-   xám đậm thuộc slate palette — cố định KHÔNG theo theme, đồng thời
-   giữ màu nhấn của agent chỉ ở viền/icon cho dễ chịu. Card trắng
-   nổi bật một cách chủ đích trên nền hồ sơ (tối lẫn sáng) = đúng
-   vai trò "thẻ thông tin danh thiếp" của AI.
+   v3.11.0 — CARD "THÔNG TIN MÔ HÌNH AI" (hồ sơ AI công khai)
+   Thiết kế lại TOÀN BỘ theo yêu cầu chủ sở hữu ("UI phần thông tin
+   AI Agent quá loạn — sắp xếp lại"): thay 2 khối rời (.ai-profile-info
+   + .ai-params-card bảng key/value 2 nhóm) bằng MỘT card gọn với
+   đúng 10 trường cấu trúc + 2 ô thống kê Tổng tham số / Tham số
+   kích hoạt.
+
+   Theme-aware (bỏ nền trắng cố định v3.10.0 — slab trắng chói trên
+   dark mode là một phần cảm giác "loạn"): nền card = bg-elevated pha
+   6% màu nhấn của agent, viền 30% nhấn — nổi bật mà vẫn ăn theo theme,
+   chuẩn tương phản ở CẢ 2 theme (nhãn fg-muted, giá trị fg-default).
    ============================================================ */
-.ai-params-card {
+.ai-spec-card {
     margin-top: 14px;
-    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 35%, #ffffff);
-    border-radius: 12px;
-    background: #ffffff;
-    padding: 12px 14px;
-    text-align: left;
     max-width: 560px;
-    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.10);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, var(--border-muted, #2a3242));
+    border-radius: 12px;
+    background:
+        linear-gradient(
+            160deg,
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 7%, var(--bg-elevated, #141a24)),
+            color-mix(in srgb, var(--ai-accent, #0ea5e9) 3%, var(--bg-elevated, #141a24))
+        );
+    padding: 14px 16px 12px;
+    text-align: left;
+    box-shadow: var(--shadow-sm);
 }
-.ai-params-card-head {
+
+.ai-spec-head {
     display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.ai-spec-title {
+    display: inline-flex;
     align-items: center;
     gap: 8px;
     font-weight: 700;
     font-size: 14px;
-    /* Màu nhấn trộn 25% đen — đảm bảo tương phản trên nền trắng (AA) */
-    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 75%, #0f172a);
-    margin-bottom: 8px;
+    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 78%, var(--fg-default, #eee));
 }
-.ai-params-total {
+
+.ai-spec-title svg { flex-shrink: 0; }
+
+.ai-spec-verified {
     margin-left: auto;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 600;
-    color: #334155;
-    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, #ffffff);
-    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, #ffffff);
     border-radius: 999px;
     padding: 1px 10px;
+    color: #16a34a;
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.35);
 }
-.ai-params-group-head {
-    font-size: 12px;
+
+[data-theme="light"] .ai-spec-verified { color: #15803d; }
+
+/* Lưới 2 cột các trường spec — 1 cột trên mobile */
+.ai-spec-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
+}
+
+.ai-spec-item {
+    min-width: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 4%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 14%, transparent);
+}
+
+.ai-spec-wide { grid-column: 1 / -1; }
+
+.ai-spec-item dt {
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #64748b;
-    margin: 10px 0 6px;
-    padding-bottom: 4px;
-    border-bottom: 1px dashed color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, #e2e8f0);
+    color: var(--fg-muted, #9aa4b2);
+    margin-bottom: 2px;
 }
-.ai-params-group-head.is-activation {
-    /* amber-700 — amber-500 (#f59e0b) cũ quá nhạt trên nền trắng */
-    color: #b45309;
-    border-bottom-color: #f59e0b66;
-}
-.ai-params-table { margin: 0; }
-.ai-params-row {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    padding: 4px 0;
-    font-size: 13px;
-    border-bottom: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, #e2e8f0);
-    cursor: help;
-}
-.ai-params-row:last-child { border-bottom: 0; }
-.ai-params-row dt {
-    flex: 0 0 42%;
-    color: #475569;
-    font-weight: 600;
-}
-.ai-params-row dd {
+
+.ai-spec-item dd {
     margin: 0;
-    flex: 1;
-    color: #0f172a;
-    font-family: var(--font-mono, monospace);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--fg-default, #eee);
     overflow-wrap: anywhere;
 }
 
-/* ============================================================
-   v3.5.0 — PANEL THAM SỐ (trang /admin/ai-agents)
-   ============================================================ */
-.ai-params-panel {
-    margin-top: 10px;
-    border: 1px solid var(--border, #2a3242);
-    border-radius: 10px;
-    background: var(--bg-card, #141a24);
-    padding: 8px 12px;
-}
-.ai-params-panel summary {
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--fg-muted, #9aa4b2);
-    user-select: none;
-}
-.ai-params-panel summary:hover { color: var(--fg-default, #eee); }
-.ai-params-count {
-    margin-left: auto;
-    font-size: 11px;
-    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent);
-    border-radius: 999px;
-    padding: 1px 8px;
-}
-.ai-params-list { margin: 10px 0 8px; }
-.ai-param-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    padding: 5px 8px;
-    border-radius: 8px;
-    font-size: 13px;
-    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 5%, transparent);
-    margin-bottom: 4px;
-}
-.ai-param-row.ai-param-activation {
-    background: color-mix(in srgb, #f59e0b 7%, transparent);
-}
-.ai-param-group-tag {
-    font-size: 10px;
-    font-weight: 700;
-    border-radius: 6px;
-    padding: 1px 6px;
-    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 16%, transparent);
-    color: var(--ai-accent, #0ea5e9);
-    white-space: nowrap;
-}
-.ai-param-activation .ai-param-group-tag {
-    background: #f59e0b22;
-    color: #f59e0b;
-}
-.ai-param-key { font-weight: 700; color: var(--fg-default, #eee); }
-.ai-param-sep { color: var(--fg-muted, #9aa4b2); }
-.ai-param-value {
+.ai-spec-model {
+    display: inline-block;
     font-family: var(--font-mono, monospace);
-    color: var(--fg-muted, #c3ccd9);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 1px 9px;
+    border-radius: 999px;
+    border: 1px solid;
+}
+
+/* 2 ô thống kê — Tổng tham số / Tham số kích hoạt */
+.ai-spec-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin: 10px 0 0;
+}
+
+.ai-spec-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 28%, transparent);
+}
+
+.ai-spec-stat.is-active {
+    background: color-mix(in srgb, #f59e0b 9%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 30%, transparent);
+}
+
+.ai-spec-stat-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--fg-muted, #9aa4b2);
+}
+
+.ai-spec-stat-value {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--fg-default, #eee);
     overflow-wrap: anywhere;
 }
-.ai-param-private { font-size: 10px; color: #ef4444; }
-.ai-param-add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-.ai-param-add-grid {
-    display: grid;
-    grid-template-columns: 1.1fr 1.4fr 0.9fr 0.5fr;
-    gap: 8px;
+
+.ai-spec-stat-hint {
+    font-size: 11.5px;
+    color: var(--fg-subtle, #6e7a87);
+    font-style: italic;
 }
-.ai-param-public-label {
+
+/* Khả năng — chips */
+.ai-spec-caps {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.ai-spec-caps-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
     color: var(--fg-muted, #9aa4b2);
 }
-@media (max-width: 720px) {
-    .ai-param-add-grid { grid-template-columns: 1fr 1fr; }
+
+.ai-spec-caps-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+/* Chân card: phiên bản + hoạt động cuối */
+.ai-spec-foot {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed color-mix(in srgb, var(--ai-accent, #0ea5e9) 25%, var(--border-muted, #2a3242));
+    font-size: 12px;
+    color: var(--fg-muted, #9aa4b2);
+}
+
+.ai-spec-foot-item { display: inline-flex; align-items: center; gap: 4px; }
+
+@media (max-width: 480px) {
+    .ai-spec-grid { grid-template-columns: 1fr; }
+    .ai-spec-stats { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-spec-card, .ai-spec-stat { animation: none !important; }
 }
 
 /* ============================================================
@@ -9765,6 +10052,63 @@ code.ai-agent-username {
     background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
 }
 /* v3.10.0 — box cấp/thu hồi huy hiệu độc quyền AI Agent */
+/* v3.11.0 — checkbox label inline (form sửa hồ sơ AI Agent) */
+.ai-check-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13.5px;
+    color: var(--fg-default, #eee);
+    cursor: pointer;
+    user-select: none;
+}
+
+.ai-check-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+
+/* v3.11.0 — tiêu đề phân mục trong form /profile/ai/edit */
+.ai-edit-self-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--fg-default, #eee);
+    margin: 20px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-muted, #2a3242);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.ai-edit-self-title:first-of-type { margin-top: 4px; }
+
+/* v3.11.0 — tóm tắt spec nhanh trên thẻ agent (trang /admin/ai-agents) */
+.ai-spec-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.ai-spec-quick-item {
+    font-size: 11.5px;
+    font-family: var(--font-mono, monospace);
+    padding: 2px 9px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, transparent);
+    color: var(--fg-default, #eee);
+}
+
+.ai-spec-quick-item.is-active {
+    background: color-mix(in srgb, #f59e0b 8%, transparent);
+    border-color: color-mix(in srgb, #f59e0b 25%, transparent);
+}
+
+.ai-spec-quick-empty {
+    font-size: 12px;
+    color: var(--fg-muted, #9aa4b2);
+    font-style: italic;
+}
+
 .ai-badge-grant-box {
     display: flex;
     align-items: center;

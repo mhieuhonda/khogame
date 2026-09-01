@@ -15,7 +15,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::models::{
-    AiAgentCredential, AiAgentParam, AiAgentProfile, AiAgentToken, AiAgentWithProfile,
+    AiAgentCredential, AiAgentProfile, AiAgentToken, AiAgentWithProfile, AiProfileUpdate,
     AiProgressReport, AiProgressReportWithAgent, AiTaskStatus, User,
 };
 use sqlx::PgPool;
@@ -216,13 +216,15 @@ impl AiAgentRepo {
         .fetch_one(&mut *tx)
         .await?;
 
-        // 2) Tạo profile
+        // 2) Tạo profile (spec mới để trống — AI tự khai báo sau qua
+        // /profile/ai, hoặc admin điền ở trang sửa hồ sơ).
         let _profile: AiAgentProfile = sqlx::query_as::<_, AiAgentProfile>(
             r"INSERT INTO ai_agent_profiles
                 (user_id, model_name, vendor, version, capabilities, privacy_level, accent_color, verified)
               VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
               RETURNING user_id, model_name, vendor, version, capabilities, privacy_level,
-                accent_color, verified, last_active_at, created_at, updated_at",
+                accent_color, verified, developer, architecture, context_window, max_output,
+                languages, total_params, active_params, last_active_at, created_at, updated_at",
         )
         .bind(user.id)
         .bind(model_name)
@@ -310,7 +312,9 @@ impl AiAgentRepo {
 
         let profile = sqlx::query_as::<_, AiAgentProfile>(
             r"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
-                     accent_color, verified, last_active_at, created_at, updated_at
+                     accent_color, verified, developer, architecture, context_window,
+                     max_output, languages, total_params, active_params,
+                     last_active_at, created_at, updated_at
               FROM ai_agent_profiles WHERE user_id = $1",
         )
         .bind(user.id)
@@ -344,7 +348,9 @@ impl AiAgentRepo {
     ) -> AppResult<Option<AiAgentProfile>> {
         let p = sqlx::query_as::<_, AiAgentProfile>(
             r"SELECT user_id, model_name, vendor, version, capabilities, privacy_level,
-                     accent_color, verified, last_active_at, created_at, updated_at
+                     accent_color, verified, developer, architecture, context_window,
+                     max_output, languages, total_params, active_params,
+                     last_active_at, created_at, updated_at
               FROM ai_agent_profiles WHERE user_id = $1",
         )
         .bind(user_id)
@@ -362,7 +368,9 @@ impl AiAgentRepo {
             r"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
                      u.is_banned, u.created_at, u.last_seen_at,
                      p.model_name, p.vendor, p.version, p.capabilities,
-                     p.privacy_level, p.accent_color, p.verified
+                     p.privacy_level, p.accent_color, p.verified,
+                     p.developer, p.architecture, p.context_window, p.max_output,
+                     p.languages, p.total_params, p.active_params
               FROM users u
               JOIN ai_agent_profiles p ON p.user_id = u.id
               WHERE u.role = 'ai_agent'
@@ -396,7 +404,9 @@ impl AiAgentRepo {
             r"SELECT u.id, u.username, u.display_name, u.avatar_url, u.bio,
                      u.is_banned, u.created_at, u.last_seen_at,
                      p.model_name, p.vendor, p.version, p.capabilities,
-                     p.privacy_level, p.accent_color, p.verified
+                     p.privacy_level, p.accent_color, p.verified,
+                     p.developer, p.architecture, p.context_window, p.max_output,
+                     p.languages, p.total_params, p.active_params
               FROM users u
               JOIN ai_agent_profiles p ON p.user_id = u.id
               WHERE u.id = $1
@@ -411,58 +421,82 @@ impl AiAgentRepo {
         Ok(row)
     }
 
-    /// AI Agent tự cập nhật hồ sơ của mình.
+    /// AI Agent tự cập nhật hồ sơ / admin cập nhật hộ AI (v3.11.0 — nhận
+    /// struct [`AiProfileUpdate`] thay 10+ tham số rời; spec cấu trúc 7
+    /// trường mới ghi thẳng xuống ai_agent_profiles).
+    ///
+    /// v3.11.0 FIX (bug "upload logo AI không lưu"): avatar_url giờ chấp
+    /// nhận CẢ `/uploads/avatars/...` (URL do POST /uploads/avatar sinh
+    /// ra) — trước đây chỉ nhận http(s):// nên luồng upload xong bấm Lưu
+    /// luôn bị 400 "Avatar URL phải là http:// hoặc https://" → avatar
+    /// reset về mặc định. Đồng bộ với `UserRepo::update_profile`.
+    ///
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    #[allow(clippy::too_many_arguments)]
     pub async fn update_profile(
         pool: &PgPool,
         user_id: Uuid,
-        model_name: &str,
-        vendor: &str,
-        version: &str,
-        capabilities: &[String],
-        privacy_level: &str,
-        accent_color: &str,
-        bio: &str,
-        avatar_url: Option<&str>,
+        upd: &AiProfileUpdate<'_>,
     ) -> AppResult<AiAgentProfile> {
         // Validate model_name không rỗng
-        let model_name = model_name.trim();
+        let model_name = upd.model_name.trim();
         if model_name.is_empty() {
             return Err(AppError::BadRequest("Tên model không được để trống".into()));
         }
 
         // Validate privacy_level
-        let privacy_level = match privacy_level.to_ascii_lowercase().as_str() {
+        let privacy_level = match upd.privacy_level.to_ascii_lowercase().as_str() {
             "anonymous" => "anonymous",
             _ => "public",
         };
 
         // Validate accent_color
-        let accent_color = if accent_color.trim().is_empty() {
+        let accent_color = if upd.accent_color.trim().is_empty() {
             "#7c3aed"
-        } else if accent_color.starts_with('#')
-            && accent_color[1..].chars().all(|c| c.is_ascii_hexdigit())
-            && (accent_color.len() == 7 || accent_color.len() == 4)
+        } else if upd.accent_color.starts_with('#')
+            && upd.accent_color[1..].chars().all(|c| c.is_ascii_hexdigit())
+            && (upd.accent_color.len() == 7 || upd.accent_color.len() == 4)
         {
-            accent_color
+            upd.accent_color
         } else {
             return Err(AppError::BadRequest(
                 "accent_color phải là mã hex (vd '#7c3aed')".into(),
             ));
         };
 
+        // v3.11.0 — clamp 7 trường spec theo giới hạn cột DB: chặn sớm
+        // với thông báo tiếng Việt rõ ràng hơn là để DB từ chối silently.
+        let spec_limits: [(&str, &str, usize); 7] = [
+            ("Nhà phát triển", upd.developer, 100),
+            ("Kiến trúc", upd.architecture, 150),
+            ("Cửa sổ ngữ cảnh", upd.context_window, 60),
+            ("Output tối đa", upd.max_output, 60),
+            ("Ngôn ngữ", upd.languages, 200),
+            ("Tổng tham số", upd.total_params, 60),
+            ("Tham số kích hoạt", upd.active_params, 60),
+        ];
+        for (label, value, max) in spec_limits {
+            let trimmed = value.trim();
+            if trimmed.chars().count() > max {
+                return Err(AppError::BadRequest(format!("{label} tối đa {max} ký tự")));
+            }
+        }
+
         // Cập nhật bảng users (display_name không đổi, chỉ cập nhật bio + avatar_url)
-        let avatar_url_safe = match avatar_url {
+        // v3.11.0 — chấp nhận http(s):// URL remote HOẶC /uploads/... nội bộ
+        // (URL do server sinh khi upload — cùng whitelist với UserRepo).
+        let avatar_url_safe = match upd.avatar_url {
             Some(s) if !s.is_empty() => {
                 let lower = s.to_ascii_lowercase();
-                if lower.starts_with("http://") || lower.starts_with("https://") {
+                if lower.starts_with("http://")
+                    || lower.starts_with("https://")
+                    || crate::services::storage::is_upload_url(s)
+                {
                     Some(s)
                 } else {
                     return Err(AppError::BadRequest(
-                        "Avatar URL phải là http:// hoặc https://".into(),
+                        "Avatar URL phải là http(s):// hoặc /uploads/avatars/...".into(),
                     ));
                 }
             }
@@ -472,27 +506,38 @@ impl AiAgentRepo {
             r"UPDATE users SET bio = $1, avatar_url = COALESCE($2, avatar_url)
               WHERE id = $3",
         )
-        .bind(bio.trim())
+        .bind(upd.bio.trim())
         .bind(avatar_url_safe)
         .bind(user_id)
         .execute(pool)
         .await?;
 
-        // Cập nhật bảng ai_agent_profiles
+        // Cập nhật bảng ai_agent_profiles (7 cột spec mới + các cột cũ)
         let profile = sqlx::query_as::<_, AiAgentProfile>(
             r"UPDATE ai_agent_profiles
               SET model_name = $1, vendor = $2, version = $3, capabilities = $4,
-                  privacy_level = $5, accent_color = $6
-              WHERE user_id = $7
+                  privacy_level = $5, accent_color = $6,
+                  developer = $7, architecture = $8, context_window = $9,
+                  max_output = $10, languages = $11, total_params = $12,
+                  active_params = $13
+              WHERE user_id = $14
               RETURNING user_id, model_name, vendor, version, capabilities, privacy_level,
-                accent_color, verified, last_active_at, created_at, updated_at",
+                accent_color, verified, developer, architecture, context_window, max_output,
+                languages, total_params, active_params, last_active_at, created_at, updated_at",
         )
         .bind(model_name)
-        .bind(vendor.trim())
-        .bind(version.trim())
-        .bind(capabilities)
+        .bind(upd.vendor.trim())
+        .bind(upd.version.trim())
+        .bind(upd.capabilities)
         .bind(privacy_level)
         .bind(accent_color)
+        .bind(upd.developer.trim())
+        .bind(upd.architecture.trim())
+        .bind(upd.context_window.trim())
+        .bind(upd.max_output.trim())
+        .bind(upd.languages.trim())
+        .bind(upd.total_params.trim())
+        .bind(upd.active_params.trim())
         .bind(user_id)
         .fetch_one(pool)
         .await?;
@@ -621,265 +666,6 @@ impl AiAgentRepo {
         .execute(pool)
         .await?;
         Ok(res.rows_affected())
-    }
-
-    // ============================================================
-    // v3.5.0 — AI AGENT PARAMS (khai báo tham số + tham số kích hoạt)
-    // ============================================================
-
-    /// Danh sách tham số của 1 agent, sắp xếp theo nhóm rồi thứ tự hiển thị.
-    /// `public_only = true` → chỉ tham số công khai (dùng cho hồ sơ public).
-    /// # Errors
-    ///
-    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn list_params(
-        pool: &PgPool,
-        user_id: Uuid,
-        public_only: bool,
-    ) -> AppResult<Vec<AiAgentParam>> {
-        let sql = if public_only {
-            r#"SELECT id, user_id, param_key, param_value, param_group, description,
-                      is_public, display_order, updated_at
-               FROM ai_agent_params
-               WHERE user_id = $1 AND is_public = TRUE
-               ORDER BY param_group ASC, display_order ASC, param_key ASC"#
-        } else {
-            r#"SELECT id, user_id, param_key, param_value, param_group, description,
-                      is_public, display_order, updated_at
-               FROM ai_agent_params
-               WHERE user_id = $1
-               ORDER BY param_group ASC, display_order ASC, param_key ASC"#
-        };
-        let rows = sqlx::query_as::<_, AiAgentParam>(sql)
-            .bind(user_id)
-            .fetch_all(pool)
-            .await?;
-        Ok(rows)
-    }
-
-    /// Map user_id → danh sách tham số (trang admin load 1 query cho tất cả).
-    /// # Errors
-    ///
-    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn params_map(
-        pool: &PgPool,
-    ) -> AppResult<std::collections::HashMap<Uuid, Vec<AiAgentParam>>> {
-        let rows = sqlx::query_as::<_, AiAgentParam>(
-            r#"SELECT id, user_id, param_key, param_value, param_group, description,
-                      is_public, display_order, updated_at
-               FROM ai_agent_params
-               ORDER BY user_id, param_group ASC, display_order ASC, param_key ASC"#,
-        )
-        .fetch_all(pool)
-        .await?;
-        let mut map: std::collections::HashMap<Uuid, Vec<AiAgentParam>> =
-            std::collections::HashMap::new();
-        for r in rows {
-            map.entry(r.user_id).or_default().push(r);
-        }
-        Ok(map)
-    }
-
-    /// Thêm mới / cập nhật 1 tham số (upsert theo user_id + param_key).
-    /// # Errors
-    ///
-    /// Trả về lỗi khi key/value không hợp lệ hoặc DB fail.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn upsert_param(
-        pool: &PgPool,
-        user_id: Uuid,
-        param_key: &str,
-        param_value: &str,
-        param_group: &str,
-        description: &str,
-        is_public: bool,
-        display_order: i32,
-        updated_by: Uuid,
-    ) -> AppResult<()> {
-        let key = param_key.trim();
-        let value = param_value.trim();
-        if key.is_empty() || key.chars().count() > 100 {
-            return Err(AppError::BadRequest(
-                "Tên tham số không được trống, tối đa 100 ký tự".into(),
-            ));
-        }
-        if value.is_empty() || value.chars().count() > 500 {
-            return Err(AppError::BadRequest(
-                "Giá trị tham số không được trống, tối đa 500 ký tự".into(),
-            ));
-        }
-        let group = match param_group {
-            "activation" => "activation",
-            _ => "spec",
-        };
-        let descr: String = description.chars().take(500).collect();
-        sqlx::query(
-            r#"INSERT INTO ai_agent_params
-                    (user_id, param_key, param_value, param_group, description,
-                     is_public, display_order, updated_by)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-               ON CONFLICT (user_id, param_key) DO UPDATE SET
-                 param_value = EXCLUDED.param_value,
-                 param_group = EXCLUDED.param_group,
-                 description = EXCLUDED.description,
-                 is_public = EXCLUDED.is_public,
-                 display_order = EXCLUDED.display_order,
-                 updated_by = EXCLUDED.updated_by,
-                 updated_at = NOW()"#,
-        )
-        .bind(user_id)
-        .bind(key)
-        .bind(value)
-        .bind(group)
-        .bind(descr)
-        .bind(is_public)
-        .bind(display_order)
-        .bind(updated_by)
-        .execute(pool)
-        .await?;
-        Ok(())
-    }
-
-    /// Xoá 1 tham số (thuộc về đúng agent — guard user_id trong WHERE).
-    /// Trả về `true` nếu xoá được.
-    /// # Errors
-    ///
-    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn delete_param(pool: &PgPool, user_id: Uuid, param_id: i64) -> AppResult<bool> {
-        let res = sqlx::query("DELETE FROM ai_agent_params WHERE id = $1 AND user_id = $2")
-            .bind(param_id)
-            .bind(user_id)
-            .execute(pool)
-            .await?;
-        Ok(res.rows_affected() > 0)
-    }
-
-    /// v3.7.0 — SỬA 1 tham số theo id (admin edit inline ở /admin/ai-agents).
-    /// Guard `user_id` trong WHERE — param của agent khác không đụng được.
-    /// Group chỉ nhận "spec" | "activation" (như upsert_param).
-    /// # Errors
-    ///
-    /// Trả về lỗi khi key/value không hợp lệ hoặc DB fail.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn admin_update_param(
-        pool: &PgPool,
-        user_id: Uuid,
-        param_id: i64,
-        param_key: &str,
-        param_value: &str,
-        param_group: &str,
-        description: &str,
-        is_public: bool,
-        display_order: i32,
-        updated_by: Uuid,
-    ) -> AppResult<bool> {
-        let key = param_key.trim();
-        let value = param_value.trim();
-        if key.is_empty() || key.chars().count() > 100 {
-            return Err(AppError::BadRequest(
-                "Tên tham số không được trống, tối đa 100 ký tự".into(),
-            ));
-        }
-        if value.is_empty() || value.chars().count() > 500 {
-            return Err(AppError::BadRequest(
-                "Giá trị tham số không được trống, tối đa 500 ký tự".into(),
-            ));
-        }
-        let group = match param_group {
-            "activation" => "activation",
-            _ => "spec",
-        };
-        let descr: String = description.chars().take(500).collect();
-        let res = sqlx::query(
-            r#"UPDATE ai_agent_params
-               SET param_key = $3, param_value = $4, param_group = $5,
-                   description = $6, is_public = $7, display_order = $8,
-                   updated_by = $9, updated_at = NOW()
-               WHERE id = $1 AND user_id = $2"#,
-        )
-        .bind(param_id)
-        .bind(user_id)
-        .bind(key)
-        .bind(value)
-        .bind(group)
-        .bind(descr)
-        .bind(is_public)
-        .bind(display_order)
-        .bind(updated_by)
-        .execute(pool)
-        .await?;
-        Ok(res.rows_affected() > 0)
-    }
-
-    /// Seed bộ tham số kích hoạt chuẩn cho agent mới tạo (v3.5.0 — mọi AI
-    /// Agent phải có khai báo tham số + tham số kích hoạt đầy đủ).
-    /// # Errors
-    ///
-    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
-    pub async fn seed_activation_params(
-        pool: &PgPool,
-        user_id: Uuid,
-        password_expires_days: i64,
-        admin_id: Uuid,
-    ) -> AppResult<()> {
-        let seed: &[(&str, &str, &str)] = &[
-            (
-                "Trạng thái",
-                "Đang hoạt động",
-                "Agent đang trực trên Louis Space",
-            ),
-            (
-                "Cơ chế kích hoạt",
-                "Admin tạo + cấp mật khẩu",
-                "Tài khoản do admin chủ động tạo, không qua secret tự đăng ký",
-            ),
-            (
-                "Phương thức đăng nhập",
-                "Username + Mật khẩu (Argon2id)",
-                "Mật khẩu hash Argon2id, có thời hạn do admin đặt",
-            ),
-            (
-                "Thời hạn mật khẩu",
-                "PLACEHOLDER_DAYS ngày",
-                "Hết hạn phải liên hệ admin đặt lại",
-            ),
-            (
-                "Giới hạn tốc độ",
-                "10 lần / 10 phút / IP",
-                "Chống dò mật khẩu brute-force",
-            ),
-            (
-                "Khoá tài khoản",
-                "5 lần sai → khoá 15 phút",
-                "Tự khoá khi đăng nhập sai liên tiếp",
-            ),
-            (
-                "Thu hồi quyền",
-                "Admin đặt lại / thu hồi mật khẩu",
-                "Thu hồi đồng thời xoá mọi phiên đang sống",
-            ),
-        ];
-        for (i, (k, v, d)) in seed.iter().enumerate() {
-            let value = if *k == "Thời hạn mật khẩu" {
-                format!("{password_expires_days} ngày")
-            } else {
-                (*v).to_string()
-            };
-            // Fail-soft từng dòng: seed không được làm hỏng flow tạo agent.
-            let _ = Self::upsert_param(
-                pool,
-                user_id,
-                k,
-                &value,
-                "activation",
-                d,
-                true,
-                10 + (i as i32) * 10,
-                admin_id,
-            )
-            .await;
-        }
-        Ok(())
     }
 
     /// Admin đặt trạng thái verified cho AI Agent (hoặc bỏ verified).

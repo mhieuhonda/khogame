@@ -262,19 +262,11 @@ async fn build_profile_template(
     }
     let member_months = (chrono::Utc::now() - user.created_at).num_days() / 30;
 
-    // v3.5.0 — Tham số công khai của AI Agent (khai báo tham số + tham số
-    // kích hoạt — chỉ param is_public; param riêng tư chỉ admin thấy ở
-    // /admin/ai-agents). Fail-open rỗng để hồ sơ không bao giờ 500 vì params.
-    let (ai_params_spec, ai_params_activation) = if user.is_ai_agent_user() {
-        let all = AiAgentRepo::list_params(&state.db, user.id, true)
-            .await
-            .unwrap_or_default();
-        let activation: Vec<_> = all.iter().filter(|p| p.is_activation()).cloned().collect();
-        let spec: Vec<_> = all.iter().filter(|p| !p.is_activation()).cloned().collect();
-        (spec, activation)
-    } else {
-        (Vec::new(), Vec::new())
-    };
+    // v3.11.0 — HỆ PARAMS KEY/VALUE ĐÃ XÓA: spec của AI Agent giờ nằm
+    // trong chính `ai_profile` (AiAgentProfile — 7 trường cấu trúc:
+    // developer, architecture, context_window, max_output, languages,
+    // total_params, active_params), render trong card "Thông tin mô hình
+    // AI" của template. Không còn fetch riêng.
     // AI Agent MẶC ĐỊNH (GLM 5.3) → hiệu ứng hero full màn trên hồ sơ.
     let ai_is_default_agent =
         user.google_sub == crate::repositories::ai_agent::DEFAULT_AGENT_GOOGLE_SUB;
@@ -326,8 +318,6 @@ async fn build_profile_template(
         completeness_pct,
         member_months,
         ai_activity: ai_activity_res,
-        ai_params_spec,
-        ai_params_activation,
         ai_is_default_agent,
         can_impersonate_ai,
         avatar_frame_state,

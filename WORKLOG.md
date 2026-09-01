@@ -1,6 +1,67 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v3.11.0-ux-ai-md-superfix
+Agent: Super Z (main)
+Task: Fix lỗi UI hồ sơ (tên trắng mất ở light mode), thiết kế lại thông tin
+AI Agent (10 trường cấu trúc thay params key/value), fix upload logo AI
+không lưu, nâng giới hạn giới thiệu AI 6000 ký tự, SIÊU NÂNG CẤP Markdown
+(KaTeX + Mermaid + kbd/abbr/heading-id/video/audio/Vimeo/sortable), trang
+hướng dẫn Markdown toàn diện /markdown, siêu quét bảo mật + fix CD workflow,
+release v3.11.0.
+
+Work Log:
+- Chẩn đoán bằng browser thật (Playwright + repro DOM/CSS): @username
+  22% chồng cover (desktop), khối tên 0% chồng cover (mobile ≤640px cột)
+  → trắng trên trắng ở light mode. Fix: overlap 40→62px, chip
+  @username backdrop-blur, mobile theme-aware, scrim shadow h1 (tách
+  .rainbow-text), VLM verify 4 tổ hợp.
+- Migration 045: +7 cột spec trên ai_agent_profiles (developer,
+  architecture, context_window, max_output, languages, total_params,
+  active_params) + seed GLM 5.3 (spec thật GLM-5: MoE 744B/40B, 256
+  experts, 200K context, 128K output) + DROP ai_agent_params; model/
+  repo/handlers/templates/routes dọn sạch params cũ (5 route + 6 hàm
+  repo + 2 editor UI); AiProfileUpdate struct hoá.
+- Card "Thông tin mô hình AI" mới trên hồ sơ: grid 10 trường tự ẩn,
+  2 ô thống kê + tooltip định nghĩa đúng (Tổng tham số = toàn bộ trọng
+  số; Tham số kích hoạt = tham số tính toán mỗi đầu vào), theme-aware.
+- Fix upload logo: AiAgentRepo/handlers/register chấp nhận /uploads/
+  (đồng bộ UserRepo); thêm .upload-zone cho /profile/ai/edit (AI tự
+  sửa, trước đây chỉ có ô URL).
+- Giới hạn giới thiệu AI: 6000 ký tự đồng bộ 2 lối vào (self-edit cũ
+  1000, admin cũ 500).
+- Markdown engine v3.11: normalize_math_spans (class + KaTeX delimiter),
+  convert_kbd, apply_abbreviations (pre-process strip + word-boundary +
+  escape_attr), custom heading id (pre-process strip + map adapter +
+  ToC), embed_vimeo, embed_media_links (bare link + img syntax), strip
+  html tags khỏi div mermaid (mermaid v11 đọc innerHTML — fix Syntax
+  error), CACHE_VERSION 3→4. Fix starts_with_ci panic UTF-8 boundary
+  (bytes), fix apply_abbreviations relative/absolute offset.
+- KaTeX 0.16.22 + Mermaid 11.12.2 self-host static/vendor/ (lazy-load
+  qua app.js detection, re-run trên htmx:afterSwap; mermaid theme
+  dark/light, securityLevel strict). CSP +media-src https: +
+  player.vimeo.com (script-src KHÔNG nới).
+- docs/markdown_guide.md + trang /markdown (handler + template + route):
+  guide render bằng chính engine (include_str), ô Thử ngay dùng POST
+  /preview; mục mới trong /about; link hướng dẫn từ mọi form MD.
+- e2e browser thật: KaTeX 2 công thức, Mermaid flowchart render, kbd,
+  abbr, sortable table (locale Việt), spoiler ||..||, ToC, custom id —
+  tất cả PASS (VLM verify screenshot).
+- Bảo mật: quét secret sạch; test XSS math/abbr/kbd/mermaid; hardened
+  abbr term charset; register avatar whitelist đồng bộ; deploy.yml
+  branches `ain]` → `[main]` (bug nằm lặng từ v3.5.1); validate 3
+  workflow YAML.
+- Migration test THẬT: build PostgreSQL 17.5 (zonky binaries) → chạy
+  chuỗi 001→046 sạch từ DB rỗng + 045/046 re-run idempotent + guard
+  độ dài. pglast parse-validate 46/46.
+- Verify: cargo fmt + clippy -D warnings sạch, 382/382 test PASS
+  (Rust 1.98.0). Migration 046: 8 mục sanitized báo cáo GLM 5.3.
+
+Stage Summary:
+- Release v3.11.0: 6 nhóm yêu cầu chủ sở hữu hoàn thành + 1 lỗi CD nằm
+  lặng được phát hiện & fix. Sẵn sàng tag + GitHub Release.
+
+---
 Task ID: v3.10.0-profile-polish
 Agent: Super Z (main)
 Task: Polish hồ sơ theo yêu cầu chủ sở hữu — bỏ bóng đổ chữ (quá tối),
