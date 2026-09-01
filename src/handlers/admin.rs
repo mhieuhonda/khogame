@@ -3,8 +3,9 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::AuthUser;
 use crate::models::report::ReportStatus;
 use crate::repositories::{
-    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, NewsCategoryRepo, NewsRepo,
-    NotificationRepo, RepoRepo, ReportRepo, SessionRepo, SettingsRepo, StatsRepo, UserRepo,
+    AdminLogRepo, AiAgentRepo, CategoryRepo, CommentRepo, GameRepo, GamificationRepo,
+    NewsCategoryRepo, NewsRepo, NotificationRepo, RepoRepo, ReportRepo, SessionRepo, SettingsRepo,
+    StatsRepo, UserRepo,
 };
 use crate::services::audit;
 use crate::state::AppState;
@@ -2384,10 +2385,12 @@ pub async fn edit_ai_agent_form(
     if !admin.role.is_staff() {
         return Err(AppError::Forbidden("Cần quyền quản trị".into()));
     }
-    let (agent_res, params_res, unread_res) = tokio::join!(
+    let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
         AiAgentRepo::find_agent_by_id(&state.db, user_id),
         AiAgentRepo::list_params(&state.db, user_id, false),
-        unread_count(&state, admin.id)
+        unread_count(&state, admin.id),
+        // v3.10.0 — huy hiệu độc quyền AI Agent đã cấp chưa?
+        GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
     );
     let agent = agent_res?;
     let params = params_res.unwrap_or_default();
@@ -2398,6 +2401,7 @@ pub async fn edit_ai_agent_form(
         params,
         saved: false,
         error: None,
+        has_ai_badge: badge_res.unwrap_or(false),
     })
 }
 
@@ -2451,10 +2455,11 @@ pub async fn edit_ai_agent_submit(
         user_id: Uuid,
         msg: &str,
     ) -> AppResult<AdminAiAgentEditTemplate> {
-        let (agent_res, params_res, unread_res) = tokio::join!(
+        let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
             AiAgentRepo::find_agent_by_id(&state.db, user_id),
             AiAgentRepo::list_params(&state.db, user_id, false),
-            unread_count(state, admin.id)
+            unread_count(state, admin.id),
+            GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
         );
         let agent = agent_res?;
         let params = params_res.unwrap_or_default();
@@ -2465,6 +2470,7 @@ pub async fn edit_ai_agent_submit(
             params,
             saved: false,
             error: Some(msg.to_string()),
+            has_ai_badge: badge_res.unwrap_or(false),
         })
     }
 
@@ -2594,10 +2600,11 @@ pub async fn edit_ai_agent_submit(
     );
 
     // Render lại trang kèm banner thành công + dữ liệu mới nhất.
-    let (agent_res, params_res, unread_res) = tokio::join!(
+    let (agent_res, params_res, unread_res, badge_res) = tokio::join!(
         AiAgentRepo::find_agent_by_id(&state.db, user_id),
         AiAgentRepo::list_params(&state.db, user_id, false),
-        unread_count(&state, admin.id)
+        unread_count(&state, admin.id),
+        GamificationRepo::has_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID)
     );
     let agent = agent_res?;
     let params = params_res.unwrap_or_default();
@@ -2608,7 +2615,97 @@ pub async fn edit_ai_agent_submit(
         params,
         saved: true,
         error: None,
+        has_ai_badge: badge_res.unwrap_or(false),
     })
+}
+
+/// v3.10.0 — id của huy hiệu ĐỘC QUYỀN duy nhất dành cho AI Agent
+/// (seed trong migration 043; engine check_and_award không có điều kiện
+/// cho id này nên KHÔNG THỂ tự trao — chỉ admin cấp/thu hồi tay).
+pub const AI_EXCLUSIVE_BADGE_ID: &str = "ai_agent_core";
+
+/// Form cấp/thu hồi huy hiệu độc quyền (POST /admin/ai-agents/{id}/badge-ai).
+#[derive(Debug, Deserialize)]
+pub struct AiBadgeToggleForm {
+    /// "grant" | "revoke"
+    pub action: String,
+}
+
+/// POST /admin/ai-agents/{user_id}/badge-ai — admin CẤP hoặc THU HỒI
+/// huy hiệu độc quyền AI Agent (`ai_agent_core` — "Linh Hồn Nhân Tạo").
+///
+/// Guard 3 lớp:
+/// 1. `is_staff` — chỉ staff;
+/// 2. target PHẢI là tài khoản AI Agent (`is_ai_agent_user` — role HOẶC
+///    danh tính gốc, bền vững với role drift như glm53 ở prod);
+/// 3. action whitelist — chỉ "grant"/"revoke" (không có hành vi lạ).
+///
+/// Mọi thao tác thành công/thất bại đều ghi audit log.
+///
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, validation, không phải AI Agent).
+pub async fn toggle_ai_agent_badge(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(user_id): Path<Uuid>,
+    Form(form): Form<AiBadgeToggleForm>,
+) -> AppResult<Response> {
+    if !admin.role.is_staff() {
+        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    }
+    let target = UserRepo::find_by_id(&state.db, user_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Không tìm thấy user".into()))?;
+    if !target.is_ai_agent_user() {
+        // Huy hiệu ĐỘC QUYỀN — user thường tuyệt đối không nhận được.
+        return Err(AppError::BadRequest(
+            "Huy hiệu này chỉ cấp cho TÀI KHOẢN AI AGENT".into(),
+        ));
+    }
+    let granted = match form.action.as_str() {
+        "grant" => {
+            GamificationRepo::grant_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID).await?;
+            true
+        }
+        "revoke" => {
+            GamificationRepo::revoke_achievement(&state.db, user_id, AI_EXCLUSIVE_BADGE_ID).await?;
+            false
+        }
+        _ => {
+            return Err(AppError::BadRequest(
+                "Hành động không hợp lệ (chỉ grant/revoke)".into(),
+            ));
+        }
+    };
+
+    audit::audit(
+        &state,
+        admin.id,
+        if granted {
+            "ai_agent.badge_grant"
+        } else {
+            "ai_agent.badge_revoke"
+        },
+        "user",
+        &user_id.to_string(),
+        &format!(
+            "{} {} huy hiệu độc quyền AI Agent cho @{}",
+            admin.username,
+            if granted { "CẤP" } else { "THU HỒI" },
+            target.username
+        ),
+    )
+    .await;
+    tracing::info!(
+        admin = %admin.username,
+        target = %target.username,
+        granted,
+        "AI Agent exclusive badge toggled"
+    );
+
+    // Redirect về trang sửa (PRG pattern — refresh không gửi lại POST).
+    Ok(Redirect::to(&format!("/admin/ai-agents/{user_id}/edit")).into_response())
 }
 
 /// Form sửa 1 tham số (POST /admin/ai-agents/{user_id}/params/{param_id}/edit).

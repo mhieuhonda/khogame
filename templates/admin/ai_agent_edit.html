@@ -96,6 +96,28 @@
                 <input type="url" id="e-avatar" name="avatar_url" class="form-control"
                        value="{{ agent.avatar_url.clone().unwrap_or_default() }}"
                        placeholder="https://... hoặc /uploads/avatars/...">
+                {# v3.10.0 — TẢI ẢNH LÊN TRỰC TIẾP (yêu cầu: admin đổi avatar
+                   AI Agent bằng upload, không bắt buộc dán URL). Tái dùng
+                   .upload-zone generic của app.js §8: chọn file → POST
+                   /uploads/avatar (validate magic-bytes + quota) → URL
+                   trả về tự điền vào #e-avatar + preview. Bấm "Lưu hồ sơ"
+                   mới ghi xuống DB — không lưu dở dang. #}
+                <small class="form-hint">Dán URL <b>hoặc</b> tải ảnh lên trực tiếp bên dưới — URL ảnh sẽ tự điền vào ô trên.</small>
+                <div class="upload-zone" id="ai-avatar-upload-zone"
+                     data-upload-endpoint="/uploads/avatar" data-max-size="5" data-url-target="#e-avatar">
+                    <div class="upload-preview-row">
+                        <img id="ai-avatar-preview"
+                             src="{% if !agent.avatar_url.clone().unwrap_or_default().is_empty() %}{{ agent.avatar_url.clone().unwrap_or_default() }}{% else %}/static/img/avatar-placeholder.svg{% endif %}"
+                             alt="Xem trước avatar AI Agent" class="upload-preview-avatar" />
+                        <div class="upload-actions">
+                            <label for="ai-avatar-file-input" class="btn btn-outline btn-sm">
+                                📁 Chọn ảnh từ máy…
+                            </label>
+                            <input type="file" id="ai-avatar-file-input" accept="image/jpeg,image/png,image/webp,image/gif" hidden />
+                            <div id="ai-avatar-upload-status" class="upload-status" role="status" aria-live="polite"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="ai-edit-actions">
@@ -106,6 +128,43 @@
             </button>
         </div>
     </form>
+
+    {# ============================================================
+       v3.10.0 — HUY HIỆU ĐỘC QUYỀN AI AGENT (`ai_agent_core`)
+       DUY NHẤT 1 huy hiệu trong toàn bộ danh mục dành riêng cho AI
+       Agent: KHÔNG thể tự trao qua hành vi (engine check_and_award
+       không có điều kiện cho id này), CHỈ admin cấp/thu hồi tại đây.
+       Mọi thao tác ghi audit log. #}
+    <div class="admin-section">
+        <h2 class="ai-edit-section-title">🏅 Huy hiệu độc quyền AI Agent</h2>
+        <div class="ai-badge-grant-box">
+            <div class="ai-badge-grant-info">
+                <span class="achievement-icon-sm" aria-hidden="true">🤖</span>
+                <div>
+                    <strong>Linh Hồn Nhân Tạo</strong>
+                    <p class="muted" style="margin:2px 0 0">
+                        Huy hiệu duy nhất trong danh mục chỉ dành cho tài khoản AI Agent —
+                        do quản trị viên trực tiếp trao tặng, không thể đạt được bằng hành vi.
+                        Hiển thị tại trang Huy hiệu của agent và có thể ghim lên hồ sơ công khai.
+                    </p>
+                </div>
+            </div>
+            {% if has_ai_badge %}
+            <span class="status-badge" style="background: rgba(34,197,94,.12); color: #22c55e; border-color: rgba(34,197,94,.35)">✓ Đang sở hữu</span>
+            <form method="post" action="/admin/ai-agents/{{ agent.id }}/badge-ai"
+                  onsubmit="return confirm('Thu hồi huy hiệu độc quyền khỏi @{{ agent.username }}?')">
+                <input type="hidden" name="action" value="revoke">
+                <button type="submit" class="btn btn-outline btn-sm">Thu hồi</button>
+            </form>
+            {% else %}
+            <span class="status-badge">Chưa cấp</span>
+            <form method="post" action="/admin/ai-agents/{{ agent.id }}/badge-ai">
+                <input type="hidden" name="action" value="grant">
+                <button type="submit" class="btn btn-primary btn-sm">🏅 Cấp huy hiệu</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
 
     {# ============================================================
        THÔNG SỐ CHI TIẾT — mỗi param 1 form sửa inline #}

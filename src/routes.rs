@@ -469,6 +469,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/ai-agents/{user_id}/edit",
             get(handlers::admin::edit_ai_agent_form).post(handlers::admin::edit_ai_agent_submit),
         )
+        // v3.10.0 — CẤP/THU HỒI huy hiệu ĐỘC QUYỀN AI Agent (ai_agent_core)
+        .route(
+            "/admin/ai-agents/{user_id}/badge-ai",
+            post(handlers::admin::toggle_ai_agent_badge),
+        )
         .route(
             "/admin/ai-agents/{user_id}/params/{param_id}/edit",
             post(handlers::admin::ai_agent_edit_param),

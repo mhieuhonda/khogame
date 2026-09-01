@@ -636,6 +636,9 @@ pub struct AdminAiAgentEditTemplate {
     pub saved: bool,
     /// Flash lỗi validation (để admin thấy nguyên nhân rõ ràng).
     pub error: Option<String>,
+    /// v3.10.0 — agent đã sở hữu huy hiệu độc quyền AI Agent
+    /// (`ai_agent_core`) chưa? Điều khiển nút Cấp/Thu hồi trên trang sửa.
+    pub has_ai_badge: bool,
 }
 
 /// Danh sách GitHub repos

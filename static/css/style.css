@@ -2651,8 +2651,15 @@ pre code {
        40px chồng lên ảnh cover (linear-gradient #0f172a — TỐI ở cả 2
        theme). Trước đây chữ màu var(--fg) → light mode = chữ TỐI trên
        nền TỐI, gần như không đọc được (đã nhìn bằng screenshot).
-       Fix: chữ trắng + text-shadow nhẹ — đọc rõ trên cover tối, và
-       phần dưới (role/level) vẫn màu chuẩn trên nền sáng. */
+
+       v3.10.0 FIX (theo yêu cầu chủ sở hữu — "đổ bóng làm chữ quá tối,
+       khó nhìn"): BỎ HOÀN TOÀN text-shadow trên tên + @username.
+       Bóng đổ rgba(15,23,42,.55) vẽ sau lớp gradient rainbow của
+       span.rainbow-text (background-clip:text) làm màu gradient bị
+       "bùn"/tối đi trông thấy — đây cũng là nguyên nhân hiệu ứng
+       rainbow admin trông xỉn màu. Giữ chữ TRẮNG TINH #ffffff (sáng
+       hơn #f8fafc cũ) — vẫn tương phản tối đa trên cover tối, không
+       cần bóng hỗ trợ. */
 
     /* v2.9.1 FIX — trước đây `align-items: flex-end`: khối meta cao bằng
        phần tử cao nhất của hàng nên khi v2.9.0 thêm Level/XP + Huy hiệu
@@ -2667,8 +2674,11 @@ pre code {
 
 .profile-meta h1,
 .profile-meta .profile-username {
-    color: #f8fafc;
-    text-shadow: 0 1px 3px rgba(15, 23, 42, 0.55);
+    /* v3.10.0 — bỏ text-shadow (chữ quá tối + làm xỉn rainbow), tăng
+       độ sáng: h1 trắng tinh, username trắng ngà. Cover tối phía sau
+       đảm bảo tương phản mà không cần bóng đổ. */
+    color: #ffffff;
+    text-shadow: none;
 }
 
 .profile-avatar {
@@ -2748,12 +2758,16 @@ pre code {
     line-height: 1.4;
 }
 
-/* --- ADMIN: chữ rainbow + khung viền rainbow (v2.9.0: bỏ lửa) --- */
+/* --- ADMIN: chữ rainbow + khung viền rainbow (v2.9.0: bỏ lửa;
+   v3.10.0: nâng toàn bộ dải màu lên sắc độ 400 sáng rực — bảng cũ
+   dùng sắc 500 đậm (#ef4444/#3b82f6…) trông xỉn trên nền tối, ghép
+   thêm text-shadow cũ nữa là "tối om". Bảng mới rose→amber→lime→
+   emerald→sky→purple đọc rõ và tươi hơn ở CẢ 2 theme.) --- */
 .role-badge-admin {
     border: 2px solid transparent;
     background:
         linear-gradient(var(--bg-elevated), var(--bg-elevated)) padding-box,
-        linear-gradient(120deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444) border-box;
+        linear-gradient(120deg, #fb7185, #fbbf24, #a3e635, #34d399, #38bdf8, #c084fc, #fb7185) border-box;
     background-size: 100% 100%, 320% 100%;
     border-color: transparent;
     background-clip: padding-box, border-box;
@@ -2766,7 +2780,8 @@ pre code {
 
 /* Chữ rainbow chạy màu mượt */
 .role-badge-admin .role-badge-text {
-    background: linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
+    /* v3.10.0 — bảng gradient sáng (đồng bộ .rainbow-text) */
+    background: linear-gradient(90deg, #fb7185, #fbbf24, #a3e635, #34d399, #38bdf8, #c084fc, #fb7185);
     background-size: 320% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -2880,7 +2895,7 @@ pre code {
    Span inline con của flex container thì background-clip: text
    hoạt động đúng (đã kiểm chứng qua `.role-badge-text`). */
 .rainbow-text {
-    background: linear-gradient(90deg, #ef4444, #f97316, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444);
+    background: linear-gradient(90deg, #fb7185, #fbbf24, #a3e635, #34d399, #38bdf8, #c084fc, #fb7185);
     background-size: 320% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -2896,8 +2911,8 @@ pre code {
 @media print {
     .rainbow-text {
         background: none;
-        -webkit-text-fill-color: #ef4444;
-        color: #ef4444;
+        -webkit-text-fill-color: #fb7185;
+        color: #fb7185;
     }
 }
 
@@ -9214,18 +9229,23 @@ code.ai-agent-username {
 
 /* ============================================================
    v3.5.0 — CARD THÔNG SỐ CHI TIẾT (hồ sơ AI công khai)
+   v3.10.0 — ĐỔI NỀN TỐI → TRẮNG (yêu cầu chủ sở hữu: vùng "Thông
+   số chi tiết" trên hồ sơ AI Agent từng dùng --bg-card tối nên trông
+   "đen thui", khó đọc ở cả 2 theme). Giờ card LUÔN nền TRẮNG + chữ
+   xám đậm thuộc slate palette — cố định KHÔNG theo theme, đồng thời
+   giữ màu nhấn của agent chỉ ở viền/icon cho dễ chịu. Card trắng
+   nổi bật một cách chủ đích trên nền hồ sơ (tối lẫn sáng) = đúng
+   vai trò "thẻ thông tin danh thiếp" của AI.
    ============================================================ */
 .ai-params-card {
     margin-top: 14px;
-    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 35%, #ffffff);
     border-radius: 12px;
-    background:
-        linear-gradient(160deg,
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, var(--bg-card, #141a24)),
-            color-mix(in srgb, var(--ai-accent, #0ea5e9) 3%, var(--bg-card, #141a24)));
+    background: #ffffff;
     padding: 12px 14px;
     text-align: left;
     max-width: 560px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.10);
 }
 .ai-params-card-head {
     display: flex;
@@ -9233,16 +9253,17 @@ code.ai-agent-username {
     gap: 8px;
     font-weight: 700;
     font-size: 14px;
-    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 90%, var(--fg-default, #eee));
+    /* Màu nhấn trộn 25% đen — đảm bảo tương phản trên nền trắng (AA) */
+    color: color-mix(in srgb, var(--ai-accent, #0ea5e9) 75%, #0f172a);
     margin-bottom: 8px;
 }
 .ai-params-total {
     margin-left: auto;
     font-size: 12px;
     font-weight: 600;
-    color: var(--fg-muted, #9aa4b2);
-    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 26%, transparent);
+    color: #334155;
+    background: color-mix(in srgb, var(--ai-accent, #0ea5e9) 10%, #ffffff);
+    border: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, #ffffff);
     border-radius: 999px;
     padding: 1px 10px;
 }
@@ -9251,14 +9272,15 @@ code.ai-agent-username {
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: var(--fg-muted, #9aa4b2);
+    color: #64748b;
     margin: 10px 0 6px;
     padding-bottom: 4px;
-    border-bottom: 1px dashed color-mix(in srgb, var(--ai-accent, #0ea5e9) 22%, transparent);
+    border-bottom: 1px dashed color-mix(in srgb, var(--ai-accent, #0ea5e9) 30%, #e2e8f0);
 }
 .ai-params-group-head.is-activation {
-    color: color-mix(in srgb, #f59e0b 80%, var(--fg-default, #eee));
-    border-bottom-color: #f59e0b44;
+    /* amber-700 — amber-500 (#f59e0b) cũ quá nhạt trên nền trắng */
+    color: #b45309;
+    border-bottom-color: #f59e0b66;
 }
 .ai-params-table { margin: 0; }
 .ai-params-row {
@@ -9267,19 +9289,19 @@ code.ai-agent-username {
     gap: 10px;
     padding: 4px 0;
     font-size: 13px;
-    border-bottom: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 8%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--ai-accent, #0ea5e9) 12%, #e2e8f0);
     cursor: help;
 }
 .ai-params-row:last-child { border-bottom: 0; }
 .ai-params-row dt {
     flex: 0 0 42%;
-    color: var(--fg-muted, #9aa4b2);
+    color: #475569;
     font-weight: 600;
 }
 .ai-params-row dd {
     margin: 0;
     flex: 1;
-    color: var(--fg-default, #e5e9f0);
+    color: #0f172a;
     font-family: var(--font-mono, monospace);
     overflow-wrap: anywhere;
 }
@@ -9741,6 +9763,35 @@ code.ai-agent-username {
 }
 .ai-cred-flash-error {
     background: color-mix(in srgb, var(--danger, #dc2626) 8%, transparent);
+}
+/* v3.10.0 — box cấp/thu hồi huy hiệu độc quyền AI Agent */
+.ai-badge-grant-box {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--ai-accent, #7c3aed);
+    border-radius: var(--radius-md, 10px);
+    background: var(--bg-subtle);
+    padding: 14px 16px;
+}
+.ai-badge-grant-box form {
+    margin: 0;
+}
+.ai-badge-grant-box .status-badge {
+    margin-left: auto;
+}
+.ai-badge-grant-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    flex: 1 1 260px;
+    min-width: 0;
+}
+.ai-badge-grant-info .achievement-icon-sm {
+    font-size: 26px;
+    line-height: 1.2;
 }
 .ai-edit-params-list {
     display: grid;

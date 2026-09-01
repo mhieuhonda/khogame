@@ -564,6 +564,48 @@ impl GamificationRepo {
         Ok(a)
     }
 
+    /// v3.10.0 — user đã sở hữu 1 huy hiệu cụ thể? (admin check trước khi
+    /// render nút Cấp/Thu hồi huy hiệu độc quyền AI Agent.)
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn has_achievement(
+        pool: &PgPool,
+        user_id: Uuid,
+        achievement_id: &str,
+    ) -> AppResult<bool> {
+        let owned: Option<bool> = sqlx::query_scalar(
+            "SELECT TRUE FROM user_achievements
+             WHERE user_id = $1 AND achievement_id = $2",
+        )
+        .bind(user_id)
+        .bind(achievement_id)
+        .fetch_optional(pool)
+        .await?;
+        Ok(owned.unwrap_or(false))
+    }
+
+    /// v3.10.0 — THU HỒI 1 huy hiệu đã trao (chỉ dùng cho huy hiệu
+    /// admin-cấp như `ai_agent_core`; huy hiệu hành vi sẽ được engine
+    /// trao lại ngay lần check sau nên thu hồi vô nghĩa).
+    /// Trả về TRUE nếu thực sự xoá 1 row (FALSE = user chưa có).
+    /// # Errors
+    /// Trả lỗi khi DB fail.
+    pub async fn revoke_achievement(
+        pool: &PgPool,
+        user_id: Uuid,
+        achievement_id: &str,
+    ) -> AppResult<bool> {
+        let res = sqlx::query(
+            "DELETE FROM user_achievements
+             WHERE user_id = $1 AND achievement_id = $2",
+        )
+        .bind(user_id)
+        .bind(achievement_id)
+        .execute(pool)
+        .await?;
+        Ok(res.rows_affected() > 0)
+    }
+
     /// Ghim/bỏ ghim huy hiệu showcase (giới hạn MAX_SHOWCASED_ACHIEVEMENTS).
     /// # Errors
     /// Trả lỗi khi DB fail hoặc user cố ghim quá giới hạn.

@@ -1,6 +1,52 @@
 # Worklog — Multi-Agent Shared Work Log
 
 ---
+Task ID: v3.10.0-profile-polish
+Agent: Super Z (main)
+Task: Polish hồ sơ theo yêu cầu chủ sở hữu — bỏ bóng đổ chữ (quá tối),
+sửa rainbow admin bị xỉn, vùng thông tin chi tiết AI Agent đen → trắng,
+admin upload avatar AI Agent, đổi tên huy hiệu lặp/nhạt + huy hiệu ĐỘC
+QUYỀN AI Agent do admin cấp, siêu quét bảo mật, release v3.10.0.
+
+Work Log:
+- CSS hồ sơ: gỡ text-shadow `.profile-meta h1/.profile-username`
+  (nguyên nhân kép — chữ tối VÀ làm gradient rainbow xỉn vì bóng vẽ
+  sau nền background-clip:text), nâng màu trắng tinh #ffffff.
+- Rainbow: 3 điểm gradient (khung role + chữ badge + .rainbow-text)
+  nâng sắc 500 đậm → bảng sáng #fb7185/#fbbf24/#a3e635/#34d399/#38bdf8/
+  #c084fc; @media print đổi màu fallback tương ứng.
+- `.ai-params-card`: nền trắng cố định + chữ slate (AA cả 2 theme),
+  viền/chip trộn --ai-accent, amber-700 cho nhóm kích hoạt, shadow nhẹ.
+- Admin upload avatar AI Agent: `.upload-zone` trong ai_edit.html tái
+  dùng /uploads/avatar + initUploads generic (magic bytes, random tên,
+  quota) — tự điền URL #e-avatar + preview; lưu khi submit form.
+- Huy hiệu (migration 043): đổi title 30 badge thuộc 16 "họ từ" lặp
+  (Huyền Thoại ×4, Đế Tôn ×3, Thánh Nhân ×3, Vô Cực ×3...) + tên nhạt
+  (Bộ Sưu Tập 10 Game → Kho Báu Cá Nhân...); chỉ đổi title — id/icon/
+  XP/điều kiện giữ nguyên. INSERT `ai_agent_core` "Linh Hồn Nhân Tạo"
+  🤖 category ai_agent, xp 0. Script check duy nhất 163 title → PASS.
+- Badge admin-cấp: POST /admin/ai-agents/{id}/badge-ai (grant/revoke)
+  guard 3 lớp (staff + is_ai_agent_user + whitelist), audit log, PRG;
+  `AdminAiAgentEditTemplate.has_ai_badge` mới; repo thêm has_achievement
+  + revoke_achievement. Engine check_and_award không match id → không
+  thể tự trao.
+- Siêu quét bảo mật lần N+1: require_admin 2 lớp cho route mới, CSRF
+  origin_check toàn cục, SQL parameterized, upload magic bytes, XSS
+  (autoescape + json_ld_safe), avatar URL whitelist scheme, CSP/HSTS/
+  COOP, rate-limit, secrets — 0 lỗ hổng mới.
+- GLM 5.3 báo cáo 6 mục sanitize vào "Hoạt động gần đây" (migration 044).
+- Timeline /about thêm mốc v3.10.0; CHANGELOG 3.10.0 đầy đủ; bump
+  Cargo.toml/lock 3.10.0.
+- Verify: cargo check --locked + clippy -D warnings + fmt + 351/351
+  test PASS trên Rust 1.98.0.
+
+Stage Summary:
+- v3.10.0 sẵn sàng tag: migrations 043 + 044, CSS polish, upload zone,
+  huy hiệu độc quyền AI Agent, báo cáo hoạt động GLM 5.3 công khai.
+- Chiến lược deploy: push main trước → CD main xong → mới tag (tránh
+  race CD 2 lần chạy như bài học v2.9.1).
+
+---
 Task ID: v3.5.1-superfix
 Agent: Super Z (main) + 6 sub-agent audit độc lập (5-a/5-b/5-c/5-d/5-e/5-f)
 Task: Siêu fix lỗi GitHub Actions (ưu tiên tối cao) + 15 vòng quét-fix bảo

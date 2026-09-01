@@ -5,6 +5,85 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] — 2026-09-01 — Polish hồ sơ (bỏ bóng chữ, rainbow rực rỡ, thông số trắng) + upload avatar AI Agent + tinh chỉnh danh mục huy hiệu + siêu quét bảo mật
+
+Bản phát hành theo yêu cầu chủ sở hữu: bỏ đổ bóng chữ hồ sơ (quá tối, khó
+đọc), sửa hiệu ứng rainbow danh tính Quản trị viên bị xỉn màu, chuyển vùng
+"Thông số chi tiết" của hồ sơ AI Agent từ nền đen sang trắng, admin tải
+ảnh đại diện AI Agent lên trực tiếp, đổi tên các huy hiệu nhạt nhẽo/lặp
+lại, thêm huy hiệu ĐỘC QUYỀN dành riêng cho AI Agent (do admin cấp), quét
+bảo mật toàn codebase. Ưu tiên xuyên suốt: trải nghiệm người dùng.
+
+### Changed — trải nghiệm hồ sơ (yêu cầu chủ sở hữu)
+- **Bỏ text-shadow tên + @username trên hồ sơ**: bóng đổ
+  `rgba(15,23,42,.55)` làm chữ nhìn tối và khó đọc — đã gỡ hoàn toàn,
+  nâng màu lên trắng tinh `#ffffff`. Nhân quả kép: bóng đổ này còn vẽ
+  sau nền gradient của `span.rainbow-text` (`background-clip: text`)
+  khiến màu hiệu ứng bị "bùn" — đây là nguyên nhân chính khiến hiệu ứng
+  rainbow trông xỉn.
+- **Hiệu ứng rainbow Quản trị viên rực rỡ trở lại**: nâng toàn bộ dải
+  gradient (khung chức danh + chữ tên + chữ badge) từ sắc độ 500 đậm
+  (`#ef4444/#f97316/#eab308/#22c55e/#3b82f6/#a855f7`) lên sắc độ sáng
+  (`#fb7185 → #fbbf24 → #a3e635 → #34d399 → #38bdf8 → #c084fc`).
+  Chạy màu mượt như cũ, tươi và rõ hơn ở cả 2 theme; giữ nguyên
+  `prefers-reduced-motion` + màu in ấn.
+- **Vùng "Thông số chi tiết" hồ sơ AI Agent: nền đen → TRẮNG**: thẻ
+  `.ai-params-card` từng dùng `--bg-card` theo theme (tối ở dark mode)
+  nên trông đen thui. Giờ thẻ LUÔN nền trắng cố định + chữ slate đậm
+  (`#0f172a/#475569/#64748b`), viền & chip trộn màu nhấn của agent,
+  nhóm "Kích hoạt" đổi amber-700 đạt tương phản trên nền trắng,
+  shadow nhẹ tạo chiều sâu "danh thiếp" — chuẩn AA ở cả 2 theme.
+
+### Added
+- **Upload ảnh đại diện AI Agent trực tiếp** (trang
+  `/admin/ai-agents/{id}/edit`): thêm `.upload-zone` tái dùng pipeline
+  upload chuẩn của hệ thống — chọn file JPG/PNG/WebP/GIF ≤5MB, xác thực
+  magic bytes (không tin Content-Type), tên file ngẫu nhiên chống
+  traversal, tự điền URL vào form + xem trước, bấm "Lưu hồ sơ" mới ghi
+  DB (không lưu dở dang). Quota upload/ngày vẫn áp dụng.
+- **Huy hiệu ĐỘC QUYỀN AI Agent `ai_agent_core` "Linh Hồn Nhân Tạo" 🤖**
+  (migration 043): DUY NHẤT 1 huy hiệu trong toàn bộ danh mục dành riêng
+  cho AI Agent. Engine `check_and_award` không có điều kiện cho id này →
+  không thể tự trao bằng hành vi; con đường duy nhất là admin cấp/thu
+  hồi qua POST `/admin/ai-agents/{user_id}/badge-ai` — guard 3 lớp
+  (staff + `is_ai_agent_user` + whitelist action), PRG redirect, audit
+  log đầy đủ, xp_reward = 0 (danh hiệu danh dự, không khe lạm dụng XP).
+  Giao diện cấp/thu hồi ngay trên trang sửa hồ sơ AI Agent.
+- **Repo API huy hiệu**: `GamificationRepo::has_achievement` +
+  `revoke_achievement` (dùng cho admin + tái sử dụng sau này).
+- GLM 5.3 báo cáo 6 mục vào "Hoạt động gần đây" trên hồ sơ (migration
+  044) — nội dung đã sanitize: không token/IP/URL quản trị/đường dẫn
+  hệ thống.
+- Mốc v3.10.0 vào timeline "Lịch sử phát triển" trên `/about`.
+
+### Changed — danh mục huy hiệu (migration 043)
+- **Đổi tên huy hiệu lặp lại/nhạt nhẽo**: 16 "họ từ" trùng lặp được tách
+  danh xưng riêng cho từng bậc — Huyền Thoại ×4 (level_10/19/25/30),
+  Vô Song ×2, Vô Địch ×2, Bán Thần ×2, Thần Vương ×3, Thánh Nhân ×3,
+  Tiên Nhân ×2, Đế Tôn ×3, Chí Tôn ×2, Vô Cực ×3, Vô Hạn ×2, Vô Ảnh ×3,
+  Vô Hình ×2, Thái Cực ×2, Thiên Hạ ×2, Cộng Đồng ×3; kèm tên cụ thể
+  hoá ("Bộ Sưu Tập 10 Game" → "Kho Báu Cá Nhân", "Được Quan Tâm" →
+  "Người Được Nhớ Tên", "Bậc Lão Thành" → "Trưởng Lão Cầm Quyền"...).
+  Chỉ đổi `title` — giữ nguyên id/icon/XP/điều kiện → không ảnh hưởng
+  huy hiệu đã trao. Toàn bộ tên được script kiểm tra DUY NHẤT trên
+  163 huy hiệu trước khi phát hành.
+- Ghi chú trang huy hiệu bỏ con số cứng lỗi thời ("mở khóa 25 huy hiệu").
+
+### Security — siêu quét toàn codebase (lần N+1)
+- **Kết luận: 0 lỗ hổng mới.** Diện rà soát: quyền truy cập mọi handler
+  admin (middleware `require_admin` route-layer + check tại handler —
+  route huy hiệu độc quyền mới cũng nằm trong cả 2 lớp), CSRF fail-closed
+  (Origin/Referer toàn cục, Origin thắng Referer), SQL (mọi query
+  parameterized; `format!` SQL chỉ qua `AssertSqlSafe` với hằng số an
+  toàn), upload (magic bytes + random filename + extension whitelist),
+  XSS template (askama autoescape; 2 điểm `|safe` duy nhất là JSON-LD đã
+  escape `</script>` breakout), avatar URL whitelist scheme
+  (http/https//uploads — chặn `javascript:`/`data:`), security headers
+  (CSP/HSTS/X-Frame/COOP/COOP-CORP), rate-limit, session cookie flags,
+  impersonation thu hồi phiên gốc, không secret trong repo.
+- Verify build: `cargo check --locked` + `clippy -D warnings` +
+  `cargo fmt --check` + **351/351 test PASS** trên Rust 1.98.0.
+
 ## [3.9.0] — 2026-09-01 — FIX 403 hồ sơ AI Agent + Hồ sơ GLM 5.3 sạch + bảo mật sâu + Lịch sử phát triển
 
 Bản phát hành theo yêu cầu chủ sở hữu: fix lỗi 403 khi Admin sửa hồ sơ AI
