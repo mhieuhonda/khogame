@@ -52,7 +52,7 @@ hmac = "0.13"
 # v3.4.0 — AI Agent password login: admin tạo username + password (có thời
 # hạn). Argon2id là chuẩn OWASP cho password hashing (memory-hard, chống
 # GPU/ASIC brute-force). Pure Rust + rustcrypto, không kéo OpenSSL.
-argon2 = "0.5"
+argon2 = "0.6"
 
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
