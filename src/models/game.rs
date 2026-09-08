@@ -28,17 +28,30 @@ impl GameStatus {
     }
     /// Parse từ chuỗi (DB/JSON). Đặt tên khác `from_str` sẽ phá vỡ nhiều call site;
     /// tạm thời allow `clippy::should_implement_trait`.
+    /// Giá trị lạ → Draft (an toàn: typo không tự xuất bản game).
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn from_str(s: &str) -> Self {
+        Self::parse(s).unwrap_or(Self::Draft)
+    }
+
+    /// Parse nghiêm ngặt: giá trị lạ → None (dùng cho filter/validation).
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "draft" => Self::Draft,
-            "published" => Self::Published,
-            "archived" => Self::Archived,
-            "hidden" => Self::Hidden,
-            "pending_review" => Self::PendingReview,
-            _ => Self::Published,
+            "draft" => Some(Self::Draft),
+            "published" => Some(Self::Published),
+            "archived" => Some(Self::Archived),
+            "hidden" => Some(Self::Hidden),
+            "pending_review" => Some(Self::PendingReview),
+            _ => None,
         }
+    }
+
+    /// Status user thường được tự đặt khi tạo/sửa game.
+    #[must_use]
+    pub const fn is_user_creatable(&self) -> bool {
+        matches!(self, Self::Draft | Self::Published)
     }
 }
 
@@ -468,9 +481,16 @@ mod tests {
             GameStatus::from_str("pending_review"),
             GameStatus::PendingReview
         );
-        // Giá trị lạ → Published (default an toàn cho link cũ)
-        assert_eq!(GameStatus::from_str("bất kỳ"), GameStatus::Published);
-        assert_eq!(GameStatus::from_str(""), GameStatus::Published);
+        // Giá trị lạ → Draft (an toàn: typo không tự xuất bản game)
+        assert_eq!(GameStatus::from_str("bất kỳ"), GameStatus::Draft);
+        assert_eq!(GameStatus::from_str(""), GameStatus::Draft);
+        // parse() nghiêm ngặt cho validation/filter
+        assert_eq!(GameStatus::parse("published"), Some(GameStatus::Published));
+        assert_eq!(GameStatus::parse("typo"), None);
+        assert!(GameStatus::Draft.is_user_creatable());
+        assert!(GameStatus::Published.is_user_creatable());
+        assert!(!GameStatus::Hidden.is_user_creatable());
+        assert!(!GameStatus::Archived.is_user_creatable());
     }
 
     #[test]

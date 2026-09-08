@@ -394,6 +394,22 @@ pub async fn create_game(
 ) -> AppResult<Redirect> {
     validate_game_form(&form)?;
     validate_category(&state, &form).await?;
+    // User thường chỉ được tạo draft/published (chặn mass-assignment
+    // hidden/archived/pending_review qua POST crafted).
+    let status = crate::models::game::GameStatus::parse(form.status.trim())
+        .unwrap_or(crate::models::game::GameStatus::Draft);
+    if !status.is_user_creatable() && !user.role.is_staff() {
+        return Err(AppError::BadRequest(
+            "Trạng thái không hợp lệ (chỉ được chọn Nháp hoặc Xuất bản)".into(),
+        ));
+    }
+    let mut form = form;
+    if !user.role.is_staff() {
+        form.status = match status {
+            crate::models::game::GameStatus::Published => "published".to_string(),
+            _ => "draft".to_string(),
+        };
+    }
     if form.android_link.as_deref().is_none_or(|s| s.is_empty())
         && form.ios_link.as_deref().is_none_or(|s| s.is_empty())
         && form.windows_link.as_deref().is_none_or(|s| s.is_empty())
@@ -737,6 +753,18 @@ pub async fn update_game(
     // Validate tất cả URL & length — dùng chung với create_game
     validate_game_form(&form)?;
     validate_category(&state, &form).await?;
+    let mut form = form;
+    // User thường không được tự đổi sang hidden/archived/pending_review
+    if !user.role.is_staff() {
+        let status = crate::models::game::GameStatus::parse(form.status.trim())
+            .unwrap_or(crate::models::game::GameStatus::Draft);
+        if !status.is_user_creatable() {
+            form.status = match game.status {
+                crate::models::game::GameStatus::Published => "published".to_string(),
+                _ => "draft".to_string(),
+            };
+        }
+    }
 
     GameRepo::update(&state.db, game.id, &form).await?;
     Ok(Redirect::to(&format!("/games/{slug}")))
