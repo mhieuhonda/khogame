@@ -5,6 +5,19 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1] — 2026-09-08 — Fix mass-assignment GameStatus + default an toàn
+
+### 🔒 Security
+- **GameStatus default `Published` → `Draft`:** giá trị lạ/typo trong
+  `GameForm.status` trước đây im lặng thành `Published` (tự xuất bản).
+  Giờ default `Draft` + thêm `GameStatus::parse()` nghiêm ngặt và
+  `is_user_creatable()`.
+- **Whitelist status cho user thường:** `create_game`/`update_game` chỉ cho
+  `draft|published`; `hidden|archived|pending_review` bị từ chối (non-staff)
+  hoặc ép về trạng thái cũ an toàn khi sửa. Staff giữ full quyền duyệt.
+- Không đổi giao diện/hành vi hợp lệ; `cargo clippy` 0 warning,
+  `cargo test` 389/389 pass (Rust 1.98).
+
 ## [3.13.0] — 2026-09-01 — Đợt audit bảo mật/logic 15 trục chuyên sâu trước khi lên production + verify hardening + bump version + Service Worker cache
 
 Bản phát hành theo yêu cầu chủ sở hữu: đợt rà soát bảo mật và logic
