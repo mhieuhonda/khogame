@@ -108,6 +108,11 @@ pub async fn google_callback(
     let referral_code_cookie = jar
         .get(crate::handlers::referral::REFERRAL_COOKIE)
         .map(|c| c.value().to_string());
+    // Chống session fixation: giữ cookie session CŨ (nếu có) để thu hồi
+    // sau khi login thành công — phiên cũ không được sống song song.
+    let old_session_token = jar
+        .get(auth::SESSION_COOKIE)
+        .map(|c| c.value().to_string());
     let mut cleanup_jar = jar;
     // Xoá cookie state và next dù thành công hay thất bại
     auth::clear_oauth_state_cookie(&mut cleanup_jar, &state.config.base_url);
@@ -230,6 +235,8 @@ pub async fn google_callback(
     // v3.4.2 FIX (audit "default superuser"): ADMIN_EMAIL không set →
     // config trả chuỗi rỗng → TỪ CHỐI auto-grant (log error 1 lần ở
     // startup). Không còn fallback Gmail cố định trên fork/redeploy.
+    // Chỉ grant LẦN ĐẦU (user chưa phải admin) — mỗi login sau không
+    // chạm role nữa. Mỗi lần auto-grant ghi log WARN kèm email để audit.
     if !state.config.admin_email.is_empty()
         && userinfo
             .email
@@ -238,7 +245,7 @@ pub async fn google_callback(
     {
         UserRepo::set_role(&state.db, user.id, "admin").await?;
         user.role = crate::models::user::UserRole::Admin;
-        tracing::info!("Granted admin to {} via ADMIN_EMAIL", userinfo.email);
+        tracing::warn!("Auto-grant admin via ADMIN_EMAIL: {}", userinfo.email);
     }
 
     // Create session — lưu User-Agent (cắt ngắn tránh overflow) và IP
@@ -267,6 +274,17 @@ pub async fn google_callback(
         auth::SESSION_TTL_DAYS,
     )
     .await?;
+    // Chống session fixation tích lũy: thu hồi session của cookie CŨ
+    // (nếu request mang session hợp lệ khác session vừa tạo) rồi giới
+    // hạn tối đa 20 session/user (xoá cũ nhất vượt cap).
+    if let Some(old) = old_session_token.as_deref() {
+        let old_hash = auth::hash_token(old);
+        if old_hash != token_hash {
+            let _ = SessionRepo::delete(&state.db, &old_hash).await;
+            crate::middleware::invalidate_session_cache(&old_hash);
+        }
+    }
+    let _ = SessionRepo::enforce_session_cap(&state.db, user.id, 20).await;
     UserRepo::update_last_seen(&state.db, user.id).await?;
     // Record login IP/UA cho admin detail view (migration 009).
     // Best-effort: lỗi không block login flow.

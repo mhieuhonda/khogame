@@ -25,7 +25,7 @@
 //!    e. UPDATE status='sent' OR 'failed' + last_error + attempts++.
 //! 4. Nếu attempts >= 3 → status='failed' permanent, không retry.
 
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -61,10 +61,23 @@ pub enum SmtpTls {
 
 impl SmtpConfig {
     /// Load từ env. Trả `None` nếu `SMTP_HOST` trống → email noop.
-    fn from_env() -> Option<Self> {
-        let host = std::env::var("SMTP_HOST").ok()?.trim().to_string();
+    /// Fail-fast (trả lỗi, không cho chạy tiếp) khi `SMTP_TLS=none` trong
+    /// `RUST_ENV=prod` — plaintext SMTP trong prod làm lộ credentials +
+    /// nội dung notification trên mạng. Phân biệt env theo đúng cách
+    /// `config.rs` đang dùng (`RUST_ENV == "prod"`).
+    /// # Errors
+    ///
+    /// Trả lỗi khi `SMTP_TLS=none` mà `RUST_ENV=prod`.
+    fn from_env() -> AppResult<Option<Self>> {
+        // Không dùng `ok()?` ở đây: hàm trả `Result` nên `?` trên Option
+        // không compile — match tường minh để giữ nghĩa "thiếu là noop".
+        let host_raw = match std::env::var("SMTP_HOST") {
+            Ok(h) => h,
+            Err(_) => return Ok(None),
+        };
+        let host = host_raw.trim().to_string();
         if host.is_empty() {
-            return None;
+            return Ok(None);
         }
         let port: u16 = std::env::var("SMTP_PORT")
             .ok()
@@ -80,25 +93,31 @@ impl SmtpConfig {
             Some("none") => {
                 // v3.8.0 FIX (security audit F16): SMTP plaintext trong prod
                 // = credentials + nội dung notification đi qua mạng không
-                // mã hoá. Chỉ cho phép khi RUST_ENV != prod (dev local SMTP).
+                // mã hoá. Fail-fast lúc khởi tạo khi RUST_ENV=prod (trả lỗi
+                // để server KHÔNG chạy với cấu hình nguy hiểm), thay vì tắt
+                // email im lặng như trước (operator tưởng "email tắt" nhưng
+                // thật ra config sai nguy hiểm vẫn nằm đó). Chỉ cho phép ở
+                // dev/test (SMTP local không TLS).
                 if std::env::var("RUST_ENV").ok().as_deref() == Some("prod") {
-                    tracing::error!(
-                        "SMTP_TLS=none bị TỪ CHỐI trong RUST_ENV=prod —                          credentials sẽ đi mạng không mã hoá. Dùng starttls                          (587) hoặc implicit (465). Email transport bị tắt."
-                    );
-                    return None;
+                    return Err(AppError::Internal(anyhow::anyhow!(
+                        "SMTP_TLS=none bị CẤM trong RUST_ENV=prod — credentials sẽ đi mạng không mã hoá. \
+                         Dùng starttls (587) hoặc implicit (465)."
+                    )));
                 }
                 SmtpTls::None
             }
-            _ => SmtpTls::StartTls,
+            // Default là starttls (KHÔNG phải none): không cấu hình TLS
+            // tường minh vẫn được mã hoá oportunistic.
+            Some("starttls") | None | Some(_) => SmtpTls::StartTls,
         };
-        Some(Self {
+        Ok(Some(Self {
             host,
             port,
             username,
             password,
             from,
             tls,
-        })
+        }))
     }
 }
 
@@ -182,7 +201,9 @@ pub async fn requeue_stuck_sending(pool: &PgPool, stuck_secs: i64) -> AppResult<
 ///
 /// Trả lỗi khi DB fail (claim_pending/mark_*).
 pub async fn flush_pending(pool: &PgPool, batch_size: i64) -> AppResult<(u64, u64, u64)> {
-    let smtp = match SmtpConfig::from_env() {
+    // from_env fail-fast: SMTP_TLS=none trong prod trả lỗi → lan ra caller
+    // (không noop im lặng để server chạy với config nguy hiểm).
+    let smtp = match SmtpConfig::from_env()? {
         Some(s) => s,
         None => {
             // SMTP chưa cấu hình — mark pending thành 'skipped' để không
@@ -250,6 +271,20 @@ pub async fn flush_pending(pool: &PgPool, batch_size: i64) -> AppResult<(u64, u6
     Ok((sent, failed, 0))
 }
 
+/// Sanitize display-name do user kiểm soát trước khi đưa vào `Mailbox`:
+/// loại bỏ CR/LF + ký tự control (chống header injection qua tên), trim,
+/// giới hạn 100 ký tự. Trả `None` khi tên rỗng sau sanitize (gửi không tên).
+fn sanitize_display_name(name: &str) -> Option<String> {
+    // is_control() đã bao gồm CR (\r), LF (\n), TAB và C1 controls.
+    let cleaned: String = name.chars().filter(|c| !c.is_control()).collect();
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // Giới hạn 100 ký tự (đếm theo char, không cắt giữa codepoint).
+    Some(trimmed.chars().take(100).collect())
+}
+
 /// Gửi 1 email SMTP.
 #[cfg(feature = "email")]
 async fn send_one(
@@ -268,15 +303,16 @@ async fn send_one(
         .from
         .parse()
         .map_err(|e| format!("SMTP_FROM không hợp lệ: {e}"))?;
-    let to_addr = to.trim();
-    let to_str = if to_name.is_empty() {
-        to_addr.to_string()
-    } else {
-        format!("{to_name} <{to_addr}>")
-    };
-    let to_mailbox: Mailbox = to_str
+    // FIX (header injection qua display-name): KHÔNG ghép thô
+    // `"{to_name} <{to_addr}>"` rồi parse chuỗi (to_name chứa CRLF/quote
+    // có thể chèn header hoặc làm parse sai). Sanitize tên rồi dùng
+    // `Mailbox::new` (tên và địa chỉ tách bạch, lettre tự quote/encode).
+    // Áp dụng cho mọi Mailbox tạo từ input user trong file này.
+    let to_addr: lettre::message::Address = to
+        .trim()
         .parse()
-        .map_err(|e| format!("Recipient email không hợp lệ ({to_str}): {e}"))?;
+        .map_err(|e| format!("Recipient email không hợp lệ ({to}): {e}"))?;
+    let to_mailbox = Mailbox::new(sanitize_display_name(to_name), to_addr);
 
     let email = Message::builder()
         .from(from_mailbox)
@@ -397,17 +433,65 @@ mod tests {
 
     #[test]
     fn test_smtp_config_from_env_empty() {
-        // Khi SMTP_HOST unset hoặc empty → None
+        // Khi SMTP_HOST unset hoặc empty → Ok(None)
         std::env::remove_var("SMTP_HOST");
-        assert!(SmtpConfig::from_env().is_none());
+        assert!(SmtpConfig::from_env()
+            .expect("Không được lỗi khi SMTP_HOST unset")
+            .is_none());
 
         std::env::set_var("SMTP_HOST", "   ");
-        assert!(SmtpConfig::from_env().is_none());
+        assert!(SmtpConfig::from_env()
+            .expect("Không được lỗi khi SMTP_HOST trống")
+            .is_none());
 
         std::env::set_var("SMTP_HOST", "smtp.example.com");
-        let cfg = SmtpConfig::from_env().expect("Should parse");
+        let cfg = SmtpConfig::from_env()
+            .expect("Không được lỗi khi SMTP_HOST hợp lệ")
+            .expect("Should parse");
         assert_eq!(cfg.host, "smtp.example.com");
         assert_eq!(cfg.port, 587); // default
         assert_eq!(cfg.tls, SmtpTls::StartTls); // default
+    }
+
+    #[test]
+    fn test_smtp_tls_none_rejected_in_prod() {
+        // Fail-fast: SMTP_TLS=none trong RUST_ENV=prod phải trả lỗi,
+        // không được noop im lặng hay cho server chạy.
+        std::env::set_var("SMTP_HOST", "smtp.example.com");
+        std::env::set_var("SMTP_TLS", "none");
+        std::env::set_var("RUST_ENV", "prod");
+        assert!(SmtpConfig::from_env().is_err());
+        // Ngoài prod vẫn cho phép (SMTP local dev).
+        std::env::set_var("RUST_ENV", "dev");
+        let cfg = SmtpConfig::from_env()
+            .expect("dev không được lỗi")
+            .expect("Should parse");
+        assert_eq!(cfg.tls, SmtpTls::None);
+        // Dọn env để không ảnh hưởng test khác.
+        std::env::remove_var("SMTP_TLS");
+        std::env::remove_var("RUST_ENV");
+        std::env::remove_var("SMTP_HOST");
+    }
+
+    #[test]
+    fn test_sanitize_display_name() {
+        assert_eq!(sanitize_display_name(""), None);
+        assert_eq!(sanitize_display_name("   "), None);
+        // CR/LF + control bị loại (chống header injection).
+        assert_eq!(
+            sanitize_display_name("Nguyễn Văn A\r\nBcc: evil@x.com"),
+            Some("Nguyễn Văn ABcc: evil@x.com".to_string())
+        );
+        assert_eq!(
+            sanitize_display_name("A\u{0000}B\u{0007}C"),
+            Some("ABC".to_string())
+        );
+        // Trim + giới hạn 100 ký tự.
+        assert_eq!(
+            sanitize_display_name("  An  "),
+            Some("An".to_string())
+        );
+        let long = "a".repeat(150);
+        assert_eq!(sanitize_display_name(&long).unwrap().chars().count(), 100);
     }
 }

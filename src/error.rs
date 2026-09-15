@@ -69,7 +69,11 @@ impl AppError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Unauthorized => StatusCode::UNAUTHORIZED,
             Self::Forbidden(_) => StatusCode::FORBIDDEN,
-            Self::BadRequest(_) | Self::Conflict(_) => StatusCode::BAD_REQUEST,
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            // Conflict (trùng khóa duy nhất, báo cáo trùng...) là 409 —
+            // trước đây gộp vào 400 khiến client không phân biệt được
+            // "dữ liệu sai" với "dữ liệu đã tồn tại".
+            Self::Conflict(_) => StatusCode::CONFLICT,
             Self::Database(e) => {
                 // Log raw error (kèm query, constraint, column name)
                 // cho dev/admin gỡ rối — nhưng KHÔNG lộ cho user.
@@ -205,12 +209,14 @@ impl IntoResponse for AppError {
 mod tests {
     use super::*;
 
-    /// Unique violation phải map sang Conflict (409 logic), không phải 500.
+    /// Unique violation phải map sang Conflict (409), không phải 500/400.
     #[test]
-    fn test_conflict_maps_to_bad_request_status_not_500() {
+    fn test_conflict_maps_to_conflict_409_status() {
         let e = AppError::Conflict("trùng slug".into());
-        let (status, _msg) = e.status_and_message();
-        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, msg) = e.status_and_message();
+        assert_eq!(status, StatusCode::CONFLICT);
+        // Message giữ nguyên cho client
+        assert_eq!(msg, "trùng slug");
     }
 
     /// Mọi variant phải map đúng nhóm status — guard hồi quy khi thêm variant mới.
@@ -231,6 +237,10 @@ mod tests {
         assert_eq!(
             AppError::BadRequest("x".into()).status_and_message().0,
             StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            AppError::Conflict("x".into()).status_and_message().0,
+            StatusCode::CONFLICT
         );
     }
 

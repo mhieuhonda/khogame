@@ -977,6 +977,12 @@ async fn build_sitemap(state: &AppState, base: &str) -> AppResult<(String, Strin
         r"  <url><loc>{base}/</loc><changefreq>hourly</changefreq><priority>1.0</priority></url>
 "
     ));
+    // v3.14.0 FIX (trang mồ côi SEO): sitemap thiếu các trang tĩnh công
+    // khai — bot không phát hiện được /about, /markdown, /leaderboard,
+    // /quests, /spin, /trivia, /shop dù route + link nội bộ tồn tại.
+    // Chỉ liệt kê trang render được cho khách (CurrentUser optional);
+    // trang yêu cầu AuthUser (/referral, /achievements, /following,
+    // /feedback, /settings/*) KHÔNG đưa vào sitemap.
     for page in [
         "/games",
         "/games/latest",
@@ -989,6 +995,13 @@ async fn build_sitemap(state: &AppState, base: &str) -> AppResult<(String, Strin
         "/search",
         "/terms",
         "/privacy",
+        "/about",
+        "/markdown",
+        "/leaderboard",
+        "/quests",
+        "/spin",
+        "/trivia",
+        "/shop",
         "/news",
     ] {
         urls.push_str(&format!(

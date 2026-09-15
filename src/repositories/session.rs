@@ -48,6 +48,28 @@ impl SessionRepo {
         Ok(id)
     }
 
+    /// Giới hạn số session đồng thời MỖI USER (chống session fixation
+    /// tích lũy khi login spam): xoá các session cũ nhất vượt quá `cap`,
+    /// giữ lại `cap` session mới nhất theo `created_at`. Gọi sau khi tạo
+    /// session login thành công ở mọi flow (Google OAuth + AI password).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn enforce_session_cap(pool: &PgPool, user_id: Uuid, cap: i64) -> AppResult<()> {
+        sqlx::query(
+            r"DELETE FROM sessions WHERE id IN (
+                SELECT id FROM sessions
+                WHERE user_id = $1
+                ORDER BY created_at DESC OFFSET $2
+            )",
+        )
+        .bind(user_id)
+        .bind(cap)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// # Errors
     ///
     /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).

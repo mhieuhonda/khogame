@@ -51,11 +51,13 @@ services:
       PORT: "3000"
       BASE_URL: http://localhost:3000
       DATABASE_URL: postgres://khogame:khogame_local_dev@postgres:5432/khogame
-      # SESSION_KEY default 64 hex zeros — CHỈ dùng cho dev, prod phải set
-      # key thật (`openssl rand -hex 32`). Bất kỳ >= 32 byte nào cũng pass
-      # check độ dài trong config.rs; default này hợp lệ để local dev chạy
-      # không cần copy .env.example.
-      SESSION_KEY: ${SESSION_KEY:-change_me_64_hex_chars_in_production_0000000000000}
+      # SESSION_KEY bắt buộc — KHÔNG có default placeholder. Key cũ đủ 32 bytes
+      # trong repo cho phép bất kỳ ai cũng giả được cookie anon HMAC (audit:
+      # secret công khai = không còn là secret). Fail-fast theo đúng pattern
+      # GOOGLE_CLIENT_ID bên dưới (`${VAR:?error}`): thiếu là compose báo lỗi
+      # rõ ràng thay vì im lặng chạy với key ai cũng biết. Tạo bằng
+      # `openssl rand -hex 32` rồi điền vào .env.
+      SESSION_KEY: ${SESSION_KEY:?SESSION_KEY missing — tạo bằng 'openssl rand -hex 32' và điền vào .env}
       # Google OAuth credentials bắt buộc — config.rs fail-fast nếu thiếu.
       # Lấy từ .env (operator tự điền sau khi `cp .env.example .env`).
       # `${VAR:?error}` syntax: nếu thiếu, compose fail với message rõ ràng
