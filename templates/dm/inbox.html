@@ -1,0 +1,61 @@
+{% extends "layout.html" %}
+
+{% block title %}Hộp thư{% endblock %}
+{% block description %}Tin nhắn riêng và nhóm chat trên Louis Space.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">✉️ Hộp thư</h1>
+        <a href="/friends" class="section-more">Bạn bè{% if incoming_requests > 0 %} ({{ incoming_requests }} lời mời){% endif %} →</a>
+    </div>
+
+    {% if items.is_empty() %}
+    <div class="empty-state">
+        <p>Chưa có cuộc trò chuyện nào.</p>
+        <p><a href="/friends" class="btn btn-primary btn-sm">Tìm bạn để nhắn tin</a></p>
+    </div>
+    {% else %}
+    <ul class="inbox-list">
+        {% for it in items %}
+        <li class="inbox-row">
+            {% if it.kind == "dm" %}
+            <a href="/messages/dm/{{ it.other_username.as_deref().unwrap_or("") }}" class="inbox-link">
+            {% else %}
+            <a href="/messages/group/{{ it.id }}" class="inbox-link">
+            {% endif %}
+                {% match it.avatar_url.as_deref().or(it.other_avatar_url.as_deref()) %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="" class="avatar" width="44" height="44" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-fallback">{% if it.kind == "dm" %}👤{% else %}👥{% endif %}</div>
+                {% endmatch %}
+                <span class="inbox-main">
+                    <span class="inbox-top">
+                        <strong>{{ it.display_name() }}</strong>
+                        {% if it.unread > 0 %}<span class="menu-badge">{{ it.unread }}</span>{% endif %}
+                    </span>
+                    <span class="muted inbox-preview">{{ it.sender_prefix() }}{{ it.preview() }}</span>
+                </span>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+
+<section class="content-section">
+    <div class="section-header">
+        <h2 class="section-title">👥 Tạo nhóm chat</h2>
+    </div>
+    <form method="post" action="/groups/create" class="stack-form">
+        <label>Tên nhóm (2–100 ký tự)
+            <input type="text" name="name" class="form-control" required minlength="2" maxlength="100" placeholder="VD: Team cày đêm">
+        </label>
+        <label>Thêm bạn (username, cách nhau bằng dấu phẩy)
+            <input type="text" name="members" class="form-control" maxlength="2000" placeholder="VD: hieu, lan, minh">
+        </label>
+        <button type="submit" class="btn btn-primary">Tạo nhóm</button>
+    </form>
+</section>
+{% endblock %}

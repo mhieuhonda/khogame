@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+
+{% block title %}Bạn bè{% endblock %}
+{% block description %}Quản lý bạn bè trên Louis Space — lời mời kết bạn, danh sách bạn, nhắn tin riêng.{% endblock %}
+
+{% block content %}
+<section class="content-section">
+    <div class="section-header">
+        <h1 class="section-title">🤝 Bạn bè</h1>
+        <a href="/messages" class="section-more">Hộp thư →</a>
+    </div>
+
+    {% if !incoming.is_empty() %}
+    <h2 class="leaderboard-subtitle">📩 Lời mời kết bạn ({{ incoming.len() }})</h2>
+    <ul class="friend-list">
+        {% for r in incoming %}
+        <li class="friend-row">
+            <a href="/u/{{ r.username }}" class="friend-user">
+                {% match r.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ r.display_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-sm avatar-fallback">{{ r.display_name|initials }}</div>
+                {% endmatch %}
+                <span class="friend-name">
+                    <span class="friend-display-name">{{ r.display_name }}</span>
+                    <span class="muted">@{{ r.username }}</span>
+                </span>
+            </a>
+            <span class="friend-actions">
+                <form method="post" action="/friends/respond/{{ r.id }}" style="display:inline">
+                    <input type="hidden" name="accept" value="1">
+                    <button type="submit" class="btn btn-primary btn-sm">Chấp nhận</button>
+                </form>
+                <form method="post" action="/friends/respond/{{ r.id }}" style="display:inline">
+                    <button type="submit" class="btn btn-outline btn-sm">Từ chối</button>
+                </form>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <h2 class="leaderboard-subtitle">👥 Bạn của tôi ({{ friends.len() }})</h2>
+    {% if friends.is_empty() %}
+    <div class="empty-state">
+        <p>Chưa có bạn bè nào. Kết bạn để chat riêng và tạo nhóm chat!</p>
+        <p class="muted">Vào hồ sơ của ai đó và bấm nút <strong>Kết bạn</strong>.</p>
+    </div>
+    {% else %}
+    <ul class="friend-list">
+        {% for f in friends %}
+        <li class="friend-row">
+            <a href="/u/{{ f.username }}" class="friend-user">
+                {% match f.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ f.display_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-sm avatar-fallback">{{ f.display_name|initials }}</div>
+                {% endmatch %}
+                <span class="friend-name">
+                    <span class="friend-display-name">{{ f.display_name }}</span>
+                    <span class="muted">@{{ f.username }}</span>
+                </span>
+            </a>
+            <span class="friend-actions">
+                <a href="/messages/dm/{{ f.username }}" class="btn btn-primary btn-sm">Nhắn tin</a>
+                <form method="post" action="/friends/unfriend/{{ f.username }}" style="display:inline"
+                      onsubmit="return confirm('Hủy kết bạn với {{ f.display_name }}?')">
+                    <button type="submit" class="btn btn-outline btn-sm">Hủy kết bạn</button>
+                </form>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    {% if !outgoing.is_empty() %}
+    <h2 class="leaderboard-subtitle">📤 Đã gửi ({{ outgoing.len() }})</h2>
+    <ul class="friend-list">
+        {% for r in outgoing %}
+        <li class="friend-row">
+            <a href="/u/{{ r.username }}" class="friend-user">
+                {% match r.avatar_url %}
+                {% when Option::Some with (url) %}
+                <img src="{{ url }}" alt="{{ r.display_name }}" class="avatar avatar-sm" width="32" height="32" loading="lazy" decoding="async">
+                {% when Option::None %}
+                <div class="avatar avatar-sm avatar-fallback">{{ r.display_name|initials }}</div>
+                {% endmatch %}
+                <span class="friend-name">
+                    <span class="friend-display-name">{{ r.display_name }}</span>
+                    <span class="muted">@{{ r.username }} · đang chờ</span>
+                </span>
+            </a>
+            <span class="friend-actions">
+                <form method="post" action="/friends/cancel/{{ r.id }}" style="display:inline">
+                    <button type="submit" class="btn btn-outline btn-sm">Hủy lời mời</button>
+                </form>
+            </span>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</section>
+{% endblock %}

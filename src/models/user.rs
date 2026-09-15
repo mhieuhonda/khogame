@@ -84,6 +84,12 @@ pub struct User {
     #[sqlx(default)]
     #[serde(default)]
     pub avatar_frame: Option<String>,
+    /// v3.14.0 — admin cấp tay quyền chat không giới hạn ký tự
+    /// (migration 050, `users.chat_unlimited`). Query cũ không SELECT cột
+    /// này → default false (an toàn — fail-closed).
+    #[sqlx(default)]
+    #[serde(default)]
+    pub chat_unlimited: bool,
 }
 
 impl User {
@@ -104,6 +110,14 @@ impl User {
             }
             _ => String::new(),
         }
+    }
+
+    /// v3.14.0 — user này được chat không giới hạn ký tự? Admin luôn có
+    /// (không cần cấp), member thường cần `chat_unlimited=true` do admin
+    /// cấp tay. Dùng chung cho live chat WS + DM + nhóm chat.
+    #[must_use]
+    pub const fn can_chat_unlimited(&self) -> bool {
+        self.role.is_admin() || self.chat_unlimited
     }
 
     #[must_use]
@@ -424,6 +438,7 @@ mod tests {
             last_login_ua: None,
             last_login_at: None,
             avatar_frame: None,
+            chat_unlimited: false,
         };
         assert_eq!(u.profile_href(), "/ai/glm53");
         let mut human = u;
@@ -458,6 +473,7 @@ mod tests {
             last_login_ua: None,
             last_login_at: None,
             avatar_frame: None,
+            chat_unlimited: false,
         };
         // google_sub khớp mặc định → AI Agent dù role Moderator
         assert!(u.is_ai_agent_user());
@@ -497,6 +513,7 @@ mod tests {
             last_login_ua: None,
             last_login_at: None,
             avatar_frame: None,
+            chat_unlimited: false,
         };
         // IP/UA None khi user chưa login lần nào
         assert!(user.signup_ip.is_none());
@@ -528,6 +545,7 @@ mod tests {
             last_login_ua: Some("Mozilla/5.0 Chrome".into()),
             last_login_at: Some(chrono::Utc::now()),
             avatar_frame: None,
+            chat_unlimited: false,
         };
         // Admin có thể xem IP signup + last login để truy vết abuse
         assert_eq!(user.signup_ip.as_deref(), Some("203.0.113.42"));

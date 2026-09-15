@@ -1,0 +1,22 @@
+{% if !message.is_deleted %}
+<div class="dm-msg {% if message.sender_id == me %}dm-mine{% endif %}" data-mid="{{ message.id }}">
+    {% if message.sender_id != me %}
+    <a href="/u/{{ message.username }}" class="dm-sender">
+        {% match message.avatar_url %}
+        {% when Option::Some with (url) %}
+        <img src="{{ url }}" alt="{{ message.display_name }}" class="avatar avatar-xs" width="28" height="28" loading="lazy" decoding="async">
+        {% when Option::None %}
+        <div class="avatar avatar-xs avatar-fallback">{{ message.display_name|initials }}</div>
+        {% endmatch %}
+    </a>
+    {% endif %}
+    <div class="dm-bubble">
+        {% if message.sender_id != me %}<div class="dm-name">{{ message.display_name }}</div>{% endif %}
+        {% if !message.content.is_empty() %}<div class="dm-text">{{ message.content }}</div>{% endif %}
+        {% match message.image_url %}
+        {% when Option::Some with (img) %}
+        <a href="{{ img }}" target="_blank" rel="noopener"><img src="{{ img }}" alt="Ảnh đính kèm" class="dm-image" loading="lazy" decoding="async"></a>
+        {% when Option::None %}{% endmatch %}
+    </div>
+</div>
+{% endif %}

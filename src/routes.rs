@@ -199,6 +199,58 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/games/{slug}/reviews",
             post(handlers::reviews::submit_review),
         )
+        // v3.14.0 — Kết bạn
+        .route("/friends", get(handlers::friends::friends_page))
+        .route(
+            "/friends/request/{username}",
+            post(handlers::friends::send_request),
+        )
+        .route("/friends/respond/{id}", post(handlers::friends::respond))
+        .route("/friends/cancel/{id}", post(handlers::friends::cancel))
+        .route(
+            "/friends/unfriend/{username}",
+            post(handlers::friends::unfriend),
+        )
+        .route("/friends/block/{username}", post(handlers::friends::block))
+        .route(
+            "/friends/unblock/{username}",
+            post(handlers::friends::unblock),
+        )
+        // v3.14.0 — Chat riêng + nhóm chat (HTMX poll, không WS chung)
+        .route("/messages", get(handlers::dm::inbox_page))
+        .route("/messages/unread-badge", get(handlers::dm::unread_badge))
+        .route("/messages/dm/{username}", get(handlers::dm::dm_thread_page))
+        .route(
+            "/messages/dm/{username}/start",
+            post(handlers::dm::dm_start),
+        )
+        .route("/messages/dm/{username}/box", get(handlers::dm::dm_box))
+        .route("/messages/dm/{username}/send", post(handlers::dm::dm_send))
+        .route("/groups/create", post(handlers::dm::group_create))
+        .route("/messages/group/{id}", get(handlers::dm::group_thread_page))
+        .route("/messages/group/{id}/box", get(handlers::dm::group_box))
+        .route("/messages/group/{id}/send", post(handlers::dm::group_send))
+        .route("/messages/group/{id}/add", post(handlers::dm::group_add))
+        .route(
+            "/messages/group/{id}/remove",
+            post(handlers::dm::group_remove),
+        )
+        .route(
+            "/messages/group/{id}/leave",
+            post(handlers::dm::group_leave),
+        )
+        .route(
+            "/messages/group/{id}/rename",
+            post(handlers::dm::group_rename),
+        )
+        .route(
+            "/messages/group/{id}/delete",
+            post(handlers::dm::group_delete),
+        )
+        .route(
+            "/dm/messages/{id}/delete",
+            post(handlers::dm::delete_message),
+        )
         .route(
             "/reviews/{id}/helpful",
             post(handlers::reviews::toggle_helpful),
@@ -308,7 +360,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/uploads/avatar", post(handlers::uploads::avatar))
         .route("/uploads/game/cover", post(handlers::uploads::game_cover))
         .route("/uploads/news/cover", post(handlers::uploads::news_cover))
-        .route("/uploads/repo/image", post(handlers::uploads::repo_image));
+        .route("/uploads/repo/image", post(handlers::uploads::repo_image))
+        // v3.14.0 — ảnh đính kèm chat riêng/nhóm
+        .route("/uploads/chat/image", post(handlers::uploads::chat_image));
 
     // Public JSON API v1
     let api_routes = Router::new()
@@ -399,6 +453,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/admin/users/{id}", get(handlers::admin::user_detail))
         .route("/admin/users/{id}/role", post(handlers::admin::set_role))
         .route("/admin/users/{id}/ban", post(handlers::admin::set_banned))
+        // v3.14.0 — cấp/thu hồi chat không giới hạn ký tự
+        .route(
+            "/admin/users/{id}/chat-unlimited",
+            post(handlers::admin::set_chat_unlimited),
+        )
         // Comments
         .route("/admin/comments", get(handlers::admin::comments))
         .route(

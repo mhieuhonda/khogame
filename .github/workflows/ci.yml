@@ -71,8 +71,13 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5 — pin SHA (supply-chain)
         with:
           # Cần token có write permission để commit ngược về branch.
-          # GITHUB_TOKEN mặc định đã có contents:write khi trigger push main.
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # v3.14.0 FIX (GH006 — main bị protect "require PR"): GITHUB_TOKEN
+          # KHÔNG có quyền push thẳng main → job autofmt fail sau 3 retry.
+          # Dùng repo secret AUTOFMT_PAT (fine-grained PAT của owner, scope
+          # Contents read/write + Bypass ruleset cho repo này) khi có;
+          # fallback GITHUB_TOKEN khi chưa cấu hình (sẽ fail rõ lỗi GH006
+          # để operator biết cần thêm secret).
+          token: ${{ secrets.AUTOFMT_PAT || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Cài Rust 1.98 (exact pin)

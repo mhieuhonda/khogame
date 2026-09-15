@@ -819,6 +819,54 @@ pub async fn set_banned(
 }
 
 // ============================================================
+// v3.14.0 — ADMIN: cấp/thu hồi quyền chat không giới hạn ký tự
+// ============================================================
+#[derive(Deserialize, Default)]
+pub struct UnlimitedForm {
+    pub unlimited: Option<String>,
+}
+
+/// POST /admin/users/{id}/chat-unlimited — chỉ admin tối cao.
+/// Admin luôn unlimited theo role (không cần cấp); toggle này dành cho
+/// member/moderator cụ thể. Trả badge HTML (swap tại chỗ như set_role).
+///
+/// # Errors
+///
+/// Trả về lỗi khi không phải admin / tự cấp cho mình / DB fail.
+pub async fn set_chat_unlimited(
+    State(state): State<Arc<AppState>>,
+    AuthUser(admin): AuthUser,
+    Path(id): Path<Uuid>,
+    Form(form): Form<UnlimitedForm>,
+) -> AppResult<Html<String>> {
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden("Chỉ quản trị viên tối cao".into()));
+    }
+    if id == admin.id {
+        return Err(AppError::BadRequest(
+            "Admin mặc định chat không giới hạn — không cần tự cấp".into(),
+        ));
+    }
+    let unlimited = form.unlimited.is_some();
+    UserRepo::set_chat_unlimited(&state.db, id, unlimited).await?;
+    crate::middleware::invalidate_session_cache_for_user(id);
+    audit(
+        &state,
+        admin.id,
+        "user.chat_unlimited",
+        "user",
+        &id.to_string(),
+        if unlimited { "granted" } else { "revoked" },
+    )
+    .await;
+    Ok(Html(if unlimited {
+        "<span class='badge badge-success'>Chat không giới hạn ✨</span>".to_string()
+    } else {
+        "<span class='badge badge-muted'>Chat giới hạn 500 ký tự</span>".to_string()
+    }))
+}
+
+// ============================================================
 // ADMIN: COMMENTS
 // ============================================================
 #[derive(Deserialize, Default)]

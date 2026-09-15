@@ -36,6 +36,8 @@ pub enum UploadKind {
     NewsCover,
     /// Ảnh thumbnail repo GitHub (custom, không phải từ GitHub) — sub-dir `repos`, max 5MB.
     RepoImage,
+    /// v3.14.0 — Ảnh đính kèm tin nhắn riêng/nhóm — sub-dir `chat`, max 5MB.
+    ChatImage,
 }
 
 impl UploadKind {
@@ -46,13 +48,14 @@ impl UploadKind {
             Self::GameCover => "games",
             Self::NewsCover => "news",
             Self::RepoImage => "repos",
+            Self::ChatImage => "chat",
         }
     }
 
     #[must_use]
     pub const fn max_bytes(self) -> usize {
         match self {
-            Self::Avatar | Self::RepoImage => MAX_AVATAR_BYTES,
+            Self::Avatar | Self::RepoImage | Self::ChatImage => MAX_AVATAR_BYTES,
             Self::GameCover | Self::NewsCover => MAX_COVER_BYTES,
         }
     }
@@ -170,6 +173,7 @@ pub async fn save_upload(
                 UploadKind::GameCover => "ảnh bìa game",
                 UploadKind::NewsCover => "ảnh bìa tin tức",
                 UploadKind::RepoImage => "ảnh repo",
+                UploadKind::ChatImage => "ảnh chat",
             }
         )));
     }

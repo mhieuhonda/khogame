@@ -3,7 +3,7 @@ use crate::handlers::auth::unread_count;
 use crate::middleware::{AuthUser, CurrentUser};
 use crate::models::{SocialLinks, PLATFORMS};
 use crate::repositories::{
-    AiAgentRepo, CollectionRepo, GameRepo, GamificationRepo, InteractionRepo, UserRepo,
+    AiAgentRepo, CollectionRepo, FriendRepo, GameRepo, GamificationRepo, InteractionRepo, UserRepo,
 };
 use crate::state::AppState;
 use crate::templates::{BookmarksTemplate, EditProfileTemplate, ProfileTemplate};
@@ -93,6 +93,7 @@ async fn build_profile_template(
         stats_res,
         games_res,
         following_res,
+        friendship_res,
         prefs_res,
         ai_profile_res,
         socials_res,
@@ -122,6 +123,26 @@ async fn build_profile_template(
                     .await
                     .unwrap_or(false),
                 _ => false,
+            }
+        },
+        // v3.14.0 — trạng thái kết bạn với chủ hồ sơ (nút Kết bạn/Nhắn tin).
+        // Fail-open "none" khi DB lỗi (nút gửi lời mời vẫn hiện, handler
+        // kiểm tra lại trạng thái thật nên không tạo trùng).
+        async {
+            match current_user.as_ref() {
+                Some(cu) if !is_self => {
+                    match FriendRepo::between(&state.db, cu.id, user.id).await {
+                        Ok(Some(rel)) => match rel.status.as_str() {
+                            "accepted" => "friends",
+                            "pending" if rel.requester_id == cu.id => "pending_out",
+                            "pending" => "pending_in",
+                            _ => "blocked",
+                        },
+                        _ => "none",
+                    }
+                    .to_string()
+                }
+                _ => "self".to_string(),
             }
         },
         UserRepo::get_preferences(&state.db, user.id),
@@ -239,6 +260,7 @@ async fn build_profile_template(
     let stats = stats_res?;
     let games = games_res?;
     let is_following = following_res;
+    let friend_status = friendship_res;
     let preferences = prefs_res.unwrap_or_default();
     // Lấy hồ sơ AI Agent nếu user là AI Agent
     let ai_profile = ai_profile_res;
@@ -325,6 +347,7 @@ async fn build_profile_template(
         stats,
         games,
         is_following,
+        friend_status,
         is_self,
         preferences,
         ai_profile,

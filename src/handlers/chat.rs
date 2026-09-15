@@ -18,6 +18,10 @@ use uuid::Uuid;
 /// Đếm theo `chars()` (Unicode scalar) — tiếng Việt 500 ký tự = ~1500 bytes UTF-8.
 const MAX_MESSAGE_LEN: usize = 500;
 
+/// v3.14.0 — hard cap cho admin + member được cấp `chat_unlimited`
+/// (chống phình DB/memory nếu paste cả tiểu thuyết).
+const MAX_MESSAGE_LEN_UNLIMITED: usize = 20_000;
+
 /// Số tin nhắn gần nhất trả về cho HTTP history endpoint.
 /// 50 là window đủ cho user mới vào hiểu context, không quá nặng (≈3KB JSON).
 const HISTORY_LIMIT: i64 = 50;
@@ -97,6 +101,8 @@ pub async fn ws_handler(
 
     let user_id = user.id;
     let is_staff = user.role.is_staff();
+    // v3.14.0 — admin + member được cấp chat không giới hạn ký tự.
+    let unlimited = user.can_chat_unlimited();
 
     // Heartbeat: gửi ping mỗi 30s để giữ connection sống và phát hiện client
     // đã đóng (NAT timeout, mạng yếu). Axum WS không có built-in keepalive.
@@ -106,7 +112,7 @@ pub async fn ws_handler(
             // Clone state + user_id để move vào async task. user_id đủ cho
             // broadcast payload — không cần full User struct (đã có trong
             // ChatMessageWithUser khi INSERT vào DB và SELECT lại).
-            async move { run_ws(state, socket, user_id, is_staff).await }
+            async move { run_ws(state, socket, user_id, is_staff, unlimited).await }
         })
 }
 
@@ -125,7 +131,13 @@ pub async fn ws_handler(
 ///
 /// v2.9.2 FIX: presence chuyển sang ref-count theo connection (multi-tab
 /// đúng) + cap connection/user (chặn DoS mở hàng trăm WS đốt bộ nhớ).
-async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_staff: bool) {
+async fn run_ws(
+    state: Arc<AppState>,
+    mut socket: WebSocket,
+    user_id: Uuid,
+    is_staff: bool,
+    unlimited: bool,
+) {
     // 0) Presence: đăng ký connection (atomic check+increment dưới 1 lock).
     match state.presence_add(user_id, MAX_WS_CONNS_PER_USER) {
         PresenceAdd::Rejected => {
@@ -162,7 +174,7 @@ async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_s
             // WS frame từ client — chat message hoặc admin delete command.
             msg = socket.recv() => match msg {
                 Some(Ok(Message::Text(text))) => {
-                    handle_text_frame(&state, user_id, is_staff, &text).await;
+                    handle_text_frame(&state, user_id, is_staff, unlimited, &text).await;
                 }
                 Some(Ok(Message::Binary(_))) => {
                     // Ignore binary — chat chỉ dùng text.
@@ -220,7 +232,13 @@ async fn run_ws(state: Arc<AppState>, mut socket: WebSocket, user_id: Uuid, is_s
 ///   - Chat message: chuỗi thuần content, không phải JSON. Đơn giản hoá
 ///     client (chỉ cần gửi text thuần). Backend wrap vào ChatEvent.
 ///   - JSON command: {"action":"delete","id":"..."} cho admin ẩn tin.
-async fn handle_text_frame(state: &AppState, user_id: Uuid, is_staff: bool, raw: &str) {
+async fn handle_text_frame(
+    state: &AppState,
+    user_id: Uuid,
+    is_staff: bool,
+    unlimited: bool,
+    raw: &str,
+) {
     // Thử parse JSON command trước — nếu fail thì coi như plain text message.
     if let Ok(cmd) = serde_json::from_str::<WsCommand>(raw) {
         match cmd.action.as_str() {
@@ -246,11 +264,17 @@ async fn handle_text_frame(state: &AppState, user_id: Uuid, is_staff: bool, raw:
     if content.is_empty() {
         return;
     }
+    // v3.14.0 — unlimited cho admin + member được cấp (hard cap 20000).
+    let max_len = if unlimited {
+        MAX_MESSAGE_LEN_UNLIMITED
+    } else {
+        MAX_MESSAGE_LEN
+    };
     let char_count = content.chars().count();
-    if char_count > MAX_MESSAGE_LEN {
+    if char_count > max_len {
         // Truncate thay vì reject — giữ UX mượt (user paste > 500 sẽ vẫn thấy
         // tin gửi đi, chỉ bị cắt. Client có char counter để phòng trước).
-        let truncated: String = content.chars().take(MAX_MESSAGE_LEN).collect();
+        let truncated: String = content.chars().take(max_len).collect();
         send_message(state, user_id, &truncated).await;
         return;
     }

@@ -5,6 +5,38 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] — 2026-09-15 — Kết bạn + Chat riêng + Nhóm chat + Chat ảnh + Unlimited cho admin
+
+### ✨ Features
+- **Kết bạn:** gửi/chấp nhận/từ chối/hủy lời mời, hủy kết bạn, chặn/bỏ chặn
+  (`/friends`, nút Kết bạn trên hồ sơ). Tự chấp nhận khi 2 bên mời nhau.
+- **Chat riêng (DM):** chỉ bạn bè mới nhắn được (staff ngoại lệ), thread
+  `/messages/dm/{username}`, poll HTMX 3s — không dùng WS chung để tránh
+  leak nội dung + fan-out.
+- **Nhóm chat:** tạo nhóm từ bạn bè, thêm/xóa/đổi tên/rời/xóa nhóm, phân
+  quyền owner/admin/member (`/messages/group/{id}`).
+- **Gửi ảnh trong chat:** upload `/uploads/chat/image` (5MB, tính quota
+  ngày), render ảnh trong thread + preview inbox.
+- **Chat không giới hạn ký tự:** admin mặc định unlimited; admin cấp tay
+  từng member (`users.chat_unlimited`, toggle ở trang user detail).
+  Member thường 500 ký tự (đồng nhất live chat), hard cap 20000 cho mọi
+  đối tượng. Live chat WS cũng tôn trọng cờ này.
+
+### ⚡ Performance
+- DM tra bằng `dm_key` UNIQUE (O(1)); inbox 1 query (LATERAL + COUNT);
+  thread LIMIT 30 + index `(conversation_id, created_at DESC)`; notify
+  nhóm 1 query INSERT..SELECT; badge unread 1 COUNT poll 60s.
+
+### 🔒 Security
+- Validate `image_url` phải `/uploads/...` (chặn URL ngoài/XSS);
+  check membership + friendship ở mọi endpoint; rate-limit 30 tin/phút
+  + 20 lời mời/giờ; chặn kết bạn/DM với bot AI Agent và user bị ban.
+
+### 🛠 CI/CD
+- Fix `Cargo.lock` lệch sau bump 3.13.1 (`cargo update -w`).
+- Job autofmt dùng `AUTOFMT_PAT` (PAT có quyền bypass ruleset) để push
+  commit fmt về `main` bị protect — trước đây fail GH006.
+
 ## [3.13.1] — 2026-09-08 — Fix mass-assignment GameStatus + default an toàn
 
 ### 🔒 Security

@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ title }} · Tin nhắn{% endblock %}
+{% block description %}Trò chuyện trên Louis Space.{% endblock %}
+
+{% block content %}
+<section class="content-section dm-thread">
+    <div class="section-header">
+        <h1 class="section-title">
+            <a href="/messages" class="dm-back" aria-label="Về hộp thư">←</a>
+            {% match avatar_url %}
+            {% when Option::Some with (url) %}
+            <img src="{{ url }}" alt="" class="avatar avatar-sm" width="32" height="32" decoding="async">
+            {% when Option::None %}{% if is_group %}👥{% endif %}
+            {% endmatch %}
+            {{ title }}
+        </h1>
+        {% if is_group %}<span class="section-more">{{ members.len() }} thành viên</span>{% endif %}
+    </div>
+
+    {% match conversation %}
+    {% when Option::Some with (conv) %}
+    {# Hộp tin nhắn — poll partial mỗi 3s (riêng tư, không dùng WS chung). #}
+    {% if is_group %}
+    <div id="dm-box" class="dm-box"
+         hx-get="/messages/group/{{ conv.id }}/box" hx-trigger="every 3s" hx-swap="innerHTML">
+    {% else %}
+    <div id="dm-box" class="dm-box"
+         hx-get="/messages/dm/{{ other_username }}/box" hx-trigger="every 3s" hx-swap="innerHTML">
+    {% endif %}
+        {% for m in messages %}
+        {% if m.is_deleted %}
+        <div class="dm-msg"><span class="muted dm-deleted">Tin nhắn đã bị xóa</span></div>
+        {% else %}
+        {% match current_user %}
+        {% when Option::Some with (cu) %}
+        <div class="dm-msg {% if m.sender_id == cu.id %}dm-mine{% endif %}">
+            <div class="dm-bubble">
+                {% if m.sender_id != cu.id %}<div class="dm-name">{{ m.display_name }}</div>{% endif %}
+                {% if !m.content.is_empty() %}<div class="dm-text">{{ m.content }}</div>{% endif %}
+                {% match m.image_url %}
+                {% when Option::Some with (img) %}
+                <a href="{{ img }}" target="_blank" rel="noopener"><img src="{{ img }}" alt="Ảnh đính kèm" class="dm-image" loading="lazy" decoding="async"></a>
+                {% when Option::None %}{% endmatch %}
+            </div>
+        </div>
+        {% when Option::None %}{% endmatch %}
+        {% endif %}
+        {% endfor %}
+    </div>
+
+    {# Form gửi (HTMX append 1 tin, không reload trang). #}
+    {% if is_group %}
+    <form id="dm-form" class="dm-form" hx-post="/messages/group/{{ conv.id }}/send"
+          hx-target="#dm-box" hx-swap="beforeend" hx-on::after-request="this.reset(); document.getElementById('dm-preview').innerHTML='';">
+    {% else %}
+    <form id="dm-form" class="dm-form" hx-post="/messages/dm/{{ other_username }}/send"
+          hx-target="#dm-box" hx-swap="beforeend" hx-on::after-request="this.reset(); document.getElementById('dm-preview').innerHTML='';">
+    {% endif %}
+        <input type="hidden" name="image_url" id="dm-image-url" value="">
+        <div id="dm-preview" class="dm-preview"></div>
+        <div class="dm-input-row">
+            <label class="dm-attach" title="Gửi ảnh">📷
+                <input type="file" id="dm-file" accept="image/jpeg,image/png,image/webp,image/gif" hidden>
+            </label>
+            {% if unlimited %}
+            <textarea name="content" id="dm-content" class="form-control" rows="1"
+                      maxlength="20000" placeholder="Nhắn tin… (không giới hạn ký tự ✨)"></textarea>
+            {% else %}
+            <textarea name="content" id="dm-content" class="form-control" rows="1"
+                      maxlength="{{ limit }}" placeholder="Nhắn tin… (tối đa {{ limit }})"></textarea>
+            {% endif %}
+            <button type="submit" class="btn btn-primary btn-sm">Gửi</button>
+        </div>
+        {% if !unlimited %}<small class="muted"><span id="dm-count">0</span>/{{ limit }}</small>{% endif %}
+    </form>
+
+    {% if is_group %}
+    <details class="dm-manage">
+        <summary>⚙️ Quản lý nhóm</summary>
+        <ul class="friend-list">
+            {% for mb in members %}
+            <li class="friend-row">
+                <a href="/u/{{ mb.username }}" class="friend-user">
+                    {% match mb.avatar_url %}
+                    {% when Option::Some with (url) %}
+                    <img src="{{ url }}" alt="{{ mb.display_name }}" class="avatar avatar-xs" width="28" height="28" loading="lazy" decoding="async">
+                    {% when Option::None %}
+                    <div class="avatar avatar-xs avatar-fallback">{{ mb.display_name|initials }}</div>
+                    {% endmatch %}
+                    <span class="friend-name">{{ mb.display_name }}
+                        <span class="muted">{% if mb.role == "owner" %}Trưởng nhóm{% else if mb.role == "admin" %}Phó nhóm{% endif %}</span>
+                    </span>
+                </a>
+                {% if my_role == "owner" || my_role == "admin" %}
+                {% if mb.role != "owner" %}
+                <form method="post" action="/messages/group/{{ conv.id }}/remove" style="display:inline">
+                    <input type="hidden" name="user_id" value="{{ mb.user_id }}">
+                    <button type="submit" class="btn btn-outline btn-sm">Xóa</button>
+                </form>
+                {% endif %}
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+        {% if my_role == "owner" || my_role == "admin" %}
+        <form method="post" action="/messages/group/{{ conv.id }}/add" class="stack-form">
+            <label>Thêm bạn (username, cách nhau bằng dấu phẩy)
+                <input type="text" name="usernames" class="form-control" maxlength="2000" placeholder="VD: hieu, lan">
+            </label>
+            <button type="submit" class="btn btn-outline btn-sm">Thêm vào nhóm</button>
+        </form>
+        <form method="post" action="/messages/group/{{ conv.id }}/rename" class="stack-form">
+            <label>Đổi tên nhóm
+                <input type="text" name="name" class="form-control" required minlength="2" maxlength="100" value="{{ title }}">
+            </label>
+            <button type="submit" class="btn btn-outline btn-sm">Đổi tên</button>
+        </form>
+        {% endif %}
+        <form method="post" action="/messages/group/{{ conv.id }}/leave" style="margin-top:8px"
+              onsubmit="return confirm('Rời nhóm này?')">
+            <button type="submit" class="btn btn-outline btn-sm">Rời nhóm</button>
+        </form>
+        {% if my_role == "owner" %}
+        <form method="post" action="/messages/group/{{ conv.id }}/delete" style="margin-top:8px"
+              onsubmit="return confirm('Xóa vĩnh viễn nhóm này?')">
+            <button type="submit" class="btn btn-danger btn-sm">Xóa nhóm</button>
+        </form>
+        {% endif %}
+    </details>
+    {% endif %}
+
+    {% when Option::None %}
+    {# DM chưa bắt đầu. #}
+    <div class="empty-state">
+        <p>Chưa có cuộc trò chuyện nào với <strong>{{ title }}</strong>.</p>
+        <form method="post" action="/messages/dm/{{ other_username }}/start">
+            <button type="submit" class="btn btn-primary">Bắt đầu trò chuyện</button>
+        </form>
+    </div>
+    {% endmatch %}
+</section>
+<script src="/static/js/dm.js?v={{ ""|ver }}" defer></script>
+{% endblock %}

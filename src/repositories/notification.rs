@@ -187,6 +187,83 @@ impl NotificationRepo {
         Ok(())
     }
 
+    /// v3.14.0 — Thông báo lời mời kết bạn (link tới trang bạn bè).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_friend_request(
+        pool: &PgPool,
+        user_id: Uuid,
+        actor_id: Uuid,
+        actor_name: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              VALUES ($1, $2, 'friend_request'::notification_type, $3, '/friends')",
+        )
+        .bind(user_id)
+        .bind(actor_id)
+        .bind(format!("{actor_name} muốn kết bạn với bạn"))
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// v3.14.0 — Thông báo tin nhắn riêng mới (link tới thread).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_dm(
+        pool: &PgPool,
+        user_id: Uuid,
+        actor_id: Uuid,
+        actor_name: &str,
+        link: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              VALUES ($1, $2, 'dm'::notification_type, $3, $4)",
+        )
+        .bind(user_id)
+        .bind(actor_id)
+        .bind(format!("{actor_name} đã nhắn tin cho bạn"))
+        .bind(link)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// v3.14.0 — Batch: báo tin nhắn mới tới MỌI thành viên hội thoại trừ
+    /// người gửi (1 query INSERT..SELECT — nhóm 50 người vẫn 1 round-trip).
+    /// Bỏ qua user bị ban (không đọc notification).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_dm_batch(
+        pool: &PgPool,
+        conversation_id: Uuid,
+        actor_id: Uuid,
+        title: &str,
+        link: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, actor_id, type, title, link)
+              SELECT m.user_id, $2, 'dm'::notification_type, $3, $4
+              FROM chat_members m
+              JOIN users u ON u.id = m.user_id
+              WHERE m.conversation_id = $1
+                AND m.user_id != $2
+                AND NOT u.is_banned",
+        )
+        .bind(conversation_id)
+        .bind(actor_id)
+        .bind(title)
+        .bind(link)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
     /// v2.2.0 — Batch mention tới nhiều user trong 1 query.
     /// Trước đây comment mention 10 user = 10 sequential INSERT (N+1).
     /// Giờ là 1 INSERT ... SELECT FROM unnest(...) — giảm round-trip DB.

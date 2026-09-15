@@ -93,6 +93,10 @@ impl_template_response!(
     AdminFeedbackTemplate,
     // v3.6.0 — Admin XP Boost (1000 XP / 0.15s start/stop)
     AdminXpBoostTemplate,
+    // v3.14.0 — Kết bạn + chat riêng + nhóm chat
+    FriendsTemplate,
+    InboxTemplate,
+    DmThreadTemplate,
 );
 
 /// Home page
@@ -290,6 +294,9 @@ pub struct ProfileTemplate {
     pub stats: user::UserStats,
     pub games: Vec<GameCard>,
     pub is_following: bool,
+    /// v3.14.0 — trạng thái kết bạn với người xem: "self" | "none" |
+    /// "pending_out" | "pending_in" | "friends" | "blocked".
+    pub friend_status: String,
     pub is_self: bool,
     pub preferences: user::UserPreference,
     /// Nếu user là AI Agent, đây là hồ sơ AI (`model_name`, vendor, ...).
@@ -1725,4 +1732,171 @@ pub struct XpBoostStatusPartial {
     pub elapsed_secs: u64,
     pub xp_per_tick: i32,
     pub tick_ms: u64,
+}
+
+// ============================================================
+// v3.14.0 — KẾT BẠN + CHAT RIÊNG + NHÓM CHAT
+// ============================================================
+
+/// Trang bạn bè (/friends)
+#[derive(Template)]
+#[template(path = "friends/index.html")]
+pub struct FriendsTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub friends: Vec<crate::models::FriendshipWithUser>,
+    pub incoming: Vec<crate::models::FriendshipWithUser>,
+    pub outgoing: Vec<crate::models::FriendshipWithUser>,
+}
+
+/// Hộp thư (/messages)
+#[derive(Template)]
+#[template(path = "dm/inbox.html")]
+pub struct InboxTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub items: Vec<crate::models::InboxItem>,
+    pub total_unread: i64,
+    pub incoming_requests: i64,
+}
+
+/// Thread chat DM/nhóm (/messages/dm/{u}, /messages/group/{id}).
+/// `conversation=None` = DM chưa bắt đầu (hiện nút "Bắt đầu trò chuyện").
+#[derive(Template)]
+#[template(path = "dm/thread.html")]
+pub struct DmThreadTemplate {
+    pub current_user: Option<user::User>,
+    pub unread_notifications: i64,
+    pub conversation: Option<crate::models::Conversation>,
+    /// Tiêu đề thread (tên đối phương / tên nhóm).
+    pub title: String,
+    pub is_group: bool,
+    /// Username đối phương (DM đã bắt đầu) — để form poll/send đúng URL.
+    pub other_username: String,
+    /// Avatar đối phương / nhóm (hiển thị header).
+    pub avatar_url: Option<String>,
+    pub messages: Vec<crate::models::DmMessageWithSender>,
+    /// Giới hạn ký tự của NGƯỜI XEM (counter + maxlength client).
+    pub limit: usize,
+    /// Unlimited? (hiện gợi ý "không giới hạn" thay vì counter).
+    pub unlimited: bool,
+    /// Vai trò của mình trong nhóm (DM: "member") — hiện nút quản lý.
+    pub my_role: String,
+    /// Thành viên nhóm (DM: rỗng).
+    pub members: Vec<crate::models::GroupMemberInfo>,
+}
+
+impl DmThreadTemplate {
+    /// DM chưa bắt đầu (chưa có hội thoại).
+    pub fn not_started(
+        current_user: Option<user::User>,
+        unread_notifications: i64,
+        other: user::User,
+        limit: usize,
+    ) -> Self {
+        let unlimited = current_user
+            .as_ref()
+            .is_some_and(|u| u.can_chat_unlimited());
+        Self {
+            current_user,
+            unread_notifications,
+            conversation: None,
+            title: if other.display_name.is_empty() {
+                other.username.clone()
+            } else {
+                other.display_name.clone()
+            },
+            is_group: false,
+            other_username: other.username.clone(),
+            avatar_url: other.avatar_url.clone(),
+            messages: Vec::new(),
+            limit,
+            unlimited,
+            my_role: "member".to_string(),
+            members: Vec::new(),
+        }
+    }
+
+    /// Thread DM đã có hội thoại.
+    pub fn dm(
+        current_user: Option<user::User>,
+        unread_notifications: i64,
+        conversation: crate::models::Conversation,
+        other: user::User,
+        messages: Vec<crate::models::DmMessageWithSender>,
+        limit: usize,
+    ) -> Self {
+        let unlimited = current_user
+            .as_ref()
+            .is_some_and(|u| u.can_chat_unlimited());
+        Self {
+            current_user,
+            unread_notifications,
+            conversation: Some(conversation),
+            title: if other.display_name.is_empty() {
+                other.username.clone()
+            } else {
+                other.display_name.clone()
+            },
+            is_group: false,
+            other_username: other.username.clone(),
+            avatar_url: other.avatar_url.clone(),
+            messages,
+            limit,
+            unlimited,
+            my_role: "member".to_string(),
+            members: Vec::new(),
+        }
+    }
+
+    /// Thread nhóm chat.
+    #[allow(clippy::too_many_arguments)]
+    pub fn group(
+        current_user: Option<user::User>,
+        unread_notifications: i64,
+        conversation: crate::models::Conversation,
+        members: Vec<crate::models::GroupMemberInfo>,
+        messages: Vec<crate::models::DmMessageWithSender>,
+        limit: usize,
+        my_role: String,
+    ) -> Self {
+        let unlimited = current_user
+            .as_ref()
+            .is_some_and(|u| u.can_chat_unlimited());
+        let title = if conversation.name.is_empty() {
+            "Nhóm chat".to_string()
+        } else {
+            conversation.name.clone()
+        };
+        Self {
+            current_user,
+            unread_notifications,
+            conversation: Some(conversation),
+            title,
+            is_group: true,
+            other_username: String::new(),
+            avatar_url: None,
+            messages,
+            limit,
+            unlimited,
+            my_role,
+            members,
+        }
+    }
+}
+
+/// Partial danh sách tin nhắn (HTMX poll box) — không layout.
+#[derive(Template)]
+#[template(path = "dm/box.html")]
+pub struct DmBoxTemplate {
+    pub messages: Vec<crate::models::DmMessageWithSender>,
+    pub me: uuid::Uuid,
+}
+
+/// Partial 1 tin nhắn mới (HTMX send → append).
+#[derive(Template)]
+#[template(path = "dm/message.html")]
+pub struct DmMessageTemplate {
+    pub message: crate::models::DmMessageWithSender,
+    pub me: uuid::Uuid,
 }

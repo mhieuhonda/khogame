@@ -13,7 +13,8 @@ impl UserRepo {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at,
+                chat_unlimited
               FROM users WHERE google_sub = $1",
         )
         .bind(sub)
@@ -33,6 +34,7 @@ impl UserRepo {
             r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
                 u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
                 u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
+                u.chat_unlimited,
                 b.avatar_frame AS avatar_frame
               FROM users u
               LEFT JOIN user_boosts b ON b.user_id = u.id
@@ -55,6 +57,7 @@ impl UserRepo {
             r"SELECT u.id, u.email, u.username, u.display_name, u.avatar_url, u.bio, u.google_sub,
                 u.role, u.is_banned, u.last_seen_at, u.created_at, u.updated_at,
                 u.signup_ip, u.signup_ua, u.last_login_ip, u.last_login_ua, u.last_login_at,
+                u.chat_unlimited,
                 b.avatar_frame AS avatar_frame
               FROM users u
               LEFT JOIN user_boosts b ON b.user_id = u.id
@@ -349,7 +352,8 @@ impl UserRepo {
         let users = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at,
+                chat_unlimited
               FROM users WHERE role IN ('admin', 'moderator') ORDER BY created_at",
         )
         .fetch_all(pool)
@@ -459,7 +463,8 @@ impl UserRepo {
         let user = sqlx::query_as::<_, User>(
             r"SELECT id, email, username, display_name, avatar_url, bio, google_sub,
                 role, is_banned, last_seen_at, created_at, updated_at,
-                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at
+                signup_ip, signup_ua, last_login_ip, last_login_ua, last_login_at,
+                chat_unlimited
               FROM users WHERE email = $1",
         )
         .bind(email)
@@ -499,6 +504,23 @@ impl UserRepo {
     pub async fn set_banned(pool: &PgPool, user_id: Uuid, banned: bool) -> AppResult<()> {
         sqlx::query("UPDATE users SET is_banned = $1 WHERE id = $2")
             .bind(banned)
+            .bind(user_id)
+            .execute(pool)
+            .await?;
+        Ok(())
+    }
+
+    /// v3.14.0 — admin cấp/thu hồi quyền chat không giới hạn ký tự.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn set_chat_unlimited(
+        pool: &PgPool,
+        user_id: Uuid,
+        unlimited: bool,
+    ) -> AppResult<()> {
+        sqlx::query("UPDATE users SET chat_unlimited = $1 WHERE id = $2")
+            .bind(unlimited)
             .bind(user_id)
             .execute(pool)
             .await?;

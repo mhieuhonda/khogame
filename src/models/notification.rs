@@ -18,6 +18,10 @@ pub enum NotificationType {
     Mention,
     /// v3.4.0 — trạng thái góp ý người dùng (feedback) cập nhật
     FeedbackStatus,
+    /// v3.14.0 — lời mời kết bạn
+    FriendRequest,
+    /// v3.14.0 — tin nhắn riêng/nhóm mới
+    Dm,
 }
 
 impl NotificationType {
@@ -35,6 +39,8 @@ impl NotificationType {
             Self::Rating => "⭐",
             Self::Mention => "@",
             Self::FeedbackStatus => "💬",
+            Self::FriendRequest => "🤝",
+            Self::Dm => "✉️",
         }
     }
     #[must_use]
@@ -51,6 +57,8 @@ impl NotificationType {
             Self::Rating => "Đánh giá sao",
             Self::Mention => "Đề cập",
             Self::FeedbackStatus => "Góp ý",
+            Self::FriendRequest => "Kết bạn",
+            Self::Dm => "Tin nhắn",
         }
     }
 }

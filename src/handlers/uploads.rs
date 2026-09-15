@@ -237,6 +237,23 @@ pub async fn repo_image(
         .map_err(UploadErrorResponse::from)
 }
 
+/// v3.14.0 — POST /uploads/chat/image — ảnh đính kèm tin nhắn riêng/nhóm
+/// (max 5MB, tính vào quota upload/ngày như mọi ảnh khác).
+///
+/// # Errors
+///
+/// Trả về lỗi khi file không hợp lệ hoặc quá lớn (>5MB).
+pub async fn chat_image(
+    state: State<Arc<AppState>>,
+    user: AuthUser,
+    multipart: Multipart,
+) -> Result<axum::Json<UploadResponse>, UploadErrorResponse> {
+    handle_upload(state, user, multipart, UploadKind::ChatImage)
+        .await
+        .map(axum::Json)
+        .map_err(UploadErrorResponse::from)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

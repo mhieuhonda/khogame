@@ -53,6 +53,11 @@
                 {% if user.is_banned %}<span class="badge badge-danger">Đã cấm</span>{% else %}<span class="badge badge-success">Hoạt động</span>{% endif %}
             </div>
             <div class="user-detail-row">
+                <strong>Chat:</strong>
+                <span id="unlimited-badge">{% if user.chat_unlimited %}<span class="badge badge-success">Chat không giới hạn ✨</span>{% else %}<span class="badge badge-muted">Chat giới hạn 500 ký tự</span>{% endif %}</span>
+                {% if user.role.is_admin() %}<span class="muted">(admin mặc định unlimited)</span>{% endif %}
+            </div>
+            <div class="user-detail-row">
                 <strong>Tham gia:</strong> {{ user.created_at|format_datetime_vn }}
             </div>
             <div class="user-detail-row">
@@ -159,6 +164,15 @@
             <button type="submit" class="btn btn-outline btn-sm">Bỏ cấm</button>
             {% else %}
             <button type="submit" class="btn btn-danger btn-sm" name="ban" value="1">Cấm user</button>
+            {% endif %}
+        </form>
+        {# v3.14.0 — cấp/thu hồi chat không giới hạn (HTMX swap badge tại chỗ). #}
+        <form hx-post="/admin/users/{{ user.id }}/chat-unlimited"
+              hx-target="#unlimited-badge" hx-swap="innerHTML" style="margin-top:12px">
+            {% if user.chat_unlimited %}
+            <button type="submit" class="btn btn-outline btn-sm">Thu hồi chat không giới hạn</button>
+            {% else %}
+            <button type="submit" class="btn btn-primary btn-sm" name="unlimited" value="1">Cấp chat không giới hạn ✨</button>
             {% endif %}
         </form>
         {% else %}

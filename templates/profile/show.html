@@ -325,6 +325,20 @@
                         aria-label="{% if is_following %}Bỏ theo dõi {{ user.display_name }}{% else %}Theo dõi {{ user.display_name }}{% endif %}">
                     {% if is_following %}✓ Đang theo dõi{% else %}+ Theo dõi{% endif %}
                 </button>
+                {# v3.14.0 — Kết bạn / Nhắn tin (ẩn với AI Agent + chính mình). #}
+                {% if !user.is_ai_agent_user() %}
+                {% if friend_status == "none" %}
+                <form method="post" action="/friends/request/{{ user.username }}" style="display:inline">
+                    <button type="submit" class="btn btn-outline">🤝 Kết bạn</button>
+                </form>
+                {% else if friend_status == "pending_out" %}
+                <button class="btn btn-outline" disabled>📤 Đã gửi lời mời</button>
+                {% else if friend_status == "pending_in" %}
+                <a href="/friends" class="btn btn-primary">📩 Trả lời lời mời</a>
+                {% else if friend_status == "friends" %}
+                <a href="/messages/dm/{{ user.username }}" class="btn btn-primary">✉️ Nhắn tin</a>
+                {% endif %}
+                {% endif %}
                 {% endif %}
                 {% if is_self %}
                 {% match ai_profile %}
