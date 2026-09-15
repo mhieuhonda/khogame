@@ -538,18 +538,6 @@ mod path_normalization_tests {
     }
 
     #[test]
-    fn google_callback_has_own_narrow_bucket() {
-        // v3.13.0 (audit CRITICAL): /auth/google/callback (mỗi hit egress
-        // Google) phải có bucket RIÊNG, không gộp với /auth/google hay
-        // rơi về default — nếu normalize gộp, rule 20/10' đặt trong
-        // rate_limit sẽ áp nhầm sang endpoint khác.
-        assert_eq!(norm("/auth/google/callback"), "/auth/google/callback");
-        assert_ne!(norm("/auth/google/callback"), norm("/auth/google"));
-        // /auth/ai/* cũng giữ bucket riêng từng endpoint.
-        assert_ne!(norm("/auth/ai/login"), norm("/auth/ai/register"));
-    }
-
-    #[test]
     fn usernames_and_category_slugs_normalized() {
         // /u/{username} — mọi user chung bucket follow theo IP
         assert_eq!(norm("/u/alice/follow"), norm("/u/bob/follow"));
@@ -1155,17 +1143,7 @@ pub async fn rate_limit(
             "x:anon-unknown".to_string()
         }
     } else {
-        // v3.13.0 FIX (audit CGNAT false-429): khi tin IP public (sau NAT
-        // nhiều user cùng 1 IP public — CGNAT/carrier-grade NAT), bucket key
-        // = IP thuần gộp mọi user sau cùng IP vào chung quota → 1 user spam
-        // là cả dải IP ăn 429 oan. Tái dùng cơ chế cookie anon đã ký ở
-        // nhánh private-IP (~1307): có anon hợp lệ thì key = IP + anon
-        // (per-browser trong cùng IP), không có thì giữ IP thuần như cũ.
-        // Cookie không ký được (bot xoay) → rơi về IP thuần (fail-closed).
-        match anon_cookie_value(request.headers(), &state.config.session_key) {
-            Some(anon) => format!("{ip}|a:{anon}"),
-            None => ip.clone(),
-        }
+        ip.clone()
     };
 
     // Tăng giới hạn nghiêm ngặt cho các endpoint AI Agent & auth để
@@ -1191,13 +1169,6 @@ pub async fn rate_limit(
         // (5 POST + 5 redirect về form = 10 request) bị 429 chặn luôn
         // TRANG FORM, tưởng site hỏng. GET form giờ về bucket mặc định.
         (10, 600)
-    } else if path == "/auth/google/callback" {
-        // v3.13.0 (audit CRITICAL): mỗi hit callback gọi egress sang Google
-        // (đổi code lấy token) — attacker hit trực tiếp với code rác/bỏ
-        // trống là đốt egress + CPU + quota. Bucket riêng hẹp 20 request /
-        // 10 phút (nới hơn /auth/google 10/10' vì redirect OAuth hợp lệ có
-        // thể retry), TUYỆT ĐỐI không rơi về default 120/phút.
-        (20, 600)
     } else if path.starts_with("/auth/google") {
         (10, 600)
     } else if path.starts_with("/ai/") {
@@ -2071,42 +2042,25 @@ pub async fn origin_check(
     // vậy hoặc là non-browser dùng cookie đánh cắp, hoặc proxy legacy
     // stripping headers. AI Agent dùng Bearer token (không cookie) nên
     // không bị ảnh hưởng. Chỉ vô hiệu khi không có cookie (curl dev/test).
-    // v3.8.0 FIX (security audit F2): request unsafe-method VẮNG CẢ Origin
-    // lẫn Referer nhưng MANG session cookie → từ chối (fail-closed).
-    // Browser hiện đại luôn gửi Origin cho POST/PUT/DELETE — request như
-    // vậy hoặc là non-browser dùng cookie đánh cắp, hoặc proxy legacy
-    // stripping headers. AI Agent dùng Bearer token (không cookie) nên
-    // không bị ảnh hưởng. Chỉ vô hiệu khi không có cookie (curl dev/test).
-    // v3.13.0 FIX (audit "verify_origin yếu đúng endpoint mint-session"):
-    // với các endpoint TẠO SESSION (đăng nhập/đăng ký — xem
-    // is_session_mint_path), nới điều kiện lên BẤT KỲ cookie nào (không
-    // chỉ cookie nhạy cảm): login-CSRF không cần cookie nhạy cảm của nạn
-    // nhân — chỉ cần browser tự đính kèm cookie (kể cả theme/tracking) là
-    // đủ chứng minh đây là browser, mà browser thì PHẢI gửi Origin cho
-    // POST. curl/API không cookie vẫn qua bình thường.
     if origin.is_none() && referer.is_none() {
-        let path = request.uri().path().to_string();
-        let cookie_header = request
-            .headers()
-            .get(axum::http::header::COOKIE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
         // v3.12.0 (audit sec #4 — defensive): trước đây chỉ check
         // `kg_session=` — request chỉ mang kg_impersonator / kg_oauth_state
         // mà thiếu Origin vẫn đi qua. Hôm nay không exploit được (ticket
         // impersonate bind session hash, oauth state không dùng ở endpoint
         // đổi-trạng-thái) nhưng để vùng phủ đồng đều: any-cookie-nhạy-cảm
         // → fail-closed, phòng hờ endpoint tương lai dùng các cookie này.
-        let has_sensitive_cookie = cookie_header.contains("kg_session=")
-            || cookie_header.contains("kg_impersonator=")
-            || cookie_header.contains("kg_oauth_state=");
-        // Endpoint tạo session: BẤT KỲ cookie nào cũng đủ fail-closed
-        // (login-CSRF — xem comment is_session_mint_path).
-        let has_any_cookie = !cookie_header.trim().is_empty();
-        if has_sensitive_cookie || (is_session_mint_path(&path) && has_any_cookie) {
+        let has_sensitive_cookie = request
+            .headers()
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|c| {
+                c.contains("kg_session=")
+                    || c.contains("kg_impersonator=")
+                    || c.contains("kg_oauth_state=")
+            });
+        if has_sensitive_cookie {
             return Err(AppError::Forbidden(
-                "Yêu cầu thiếu thông tin nguồn (Origin/Referer) — bị chặn để phòng CSRF".into(),
+                "Yêu cầu thiếu thông tin nguồn (Origin/Referer) — bị chặn                  để phòng CSRF".into(),
             ));
         }
     }
@@ -2126,21 +2080,6 @@ pub async fn origin_check(
     Ok(next.run(request).await)
 }
 
-/// Path tạo session mới (đăng nhập/đăng ký/session mới) — CSRF ở đây là
-/// login-CSRF: ép nạn nhân đăng nhập vào tài khoản attacker, sau đó mọi
-/// hành động của nạn nhân ghi vào tài khoản attacker. Với các path này,
-/// request thiếu cả Origin/Referer mà mang BẤT KỲ cookie nào cũng bị chặn
-/// (kể cả cookie không nhạy cảm) — curl/API không cookie vẫn qua bình thường.
-fn is_session_mint_path(path: &str) -> bool {
-    path.starts_with("/auth/google/")
-        || path == "/auth/google"
-        || path.starts_with("/auth/ai/login")
-        || path.starts_with("/auth/ai/register")
-        || path == "/auth/login"
-        || path.starts_with("/auth/login/")
-        || path == "/login"
-        || path.starts_with("/login/")
-}
 /// So sánh Origin/Referer với Host + base_url. Trả `Some(AppError)` nếu
 /// từ chối, `None` nếu cho qua.
 fn check_origin_headers(
@@ -2404,32 +2343,6 @@ mod origin_check_tests {
             BASE
         )
         .is_some());
-    }
-
-    #[test]
-    fn session_mint_paths_covered() {
-        // Endpoint tạo session (đăng nhập/đăng ký/session mới) phải nằm
-        // trong diện fail-closed any-cookie (login-CSRF).
-        for p in [
-            "/auth/google/callback",
-            "/auth/google",
-            "/auth/ai/login",
-            "/auth/ai/register",
-            "/login",
-        ] {
-            assert!(super::is_session_mint_path(p), "path {p} phải là session-mint");
-        }
-        // Endpoint thường KHÔNG bị diện gắt này (chỉ sensitive-cookie).
-        for p in ["/games/abc/comments", "/profile", "/admin/users"] {
-            assert!(!super::is_session_mint_path(p), "path {p} không phải session-mint");
-        }
-    }
-
-    #[test]
-    fn curl_without_cookie_still_passes_mint_path() {
-        // curl/API không cookie trên endpoint mint-session vẫn qua
-        // (không phá tương thích) — fail-closed chỉ khi CÓ cookie.
-        assert!(check_origin_headers(None, None, HOST, BASE).is_none());
     }
 }
 
@@ -2788,10 +2701,7 @@ pub async fn request_timeout(request: Request, next: Next) -> Response {
 //   - Request KHÔNG mang cookie kg_session (đăng nhập bypass tuyệt đối
 //     — không bao giờ nhận HTML render cho người khác, kể cả khách mang
 //     cookie session hết hạn — an toàn hơn là tiếc).
-//   - Path nằm trong MICRO_CACHE_PATHS (trang công khai topo — allowlist
-//     path KHÔNG query động, không segment động).
-//   - Key = path + query allowlist đã sort + HX-Request + Accept-Language
-//     (xem micro_cache_key) + Vary tương ứng trên response.
+//   - Path nằm trong MICRO_CACHE_PATHS (trang công khai topo).
 //   - Response 2xx + text/html + KHÔNG Set-Cookie + body < 512KB.
 //
 // Layer ordering: INNERMOST (trong rate_limit) → hit cache vẫn đi qua
@@ -2818,67 +2728,6 @@ const MICRO_CACHE_PATHS: &[&str] = &[
     "/terms",
     "/privacy",
 ];
-
-/// Query param được phép tham gia micro-cache key (phân trang/sắp xếp
-/// của trang list công khai). Param lạ bị LOẠI khỏi key (không tạo bucket
-/// mới) — chống spam `?x=1..9999` tràn RAM (kết hợp MICRO_CACHE_MAX_ENTRIES).
-const MICRO_CACHE_QUERY_ALLOW: &[&str] = &["page", "sort", "order", "q", "tab", "filter"];
-
-/// Dựng cache key chuẩn: path + query allowlist đã sort + HX-Request +
-/// Accept-Language. Hai request chỉ dùng chung entry khi cả 4 thành phần
-/// giống nhau — chống cache-poisoning (HTMX fragment lẫn full page,
-/// bản tiếng Việt lẫn bản tiếng Anh).
-fn micro_cache_key(path: &str, query: &str, headers: &axum::http::HeaderMap) -> String {
-    let mut pairs: Vec<(String, String)> = Vec::new();
-    if !query.is_empty() {
-        for part in query.split('&') {
-            let (k, v) = match part.split_once('=') {
-                Some((k, v)) => (k.trim(), v.trim()),
-                None => (part.trim(), ""),
-            };
-            if k.is_empty() || !MICRO_CACHE_QUERY_ALLOW.contains(&k) {
-                continue;
-            }
-            pairs.push((k.to_string(), v.to_string()));
-        }
-        pairs.sort();
-    }
-    // Header HX-Request: normalize lowercase (browser gửi "true", thiếu
-    // header nghĩa là full navigation) — fragment HTMX không bao giờ lẫn
-    // entry full page kể cả khi lọt qua điều kiện eligible trong tương lai.
-    let hx = headers
-        .get("hx-request")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim().to_ascii_lowercase())
-        .unwrap_or_default();
-    // Accept-Language: lấy nguyên chuỗi, lowercase + cắt 64 ký tự (đủ cho
-    // `vi-VN,vi;q=0.9,en;q=0.8`, chặn header dài vô lý phình key).
-    let lang: String = headers
-        .get(axum::http::header::ACCEPT_LANGUAGE)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.trim().to_ascii_lowercase().chars().take(64).collect())
-        .unwrap_or_default();
-    let mut key = String::with_capacity(path.len() + query.len() + 80);
-    key.push_str(path);
-    if !pairs.is_empty() {
-        key.push('?');
-        let mut first = true;
-        for (k, v) in &pairs {
-            if !first {
-                key.push('&');
-            }
-            first = false;
-            key.push_str(k);
-            key.push('=');
-            key.push_str(v);
-        }
-    }
-    key.push_str("\nhx=");
-    key.push_str(&hx);
-    key.push_str("\nlang=");
-    key.push_str(&lang);
-    key
-}
 
 /// Giới hạn: 64 entry × ~500KB = ~32MB tệ đa — phòng kẻ spam ?page=1..9999
 /// (path khác query khác key) tràn RAM.
@@ -2955,9 +2804,11 @@ pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
         return next.run(request).await;
     }
 
-    // Key chuẩn: path + query allowlist đã sort + HX-Request +
-    // Accept-Language (xem micro_cache_key) — chống cache-poisoning.
-    let cache_key = micro_cache_key(&path, &query, request.headers());
+    let cache_key = if query.is_empty() {
+        path.clone()
+    } else {
+        format!("{path}?{query}")
+    };
 
     // Tra cache — MỘT lock duy nhất cho cả check + clone (nếu tách 2 lock,
     // entry có thể bị LRU-evict giữa chừng → expect panic → 500 oan).
@@ -3003,14 +2854,7 @@ pub async fn micro_cache_mw(request: Request, next: Next) -> Response {
 
     // Buffer body để lưu — vượt MAX thì bỏ (không cache, response trả
     // nguyên vẹn).
-    let (mut parts, body_stream) = response.into_parts();
-    // Vary: báo cache trung gian (CDN/proxy) rằng response thay đổi theo
-    // HX-Request + Accept-Language — không được phục vụ bản cache cho
-    // request khác 2 header này (chống poisoning ở tầng proxy).
-    parts.headers.insert(
-        axum::http::header::VARY,
-        HeaderValue::from_static("HX-Request, Accept-Language"),
-    );
+    let (parts, body_stream) = response.into_parts();
     let body = match axum::body::to_bytes(body_stream, MICRO_CACHE_MAX_BODY).await {
         Ok(b) => b,
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -3189,122 +3033,5 @@ mod micro_cache_tests {
             "path chi tiết game không nằm trong allowlist micro-cache"
         );
         assert_eq!(counter.load(Ordering::Relaxed), 1);
-    }
-
-    /// Key chuẩn: query allowlist sort + loại param lạ, HX-Request +
-    /// Accept-Language phân biệt entry (pure function, không đụng global).
-    #[test]
-    fn cache_key_normalizes_query_and_headers() {
-        use super::micro_cache_key;
-        use axum::http::HeaderMap;
-        let plain = HeaderMap::new();
-        // Thứ tự query khác nhau → CÙNG key (sort).
-        let mut h1 = HeaderMap::new();
-        let mut h2 = HeaderMap::new();
-        assert_eq!(
-            micro_cache_key("/games", "sort=new&page=2", &h1),
-            micro_cache_key("/games", "page=2&sort=new", &h2),
-            "query allowlist phải sort trước khi key"
-        );
-        // Param lạ bị loại → cùng key với không query.
-        assert_eq!(
-            micro_cache_key("/games", "evil=1&utm_x=zzz", &h1),
-            micro_cache_key("/games", "", &plain),
-            "param ngoài allowlist không được tạo bucket mới"
-        );
-        // page khác nhau → key khác nhau.
-        assert_ne!(
-            micro_cache_key("/games", "page=1", &h1),
-            micro_cache_key("/games", "page=2", &h2),
-            "page khác nhau không được dùng chung entry"
-        );
-        // HX-Request khác nhau → key khác nhau (fragment không lẫn page).
-        let mut h_hx = HeaderMap::new();
-        h_hx.insert("hx-request", "true".parse().unwrap());
-        assert_ne!(
-            micro_cache_key("/news", "", &plain),
-            micro_cache_key("/news", "", &h_hx),
-            "HTMX fragment không được lẫn full page"
-        );
-        // Accept-Language khác nhau → key khác nhau.
-        let mut h_vi = HeaderMap::new();
-        h_vi.insert(axum::http::header::ACCEPT_LANGUAGE, "vi".parse().unwrap());
-        let mut h_en = HeaderMap::new();
-        h_en.insert(axum::http::header::ACCEPT_LANGUAGE, "en".parse().unwrap());
-        assert_ne!(
-            micro_cache_key("/news", "", &h_vi),
-            micro_cache_key("/news", "", &h_en),
-            "ngôn ngữ khác nhau không được dùng chung entry"
-        );
-        let _ = &mut h1;
-        let _ = &mut h2;
-    }
-
-    /// Chống cache-poisoning end-to-end trên path /news (allowlist, không
-    /// test nào khác dùng): ngôn ngữ khác → MISS riêng (handler chạy lại),
-    /// cùng ngôn ngữ → HIT, response mang Vary đúng.
-    #[tokio::test]
-    async fn accept_language_variants_do_not_poison_each_other() {
-        use axum::http::header;
-        let counter = Arc::new(AtomicUsize::new(0));
-        let c = Arc::clone(&counter);
-        let app = Router::new()
-            .route(
-                "/news",
-                get(move || {
-                    let c = Arc::clone(&c);
-                    async move {
-                        c.fetch_add(1, Ordering::Relaxed);
-                        Html("<h1>news</h1>".to_string()).into_response()
-                    }
-                }),
-            )
-            .layer(from_fn(micro_cache_mw));
-        let lang_req = |lang: &str| {
-            Request::builder()
-                .method("GET")
-                .uri("/news")
-                .header(header::ACCEPT, "text/html")
-                .header(header::ACCEPT_LANGUAGE, lang)
-                .body(Body::empty())
-                .unwrap()
-        };
-        // Miss đầu (vi) — response store phải kèm Vary.
-        let r1 = ServiceExt::oneshot(app.clone(), lang_req("vi"))
-            .await
-            .unwrap();
-        assert_eq!(r1.status(), StatusCode::OK);
-        assert!(r1.headers().get("x-micro-cache").is_none());
-        let vary = r1
-            .headers()
-            .get(header::VARY)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or_default()
-            .to_string();
-        assert!(
-            vary.contains("HX-Request") && vary.contains("Accept-Language"),
-            "response cache phải có Vary HX-Request + Accept-Language, nhận: {vary}"
-        );
-        assert_eq!(counter.load(Ordering::Relaxed), 1);
-        // Ngôn ngữ khác (en) → MISS riêng, KHÔNG ăn entry của vi.
-        let r2 = ServiceExt::oneshot(app.clone(), lang_req("en"))
-            .await
-            .unwrap();
-        assert_eq!(r2.status(), StatusCode::OK);
-        assert!(
-            r2.headers().get("x-micro-cache").is_none(),
-            "bản tiếng Anh không được dùng entry tiếng Việt"
-        );
-        assert_eq!(counter.load(Ordering::Relaxed), 2);
-        // Lặp lại vi → HIT entry vi (handler không chạy thêm).
-        let r3 = ServiceExt::oneshot(app, lang_req("vi")).await.unwrap();
-        assert_eq!(
-            r3.headers()
-                .get("x-micro-cache")
-                .and_then(|v| v.to_str().ok()),
-            Some("hit"),
-            "cùng path + cùng ngôn ngữ phải hit"
-        );
-        assert_eq!(counter.load(Ordering::Relaxed), 2);
     }
 }

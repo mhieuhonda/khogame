@@ -174,22 +174,10 @@ pub fn hash_ai_agent_token(token: &str) -> String {
 /// (KHÔNG dùng `SaltString::generate` vì nó cần rand_core 0.6 — xung đột
 /// version với rand 0.10 của app).
 ///
-/// Argon2 tốn CPU (~50ms) nên chạy trên blocking thread
-/// (`spawn_blocking`) để không nghẽn Tokio worker (chống DoS khi login
-/// spam — trước đây hash đồng bộ ngay trên worker).
-///
 /// # Errors
 ///
 /// Trả về lỗi khi Argon2 không hash được (rất hiếm — lỗi nội bộ crate).
-pub async fn hash_password(password: &str) -> Result<String, AppError> {
-    let password = password.to_owned();
-    tokio::task::spawn_blocking(move || hash_password_blocking(&password))
-        .await
-        .map_err(|e| AppError::Internal(anyhow::anyhow!("Hash mật khẩu bị gián đoạn: {e}")))?
-}
-
-/// Logic hash đồng bộ — chỉ gọi qua `hash_password` (blocking thread).
-fn hash_password_blocking(password: &str) -> Result<String, AppError> {
+pub fn hash_password(password: &str) -> Result<String, AppError> {
     use argon2::password_hash::{PasswordHasher, SaltString};
     use argon2::Argon2;
     use rand::RngExt;
@@ -207,26 +195,8 @@ fn hash_password_blocking(password: &str) -> Result<String, AppError> {
 
 /// Verify mật khẩu với Argon2id PHC string.
 /// Trả về `false` khi sai mật khẩu HOẶC hash không parse được (không panic).
-///
-/// Chạy trên blocking thread (`spawn_blocking`) — Argon2 verify tốn CPU,
-/// verify đồng bộ trên Tokio worker cho phép attacker làm nghẽn event loop
-/// bằng login spam. JoinError → log server-side và trả `false` (fail-closed,
-/// không lộ chi tiết cho user).
 #[must_use]
-pub async fn verify_password(password: &str, hash: &str) -> bool {
-    let password = password.to_owned();
-    let hash = hash.to_owned();
-    match tokio::task::spawn_blocking(move || verify_password_blocking(&password, &hash)).await {
-        Ok(ok) => ok,
-        Err(e) => {
-            tracing::error!("Argon2 verify bị gián đoạn: {e}");
-            false
-        }
-    }
-}
-
-/// Logic verify đồng bộ — chỉ gọi qua `verify_password` (blocking thread).
-fn verify_password_blocking(password: &str, hash: &str) -> bool {
+pub fn verify_password(password: &str, hash: &str) -> bool {
     use argon2::password_hash::{PasswordHash, PasswordVerifier};
     use argon2::Argon2;
 

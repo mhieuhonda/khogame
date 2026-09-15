@@ -41,22 +41,6 @@ impl SharePlatform {
         }
     }
 
-    /// Parse nghiêm ngặt: giá trị lạ → None (dùng cho validation ở
-    /// handler share — tránh chuỗi lạ bị ghi nhận thành "copy" làm bẩn
-    /// analytics). Phân biệt chữ hoa/thường, khớp chuỗi enum trong DB.
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "facebook" => Some(Self::Facebook),
-            "twitter" => Some(Self::Twitter),
-            "telegram" => Some(Self::Telegram),
-            "whatsapp" => Some(Self::Whatsapp),
-            "copy" => Some(Self::Copy),
-            "native" => Some(Self::Native),
-            _ => None,
-        }
-    }
-
     #[must_use]
     pub const fn all() -> &'static [Self] {
         &[
@@ -134,21 +118,6 @@ mod tests {
         assert_eq!(SharePlatform::from_str("Telegram"), SharePlatform::Telegram);
         assert_eq!(SharePlatform::from_str("weird"), SharePlatform::Copy);
         assert_eq!(SharePlatform::from_str(""), SharePlatform::Copy);
-    }
-
-    /// parse() nghiêm ngặt cho validation: chuỗi lạ/rỗng/sai case → None
-    /// (handler trả 400 thay vì ghi nhận thành "copy" làm bẩn analytics).
-    #[test]
-    fn test_share_platform_parse_strict() {
-        assert_eq!(
-            SharePlatform::parse("facebook"),
-            Some(SharePlatform::Facebook)
-        );
-        assert_eq!(SharePlatform::parse("copy"), Some(SharePlatform::Copy));
-        assert_eq!(SharePlatform::parse("native"), Some(SharePlatform::Native));
-        assert_eq!(SharePlatform::parse("weird"), None);
-        assert_eq!(SharePlatform::parse(""), None);
-        assert_eq!(SharePlatform::parse("FACEBOOK"), None);
     }
 
     /// `all()` phải đủ 6 platform và `as_str` là lowercase snake — khớp

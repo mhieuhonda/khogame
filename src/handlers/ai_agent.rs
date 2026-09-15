@@ -391,11 +391,6 @@ pub async fn login(
                 state.config.ai_agent_session_ttl_days,
             )
             .await?;
-            // Chống session fixation: giữ cookie session CŨ để thu hồi sau
-            // khi staff lookup xong (lookup cần cookie cũ còn hiệu lực).
-            let old_session_token = jar
-                .get(auth::SESSION_COOKIE)
-                .map(|c| c.value().to_string());
             let mut new_jar = jar;
             // v3.6.0 SECURITY/UX FIX (audit — "admin mất phiên gốc không
             // đường về"): nếu người submit form đang giữ phiên STAFF hợp lệ
@@ -445,16 +440,6 @@ pub async fn login(
             // Ghi đè cookie session hiện tại (nếu admin đang login bằng
             // tài khoản người → phiên AI thay thế — đúng kỳ vọng "đăng
             // nhập vào tài khoản AI").
-            // Chống session fixation tích lũy: thu hồi session của cookie
-            // CŨ (khác session vừa tạo) rồi giới hạn 20 session/user.
-            if let Some(old) = old_session_token.as_deref() {
-                let old_hash = auth::hash_token(old);
-                if old_hash != token_hash {
-                    let _ = SessionRepo::delete(&state.db, &old_hash).await;
-                    crate::middleware::invalidate_session_cache(&old_hash);
-                }
-            }
-            let _ = SessionRepo::enforce_session_cap(&state.db, user.id, 20).await;
             auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
             tracing::info!("AI Agent logged in (username+password): {}", user.username);
 

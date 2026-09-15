@@ -759,8 +759,7 @@ impl AiAgentRepo {
 
         let email_final = format!("ai-{username_unique}@ai-agent.local");
         let google_sub = format!("ai_agent:{}", Uuid::new_v4());
-        // Argon2 chạy trên blocking thread (async) — không nghẽn worker.
-        let password_hash = crate::auth::hash_password(password).await?;
+        let password_hash = crate::auth::hash_password(password)?;
         let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_days);
 
         let mut tx = pool.begin().await?;
@@ -838,8 +837,7 @@ impl AiAgentRepo {
     ) -> AppResult<()> {
         Self::validate_password_strength(password)?;
         let expires_days = Self::validate_expiry_days(expires_days)?;
-        // Argon2 chạy trên blocking thread (async) — không nghẽn worker.
-        let password_hash = crate::auth::hash_password(password).await?;
+        let password_hash = crate::auth::hash_password(password)?;
         let expires_at = chrono::Utc::now() + chrono::Duration::days(expires_days);
         let mut tx = pool.begin().await?;
         sqlx::query(
@@ -981,15 +979,15 @@ impl AiAgentRepo {
         .await?;
 
         // Fail-uniform: mọi lý do thất bại đều cùng 1 message
-        // (kể cả bị khoá — không phân biệt để chống lockout oracle).
         const GENERIC_ERR: &str = "Tên đăng nhập hoặc mật khẩu không đúng";
+        const LOCKED_ERR: &str =
+            "Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau 15 phút.";
 
         let Some(user) = user else {
             // Username công khai (/u/{username}) nhưng vẫn chạy 1 lần Argon2
             // dummy (hash tốn ~50ms như verify thật) — chống timing attack
             // phân biệt "user tồn tại" qua thời gian response.
-            // Chạy trên blocking thread để không nghẽn Tokio worker.
-            let _ = crate::auth::hash_password(password).await;
+            let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         };
         // v3.7.0 FIX (bug "admin ấn đăng nhập nhưng không vào được tài khoản
@@ -1004,8 +1002,7 @@ impl AiAgentRepo {
             // hash — chênh ~50ms + 1 UPDATE so với path verify thật cho phép
             // đo thời gian phân biệt trạng thái tài khoản. Chạy dummy Argon2
             // như nhánh user-not-found để mọi early-return đồng bộ thời gian.
-            // Chạy trên blocking thread để không nghẽn Tokio worker.
-            let _ = crate::auth::hash_password(password).await;
+            let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         }
 
@@ -1021,26 +1018,19 @@ impl AiAgentRepo {
         let Some(cred) = cred else {
             // Tài khoản không có mật khẩu (tạo cũ qua /auth/ai/register)
             // v3.12.0 — dummy hash đồng bộ timing (xem comment ở nhánh trên).
-            // Chạy trên blocking thread để không nghẽn Tokio worker.
-            let _ = crate::auth::hash_password(password).await;
+            let _ = crate::auth::hash_password(password);
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         };
 
-        // 3) Kiểm tra khoá — trả message CHUNG như mọi fail khác (chống
-        // lockout oracle: attacker không phân biệt được "bị khoá" với
-        // "sai mật khẩu". Chi tiết ghi log server-side, không lộ cho user).
+        // 3) Kiểm tra khoá
         if let Some(until) = cred.locked_until {
             if until > Utc::now() {
-                tracing::warn!(
-                    username = %user.username,
-                    "AI Agent login: tài khoản đang bị khoá — trả lỗi chung"
-                );
-                return Err(AppError::Forbidden(GENERIC_ERR.into()));
+                return Err(AppError::Forbidden(LOCKED_ERR.into()));
             }
         }
 
-        // 4) Verify mật khẩu (Argon2id trên blocking thread — chống DoS worker).
-        let ok = crate::auth::verify_password(password, &cred.password_hash).await;
+        // 4) Verify mật khẩu (Argon2id)
+        let ok = crate::auth::verify_password(password, &cred.password_hash);
         if !ok {
             // ATOMIC increment (audit v3.4.0): `failed_attempts = failed_attempts + 1`
             // tính TRÊN DB — N request song song không còn đọc giá trị cũ
@@ -1086,10 +1076,8 @@ impl AiAgentRepo {
                 attempts,
                 "AI Agent password login failed"
             );
-            // Bị khoá hay sai pass đều cùng 1 message (chống lockout oracle).
-            // Chi tiết attempts đã log server-side ở trên.
             if attempts >= 5 {
-                return Err(AppError::Forbidden(GENERIC_ERR.into()));
+                return Err(AppError::Forbidden(LOCKED_ERR.into()));
             }
             return Err(AppError::Forbidden(GENERIC_ERR.into()));
         }

@@ -25,11 +25,6 @@ use uuid::Uuid;
 pub const MAX_AVATAR_BYTES: usize = 5 * 1024 * 1024; // 5 MB
 pub const MAX_COVER_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
-/// Tổng số pixel tối đa cho ảnh raster (chống decompression bomb: file vài KB
-/// nén có thể nở ra hàng trăm MP khi decode → OOM/OOM-kill ở bước resize/hiển
-/// thị. Reject ngay từ header, không cần decode full hay thêm crate mới).
-pub const MAX_IMAGE_PIXELS: u64 = 25_000_000; // 25 MP
-
 /// Loại upload — quyết định sub-directory và size limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UploadKind {
@@ -132,154 +127,6 @@ impl ImageExt {
     }
 }
 
-/// Đọc (width, height) ảnh raster từ ~30 byte header đầu, KHÔNG decode full
-/// (không cần thêm crate). Trả `None` khi không parse được (file hỏng/cắt cụt).
-fn image_dimensions(ext: ImageExt, bytes: &[u8]) -> Option<(u32, u32)> {
-    match ext {
-        // PNG: 8-byte signature + length(4) + "IHDR"(4) + width(4 BE) + height(4 BE).
-        ImageExt::Png => {
-            if bytes.len() < 24 || &bytes[12..16] != b"IHDR" {
-                return None;
-            }
-            let w = u32::from_be_bytes([bytes[16], bytes[17], bytes[18], bytes[19]]);
-            let h = u32::from_be_bytes([bytes[20], bytes[21], bytes[22], bytes[23]]);
-            Some((w, h))
-        }
-        // GIF: "GIF87a"/"GIF89a" (6) + width(2 LE) + height(2 LE) (logical screen descriptor).
-        ImageExt::Gif => {
-            if bytes.len() < 10 {
-                return None;
-            }
-            let w = u16::from_le_bytes([bytes[6], bytes[7]]) as u32;
-            let h = u16::from_le_bytes([bytes[8], bytes[9]]) as u32;
-            Some((w, h))
-        }
-        // JPEG: quét SOF markers (C0-C3, C5-C7, C9-CB, CD-CF). Mỗi segment:
-        // FF | marker | len(2 BE, tính cả 2 byte len) | payload. SOF payload:
-        // precision(1) + height(2 BE) + width(2 BE). Marker không có len
-        // (SOI D8, EOI D9, RST D0-D7, TEM 01) thì bỏ qua 1 byte.
-        ImageExt::Jpeg => {
-            let mut i = 2; // bỏ qua SOI (FF D8).
-            while i + 3 < bytes.len() {
-                // Tìm byte FF đầu segment.
-                if bytes[i] != 0xFF {
-                    i += 1;
-                    continue;
-                }
-                // Bỏ qua padding FF FF FF...
-                let mut j = i + 1;
-                while j < bytes.len() && bytes[j] == 0xFF {
-                    j += 1;
-                }
-                if j >= bytes.len() {
-                    return None;
-                }
-                let marker = bytes[j];
-                // Marker standalone (không có length) — bước tiếp.
-                if marker == 0xD8 || marker == 0xD9 || marker == 0x01 || (0xD0..=0xD7).contains(&marker) {
-                    i = j + 1;
-                    continue;
-                }
-                if j + 2 >= bytes.len() {
-                    return None;
-                }
-                let seg_len = u16::from_be_bytes([bytes[j + 1], bytes[j + 2]]) as usize;
-                if seg_len < 2 || j + 1 + seg_len > bytes.len() {
-                    return None;
-                }
-                // SOFn (trừ DHT C4, JPG C8, DAC CC) chứa dimensions.
-                if matches!(
-                    marker,
-                    0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC5 | 0xC6 | 0xC7 | 0xC9 | 0xCA | 0xCB | 0xCD
-                        | 0xCE | 0xCF
-                ) {
-                    // SOF payload tối thiểu 7 byte: precision(1)+h(2)+w(2)+components(1)+...
-                    if seg_len < 9 {
-                        return None;
-                    }
-                    let h = u16::from_be_bytes([bytes[j + 4], bytes[j + 5]]) as u32;
-                    let w = u16::from_be_bytes([bytes[j + 6], bytes[j + 7]]) as u32;
-                    return Some((w, h));
-                }
-                i = j + 1 + seg_len;
-            }
-            None
-        }
-        // WebP: "RIFF"(4) + size(4) + "WEBP"(4) + chunk FourCC(4) + size(4) + data.
-        ImageExt::Webp => {
-            if bytes.len() < 20 {
-                return None;
-            }
-            // So sánh FourCC bằng `==` (như `matches_magic` đang dùng) thay vì
-            // `match` slice với byte-string pattern (không compile: &[u8] vs &[u8; 4]).
-            let fourcc = &bytes[12..16];
-            if fourcc == b"VP8 " {
-                // VP8 lossy: frame tag(3) + start code 9D 01 2A(3) + w(2 LE, 14 bit) + h(2 LE, 14 bit).
-                if bytes.len() < 30 || bytes[23] != 0x9D || bytes[24] != 0x01 || bytes[25] != 0x2A
-                {
-                    return None;
-                }
-                let w = (u16::from_le_bytes([bytes[26], bytes[27]]) & 0x3FFF) as u32;
-                let h = (u16::from_le_bytes([bytes[28], bytes[29]]) & 0x3FFF) as u32;
-                Some((w, h))
-            } else if fourcc == b"VP8L" {
-                // VP8L lossless: signature 0x2F(1) + 4 byte gói width-1 (14 bit) + height-1 (14 bit).
-                if bytes.len() < 25 || bytes[20] != 0x2F {
-                    return None;
-                }
-                let b1 = bytes[21] as u32;
-                let b2 = bytes[22] as u32;
-                let b3 = bytes[23] as u32;
-                let b4 = bytes[24] as u32;
-                let w = (b1 | ((b2 & 0x3F) << 8)) + 1;
-                let h = (((b2 >> 6) & 0x03) | (b3 << 2) | ((b4 & 0x0F) << 10)) + 1;
-                Some((w, h))
-            } else if fourcc == b"VP8X" {
-                // VP8X extended: data 10 byte, width-1 ở byte 4-6 (24 bit LE),
-                // height-1 ở byte 7-9 (24 bit LE) tính từ đầu data (offset 20).
-                if bytes.len() < 30 {
-                    return None;
-                }
-                let w = (bytes[24] as u32
-                    | ((bytes[25] as u32) << 8)
-                    | ((bytes[26] as u32) << 16))
-                    + 1;
-                let h = (bytes[27] as u32
-                    | ((bytes[28] as u32) << 8)
-                    | ((bytes[29] as u32) << 16))
-                    + 1;
-                Some((w, h))
-            } else {
-                None
-            }
-        }
-    }
-}
-
-/// Validate pixel dimensions sau magic-byte check: reject dimension 0,
-/// không parse được, hoặc tổng pixel vượt `MAX_IMAGE_PIXELS`.
-fn validate_pixel_dimensions(ext: ImageExt, bytes: &[u8]) -> AppResult<()> {
-    let (w, h) = image_dimensions(ext, bytes).ok_or_else(|| {
-        AppError::BadRequest(
-            "Không đọc được kích thước ảnh (header hỏng hoặc file cắt cụt).".into(),
-        )
-    })?;
-    if w == 0 || h == 0 {
-        return Err(AppError::BadRequest(
-            "Kích thước ảnh không hợp lệ (width/height = 0).".into(),
-        ));
-    }
-    if (w as u64) * (h as u64) > MAX_IMAGE_PIXELS {
-        return Err(AppError::BadRequest(format!(
-            "Ảnh quá lớn ({}×{} px). Tối đa {} MP để chống decompression bomb.",
-            w,
-            h,
-            MAX_IMAGE_PIXELS / 1_000_000
-        )));
-    }
-    Ok(())
-}
-
 /// Lấy root dir cho storage từ env `STORAGE_DIR` (default: `/app/storage`
 /// trong Docker, `./storage` khi chạy dev ngoài container).
 fn storage_root() -> PathBuf {
@@ -333,12 +180,6 @@ pub async fn save_upload(
             "Nội dung file không khớp định dạng khai báo (magic bytes sai). Có thể file bị hỏng hoặc giả mạo.".into(),
         ));
     }
-
-    // 3b) Giới hạn pixel dimensions (chống decompression bomb + EXIF/GPS leak
-    // ý thức: không decode full, chỉ đọc ~30 byte header để lấy width/height.
-    // Reject khi dimension = 0, không parse được, hoặc width*height > 25MP.
-    // Định dạng khác ngoài 4 loại raster hiện hỗ trợ thì cho qua (giữ nguyên)).
-    validate_pixel_dimensions(ext, bytes)?;
 
     // 4) Sinh filename UUID — không bao giờ dùng tên file client gửi.
     let filename = format!("{}.{}", Uuid::new_v4(), ext.extension());

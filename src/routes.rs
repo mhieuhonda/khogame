@@ -17,62 +17,6 @@ use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
-use tower_http::trace::TraceLayer;
-
-/// Ép headers an toàn cho mọi response dưới `/uploads` (bọc quanh ServeDir
-/// bằng `middleware::map_response`, không phụ thuộc security_headers layer
-/// toàn cục — ServeDir short-circuit vẫn đi qua đây):
-/// - Content-Type theo whitelist extension (png/jpg/jpeg/gif/webp/avif/svg
-///   → image/*, mp4/webm → video/*, còn lại application/octet-stream) để
-///   browser không sniff nhầm file upload thành HTML/JS (XSS qua SVG/HTML
-///   giả ảnh) — kết hợp `nosniff` bên dưới.
-/// - X-Content-Type-Options: nosniff — cấm browser đoán MIME.
-/// - Content-Disposition: inline — hiển thị, không ép download.
-/// - Cache-Control immutable 1 năm (filename là UUID, không bao giờ ghi đè).
-fn uploads_secure_headers(mut res: axum::response::Response) -> axum::response::Response {
-    // ServeDir đã set Content-Type theo đuôi file; chỉ giữ lại nếu thuộc
-    // whitelist, còn lại ép về octet-stream (không tin đuôi file mù quáng).
-    const ALLOWED: &[&str] = &[
-        "image/png",
-        "image/jpeg",
-        "image/gif",
-        "image/webp",
-        "image/avif",
-        "image/svg+xml",
-        "video/mp4",
-        "video/webm",
-    ];
-    let ct_allowed = res
-        .headers()
-        .get(axum::http::header::CONTENT_TYPE)
-        .and_then(|v| v.to_str().ok())
-        .map(|ct| {
-            let base = ct.split(';').next().unwrap_or(ct).trim().to_ascii_lowercase();
-            ALLOWED.contains(&base.as_str())
-        })
-        .unwrap_or(false);
-    let headers = res.headers_mut();
-    if !ct_allowed {
-        headers.insert(
-            axum::http::header::CONTENT_TYPE,
-            axum::http::HeaderValue::from_static("application/octet-stream"),
-        );
-    }
-    headers.insert(
-        axum::http::HeaderName::from_static("x-content-type-options"),
-        axum::http::HeaderValue::from_static("nosniff"),
-    );
-    headers.insert(
-        axum::http::header::CONTENT_DISPOSITION,
-        axum::http::HeaderValue::from_static("inline"),
-    );
-    headers.insert(
-        axum::http::header::CACHE_CONTROL,
-        axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),
-    );
-    res
-}
-
 pub fn build_router(state: Arc<AppState>) -> Router {
     let public_routes = Router::new()
         .route("/", get(handlers::games::home))
@@ -682,10 +626,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest_service(
             "/uploads",
             tower::ServiceBuilder::new()
-                // Bọc ServeDir bằng map_response để LUÔN có headers an toàn
-                // (Content-Type whitelist, nosniff, inline, cache immutable)
-                // kể cả khi security_headers toàn cục bị thay đổi/thiếu.
-                .layer(middleware::map_response(uploads_secure_headers))
                 .layer(SetResponseHeaderLayer::if_not_present(
                     axum::http::header::CACHE_CONTROL,
                     axum::http::HeaderValue::from_static("public, max-age=31536000, immutable"),

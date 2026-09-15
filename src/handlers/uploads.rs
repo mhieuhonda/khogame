@@ -119,7 +119,7 @@ async fn handle_upload(
 ) -> AppResult<UploadResponse> {
     let _ = &state;
     // Iterate multipart fields — chỉ quan tâm field tên `file`.
-    while let Some(mut field) = multipart
+    while let Some(field) = multipart
         .next_field()
         .await
         .map_err(|e| AppError::BadRequest(format!("Multipart parse error: {e}")))?
@@ -130,40 +130,17 @@ async fn handle_upload(
 
         if field_name != "file" {
             // Skip field không phải `file` (có thể là CSRF token, alt text, v.v.).
-            // Đọc bỏ bytes theo chunk để tránh leave-pending data mà không
-            // accumulate vào RAM (chống OOM kể cả với field phụ).
-            while let Some(_chunk) = field
-                .chunk()
-                .await
-                .map_err(|e| AppError::BadRequest(format!("Đọc field phụ lỗi: {e}")))?
-            {
-                // Bỏ qua chunk — chỉ drain stream.
-            }
+            // Đọc bỏ bytes để tránh leave-pending data.
+            let _ = field.bytes().await;
             continue;
         }
 
-        // Đọc bytes STREAMING theo chunk với cap cứng = kind.max_bytes() + 1.
-        // Đọc quá 1 byte là reject 413 ngay, KHÔNG accumulate tiếp — chống OOM:
-        // trước đây `field.bytes()` đọc TOÀN BỘ body vào RAM rồi mới check size
-        // (kẻ tấn công gửi file 1GB là server OOM trước khi kịp reject).
-        // Cap +1 (thay vì == max) để phân biệt "vừa đủ" vs "vượt" mà chỉ tốn
-        // tối đa 1 byte RAM thừa.
-        let cap = kind.max_bytes() + 1;
-        let mut bytes: Vec<u8> = Vec::new();
-        while let Some(chunk) = field
-            .chunk()
+        // Đọc bytes — limit theo kind để chống OOM (axum `bytes()` không
+        // có built-in limit; size check sau khi đọc xong).
+        let bytes = field
+            .bytes()
             .await
-            .map_err(|e| AppError::BadRequest(format!("Đọc file upload lỗi: {e}")))?
-        {
-            // Check TRƯỚC khi extend — vượt cap là dừng ngay, không giữ thêm byte nào.
-            if bytes.len() + chunk.len() > cap {
-                return Err(AppError::BadRequest(format!(
-                    "File quá lớn (413 Payload Too Large). Tối đa {} MB.",
-                    kind.max_bytes() / 1024 / 1024
-                )));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
+            .map_err(|e| AppError::BadRequest(format!("Đọc file upload lỗi: {e}")))?;
 
         // v3.4.2 — quota/ngày: chặn TRƯỚC khi ghi disk (disk-fill DoS:
         // trước đây user ghi ~1.2GB/phút tới khi đầy volume = sập site).

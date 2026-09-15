@@ -7,8 +7,8 @@ use uuid::Uuid;
 #[sqlx(type_name = "game_status", rename_all = "snake_case")]
 #[derive(Default)]
 pub enum GameStatus {
-    #[default]
     Draft,
+    #[default]
     Published,
     Archived,
     Hidden,
@@ -159,18 +159,11 @@ impl AgeRating {
     #[allow(clippy::should_implement_trait)]
     #[must_use]
     pub fn from_str(s: &str) -> Self {
-        Self::parse(s).unwrap_or(Self::Everyone)
-    }
-    /// Parse nghiêm ngặt, phân biệt chữ hoa/thường như `from_str` cũ:
-    /// giá trị lạ → None (dùng cho validation ở handler).
-    #[must_use]
-    pub fn parse(s: &str) -> Option<Self> {
         match s {
-            "everyone" => Some(Self::Everyone),
-            "teen" => Some(Self::Teen),
-            "mature" => Some(Self::Mature),
-            "adult" => Some(Self::Adult),
-            _ => None,
+            "teen" => Self::Teen,
+            "mature" => Self::Mature,
+            "adult" => Self::Adult,
+            _ => Self::Everyone,
         }
     }
     #[must_use]
@@ -229,8 +222,8 @@ impl Game {
     }
     #[must_use]
     pub fn rating_avg_f64(&self) -> f64 {
-        use bigdecimal::ToPrimitive;
-        self.rating_avg.to_f64().unwrap_or(0.0)
+        use std::str::FromStr;
+        f64::from_str(&self.rating_avg.to_string()).unwrap_or(0.0)
     }
 }
 
@@ -251,26 +244,6 @@ pub struct GameScreenshot {
     pub caption: Option<String>,
     pub position: i32,
     pub created_at: DateTime<Utc>,
-}
-
-/// Danh sách sort hợp lệ DÙNG CHUNG cho mọi list game (handler validate
-/// 400 + repo validate — tránh 2 nguồn truth lệch nhau khi thêm sort mới).
-pub const GAME_SORT_WHITELIST: &[&str] =
-    &["latest", "trending", "downloads", "top_rated", "liked"];
-
-/// ORDER BY tương ứng cho sort key đã validate. Sort lạ → None để caller
-/// trả `BadRequest` thay vì fallback im lặng về latest (client không biết
-/// sort của họ bị bỏ qua).
-#[must_use]
-pub const fn game_sort_sql(sort: &str) -> Option<&'static str> {
-    match sort {
-        "latest" => Some("g.published_at DESC NULLS LAST"),
-        "trending" => Some("g.view_count DESC"),
-        "downloads" => Some("g.download_count DESC"),
-        "top_rated" => Some("g.rating_avg DESC, g.rating_count DESC"),
-        "liked" => Some("g.like_count DESC"),
-        _ => None,
-    }
 }
 
 /// Game card with author info - for lists/cards
@@ -315,8 +288,8 @@ pub struct AdminGameRow {
 impl GameCard {
     #[must_use]
     pub fn rating_avg_f64(&self) -> f64 {
-        use bigdecimal::ToPrimitive;
-        self.rating_avg.to_f64().unwrap_or(0.0)
+        use std::str::FromStr;
+        f64::from_str(&self.rating_avg.to_string()).unwrap_or(0.0)
     }
     #[must_use]
     pub fn cover_or(&self, fallback: &str) -> String {
@@ -522,23 +495,14 @@ mod tests {
 
     #[test]
     fn test_age_rating_from_str() {
-        // Đủ cả 4 variant + default path (giữ tương thích form cũ)
+        // Đủ cả 4 variant + default path
         assert_eq!(AgeRating::from_str("everyone"), AgeRating::Everyone);
         assert_eq!(AgeRating::from_str("teen"), AgeRating::Teen);
         assert_eq!(AgeRating::from_str("mature"), AgeRating::Mature);
         assert_eq!(AgeRating::from_str("adult"), AgeRating::Adult);
-        // Giá trị lạ/empty → Everyone (tương thích form cũ)
+        // Giá trị lạ/empty → Everyone (an toàn cho form cũ)
         assert_eq!(AgeRating::from_str("xyz"), AgeRating::Everyone);
         assert_eq!(AgeRating::from_str(""), AgeRating::Everyone);
-        // parse() nghiêm ngặt cho validation: lạ/empty → None
-        assert_eq!(AgeRating::parse("everyone"), Some(AgeRating::Everyone));
-        assert_eq!(AgeRating::parse("teen"), Some(AgeRating::Teen));
-        assert_eq!(AgeRating::parse("mature"), Some(AgeRating::Mature));
-        assert_eq!(AgeRating::parse("adult"), Some(AgeRating::Adult));
-        assert_eq!(AgeRating::parse("xyz"), None);
-        assert_eq!(AgeRating::parse(""), None);
-        // Phân biệt chữ hoa/thường như from_str cũ
-        assert_eq!(AgeRating::parse("Teen"), None);
     }
 
     /// Label hiển thị UI phải có prefix phân loại (E/T/M/A) + mô tả tuổi —

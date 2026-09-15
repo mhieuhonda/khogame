@@ -41,10 +41,6 @@ impl GameRepo {
             None
         };
 
-        // Toàn bộ create bọc trong 1 transaction: INSERT game + links +
-        // screenshots + tags phải atomic — fail giữa chừng thì rollback
-        // hết, tránh game mồ côi (có dòng game nhưng mất links/tags).
-        let mut tx = pool.begin().await?;
         let id: Uuid = sqlx::query_scalar(
             r"INSERT INTO games (
                 user_id, title, slug, excerpt, content, status, version,
@@ -70,11 +66,11 @@ impl GameRepo {
         .bind(&form.cover_image)
         .bind(category_id)
         .bind(published_at)
-        .fetch_one(&mut *tx)
+        .fetch_one(pool)
         .await?;
 
         // Insert links
-        Self::sync_links(&mut tx, id, form).await?;
+        Self::sync_links(pool, id, form).await?;
 
         // v2.6.0 — Batch INSERT screenshots: 1 query multi-row thay vì
         // N round-trip. Trước đây mỗi screenshot = 1 INSERT riêng →
@@ -92,13 +88,12 @@ impl GameRepo {
                     .push_bind(url)
                     .push_bind(i32::try_from(i).unwrap_or(i32::MAX));
             });
-            builder.build().execute(&mut *tx).await?;
+            builder.build().execute(pool).await?;
         }
 
         // Insert tags
-        Self::sync_tags(&mut tx, id, form.tags_vec()).await?;
+        Self::sync_tags(pool, id, form.tags_vec()).await?;
 
-        tx.commit().await?;
         Ok(id)
     }
 
@@ -123,11 +118,6 @@ impl GameRepo {
             form.languages_vec()
         };
 
-        // Toàn bộ update bọc trong 1 transaction (cùng lý do như create):
-        // UPDATE game + thay links/screenshots/tags phải atomic — fail
-        // giữa chừng (vd DELETE links xong nhưng INSERT fail) thì rollback
-        // hết, tránh game mất dữ liệu con.
-        let mut tx = pool.begin().await?;
         sqlx::query(
             r"UPDATE games SET
                 title = $1, excerpt = $2, content = $3, status = $4, version = $5,
@@ -152,21 +142,21 @@ impl GameRepo {
         .bind(&form.cover_image)
         .bind(category_id)
         .bind(id)
-        .execute(&mut *tx)
+        .execute(pool)
         .await?;
 
         // Replace links
         sqlx::query("DELETE FROM game_links WHERE game_id = $1")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(pool)
             .await?;
-        Self::sync_links(&mut tx, id, form).await?;
+        Self::sync_links(pool, id, form).await?;
 
         // Replace screenshots — propagate lỗi (đồng bộ với create).
         // v2.6.0 — Batch INSERT 1 query thay vì N round-trip.
         sqlx::query("DELETE FROM game_screenshots WHERE game_id = $1")
             .bind(id)
-            .execute(&mut *tx)
+            .execute(pool)
             .await?;
         let screenshots = form.screenshots_vec();
         if !screenshots.is_empty() {
@@ -178,31 +168,22 @@ impl GameRepo {
                     .push_bind(url)
                     .push_bind(i32::try_from(i).unwrap_or(i32::MAX));
             });
-            builder.build().execute(&mut *tx).await?;
+            builder.build().execute(pool).await?;
         }
 
         // Replace tags
-        Self::sync_tags(&mut tx, id, form.tags_vec()).await?;
-        tx.commit().await?;
+        Self::sync_tags(pool, id, form.tags_vec()).await?;
         Ok(())
     }
 
     /// Gắn tags cho game. `tags.usage_count` được tăng/giảm bởi DB trigger
     /// (`trigger_game_tag_insert/delete` trên `game_tags`), nên ở đây chỉ cần
     /// thay thế các dòng `game_tags` — KHÔNG tự cộng trừ `usage_count`.
-    ///
-    /// Chạy TRONG transaction của create/update (nhận `&mut Transaction`) để
-    /// toàn bộ thao tác atomic. Upsert dùng DO NOTHING (không ghi đè tên tag
-    /// của game khác khi trùng slug) rồi SELECT lại id đầy đủ.
-    async fn sync_tags(
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        game_id: Uuid,
-        tags: Vec<String>,
-    ) -> AppResult<()> {
+    async fn sync_tags(pool: &PgPool, game_id: Uuid, tags: Vec<String>) -> AppResult<()> {
         // Xoá liên kết cũ (trigger tự giảm usage_count từng tag bị gỡ)
         sqlx::query("DELETE FROM game_tags WHERE game_id = $1")
             .bind(game_id)
-            .execute(&mut **tx)
+            .execute(pool)
             .await?;
 
         // v2.6.0 — Dedup + collect trước, rồi batch INSERT 1 query thay vì
@@ -224,24 +205,20 @@ impl GameRepo {
         if unique.is_empty() {
             return Ok(());
         }
-        // Batch upsert tags — ON CONFLICT DO NOTHING để không ghi đè tên
-        // tag sẵn có của game khác khi trùng slug (trước đây DO UPDATE SET
-        // name = EXCLUDED.name đổi tên tag của người khác).
+        // Batch upsert tags (RETURNING id) — 1 query cho tất cả tags.
         let mut tag_builder =
             sqlx::QueryBuilder::<sqlx::Postgres>::new("INSERT INTO tags (name, slug) ");
         tag_builder.push_values(unique.iter(), |mut b, (name, slug)| {
             b.push_bind(name).push_bind(slug);
         });
-        tag_builder.push(" ON CONFLICT (slug) DO NOTHING");
-        tag_builder.build().execute(&mut **tx).await?;
-        // DO NOTHING không RETURNING dòng trùng → SELECT lại toàn bộ id
-        // theo slug (gồm cả tag đã tồn tại từ trước).
-        let slugs: Vec<String> = unique.iter().map(|(_, s)| s.clone()).collect();
-        let tag_ids: Vec<Uuid> =
-            sqlx::query_scalar("SELECT id FROM tags WHERE slug = ANY($1)")
-                .bind(&slugs)
-                .fetch_all(&mut **tx)
-                .await?;
+        tag_builder.push(" ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name RETURNING id");
+        let tag_ids: Vec<Uuid> = tag_builder
+            .build_query_as::<(Uuid,)>()
+            .fetch_all(pool)
+            .await?
+            .into_iter()
+            .map(|r| r.0)
+            .collect();
 
         if !tag_ids.is_empty() {
             // Batch INSERT game_tags — 1 query.
@@ -252,16 +229,12 @@ impl GameRepo {
                 b.push_bind(game_id).push_bind(tid);
             });
             gt_builder.push(" ON CONFLICT DO NOTHING");
-            gt_builder.build().execute(&mut **tx).await?;
+            gt_builder.build().execute(pool).await?;
         }
         Ok(())
     }
 
-    async fn sync_links(
-        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        game_id: Uuid,
-        form: &GameForm,
-    ) -> AppResult<()> {
+    async fn sync_links(pool: &PgPool, game_id: Uuid, form: &GameForm) -> AppResult<()> {
         // v2.6.0 — Collect links, batch INSERT 1 query thay vì 5 sequential.
         let links: [(&str, Platform, &Option<String>); 5] = [
             ("android", Platform::Android, &form.android_link),
