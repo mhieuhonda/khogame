@@ -57,8 +57,35 @@
         bindCounter();
         bindUpload();
     });
-    // HTMX poll append/replace → cuộn xuống cuối để thấy tin mới.
+    // Poll/push swap nội dung hộp chat → cuộn xuống cuối để thấy tin mới.
     document.body.addEventListener("htmx:afterSwap", function (e) {
         if (e.target && e.target.id === "dm-box") scrollBox();
     });
+    // Form gửi xong (2xx) → clear ô nhập + preview. Poll của #dm-box có
+    // target khác nên không bao giờ xóa nhầm chữ đang gõ. Gửi lỗi thì
+    // giữ nguyên chữ để user sửa rồi gửi lại.
+    document.body.addEventListener("htmx:afterRequest", function (e) {
+        if (e.target && e.target.id === "dm-form" && e.detail && e.detail.successful) {
+            clearForm();
+        }
+    });
+    // HTMX swap thành công trên #dm-box (gửi tin OK) → cuộn xuống cuối,
+    // clear ô nhập + preview ảnh. Chỉ chạy khi swap THÀNH CÔNG nên gửi
+    // lỗi thì chữ vẫn giữ nguyên để user sửa rồi gửi lại.
+    // (Không dùng hx-on::after-request: htmx self-hosted trigger
+    // "htmx:afterRequest" camelCase còn attribute đăng ký
+    // "htmx:after-request" kebab — DOM phân biệt hoa/thường nên handler
+    // trong attribute không bao giờ chạy.)
+    function clearForm() {
+        var f = document.getElementById("dm-form");
+        if (f) f.reset();
+        var preview = document.getElementById("dm-preview");
+        if (preview) preview.innerHTML = "";
+        bindCounterRefresh();
+    }
+
+    function bindCounterRefresh() {
+        var count = document.getElementById("dm-count");
+        if (count) count.textContent = "0";
+    }
 })();

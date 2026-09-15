@@ -52,10 +52,10 @@
     {# Form gửi (HTMX append 1 tin, không reload trang). #}
     {% if is_group %}
     <form id="dm-form" class="dm-form" hx-post="/messages/group/{{ conv.id }}/send"
-          hx-target="#dm-box" hx-swap="beforeend" hx-on::after-request="this.reset(); document.getElementById('dm-preview').innerHTML='';">
+          hx-target="#dm-box" hx-swap="beforeend">
     {% else %}
     <form id="dm-form" class="dm-form" hx-post="/messages/dm/{{ other_username }}/send"
-          hx-target="#dm-box" hx-swap="beforeend" hx-on::after-request="this.reset(); document.getElementById('dm-preview').innerHTML='';">
+          hx-target="#dm-box" hx-swap="beforeend">
     {% endif %}
         <input type="hidden" name="image_url" id="dm-image-url" value="">
         <div id="dm-preview" class="dm-preview"></div>
