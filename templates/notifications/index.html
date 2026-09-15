@@ -19,7 +19,7 @@
                 hx-post="/notifications/mark-all-read"
                 hx-target=".notifications-list"
                 hx-swap="innerHTML"
-                hx-on::after-request="if(event.detail.successful) this.remove()">
+                hx-on:htmx:afterRequest="if(event.detail.successful) this.remove()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
             Đánh dấu tất cả đã đọc
         </button>

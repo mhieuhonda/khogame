@@ -108,6 +108,11 @@ pub async fn google_callback(
     let referral_code_cookie = jar
         .get(crate::handlers::referral::REFERRAL_COOKIE)
         .map(|c| c.value().to_string());
+    // v3.15.0 — capture session cũ TRƯỚC khi jar bị move (chống fixation:
+    // thu hồi sau khi login thành công).
+    let old_session_hash = jar
+        .get(auth::SESSION_COOKIE)
+        .map(|c| auth::hash_token(c.value()));
     let mut cleanup_jar = jar;
     // Xoá cookie state và next dù thành công hay thất bại
     auth::clear_oauth_state_cookie(&mut cleanup_jar, &state.config.base_url);
@@ -245,6 +250,14 @@ pub async fn google_callback(
     // client để admin có thể audit / xoá phiên nếu cần.
     let session_token = auth::gen_session_token();
     let token_hash = auth::hash_token(&session_token);
+    // v3.15.0 — chống SESSION FIXATION: nếu browser đang giữ session cookie
+    // cũ (bị plant cookie / máy dùng chung còn phiên cũ), thu hồi nó NGAY
+    // khi login thành công — mỗi login chỉ để lại đúng 1 session mới.
+    // Best-effort (không block login nếu revoke lỗi).
+    if let Some(old_hash) = old_session_hash {
+        let _ = SessionRepo::delete(&state.db, &old_hash).await;
+        crate::middleware::invalidate_session_cache(&old_hash);
+    }
     let user_agent = headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())

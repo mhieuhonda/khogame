@@ -377,6 +377,21 @@ pub async fn login(
     // v3.4.0 — đăng nhập bằng Username + Password (admin tạo, Argon2id,
     // có thời hạn). Sai → redirect về form với error (không render trực
     // tiếp để tránh re-submit khi refresh).
+    //
+    // v3.15.0 — throttle brute-force theo username (20 lần/15 phút):
+    // Argon2id đã chậm (~100ms/lần) nhưng không đủ trước botnet thử
+    // credential-stuffing. Rate-limit global theo IP/browser là lớp 1;
+    // đây là lớp 2 chặn quét 1 tài khoản cụ thể. User thật gõ sai <20
+    // lần/15 phút nên UX không đổi; vượt → 429 rõ ràng thay vì im lặng.
+    let throttle_key = format!(
+        "ai-login:{}",
+        form.username.trim().chars().take(50).collect::<String>()
+    );
+    if !state.rate_limiter.check(&throttle_key, 20, 900) {
+        return Err(AppError::BadRequest(
+            "Quá nhiều lần thử đăng nhập — nghỉ 15 phút rồi thử lại".into(),
+        ));
+    }
     match AiAgentRepo::verify_password_login(&state.db, &form.username, &form.password).await {
         Ok(user) => {
             // Tạo session web cho AI Agent

@@ -106,8 +106,12 @@ pub async fn ws_handler(
 
     // Heartbeat: gửi ping mỗi 30s để giữ connection sống và phát hiện client
     // đã đóng (NAT timeout, mạng yếu). Axum WS không có built-in keepalive.
-    ws.max_message_size(64 * 1024)
-        .max_frame_size(64 * 1024)
+    // v3.15.0 — nới cap frame/message 64KB → 128KB: member unlimited được
+    // gửi 20000 ký tự (~60KB tiếng Việt, ~80KB emoji 4-byte); cap cũ giết
+    // connection (recv Err → break) khi admin paste tin dài = "nhắn không
+    // được" khó hiểu. 128KB vẫn chặn tải rác MBs qua WS.
+    ws.max_message_size(128 * 1024)
+        .max_frame_size(128 * 1024)
         .on_upgrade(move |socket| {
             // Clone state + user_id để move vào async task. user_id đủ cho
             // broadcast payload — không cần full User struct (đã có trong

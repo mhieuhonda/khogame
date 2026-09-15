@@ -84,7 +84,7 @@
                   hx-target="#replies-{{ comment.id }}"
                   hx-swap="beforeend"
                   hx-disabled-elt="find button[type=submit]"
-                  hx-on::after-request="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').hidden = true;}">
+                  hx-on:htmx:afterRequest="if(event.detail.successful){this.reset(); document.getElementById('reply-form-{{ comment.id }}').hidden = true;}">
                 <input type="hidden" name="parent_id" value="{{ comment.id }}">
                 <textarea name="content" placeholder="Trả lời bình luận..." required rows="2" maxlength="1000"></textarea>
                 <div>

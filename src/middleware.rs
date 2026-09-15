@@ -1382,9 +1382,20 @@ pub async fn security_headers(request: Request, next: Next) -> Response {
         HeaderValue::from_static("nosniff"),
     );
     // Referrer policy
+    // v3.15.0 — thắt từ strict-origin-when-cross-origin → same-origin:
+    // same-origin request (mọi POST CSRF-check + OAuth callback nội bộ)
+    // vẫn gửi đủ Referer; cross-origin không rò rỉ URL nội bộ đi đâu.
+    // Không endpoint nào cần cross-origin Referer (OAuth Google không
+    // đọc Referer).
+    headers.insert("referrer-policy", HeaderValue::from_static("same-origin"));
+    // v3.15.0 — tắt DNS prefetch cross-origin (privacy: browser không bắn
+    // DNS tới domain lạ từ link user paste trong Markdown/comment).
+    headers.insert("x-dns-prefetch-control", HeaderValue::from_static("off"));
+    // v3.15.0 — cấm Flash/PDF cross-domain policy (X-Permitted-Cross-Domain-
+    // Policies) — vector cũ nhưng header 1 dòng, zero UX impact.
     headers.insert(
-        "referrer-policy",
-        HeaderValue::from_static("strict-origin-when-cross-origin"),
+        "x-permitted-cross-domain-policies",
+        HeaderValue::from_static("none"),
     );
     // Permissions policy (tắt các API nhạy cảm)
     headers.insert(

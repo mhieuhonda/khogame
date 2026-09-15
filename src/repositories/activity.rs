@@ -47,6 +47,11 @@ impl ActivityRepo {
     /// Đồng bộ: `(NOW() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date` — đúng
     /// quy ước dự án, không phụ thuộc TZ cài đặt của DB.
     pub async fn heatmap(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<HeatmapDay>> {
+        // v3.15.0 FIX (DB error mỗi lượt xem hồ sơ): `::date - $2` với $2
+        // kiểu i64 (int8) → Postgres KHÔNG có operator `date - bigint`
+        // (chỉ có `date - integer`) → query fail, heatmap luôn rỗng +
+        // spam log `operator does not exist: date - bigint`. Bind i32
+        // (int4) để dùng đúng operator có sẵn.
         let rows = sqlx::query_as::<_, HeatmapDay>(
             "SELECT day, activity_count FROM user_activity_days
              WHERE user_id = $1
@@ -54,7 +59,7 @@ impl ActivityRepo {
              ORDER BY day ASC",
         )
         .bind(user_id)
-        .bind(HEATMAP_DAYS)
+        .bind(HEATMAP_DAYS as i32)
         .fetch_all(pool)
         .await?;
         Ok(rows)

@@ -27,6 +27,10 @@
     <link rel="preload" href="/static/css/style.css?v={{ ""|ver }}" as="style">
     <link rel="preload" href="/static/js/htmx.min.js?v={{ ""|ver }}" as="script">
     <link rel="preload" href="/static/js/app.js?v={{ ""|ver }}" as="script">
+    {# v3.15.0 PERF — preconnect origin avatar Google (lh3) để handshake
+       DNS/TLS sớm song song với première paint — avatar hiện nhanh hơn
+       ~100-300ms, hoàn toàn vô hình với giao diện. #}
+    <link rel="preconnect" href="https://lh3.googleusercontent.com" crossorigin>
     <link rel="stylesheet" href="/static/css/style.css?v={{ ""|ver }}">
     <link rel="stylesheet" href="/static/css/fonts.css?v={{ ""|ver }}">
     <script src="/static/js/htmx.min.js?v={{ ""|ver }}" defer></script>

@@ -5,6 +5,37 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] — 2026-09-16 — Fix hx-on chết + siêu bảo mật + siêu tốc (không đổi UI)
+
+### 🐛 Fix
+- **`hx-on::after-request` chết toàn site:** htmx self-hosted trigger
+  `htmx:afterRequest` (camelCase) nhưng attribute đăng ký
+  `htmx:after-request` (kebab) — DOM phân biệt hoa/thường nên handler
+  không bao giờ chạy (ô chat không clear sau khi gửi, form bình luận
+  không reset, modal báo cáo không tự đóng...). Sửa 5 điểm
+  (`dm/thread`, comment, report modal, notifications, game/show) +
+  chuyển form chat sang listener JS trực tiếp (giữ chữ khi gửi lỗi).
+
+### 🔒 Security (giữ nguyên UX)
+- **WS cap 64KB → 128KB:** tin unlimited 20000 ký tự (~60-80KB) bị giết
+  connection im lặng ở cap cũ — vừa fix UX vừa giữ trần chống rác MBs.
+- **Headers mới:** `X-DNS-Prefetch-Control: off`,
+  `X-Permitted-Cross-Domain-Policies: none`; Referrer thắt về
+  `same-origin` (không endpoint nào cần cross-origin Referer).
+- **Chống brute-force login AI:** throttle 20 lần/15 phút theo username
+  (lớp 2 sau rate-limit global + Argon2id).
+- **Chống session fixation:** login Google thành công thu hồi session
+  cookie cũ ngay (mỗi login chỉ còn đúng 1 session mới).
+- Không đụng: `__Host-` prefix (sẽ logout toàn site), COEP, CSP
+  script (sẽ gãy hx-on/app.js inline).
+
+### ⚡ Performance (không đổi giao diện)
+- **Fix heatmap `date - bigint`:** mọi lượt xem hồ sơ chạy query lỗi
+  (heatmap luôn rỗng + spam log DB) — bind i32 để đúng operator
+  `date - integer`.
+- **Preconnect `lh3.googleusercontent.com`:** avatar hiện nhanh hơn
+  ~100-300ms, vô hình với UI.
+
 ## [3.14.0] — 2026-09-15 — Kết bạn + Chat riêng + Nhóm chat + Chat ảnh + Unlimited cho admin
 
 ### ✨ Features
