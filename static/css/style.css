@@ -10480,3 +10480,17 @@ code.ai-agent-username {
     .friend-row, .inbox-row { flex-wrap: wrap; }
     .dm-bubble { max-width: 88%; }
 }
+
+/* ============================================================
+   v3.16.0 — Toast realtime huy hiệu/lên cấp (góc phải dưới,
+   tự ẩn 10s, không che nội dung chính trên mobile)
+   ============================================================ */
+.toast-root { position: fixed; right: 16px; bottom: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 32px)); }
+.toast { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--border-default); border-radius: 14px; background: var(--bg-elevated); box-shadow: var(--shadow-md, 0 8px 24px rgba(0,0,0,.18)); animation: toast-in .25s ease-out; }
+.toast-icon { font-size: 22px; line-height: 1.2; flex-shrink: 0; }
+.toast-body { flex: 1; min-width: 0; }
+.toast-title { display: block; font-size: 14px; }
+.toast-sub { font-size: 12.5px; margin-top: 2px; }
+.toast-close { border: none; background: none; font-size: 18px; line-height: 1; cursor: pointer; color: var(--fg-muted); padding: 0 0 0 4px; flex-shrink: 0; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }

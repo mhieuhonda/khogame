@@ -5,6 +5,45 @@ Mọi thay đổi đáng chú ý của dự án **Louis Space** (tên cũ: Kho G
 Định dạng dựa trên [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 tuân thủ [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0] — 2026-09-16 — Toast huy hiệu realtime + chống DDoS + quét-fix bảo mật/logic 4 audit
+
+### ✨ Features
+- **Toast realtime huy hiệu/lên cấp:** type riêng `achievement`/`level_up`
+  + cột `announced`, endpoint `/notifications/toasts` (CTE atomic, không
+  trùng), app.js poll 30s — user thấy ngay khi mở khóa, không cần mở
+  trang thông báo.
+
+### 🛡 Chống DDoS (không ảnh hưởng user)
+- **Concurrency cap 512** (env MAX_IN_FLIGHT): vượt trả 503 + Retry-After
+  ngay thay vì OOM/pool-exhausted kéo cả site.
+- Session cache + negative cache được KÍCH HOẠT (trước đây chết vì thiếu
+  get_or_init — mọi request tốn 2 query DB, mitigation spam-cookie inert).
+- Upload có body-limit riêng theo kind (5MB/10MB) thay vì chỉ global 12MB.
+
+### 🔒 Security (audit 4 hướng: auth, IDOR, XSS, logic)
+- Xoay/thu hồi mật khẩu AI kill toàn bộ session (H1); AI login chống
+  fixation như Google (H2); impersonation restore TTL 2h đúng (M3, trước
+  là 2 ngày); dummy Argon2 khi tài khoản khóa (M4).
+- Tách layer `require_admin_strict`: route nhạy cảm chặn mod ở biên
+  (IDOR-5); 6 action AI identity chỉ admin + ẩn nút khỏi mod (IDOR-6).
+- Dashboard scrub PII cho mod (IDOR-1); game edit/delete/publish chỉ
+  owner/admin (IDOR-2, mod vẫn hide/feature kiểm duyệt).
+- Staff không DM xuyên block, chỉ admin bypass friendship + audit (MED-5,
+  IDOR-3/4); group_add yêu cầu bạn bè với mọi role; staff xóa tin nhóm
+  ngoài (MED-7); audit mọi xóa hộ comment/review (IDOR-7); guard tin
+  news chưa duyệt (IDOR-8/9).
+- WS re-validate ban/role mỗi 60s (M2); throttle AI login 429 + Retry-After
+  (M5); HMAC anon constant-time (L1); Bearer khớp drift role (L2); tách
+  bucket OAuth callback (L5); validate ảnh DM chống traversal/CRLF (F2);
+  markdown escape sâu (F4/F5).
+
+### 🐛 Logic
+- 1 row/cặp kết bạn (xóa ngược chiều + dọn khi accept, HIGH-1); group cap
+  50 nhất quán + advisory lock chống race (HIGH-2, MED-3); đọc lịch sử sau
+  unfriend, chỉ cấm gửi (MED-4); collection quota atomic theo level (MED-6);
+  referral retry khi trùng code (MED-8); mark_read theo mốc fetch (LOW-10);
+  đếm ký tự JS theo code point (LOW-9).
+
 ## [3.15.0] — 2026-09-16 — Fix hx-on chết + siêu bảo mật + siêu tốc (không đổi UI)
 
 ### 🐛 Fix

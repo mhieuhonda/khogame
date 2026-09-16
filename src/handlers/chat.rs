@@ -1,7 +1,7 @@
 use crate::error::{AppError, AppResult};
 use crate::middleware::current_user_from_jar;
 use crate::models::chat::ChatMessageWithUser;
-use crate::repositories::ChatRepo;
+use crate::repositories::{ChatRepo, UserRepo};
 use crate::state::{AppState, ChatEvent, PresenceAdd, MAX_WS_CONNS_PER_USER};
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
@@ -139,8 +139,8 @@ async fn run_ws(
     state: Arc<AppState>,
     mut socket: WebSocket,
     user_id: Uuid,
-    is_staff: bool,
-    unlimited: bool,
+    mut is_staff: bool,
+    mut unlimited: bool,
 ) {
     // 0) Presence: đăng ký connection (atomic check+increment dưới 1 lock).
     match state.presence_add(user_id, MAX_WS_CONNS_PER_USER) {
@@ -171,8 +171,14 @@ async fn run_ws(
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     // Skip tick đầu (immediate fire) — chỉ ping sau 30s đầu.
     heartbeat.tick().await;
+    // v3.16.0 FIX (M2 — WS không re-validate): auth snapshot tại handshake
+    // rồi giữ suốt vòng đời connection — user bị ban giữa chừng vẫn chat,
+    // staff bị hạ quyền vẫn dùng lệnh delete. Re-check mỗi 60s (1 query
+    // PK nhẹ/connection/phút — rẻ hơn nhiều so với mỗi message).
+    let mut recheck = tokio::time::interval(Duration::from_secs(60));
+    recheck.tick().await;
 
-    // 3) Main loop: select! giữa 3 nguồn.
+    // 3) Main loop: select! giữa 4 nguồn.
     loop {
         tokio::select! {
             // WS frame từ client — chat message hoặc admin delete command.
@@ -218,6 +224,27 @@ async fn run_ws(
                     .is_err()
                 {
                     break;
+                }
+            }
+            // Re-validate quyền (M2).
+            _ = recheck.tick() => {
+                match UserRepo::find_by_id(&state.db, user_id).await {
+                    Ok(Some(u)) if !u.is_banned => {
+                        is_staff = u.role.is_staff();
+                        unlimited = u.can_chat_unlimited();
+                    }
+                    _ => {
+                        tracing::warn!(
+                            "Chat WS đóng: user {user_id} bị ban/xóa hoặc mất quyền giữa phiên"
+                        );
+                        let _ = socket
+                            .send(Message::Close(Some(CloseFrame {
+                                code: 4403,
+                                reason: "Phiên đã hết hiệu lực — tải lại trang".into(),
+                            })))
+                            .await;
+                        break;
+                    }
                 }
             }
         }

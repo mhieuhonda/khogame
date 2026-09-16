@@ -192,7 +192,7 @@
                       hx-post="/games/{{ game.slug }}/comments"
                       hx-target="#comments-list"
                       hx-swap="afterbegin"
-                      hx-on:htmx:afterRequest="if(event.detail.successful) this.reset()">
+                      hx-on:htmx:afterRequest="if((event.detail.xhr.status>=200&&event.detail.xhr.status<300)) this.reset()">
                     <textarea name="content" placeholder="Viết bình luận của bạn..." required rows="3" minlength="1" maxlength="1000" aria-label="Nội dung bình luận"></textarea>
                     <div class="comment-form-actions">
                         <span class="char-counter" aria-live="polite"><span>0</span>/1000</span>
@@ -243,7 +243,7 @@
                     {% endmatch %}
                     <div class="download-grid">
                         {% for link in links %}
-                        <form method="post" action="/games/{{ game.slug }}/download" hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on:htmx:afterRequest="if(event.detail.successful && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
+                        <form method="post" action="/games/{{ game.slug }}/download" hx-post="/games/{{ game.slug }}/download" hx-vals='{"platform": "{{ link.platform.label()|lower }}"}' hx-target="#download-buttons-{{ game.slug }}" hx-swap="none" hx-on:htmx:afterRequest="if((event.detail.xhr.status>=200&&event.detail.xhr.status<300) && event.detail.xhr.getResponseHeader('X-Redirect')) window.location = event.detail.xhr.getResponseHeader('X-Redirect')">
                             <input type="hidden" name="platform" value="{{ link.platform.label()|lower }}">
                             <button type="submit" class="btn-download platform-{{ link.platform.label()|lower }}">
                                 <span class="platform-icon">

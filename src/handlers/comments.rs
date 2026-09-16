@@ -190,6 +190,19 @@ pub async fn delete_comment(
         ));
     }
     CommentRepo::delete(&state.db, id).await?;
+    // v3.16.0 FIX (IDOR-7): staff xóa hộ phải để lại audit (trước đây chỉ
+    // đường admin/* mới audit — mod xóa nhầm/lạm quyền mất dấu vết).
+    if comment.user_id != user.id {
+        crate::services::audit::audit(
+            &state,
+            user.id,
+            "comment.mod_delete",
+            "comment",
+            &id.to_string(),
+            &format!("{} xóa bình luận của {}", user.username, comment.user_id),
+        )
+        .await;
+    }
     Ok(Html(String::new()))
 }
 

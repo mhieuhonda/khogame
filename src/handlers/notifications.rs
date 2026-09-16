@@ -83,3 +83,29 @@ pub async fn mark_all_read(
     }
     Ok(Html(html))
 }
+
+// ============================================================
+// v3.16.0 — Toast realtime huy hiệu/lên cấp
+// ============================================================
+
+/// GET /notifications/toasts — JSON tối đa 5 toast huy hiệu/lên cấp chưa
+/// báo + đánh dấu announced atomic (không trùng, đa tab OK).
+/// Client (app.js) poll 30s khi đã đăng nhập, render toast góc màn hình.
+/// Không đánh dấu is_read (badge /notifications giữ nguyên).
+/// # Errors
+///
+/// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+pub async fn toasts(
+    State(state): State<Arc<AppState>>,
+    AuthUser(user): AuthUser,
+) -> AppResult<axum::Json<Vec<crate::models::ToastItem>>> {
+    // Rate-limit: poll 30s/tab = 2/phút — cap 20/phút chống tab spam.
+    if !state
+        .rate_limiter
+        .check(&format!("toasts:{}", user.id), 20, 60)
+    {
+        return Ok(axum::Json(Vec::new()));
+    }
+    let items = NotificationRepo::take_toasts(&state.db, user.id).await?;
+    Ok(axum::Json(items))
+}

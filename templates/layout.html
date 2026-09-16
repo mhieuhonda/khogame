@@ -305,5 +305,11 @@
 
     <script src="/static/js/app.js?v={{ ""|ver }}" defer></script>
     {% block scripts %}{% endblock %}
+    {# v3.16.0 — toast realtime huy hiệu/lên cấp (chỉ user đăng nhập;
+       app.js poll /notifications/toasts 30s khi div này tồn tại). #}
+    {% match current_user %}
+    {% when Option::Some with (_) %}
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="false"></div>
+    {% when Option::None %}{% endmatch %}
 </body>
 </html>

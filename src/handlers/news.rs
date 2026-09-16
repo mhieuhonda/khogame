@@ -770,6 +770,32 @@ pub async fn create_comment(
 
 // ============= v2.2.0 — News comments: like / delete / replies =============
 
+/// v3.16.0 (IDOR-8/9): parent news của comment phải published/archived thì
+/// người lạ mới được tương tác/xem — tin pending/rejected chỉ owner + staff.
+/// Trả 404 (không lộ sự tồn tại của tin chưa duyệt).
+async fn ensure_comment_visible(
+    state: &AppState,
+    comment_id: Uuid,
+    viewer: Option<&crate::models::User>,
+) -> AppResult<()> {
+    let row: Option<(String, Uuid)> = sqlx::query_as(
+        r"SELECT n.status::text, n.user_id FROM news_comments c
+          JOIN news n ON n.id = c.news_id WHERE c.id = $1",
+    )
+    .bind(comment_id)
+    .fetch_optional(&state.db)
+    .await?;
+    let (status, owner) =
+        row.ok_or_else(|| AppError::NotFound("Bình luận không tồn tại".into()))?;
+    if status == "published" || status == "archived" {
+        return Ok(());
+    }
+    match viewer {
+        Some(u) if u.id == owner || u.role.is_staff() => Ok(()),
+        _ => Err(AppError::NotFound("Bình luận không tồn tại".into())),
+    }
+}
+
 /// # Errors
 ///
 /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
@@ -784,6 +810,8 @@ pub async fn like_comment(
     // comment_id bị INSERT vào cột user_id → FK violation user_id_fkey →
     // 500 "Lỗi hệ thống" MỖI LẦN user tim bình luận tin tức (và unlike
     // cũng sai params). Đổi lại đúng thứ tự: user_id trước, comment_id sau.
+    // v3.16.0 (IDOR-9): chặn like khi parent news chưa publish.
+    ensure_comment_visible(&state, id, Some(&user)).await?;
     let liked = NewsRepo::toggle_comment_like(&state.db, user.id, id).await?;
     // Trả về FULL BUTTON (outerHTML swap cần element thay thế — trả text
     // số sẽ phá nút, bug cũ v3.3.x: sau like nút biến thành số trần).
@@ -819,6 +847,21 @@ pub async fn delete_comment(
         ));
     }
     NewsRepo::delete_comment(&state.db, id, user.id, user.role.is_staff()).await?;
+    // v3.16.0 FIX (IDOR-7): staff xóa hộ phải audit (như comments/reviews).
+    if comment.user_id != user.id {
+        crate::services::audit::audit(
+            &state,
+            user.id,
+            "news_comment.mod_delete",
+            "news_comment",
+            &id.to_string(),
+            &format!(
+                "{} xóa bình luận tin của {}",
+                user.username, comment.user_id
+            ),
+        )
+        .await;
+    }
     // Trả 200 với empty body — HTMX sẽ xóa element khỏi DOM
     Ok(Html(String::new()).into_response())
 }
@@ -831,6 +874,8 @@ pub async fn list_replies(
     CurrentUser(current_user): CurrentUser,
     Path(id): Path<Uuid>,
 ) -> AppResult<Response> {
+    // v3.16.0 (IDOR-8): chặn đọc reply của tin chưa publish (game đã chặn).
+    ensure_comment_visible(&state, id, current_user.as_ref()).await?;
     let replies =
         NewsRepo::list_replies(&state.db, id, current_user.as_ref().map(|u| u.id)).await?;
     // Render plain HTML — cấu trúc giống comment chính v3.4.0

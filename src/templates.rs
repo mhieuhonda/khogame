@@ -611,6 +611,10 @@ pub struct AdminAiAgentsTemplate {
     /// Mật khẩu vừa tạo/đặt lại — hiển thị 1 LẦN trong response POST
     /// (render trực tiếp, KHÔNG qua URL/query; không lưu DB plain/log).
     pub created_password: Option<String>,
+    /// v3.16.0 — viewer có phải admin tối cao? Ẩn nút tạo/reset/revoke/
+    /// login-as/badge khỏi mod (handler đã chặn is_admin — ẩn nút để
+    /// mod không bấm vào rồi ăn 403).
+    pub is_admin_viewer: bool,
 }
 
 /// Admin: live feed báo cáo tiến trình từ AI
@@ -640,6 +644,8 @@ pub struct AdminAiAgentEditTemplate {
     /// v3.10.0 — agent đã sở hữu huy hiệu độc quyền AI Agent
     /// (`ai_agent_core`) chưa? Điều khiển nút Cấp/Thu hồi trên trang sửa.
     pub has_ai_badge: bool,
+    /// v3.16.0 — như `AdminAiAgentsTemplate::is_admin_viewer` (ẩn nút badge).
+    pub is_admin_viewer: bool,
 }
 
 /// Danh sách GitHub repos

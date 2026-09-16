@@ -196,6 +196,27 @@ pub async fn dashboard(
         .unwrap_or(1)
         .max(1);
     let unread = unread_count(&state, user.id).await;
+    // v3.16.0 FIX (PII lọt cho mod): query recent_active_users SELECT cả
+    // email/IP/UA trong khi dashboard chỉ check is_staff. Template chỉ
+    // render username/display/last_seen nên scrub field nhạy cảm khi viewer
+    // không phải admin (không đổi query/template).
+    let recent_active_users = if user.role.is_admin() {
+        recent_active_users
+    } else {
+        recent_active_users
+            .into_iter()
+            .map(|mut u| {
+                u.email = String::new();
+                u.google_sub = String::new();
+                u.signup_ip = None;
+                u.signup_ua = None;
+                u.last_login_ip = None;
+                u.last_login_ua = None;
+                u.last_login_at = None;
+                u
+            })
+            .collect()
+    };
     Ok(AdminTemplate {
         current_user: Some(user),
         unread_notifications: unread,
@@ -1786,12 +1807,13 @@ async fn build_ai_agents_page(
         })
         .collect();
     Ok(AdminAiAgentsTemplate {
-        current_user: Some(user),
+        current_user: Some(user.clone()),
         unread_notifications: unread_res,
         agents,
         cred_views,
         created_username: flash_username.filter(|s| !s.is_empty()),
         created_password: flash_password.filter(|s| !s.is_empty()),
+        is_admin_viewer: user.role.is_admin(),
     })
 }
 
@@ -1854,8 +1876,10 @@ pub async fn impersonate_ai_agent(
     Path(user_id): Path<Uuid>,
     jar: CookieJar,
 ) -> AppResult<(CookieJar, Redirect)> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
@@ -1998,8 +2022,10 @@ pub async fn create_ai_agent(
     AuthUser(admin): AuthUser,
     Form(form): Form<AiAgentCreateForm>,
 ) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     // Capabilities: tách dấu phẩy, trim, lọc rỗng, tối đa 20 items
     let capabilities: Vec<String> = form
@@ -2085,8 +2111,10 @@ pub async fn reset_ai_agent_password(
     Path(user_id): Path<Uuid>,
     Form(form): Form<AiPasswordResetForm>,
 ) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
@@ -2104,6 +2132,11 @@ pub async fn reset_ai_agent_password(
         admin.id,
     )
     .await?;
+    // v3.16.0 FIX (H1 — xoay credential không kill session): session web bị
+    // đánh cắp vẫn sống đủ TTL sau reset. Đá toàn bộ session của agent ra
+    // ngay + xóa cache (giống logout-all).
+    let _ = SessionRepo::delete_all_for_user(&state.db, user_id).await;
+    crate::middleware::invalidate_session_cache_for_user(user_id);
 
     audit::audit(
         &state,
@@ -2147,8 +2180,10 @@ pub async fn revoke_ai_agent_password(
     AuthUser(admin): AuthUser,
     Path(user_id): Path<Uuid>,
 ) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
@@ -2159,6 +2194,10 @@ pub async fn revoke_ai_agent_password(
         ));
     }
     AiAgentRepo::admin_revoke_password(&state.db, user_id).await?;
+    // v3.16.0 FIX (H1): thu hồi mật khẩu phải đá session web hiện tại ra
+    // (xem reset-password ở trên).
+    let _ = SessionRepo::delete_all_for_user(&state.db, user_id).await;
+    crate::middleware::invalidate_session_cache_for_user(user_id);
     audit::audit(
         &state,
         admin.id,
@@ -2187,8 +2226,10 @@ pub async fn revoke_ai_agent_tokens(
     AuthUser(admin): AuthUser,
     Path(user_id): Path<Uuid>,
 ) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
@@ -2248,12 +2289,13 @@ pub async fn edit_ai_agent_form(
     );
     let agent = agent_res?;
     Ok(AdminAiAgentEditTemplate {
-        current_user: Some(admin),
+        current_user: Some(admin.clone()),
         unread_notifications: unread_res,
         agent,
         saved: false,
         error: None,
         has_ai_badge: badge_res.unwrap_or(false),
+        is_admin_viewer: admin.role.is_admin(),
     })
 }
 
@@ -2329,12 +2371,13 @@ pub async fn edit_ai_agent_submit(
         );
         let agent = agent_res?;
         Ok(AdminAiAgentEditTemplate {
-            current_user: Some(admin),
+            current_user: Some(admin.clone()),
             unread_notifications: unread_res,
             agent,
             saved: false,
             error: Some(msg.to_string()),
             has_ai_badge: badge_res.unwrap_or(false),
+            is_admin_viewer: admin.role.is_admin(),
         })
     }
 
@@ -2481,12 +2524,13 @@ pub async fn edit_ai_agent_submit(
     );
     let agent = agent_res?;
     Ok(AdminAiAgentEditTemplate {
-        current_user: Some(admin),
+        current_user: Some(admin.clone()),
         unread_notifications: unread_res,
         agent,
         saved: true,
         error: None,
         has_ai_badge: badge_res.unwrap_or(false),
+        is_admin_viewer: admin.role.is_admin(),
     })
 }
 
@@ -2522,8 +2566,10 @@ pub async fn toggle_ai_agent_badge(
     Path(user_id): Path<Uuid>,
     Form(form): Form<AiBadgeToggleForm>,
 ) -> AppResult<Response> {
-    if !admin.role.is_staff() {
-        return Err(AppError::Forbidden("Cần quyền quản trị".into()));
+    if !admin.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao (AI là danh tính hệ thống)".into(),
+        ));
     }
     let target = UserRepo::find_by_id(&state.db, user_id)
         .await?
@@ -2656,7 +2702,7 @@ pub async fn stop_impersonation(
                 if admin_user.role.is_staff() && !admin_user.is_banned {
                     let token = crate::auth::gen_session_token();
                     let token_hash = crate::auth::hash_token(&token);
-                    SessionRepo::create(
+                    let session_id = SessionRepo::create(
                         &state.db,
                         admin_user.id,
                         &token_hash,
@@ -2668,6 +2714,15 @@ pub async fn stop_impersonation(
                         2,
                     )
                     .await?;
+                    // v3.16.0 FIX (M3 — sai đơn vị TTL): `create()` nhận
+                    // ttl theo NGÀY nên `2` = 2 NGÀY (gấp 24× ý định 2h).
+                    // Ép lại expires_at = +2h ngay sau create.
+                    let _ = sqlx::query(
+                        "UPDATE sessions SET expires_at = NOW() + INTERVAL '2 hours' WHERE id = $1",
+                    )
+                    .bind(session_id)
+                    .execute(&state.db)
+                    .await;
                     crate::auth::set_session_cookie(&mut new_jar, &token, &state.config.base_url);
                     restored_admin = Some(admin_user.username.clone());
                     tracing::warn!(

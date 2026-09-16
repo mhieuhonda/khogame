@@ -198,6 +198,8 @@
        Agent: KHÔNG thể tự trao qua hành vi (engine check_and_award
        không có điều kiện cho id này), CHỈ admin cấp/thu hồi tại đây.
        Mọi thao tác ghi audit log. #}
+    {# v3.16.0 — chỉ admin tối cao thấy nút (handler đã chặn is_admin). #}
+    {% if is_admin_viewer %}
     <div class="admin-section">
         <h2 class="ai-edit-section-title">🏅 Huy hiệu độc quyền AI Agent</h2>
         <div class="ai-badge-grant-box">
@@ -228,6 +230,7 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 
 </section>
 {% endblock %}

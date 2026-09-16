@@ -61,6 +61,9 @@ fn clamp_content(content: &str, limit: usize) -> String {
 
 /// Validate image_url đính kèm: chỉ nhận file do chính server upload
 /// (`/uploads/...` — chặn URL ngoài gây XSS/phishing qua ảnh).
+/// v3.16.0 FIX (F2): dùng chung `storage::is_upload_url` thay vì check
+/// prefix thủ công — thêm guard `..`/CRLF (path traversal/header injection
+/// qua thuộc tính src).
 fn validate_image_url(url: Option<String>) -> AppResult<Option<String>> {
     match url {
         None => Ok(None),
@@ -69,7 +72,7 @@ fn validate_image_url(url: Option<String>) -> AppResult<Option<String>> {
             if t.is_empty() {
                 return Ok(None);
             }
-            if !(t.starts_with("/uploads/") && t.len() <= 300) {
+            if !(crate::services::storage::is_upload_url(&t) && t.len() <= 300) {
                 return Err(AppError::BadRequest("Ảnh đính kèm không hợp lệ".into()));
             }
             Ok(Some(t))
@@ -126,7 +129,13 @@ pub async fn inbox_page(
 // DM 1-1
 // ============================================================
 
-/// Resolve đối phương + kiểm tra quyền DM (bạn bè hoặc mình là staff).
+/// Resolve đối phương + kiểm tra quyền GỬI DM.
+/// Chính sách v3.16.0 (MED-4/5, IDOR-3/4):
+/// - Lịch sử cũ được ĐỌC tự do khi còn membership (xem `resolve_dm_peer`);
+///   riêng GỬI tin mới yêu cầu bạn bè.
+/// - Block chặn TẤT CẢ mọi role (kể cả admin — block là ranh giới tuyệt
+///   đối, không có DM cưỡng bức một chiều).
+/// - Chỉ ADMIN được bypass yêu cầu bạn bè (mod/user thường không).
 async fn resolve_dm_target(
     state: &AppState,
     me: &crate::models::User,
@@ -143,7 +152,13 @@ async fn resolve_dm_target(
     if other.is_banned {
         return Err(AppError::NotFound("Người dùng không tồn tại".into()));
     }
-    if !me.role.is_staff() {
+    // Block hai chiều chặn tất cả (kể cả admin).
+    if let Some(rel) = FriendRepo::between(&state.db, me.id, other.id).await? {
+        if rel.status == "blocked" {
+            return Err(AppError::Forbidden("Không thể nhắn tin lúc này".into()));
+        }
+    }
+    if !me.role.is_admin() {
         if other.is_ai_agent_user() {
             return Err(AppError::BadRequest(
                 "Tài khoản AI Agent là bot — không thể nhắn riêng".into(),
@@ -158,6 +173,28 @@ async fn resolve_dm_target(
     Ok(other)
 }
 
+/// Resolve đối phương để ĐỌC lịch sử (thread/box): chỉ cần từng là
+/// member — unfriend/block sau này không xóa quyền xem lại tin cũ của
+/// chính mình (MED-4: hết inbox ma + thread 403 oan).
+async fn resolve_dm_peer(
+    state: &AppState,
+    me: &crate::models::User,
+    username: &str,
+) -> AppResult<crate::models::User> {
+    let other = UserRepo::find_by_username(&state.db, username)
+        .await?
+        .ok_or_else(|| AppError::NotFound("Người dùng không tồn tại".into()))?;
+    if other.id == me.id {
+        return Err(AppError::BadRequest(
+            "Dùng Ghi chú cá nhân? Tính năng tự chat với mình chưa hỗ trợ".into(),
+        ));
+    }
+    if other.is_banned {
+        return Err(AppError::NotFound("Người dùng không tồn tại".into()));
+    }
+    Ok(other)
+}
+
 /// GET /messages/dm/{username} — thread DM (chưa có hội thoại → màn hình
 /// "bắt đầu trò chuyện", không tự tạo row rác).
 pub async fn dm_thread_page(
@@ -165,7 +202,8 @@ pub async fn dm_thread_page(
     AuthUser(user): AuthUser,
     Path(username): Path<String>,
 ) -> AppResult<DmThreadTemplate> {
-    let other = resolve_dm_target(&state, &user, &username).await?;
+    // Đọc lịch sử: chỉ cần từng là member (MED-4).
+    let other = resolve_dm_peer(&state, &user, &username).await?;
     let conv = DmRepo::find_dm(&state.db, user.id, other.id).await?;
     let limit = limit_for(&user);
     let unread = unread_count(&state, user.id).await;
@@ -191,7 +229,9 @@ pub async fn dm_thread_page(
             }
             let mut messages = DmRepo::thread(&state.db, c.id, THREAD_LIMIT).await?;
             messages.reverse();
-            DmRepo::mark_read(&state.db, c.id, user.id).await?;
+            // v3.16.0 (LOW-10): chốt read theo mốc đã fetch, không NOW().
+            let upto = messages.iter().map(|m| m.created_at).max();
+            DmRepo::mark_read(&state.db, c.id, user.id, upto).await?;
             Ok(DmThreadTemplate::dm(
                 Some(user),
                 unread,
@@ -211,6 +251,22 @@ pub async fn dm_start(
     Path(username): Path<String>,
 ) -> AppResult<Redirect> {
     let other = resolve_dm_target(&state, &user, &username).await?;
+    // Audit khi admin bypass friendship (mở DM với người lạ): hành động
+    // cưỡng bức tiềm năng phải để lại dấu vết (IDOR-3).
+    if user.role.is_admin() && !FriendRepo::are_friends(&state.db, user.id, other.id).await? {
+        crate::services::audit::audit(
+            &state,
+            user.id,
+            "dm.force_start",
+            "user",
+            &other.id.to_string(),
+            &format!(
+                "admin {} mở DM với người lạ {}",
+                user.username, other.username
+            ),
+        )
+        .await;
+    }
     DmRepo::get_or_create_dm(&state.db, user.id, other.id).await?;
     Ok(Redirect::to(&format!("/messages/dm/{}", other.username)))
 }
@@ -223,7 +279,8 @@ pub async fn dm_box(
     AuthUser(user): AuthUser,
     Path(username): Path<String>,
 ) -> AppResult<Html<String>> {
-    let other = resolve_dm_target(&state, &user, &username).await?;
+    // Poll đọc: membership-only (MED-4).
+    let other = resolve_dm_peer(&state, &user, &username).await?;
     let conv = DmRepo::find_dm(&state.db, user.id, other.id).await?;
     let messages = match conv {
         Some(c)
@@ -317,19 +374,26 @@ pub async fn group_create(
         return Err(AppError::BadRequest("Tên nhóm 2–100 ký tự".into()));
     }
     // Parse danh sách username → resolve + chỉ giữ BẠN BÈ (chống add người lạ).
+    // v3.16.0 FIX (HIGH-2): giới hạn đúng MAX_GROUP_MEMBERS (50 cả nhóm —
+    // creator chiếm 1 slot nên others ≤ 49). Trước đây take(60) cho nhóm
+    // 61 người, vượt cap mà group_add lại chặn → luật không nhất quán.
     let mut member_ids = Vec::new();
     if let Some(raw) = form.members.as_deref() {
         for uname in raw
             .split(',')
             .map(str::trim)
             .filter(|s| !s.is_empty())
-            .take(60)
+            .take(MAX_GROUP_MEMBERS as usize)
         {
+            if member_ids.len() >= (MAX_GROUP_MEMBERS as usize) - 1 {
+                break;
+            }
             if let Some(u) = UserRepo::find_by_username(&state.db, uname).await? {
                 if u.id != user.id
                     && !u.is_banned
                     && !u.is_ai_agent_user()
                     && FriendRepo::are_friends(&state.db, user.id, u.id).await?
+                    && !member_ids.contains(&u.id)
                 {
                     member_ids.push(u.id);
                 }
@@ -375,7 +439,9 @@ pub async fn group_thread_page(
     );
     let mut messages = messages?;
     messages.reverse();
-    DmRepo::mark_read(&state.db, conv.id, user.id).await?;
+    // v3.16.0 (LOW-10): chốt read theo mốc đã fetch, không NOW().
+    let upto = messages.iter().map(|m| m.created_at).max();
+    DmRepo::mark_read(&state.db, conv.id, user.id, upto).await?;
     let limit = limit_for(&user);
     Ok(DmThreadTemplate::group(
         Some(user),
@@ -478,11 +544,13 @@ pub async fn group_add(
             break;
         }
         if let Some(u) = UserRepo::find_by_username(&state.db, uname).await? {
+            // v3.16.0 FIX (MED-5/IDOR-4): người được mời PHẢI là bạn bè của
+            // người mời — không có bypass staff (kể cả admin): nhét người lạ
+            // vào nhóm kín = lộ nội dung nhóm + ép họ vào cuộc trò chuyện.
             if u.id != user.id
                 && !u.is_banned
                 && !u.is_ai_agent_user()
-                && (user.role.is_staff()
-                    || FriendRepo::are_friends(&state.db, user.id, u.id).await?)
+                && FriendRepo::are_friends(&state.db, user.id, u.id).await?
             {
                 ids.push(u.id);
             }
@@ -590,7 +658,8 @@ pub async fn group_delete(
 // Xóa tin nhắn riêng
 // ============================================================
 
-/// POST /dm/messages/{id}/delete — xóa tin của chính mình (staff xóa mọi tin).
+/// POST /dm/messages/{id}/delete — xóa tin của chính mình (staff xóa mọi tin,
+/// kể cả nhóm mình không tham gia — kiểm duyệt report nhóm kín, MED-7).
 pub async fn delete_message(
     State(state): State<Arc<AppState>>,
     AuthUser(user): AuthUser,
@@ -605,26 +674,30 @@ pub async fn delete_message(
     .await?;
     let (conv_id, sender_id) =
         row.ok_or_else(|| AppError::NotFound("Tin nhắn không tồn tại".into()))?;
-    if DmRepo::member_role(&state.db, conv_id, user.id)
-        .await?
-        .is_none()
+    // v3.16.0 FIX (MED-7): staff kiểm duyệt bypass membership (nhận report
+    // nhóm kín vẫn xử lý được); member thường vẫn phải ở trong hội thoại.
+    let is_staff = user.role.is_staff();
+    if !is_staff
+        && DmRepo::member_role(&state.db, conv_id, user.id)
+            .await?
+            .is_none()
     {
         return Err(AppError::Forbidden(
             "Bạn không ở trong hội thoại này".into(),
         ));
     }
-    let scope = if user.role.is_staff() {
-        None
-    } else {
-        Some(user.id)
-    };
+    let scope = if is_staff { None } else { Some(user.id) };
     if !DmRepo::soft_delete(&state.db, id, scope).await? {
         return Err(AppError::Forbidden(
             "Bạn chỉ xóa được tin của chính mình".into(),
         ));
     }
     // Quay lại thread (DM cần username đối phương — lấy nhanh).
-    if sender_id == user.id || user.role.is_staff() {
+    // Staff kiểm duyệt từ NGOÀI hội thoại → về inbox (vào thread sẽ 403).
+    let own_member = DmRepo::member_role(&state.db, conv_id, user.id)
+        .await?
+        .is_some();
+    if (sender_id == user.id || user.role.is_staff()) && own_member {
         let conv = DmRepo::find_conversation(&state.db, conv_id).await?;
         if let Some(c) = conv {
             if c.is_group() {

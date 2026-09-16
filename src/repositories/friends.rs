@@ -54,9 +54,22 @@ impl FriendRepo {
     /// Gửi lời mời kết bạn. Idempotent theo cặp: đã có row → trả row cũ
     /// (handler quyết định báo "đã gửi rồi" / "đã là bạn").
     ///
+    /// v3.16.0 FIX (HIGH-1 — 2 row ngược chiều): UNIQUE chỉ chặn trùng cùng
+    /// chiều nên lời mời ngược (B→A khi đã có A→B declined, hoặc race gửi
+    /// đồng thời) tạo row thứ 2 → `between()` trả row bất kỳ, accept/cancel
+    /// tác động sai row, lời mời ma treo vĩnh viễn. Giờ XÓA row ngược chiều
+    /// trước khi insert → mỗi cặp tối đa 1 row (khe race ms còn lại được
+    /// `respond()` dọn khi accept).
+    ///
     /// # Errors
     /// Trả về lỗi khi DB fail.
     pub async fn request(pool: &PgPool, requester: Uuid, addressee: Uuid) -> AppResult<Friendship> {
+        let mut tx = pool.begin().await?;
+        sqlx::query(r"DELETE FROM friendships WHERE requester_id = $1 AND addressee_id = $2")
+            .bind(addressee)
+            .bind(requester)
+            .execute(&mut *tx)
+            .await?;
         let row = sqlx::query_as::<_, Friendship>(
             r"INSERT INTO friendships (requester_id, addressee_id, status)
               VALUES ($1, $2, 'pending')
@@ -66,13 +79,46 @@ impl FriendRepo {
         )
         .bind(requester)
         .bind(addressee)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await?;
+        tx.commit().await?;
+        Ok(row)
+    }
+
+    /// Gửi lại sau declined: xóa MỌI row của cặp (cùng + ngược chiều) rồi
+    /// tạo lời mời pending mới — giữ invariant 1 row/cặp (xem `request`).
+    ///
+    /// # Errors
+    /// Trả về lỗi khi DB fail.
+    pub async fn resend(pool: &PgPool, requester: Uuid, addressee: Uuid) -> AppResult<Friendship> {
+        let mut tx = pool.begin().await?;
+        sqlx::query(
+            r"DELETE FROM friendships
+              WHERE (requester_id = $1 AND addressee_id = $2)
+                 OR (requester_id = $2 AND addressee_id = $1)",
+        )
+        .bind(requester)
+        .bind(addressee)
+        .execute(&mut *tx)
+        .await?;
+        let row = sqlx::query_as::<_, Friendship>(
+            r"INSERT INTO friendships (requester_id, addressee_id, status)
+              VALUES ($1, $2, 'pending')
+              RETURNING id, requester_id, addressee_id, status::text AS status, created_at, updated_at",
+        )
+        .bind(requester)
+        .bind(addressee)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
     /// Chấp nhận / từ chối lời mời (chỉ addressee của lời pending).
     /// Trả true nếu có row được đổi trạng thái.
+    ///
+    /// v3.16.0 FIX (HIGH-1): khi accept, dọn nốt row lạc cùng cặp (tồn kho
+    /// từ race trước fix) để invariant 1 row/cặp được phục hồi.
     ///
     /// # Errors
     /// Trả về lỗi khi DB fail.
@@ -83,17 +129,35 @@ impl FriendRepo {
         accept: bool,
     ) -> AppResult<bool> {
         let status = if accept { "accepted" } else { "declined" };
-        let rows = sqlx::query(
+        let mut tx = pool.begin().await?;
+        let pair: Option<(Uuid, Uuid)> = sqlx::query_as(
             r"UPDATE friendships SET status = $1::friend_status, updated_at = NOW()
-              WHERE id = $2 AND addressee_id = $3 AND status = 'pending'",
+              WHERE id = $2 AND addressee_id = $3 AND status = 'pending'
+              RETURNING requester_id, addressee_id",
         )
         .bind(status)
         .bind(friendship_id)
         .bind(addressee)
-        .execute(pool)
-        .await?
-        .rows_affected();
-        Ok(rows > 0)
+        .fetch_optional(&mut *tx)
+        .await?;
+        let changed = pair.is_some();
+        if accept {
+            if let Some((req, addr)) = pair {
+                sqlx::query(
+                    r"DELETE FROM friendships
+                      WHERE id != $1
+                        AND ((requester_id = $2 AND addressee_id = $3)
+                          OR (requester_id = $3 AND addressee_id = $2))",
+                )
+                .bind(friendship_id)
+                .bind(req)
+                .bind(addr)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+        tx.commit().await?;
+        Ok(changed)
     }
 
     /// Hủy lời mời đã gửi (chỉ requester, chỉ khi còn pending).

@@ -14,6 +14,14 @@ use uuid::Uuid;
 /// XP thưởng cho cả người giới thiệu và người mới.
 pub const REFERRAL_XP: i32 = 100;
 
+/// v3.16.0 (MED-8): nhận diện lỗi vi phạm UNIQUE (Postgres 23505) để retry
+/// sinh mã thay vì 500.
+fn is_unique_violation(e: &sqlx::Error) -> bool {
+    e.as_database_error()
+        .and_then(|d| d.code())
+        .is_some_and(|c| c.as_ref() == "23505")
+}
+
 /// Bảng chữ cái mã giới thiệu (bỏ 0,O,1,I để tránh nhìn nhầm).
 const CODE_ALPHABET: &[u8] = b"23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
@@ -32,7 +40,10 @@ impl ReferralRepo {
         if let Some(code) = existing {
             return Ok(code);
         }
-        // Sinh mã ngẫu nhiên 8 ký tự — thử tối đa 5 lần (collision hiếm)
+        // Sinh mã ngẫu nhiên 8 ký tự — thử tối đa 5 lần (collision hiếm).
+        // v3.16.0 FIX (MED-8): trùng code với user KHÁC ném unique-violation
+        // (không phải rows_affected=0) → lỗi tràn lên /referral thành 500.
+        // Bắt đúng lỗi unique để retry, lỗi khác vẫn trả về.
         use rand::RngExt;
         for _ in 0..5 {
             let code: String = (0..8)
@@ -48,7 +59,16 @@ impl ReferralRepo {
             .bind(user_id)
             .bind(&code)
             .execute(pool)
-            .await?;
+            .await;
+            let res = match res {
+                Ok(r) => r,
+                Err(e) => {
+                    if is_unique_violation(&e) {
+                        continue;
+                    }
+                    return Err(e.into());
+                }
+            };
             if res.rows_affected() > 0 {
                 return Ok(code);
             }

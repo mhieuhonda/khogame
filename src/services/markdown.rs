@@ -1688,6 +1688,20 @@ fn wrap_image_figures(html: &str) -> String {
                                 .map(|e| &img_tag[s_start..s_start + e])
                         })
                         .unwrap_or("");
+                    // v3.16.0 FIX (F4 — defense in depth): validate `src`
+                    // trước khi nội suy (harden_img_src ở pass trước đã chặn
+                    // scheme lạ, nhưng không tin mù quáng output pass trước:
+                    // src rỗng/chứa ký tự điều khiển/quote → bỏ wrap).
+                    // `caption` an toàn theo cấu trúc: trích tới `"` đầu
+                    // tiên nên không bao giờ chứa quote thô gây breakout.
+                    let src_ok = !src.is_empty()
+                        && src.len() <= 2000
+                        && !src.chars().any(|c| c.is_control() || c == '"' || c == '\'');
+                    if !src_ok {
+                        out.push_str(&rest[..p_end]);
+                        rest = &rest[p_end..];
+                        continue;
+                    }
                     out.push_str(&rest[..p_start]);
                     out.push_str(&format!(
                         r#"<figure class="md-figure"><img src="{src}" alt="{caption}" loading="lazy" decoding="async"><figcaption>{caption}</figcaption></figure>"#
@@ -1833,7 +1847,16 @@ fn add_code_lang_label(html: &str) -> String {
             let lang_end = after_lang.find(['"', ' ', '>']).unwrap_or(after_lang.len());
             let lang = &after_lang[..lang_end];
             // Skip plain "text" (default info string) — không hiển thị badge.
-            if !lang.is_empty() && lang != "text" {
+            // v3.16.0 FIX (F5): whitelist charset + độ dài cho token
+            // language-* (info-string fence do user kiểm soát — chặn ký tự
+            // lạ lọt vào HTML dù comrak đã escape attribute).
+            let lang_ok = !lang.is_empty()
+                && lang != "text"
+                && lang.len() <= 20
+                && lang
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '#' | '-'));
+            if lang_ok {
                 out.push_str(&rest[..start + wrapper_open_len]);
                 out.push_str(&format!(
                     r#"<span class="code-lang-label" aria-hidden="true">{lang}</span>"#

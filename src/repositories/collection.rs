@@ -45,12 +45,18 @@ impl CollectionRepo {
     /// v3.12.0 (audit logic L4): COUNT-then-INSERT không atomic — burst tạo
     /// đồng thời vượt cap vài bộ. Advisory lock theo user (pattern
     /// award_xp/trivia) xếp hàng request song song, quota bất biến.
+    ///
+    /// v3.16.0 FIX (MED-6): nhận `max` (quota theo level) thay vì hardcode
+    /// 20 — handler check level-quota trước nhưng race double-submit lọt
+    /// qua (cùng đọc count=4 → cùng insert). Lock + recount trong tx với
+    /// đúng `max` của caller chặn tuyệt đối.
     pub async fn create(
         pool: &PgPool,
         user_id: Uuid,
         title: &str,
         description: &str,
         is_public: bool,
+        max: i64,
     ) -> AppResult<Collection> {
         let mut tx = pool.begin().await?;
         sqlx::query("SELECT pg_advisory_xact_lock(hashtext('col_quota:' || $1::text))")
@@ -61,10 +67,10 @@ impl CollectionRepo {
             .bind(user_id)
             .fetch_one(&mut *tx)
             .await?;
-        if count >= 20 {
-            return Err(AppError::BadRequest(
-                "Bạn chỉ có thể tạo tối đa 20 bộ sưu tập".into(),
-            ));
+        if count >= max.max(1) {
+            return Err(AppError::BadRequest(format!(
+                "Bạn đã đạt giới hạn {max} bộ sưu tập — lên cấp cao hơn để mở thêm (hoặc xoá bớt)!"
+            )));
         }
         let c = sqlx::query_as::<_, Collection>(
             r"INSERT INTO collections (user_id, title, description, is_public)

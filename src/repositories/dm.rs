@@ -308,19 +308,45 @@ impl DmRepo {
         Ok(msg)
     }
 
-    /// Đánh dấu đã đọc tới hiện tại (mở thread → clear unread).
+    /// Đánh dấu đã đọc tới mốc `upto` (mốc mới nhất đã fetch/render).
+    ///
+    /// v3.16.0 FIX (LOW-10): trước đây `last_read_at = NOW()` — tin đến
+    /// đúng khe hở giữa SELECT và UPDATE bị đánh dấu đã đọc dù chưa render.
+    /// Giờ chốt theo max(created_at) đã fetch + GREATEST chống thụt lùi.
+    /// `upto=None` (vừa gửi tin) → NOW().
     ///
     /// # Errors
     /// Trả về lỗi khi DB fail.
-    pub async fn mark_read(pool: &PgPool, conversation_id: Uuid, user_id: Uuid) -> AppResult<()> {
-        sqlx::query(
-            r"UPDATE chat_members SET last_read_at = NOW()
-              WHERE conversation_id = $1 AND user_id = $2",
-        )
-        .bind(conversation_id)
-        .bind(user_id)
-        .execute(pool)
-        .await?;
+    pub async fn mark_read(
+        pool: &PgPool,
+        conversation_id: Uuid,
+        user_id: Uuid,
+        upto: Option<chrono::DateTime<chrono::Utc>>,
+    ) -> AppResult<()> {
+        match upto {
+            Some(t) => {
+                sqlx::query(
+                    r"UPDATE chat_members
+                      SET last_read_at = GREATEST(COALESCE(last_read_at, 'epoch'::timestamptz), $3)
+                      WHERE conversation_id = $1 AND user_id = $2",
+                )
+                .bind(conversation_id)
+                .bind(user_id)
+                .bind(t)
+                .execute(pool)
+                .await?;
+            }
+            None => {
+                sqlx::query(
+                    r"UPDATE chat_members SET last_read_at = NOW()
+                      WHERE conversation_id = $1 AND user_id = $2",
+                )
+                .bind(conversation_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+        }
         Ok(())
     }
 
@@ -360,6 +386,10 @@ impl DmRepo {
     /// người mời (check ở handler), bỏ qua người đã trong nhóm.
     /// Trả số row thực thêm.
     ///
+    /// v3.16.0 FIX (MED-3 — race vượt cap): 2 admin thêm đồng thời cùng đọc
+    /// count rồi cùng INSERT → vượt 50. Giờ khóa advisory theo conversation
+    /// trong tx + cắt input vừa đúng slot còn lại → cap không bao giờ vỡ.
+    ///
     /// # Errors
     /// Trả về lỗi khi DB fail.
     pub async fn add_members(
@@ -370,16 +400,32 @@ impl DmRepo {
         if user_ids.is_empty() {
             return Ok(0);
         }
+        let mut tx = pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1))")
+            .bind(format!("group-add:{conversation_id}"))
+            .execute(&mut *tx)
+            .await?;
+        let count: i64 =
+            sqlx::query_scalar(r"SELECT COUNT(*) FROM chat_members WHERE conversation_id = $1")
+                .bind(conversation_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        let room = (MAX_GROUP_MEMBERS - count).max(0) as usize;
+        let take = user_ids.len().min(room);
+        if take == 0 {
+            return Ok(0);
+        }
         let n = sqlx::query(
             r"INSERT INTO chat_members (conversation_id, user_id, role)
               SELECT $1, unnest($2::uuid[]), 'member'
               ON CONFLICT DO NOTHING",
         )
         .bind(conversation_id)
-        .bind(user_ids)
-        .execute(pool)
+        .bind(&user_ids[..take])
+        .execute(&mut *tx)
         .await?
         .rows_affected();
+        tx.commit().await?;
         Ok(n)
     }
 

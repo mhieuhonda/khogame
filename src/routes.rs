@@ -1,7 +1,8 @@
 use crate::handlers;
 use crate::middleware::{
-    cache_control_html, error_page_mw, maintenance_guard, origin_check, rate_limit,
-    request_timeout, require_admin, require_ai_agent, security_headers,
+    cache_control_html, concurrency_cap, error_page_mw, maintenance_guard, origin_check,
+    rate_limit, request_timeout, require_admin, require_admin_strict, require_ai_agent,
+    security_headers,
 };
 use crate::state::AppState;
 use axum::extract::DefaultBodyLimit;
@@ -283,6 +284,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/notifications/mark-all-read",
             post(handlers::notifications::mark_all_read),
         )
+        // v3.16.0 — toast realtime huy hiệu/lên cấp (JSON, app.js poll)
+        .route(
+            "/notifications/toasts",
+            get(handlers::notifications::toasts),
+        )
         // Static pages
         .route("/terms", get(handlers::pages::terms))
         .route("/privacy", get(handlers::pages::privacy))
@@ -357,12 +363,36 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // `{"url": "/uploads/<subdir>/<uuid>.<ext>", "size": <bytes>}`.
         // Client HTMX dùng URL để fill hidden field + preview <img>.
         // Tất cả yêu cầu AuthUser (đăng nhập) — xem handlers/uploads.rs.
-        .route("/uploads/avatar", post(handlers::uploads::avatar))
-        .route("/uploads/game/cover", post(handlers::uploads::game_cover))
-        .route("/uploads/news/cover", post(handlers::uploads::news_cover))
-        .route("/uploads/repo/image", post(handlers::uploads::repo_image))
+        //
+        // v3.16.0 FIX (F1 — OOM): handler đọc toàn body vào RAM RỒI mới
+        // check size — global DefaultBodyLimit 12MB chặn được file GB đơn
+        // lẻ nhưng 100 upload đồng thời × 12MB vẫn đè RAM. Mỗi route upload
+        // có limit riêng theo kind (5MB avatar/repo/chat, 10MB cover) — layer
+        // trong (route) ghi đè extension của layer ngoài (global 12MB),
+        // axum dùng limit gần handler nhất. Từ chối sớm ở tầng streaming.
+        .route(
+            "/uploads/avatar",
+            post(handlers::uploads::avatar).route_layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
+        .route(
+            "/uploads/game/cover",
+            post(handlers::uploads::game_cover)
+                .route_layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route(
+            "/uploads/news/cover",
+            post(handlers::uploads::news_cover)
+                .route_layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route(
+            "/uploads/repo/image",
+            post(handlers::uploads::repo_image).route_layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        )
         // v3.14.0 — ảnh đính kèm chat riêng/nhóm
-        .route("/uploads/chat/image", post(handlers::uploads::chat_image));
+        .route(
+            "/uploads/chat/image",
+            post(handlers::uploads::chat_image).route_layer(DefaultBodyLimit::max(5 * 1024 * 1024)),
+        );
 
     // Public JSON API v1
     let api_routes = Router::new()
@@ -421,6 +451,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             require_ai_agent,
         ));
 
+    // Routes staff (mod + admin): kiểm duyệt nội dung thường ngày.
     let admin_routes = Router::new()
         .route("/admin", get(handlers::admin::dashboard))
         // v2.9.0 — admin gamification stats
@@ -448,6 +479,49 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/games/{id}/delete",
             post(handlers::admin::delete_game).delete(handlers::admin::delete_game),
         )
+        // Comments
+        .route("/admin/comments", get(handlers::admin::comments))
+        .route(
+            "/admin/comments/{id}/delete",
+            post(handlers::admin::delete_comment).delete(handlers::admin::delete_comment),
+        )
+        // Categories (xem + lưu cho staff; XÓA chỉ admin → strict bên dưới)
+        .route("/admin/categories", get(handlers::admin::categories))
+        .route(
+            "/admin/categories/save",
+            post(handlers::admin::save_category),
+        )
+        // Repos
+        .route("/admin/repos", get(handlers::admin::repos))
+        .route(
+            "/admin/repos/{id}/status",
+            post(handlers::admin::set_repo_status),
+        )
+        // === AI Agent admin pages (xem + sửa nội dung cho staff;
+        // identity/security actions chỉ admin → strict bên dưới) ===
+        .route("/admin/ai-agents", get(handlers::admin::ai_agents))
+        // v3.7.0 — SỬA hồ sơ + spec AI Agent
+        .route(
+            "/admin/ai-agents/{user_id}/edit",
+            get(handlers::admin::edit_ai_agent_form).post(handlers::admin::edit_ai_agent_submit),
+        )
+        .route("/admin/ai-reports", get(handlers::admin::ai_reports))
+        // v3.4.0 — quản lý góp ý người dùng
+        .route(
+            "/admin/feedback",
+            get(handlers::feedback::admin_feedback_page),
+        )
+        .route(
+            "/admin/feedback/{id}/status",
+            post(handlers::feedback::admin_feedback_update),
+        )
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
+
+    // v3.16.0 — Routes CHỈ admin tối cao (IDOR-5): chặn ở biên route bằng
+    // require_admin_strict thay vì trông chờ từng handler check tay.
+    // Hành vi giữ nguyên 100% (handler nào trước đây cho staff đều ở
+    // router staff bên trên) — chỉ dồn lớp phòng thủ sâu hơn.
+    let super_admin_routes = Router::new()
         // Users
         .route("/admin/users", get(handlers::admin::users))
         .route("/admin/users/{id}", get(handlers::admin::user_detail))
@@ -458,23 +532,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/users/{id}/chat-unlimited",
             post(handlers::admin::set_chat_unlimited),
         )
-        // Comments
-        .route("/admin/comments", get(handlers::admin::comments))
-        .route(
-            "/admin/comments/{id}/delete",
-            post(handlers::admin::delete_comment).delete(handlers::admin::delete_comment),
-        )
-        // Categories
-        .route("/admin/categories", get(handlers::admin::categories))
-        .route(
-            "/admin/categories/save",
-            post(handlers::admin::save_category),
-        )
         .route(
             "/admin/categories/{id}/delete",
             post(handlers::admin::delete_category).delete(handlers::admin::delete_category),
         )
-        // v1.4.0 — News Categories (CRUD riêng cho tin tức, khác với categories game)
+        // v1.4.0 — News Categories
         .route(
             "/admin/news-categories",
             get(handlers::admin::news_categories),
@@ -488,14 +550,6 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(handlers::admin::delete_news_category)
                 .delete(handlers::admin::delete_news_category),
         )
-        // Repos
-        .route("/admin/repos", get(handlers::admin::repos))
-        .route(
-            "/admin/repos/{id}/status",
-            post(handlers::admin::set_repo_status),
-        )
-        // === AI Agent admin pages ===
-        .route("/admin/ai-agents", get(handlers::admin::ai_agents))
         // v3.4.0 — admin tạo AI Agent (username + mật khẩu + thời hạn)
         .route(
             "/admin/ai-agents/create",
@@ -510,40 +564,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/ai-agents/{user_id}/revoke-password",
             post(handlers::admin::revoke_ai_agent_password),
         )
-        // v3.4.2 — thu hồi TOÀN BỘ API token của agent (trước đây chỉ xoá
-        // được bằng SQL tay — audit "token không có đường thu hồi")
+        // v3.4.2 — thu hồi TOÀN BỘ API token của agent
         .route(
             "/admin/ai-agents/{user_id}/revoke-token",
             post(handlers::admin::revoke_ai_agent_tokens),
         )
-        // v3.11.0 — ĐÃ XÓA hệ params key/value (/admin/ai-agents/{id}/params,
-        // /params/{param_id}/edit, /params/{param_id}/delete): spec giờ là
-        // 7 cột cấu trúc trên ai_agent_profiles, sửa trực tiếp trong
-        // form /admin/ai-agents/{id}/edit bên dưới.
-        // v3.7.0 — SỬA hồ sơ + spec AI Agent
-        .route(
-            "/admin/ai-agents/{user_id}/edit",
-            get(handlers::admin::edit_ai_agent_form).post(handlers::admin::edit_ai_agent_submit),
-        )
+        // v3.11.0 — ĐÃ XÓA hệ params key/value: spec sửa trong
+        // form /admin/ai-agents/{id}/edit (router staff bên trên).
         // v3.10.0 — CẤP/THU HỒI huy hiệu ĐỘC QUYỀN AI Agent (ai_agent_core)
         .route(
             "/admin/ai-agents/{user_id}/badge-ai",
             post(handlers::admin::toggle_ai_agent_badge),
         )
-        // v3.3.0 — impersonation: staff đăng nhập với tư cách AI Agent
+        // v3.3.0 — impersonation: admin đăng nhập với tư cách AI Agent
         .route(
             "/admin/ai-agents/{user_id}/login-as",
             post(handlers::admin::impersonate_ai_agent),
-        )
-        .route("/admin/ai-reports", get(handlers::admin::ai_reports))
-        // v3.4.0 — quản lý góp ý người dùng
-        .route(
-            "/admin/feedback",
-            get(handlers::feedback::admin_feedback_page),
-        )
-        .route(
-            "/admin/feedback/{id}/status",
-            post(handlers::feedback::admin_feedback_update),
         )
         // Settings
         .route(
@@ -586,9 +622,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/news/{id}/delete",
             post(handlers::admin::news_delete).delete(handlers::admin::news_delete),
         )
-        // v3.6.0 — ADMIN XP BOOST (1000 XP / 0.15s, start/stop).
-        // Trang + partial chỉ admin (handler check is_admin thủ công —
-        // route_layer require_admin chỉ chặn is_staff, mod cũng qua được).
+        // v3.6.0 — ADMIN XP BOOST (handler vẫn check is_admin thủ công —
+        // giờ thêm layer strict, double protection).
         .route("/admin/xp-boost", get(handlers::admin::xp_boost_page))
         .route(
             "/admin/xp-boost/start",
@@ -599,7 +634,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/admin/xp-boost/status",
             get(handlers::admin::xp_boost_status),
         )
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_admin));
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_admin_strict,
+        ));
 
     Router::new()
         .merge(public_routes)
@@ -607,6 +645,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .nest("/api", internal_routes)
         .nest("/ai", ai_internal_routes)
         .merge(admin_routes)
+        .merge(super_admin_routes)
         // Static assets (v2.1.0 PERF — 2 tầng cache):
         //   /static/fonts/* — cache 1 NĂM immutable: font là variable font
         //     self-hosted, tên file ổn định (inter-var-latin.woff2...), không
@@ -827,5 +866,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // attacker gửi 100MB body, axum đọc hết, RỒI mới reject.
         // DefaultBodyLimit chặn sớm ở layer streaming.
         .layer(DefaultBodyLimit::max(12 * 1024 * 1024))
+        // v3.16.0 — OUTERMOST concurrency cap (chống DDoS tầng app): giới
+        // hạn request đồng thời, vượt trả 503 + Retry-After ngay. Đặt NGOÀI
+        // timeout/body-limit để flood không giữ task/timeout vô ích.
+        .layer(middleware::from_fn(concurrency_cap))
         .with_state(state)
 }

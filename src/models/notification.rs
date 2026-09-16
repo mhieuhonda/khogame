@@ -22,6 +22,10 @@ pub enum NotificationType {
     FriendRequest,
     /// v3.14.0 — tin nhắn riêng/nhóm mới
     Dm,
+    /// v3.16.0 — mở khóa huy hiệu (toast realtime)
+    Achievement,
+    /// v3.16.0 — lên cấp (toast realtime)
+    LevelUp,
 }
 
 impl NotificationType {
@@ -41,6 +45,8 @@ impl NotificationType {
             Self::FeedbackStatus => "💬",
             Self::FriendRequest => "🤝",
             Self::Dm => "✉️",
+            Self::Achievement => "🏆",
+            Self::LevelUp => "⭐",
         }
     }
     #[must_use]
@@ -59,6 +65,8 @@ impl NotificationType {
             Self::FeedbackStatus => "Góp ý",
             Self::FriendRequest => "Kết bạn",
             Self::Dm => "Tin nhắn",
+            Self::Achievement => "Huy hiệu",
+            Self::LevelUp => "Lên cấp",
         }
     }
 }
@@ -127,6 +135,16 @@ impl NotificationWithActor {
     pub fn content_or(&self) -> String {
         self.content.clone().unwrap_or_default()
     }
+}
+
+/// v3.16.0 — 1 toast realtime (huy hiệu/lên cấp) trả cho client poll.
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct ToastItem {
+    pub id: Uuid,
+    pub kind: String,
+    pub title: String,
+    pub content: Option<String>,
+    pub link: Option<String>,
 }
 
 #[cfg(test)]

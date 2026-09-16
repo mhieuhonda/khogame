@@ -116,17 +116,9 @@ pub async fn send_request(
                 // Đối phương mời mình trước → chấp nhận luôn.
                 FriendRepo::respond(&state.db, rel.id, user.id, true).await?;
             } else {
-                // declined cũ → cho gửi lại (request upsert lại thành pending).
-                FriendRepo::request(&state.db, user.id, target.id).await?;
-                // Reset declined → pending (upsert chỉ touch updated_at).
-                sqlx::query(
-                    r"UPDATE friendships SET status = 'pending', updated_at = NOW()
-                      WHERE requester_id = $1 AND addressee_id = $2",
-                )
-                .bind(user.id)
-                .bind(target.id)
-                .execute(&state.db)
-                .await?;
+                // declined cũ → gửi lại bằng resend() (xóa mọi row của cặp
+                // rồi tạo mới — giữ invariant 1 row/cặp, HIGH-1).
+                FriendRepo::resend(&state.db, user.id, target.id).await?;
                 let db = state.db.clone();
                 let (uid, aid, aname) = (target.id, user.id, user.display_name.clone());
                 tokio::spawn(async move {

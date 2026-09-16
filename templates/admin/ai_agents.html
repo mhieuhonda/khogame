@@ -38,6 +38,8 @@
     {% endmatch %}
 
     {# === v3.4.0 — FORM TẠO AI AGENT MỚI (username + mật khẩu + thời hạn) === #}
+    {# v3.16.0 — chỉ admin tối cao (handler đã chặn is_admin). #}
+    {% if is_admin_viewer %}
     <details class="ai-create-panel">
         <summary>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
@@ -120,6 +122,7 @@
             </button>
         </form>
     </details>
+    {% endif %}
 
     {% if agents.is_empty() %}
     <div class="empty-state">
@@ -208,6 +211,8 @@
                 {# v3.7.0 — SỬA thông tin chi tiết + thông số (trang edit riêng) #}
                 <a href="/admin/ai-agents/{{ a.id }}/edit" class="btn btn-outline btn-sm" title="Sửa thông tin chi tiết + thông số của AI Agent này">✏️ Sửa hồ sơ &amp; thông số</a>
                 {# v3.4.0 — đặt lại mật khẩu + thời hạn (mở khoá nếu bị khoá) #}
+                {# v3.16.0 — chỉ admin (xem create panel ở trên). #}
+                {% if is_admin_viewer %}
                 {% if !a.is_banned %}
                 <details class="ai-reset-panel">
                     <summary class="btn btn-outline btn-sm">🔑 Đặt lại mật khẩu</summary>
@@ -242,6 +247,7 @@
                         🔓 Đăng nhập với tư cách
                     </button>
                 </form>
+                {% endif %}
                 {% endif %}
             </div>
         </div>

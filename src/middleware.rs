@@ -55,56 +55,65 @@ static NEGATIVE_SESSION_CACHE: std::sync::OnceLock<
 > = std::sync::OnceLock::new();
 const NEGATIVE_SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// v3.16.0 FIX (H3 — cache chết): mọi code cũ dùng `.get()` trên 2
+/// OnceLock mà KHÔNG nơi nào `get_or_init` → map không bao giờ tồn tại,
+/// mọi lookup rơi hết xuống DB (2 query/request) + negative cache + mọi
+/// invalidate đều là no-op. Accessor này đảm bảo map luôn tồn tại.
+fn session_cache() -> &'static std::sync::Mutex<SessionCacheMap> {
+    SESSION_CACHE.get_or_init(|| std::sync::Mutex::new(SessionCacheMap::new()))
+}
+
+/// v3.16.0 FIX (H3) — accessor negative cache (xem `session_cache`).
+fn negative_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, std::time::Instant>> {
+    NEGATIVE_SESSION_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
 /// Ghi nhận token hash KHÔNG hợp lệ (DB miss) vào negative cache.
 fn negative_cache_insert(token_hash: &str) {
-    if let Some(map) = NEGATIVE_SESSION_CACHE.get() {
-        let mut map = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if map.len() > 20_000 {
-            map.retain(|_, at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL);
-        }
-        map.insert(token_hash.to_string(), std::time::Instant::now());
+    let map = negative_cache();
+    let mut map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if map.len() > 20_000 {
+        map.retain(|_, at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL);
     }
+    map.insert(token_hash.to_string(), std::time::Instant::now());
 }
 
 /// Token hash có đang bị cache âm (vừa tra là KHÔNG hợp lệ) không?
 fn negative_cache_hit(token_hash: &str) -> bool {
-    NEGATIVE_SESSION_CACHE.get().is_some_and(|map| {
-        let map = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.get(token_hash)
-            .is_some_and(|at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL)
-    })
+    let map = negative_cache();
+    let map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.get(token_hash)
+        .is_some_and(|at| at.elapsed() < NEGATIVE_SESSION_CACHE_TTL)
 }
 
 /// Xoá 1 session khỏi cache (key = token hash). Gọi khi logout /
 /// revoke — user bị đá ra NGAY LẬP TỨC, không đợi TTL.
 pub fn invalidate_session_cache(token_hash: &str) {
-    if let Some(map) = SESSION_CACHE.get() {
-        let mut map = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.remove(token_hash);
-    }
+    let map = session_cache();
+    let mut map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.remove(token_hash);
     // Đồng bộ xoá negative entry (phòng khi hash từng bị miss trong gap).
-    if let Some(map) = NEGATIVE_SESSION_CACHE.get() {
-        let mut map = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.remove(token_hash);
-    }
+    let neg = negative_cache();
+    let mut neg = neg
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    neg.remove(token_hash);
 }
 
 /// Xoá MỌI session của 1 user khỏi cache (logout-all, admin đổi role/ban).
 pub fn invalidate_session_cache_for_user(user_id: Uuid) {
-    if let Some(map) = SESSION_CACHE.get() {
-        let mut map = map
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        map.retain(|_, (u, _)| u.id != user_id);
-    }
+    let map = session_cache();
+    let mut map = map
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    map.retain(|_, (u, _)| u.id != user_id);
 }
 
 /// Extracts the current user from the request, if any.
@@ -116,7 +125,8 @@ pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<
     let token_hash = hash_token(&token);
 
     // === Fast path: cache hit (không chạm DB) ===
-    if let Some(map) = SESSION_CACHE.get() {
+    {
+        let map = session_cache();
         let map = map
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -156,7 +166,8 @@ pub async fn current_user_from_jar(state: &AppState, jar: &CookieJar) -> Option<
     }
     // Lưu vào cache cho các request kế tiếp trong cửa sổ TTL.
     // Cleanup khi map phình (nhiều user ghé trong 10s) — retain entry còn hạn.
-    if let Some(map) = SESSION_CACHE.get() {
+    {
+        let map = session_cache();
         let mut map = map
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -297,6 +308,40 @@ pub async fn require_admin(
     if !user.role.is_staff() {
         return Err(AppError::Forbidden(
             "Chỉ quản trị viên mới truy cập được khu vực này".into(),
+        ));
+    }
+    Ok(next.run(request).await)
+}
+
+// ============================================================
+// v3.16.0 — require_admin_strict (chỉ ADMIN tối cao, không phải mod).
+//
+// Vấn đề (audit IDOR-5): `require_admin` chỉ chặn non-staff, mọi route
+// nhạy cảm (set_role, ban, AI identity, settings, export...) dồn gánh
+// kiểm tra is_admin thủ công cho từng handler — sót 1 chỗ là mod leo
+// thang. Layer này chặn ở biên route: handler nhạy cảm KHÔNG BAO GIỜ
+// tới được mod dù quên check tay (defense in depth — handler vẫn giữ
+// check thủ công như cũ).
+// ============================================================
+pub async fn require_admin_strict(
+    State(state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Result<Response, AppError> {
+    use axum_extra::extract::CookieJar;
+    let jar = CookieJar::from_headers(request.headers());
+    let user = current_user_from_jar(&state, &jar)
+        .await
+        .ok_or(AppError::Unauthorized)?;
+    // Giữ nguyên rào AI Agent như require_admin (bot không vào admin).
+    if user.is_ai_agent_user() {
+        return Err(AppError::Forbidden(
+            "Tài khoản AI Agent không được truy cập khu vực quản trị".into(),
+        ));
+    }
+    if !user.role.is_admin() {
+        return Err(AppError::Forbidden(
+            "Chỉ quản trị viên tối cao mới truy cập được khu vực này".into(),
         ));
     }
     Ok(next.run(request).await)
@@ -1007,7 +1052,8 @@ async fn session_user_id_from_token(state: &AppState, token: &str) -> Option<Uui
     let token_hash = hash_token(token);
     // Fast path: SESSION_CACHE (cùng cache auth middleware dùng — hit thì
     // không tốn query nào).
-    if let Some(map) = SESSION_CACHE.get() {
+    {
+        let map = session_cache();
         let map = map
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -1170,7 +1216,15 @@ pub async fn rate_limit(
         // TRANG FORM, tưởng site hỏng. GET form giờ về bucket mặc định.
         (10, 600)
     } else if path.starts_with("/auth/google") {
-        (10, 600)
+        // v3.16.0 FIX (L5 — bucket gộp): callback bị user bấm Back/refresh
+        // vài lần là tự đốt quota login của chính mình. Tách: callback
+        // rộng hơn (30/10 phút — code đổi 1 lần, không replay được),
+        // init giữ 10/10 phút.
+        if path.starts_with("/auth/google/callback") {
+            (30, 600)
+        } else {
+            (10, 600)
+        }
     } else if path.starts_with("/ai/") {
         (120, 60)
     } else if path.starts_with("/api/suggest") {
@@ -1315,7 +1369,9 @@ const ANON_COOKIE: &str = "ls_anon";
 fn anon_cookie_value(headers: &axum::http::HeaderMap, session_key: &str) -> Option<String> {
     let raw = cookie_value(headers, ANON_COOKIE)?;
     let (id, sig) = raw.rsplit_once('.')?;
-    if anon_hmac(session_key, id) != sig {
+    // v3.16.0 FIX (L1 — timing oracle): so sánh tag HMAC bằng constant-time
+    // (trước đây `!=` thường — lý thuyết lộ từng byte tag qua đo thời gian).
+    if !crate::utils::constant_time_eq(anon_hmac(session_key, id).as_bytes(), sig.as_bytes()) {
         // Chữ ký không khớp (cookie giả mạo hoặc cookie cũ unsigned) →
         // coi như không có cookie → bucket dùng chung.
         return None;
@@ -2696,6 +2752,48 @@ pub async fn request_timeout(request: Request, next: Next) -> Response {
             resp
         }
     }
+}
+
+// ============================================================
+// v3.16.0 — CONCURRENCY CAP (chống DDoS tầng app, không ảnh hưởng user)
+// ------------------------------------------------------------
+// Vấn đề: không giới hạn số request đồng thời → flood mở hàng nghìn
+// connection cùng lúc, mỗi cái giữ RAM/task/DB-conn cho tới timeout 30s
+// = OOM hoặc pool exhausted, user thật cũng chết theo.
+// Giải pháp: semaphore global (default 512 in-flight — gấp nhiều lần tải
+// thật của VPS 6 CPU/pool 25). Vượt → 503 + Retry-After NGAY (fail-fast,
+// không giữ tài nguyên): user thật bấm lại sau 2s là qua; bot flood bị
+// chặn gọn ở biên. Tune qua env MAX_IN_FLIGHT (min 16).
+// Không ảnh hưởng UX ngày thường: ngưỡng cao hơn đỉnh tải thật ~10×.
+// ============================================================
+pub async fn concurrency_cap(request: Request, next: Next) -> Response {
+    static SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    let sem = SEM.get_or_init(|| {
+        let n = std::env::var("MAX_IN_FLIGHT")
+            .ok()
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .filter(|v| *v >= 16)
+            .unwrap_or(512);
+        tokio::sync::Semaphore::new(n)
+    });
+    let Ok(_permit) = sem.try_acquire() else {
+        tracing::warn!("Concurrency cap đầy — trả 503 (flood hoặc tải đột biến)");
+        let mut resp = (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Máy chủ đang quá tải — vui lòng thử lại sau vài giây.",
+        )
+            .into_response();
+        resp.headers_mut().insert(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        );
+        resp.headers_mut().insert(
+            axum::http::header::RETRY_AFTER,
+            HeaderValue::from_static("2"),
+        );
+        return resp;
+    };
+    next.run(request).await
 }
 
 // ============================================================

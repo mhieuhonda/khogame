@@ -25,7 +25,8 @@ async fn notify_level_up(
         .ok()
         .flatten()
         .unwrap_or_default();
-    let _ = NotificationRepo::create_system(
+    // v3.16.0 — type riêng 'level_up' để toast realtime báo ngay.
+    let _ = NotificationRepo::create_level_up(
         pool,
         user_id,
         &format!("Lên cấp {} — {}!", level.level, level.title),
@@ -72,7 +73,8 @@ pub async fn check_achievements(pool: &PgPool, user_id: Uuid) {
         if a.xp_reward > 0 {
             let _ = GamificationRepo::award_xp(pool, user_id, "achievement", a.xp_reward).await;
         }
-        let _ = NotificationRepo::create_system(
+        // v3.16.0 — type riêng 'achievement' để toast realtime báo ngay.
+        let _ = NotificationRepo::create_achievement(
             pool,
             user_id,
             &format!("{} Mở khóa huy hiệu: {}", a.icon, a.title),
@@ -80,7 +82,6 @@ pub async fn check_achievements(pool: &PgPool, user_id: Uuid) {
                 "{} — thưởng {} XP. Xem bộ sưu tập huy hiệu của bạn!",
                 a.description, a.xp_reward
             ),
-            "/achievements",
         )
         .await;
         tracing::info!(user = %user_id, achievement = %a.id, "Trao huy hiệu");

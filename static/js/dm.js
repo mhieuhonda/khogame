@@ -14,7 +14,9 @@
         var ta = document.getElementById("dm-content");
         var count = document.getElementById("dm-count");
         if (!ta || !count) return;
-        var update = function () { count.textContent = String(ta.value.length); };
+        // v3.16.0 FIX (LOW-9): đếm theo code point cho khớp server
+        // (chars()) — .length đếm UTF-16 units, emoji bị tính gấp đôi.
+        var update = function () { count.textContent = String(Array.from(ta.value).length); };
         ta.addEventListener("input", update);
         update();
     }
@@ -64,10 +66,12 @@
     // Form gửi xong (2xx) → clear ô nhập + preview. Poll của #dm-box có
     // target khác nên không bao giờ xóa nhầm chữ đang gõ. Gửi lỗi thì
     // giữ nguyên chữ để user sửa rồi gửi lại.
+    // (afterRequest detail có `xhr` nhưng KHÔNG có `successful` — check
+    // status code trực tiếp.)
     document.body.addEventListener("htmx:afterRequest", function (e) {
-        if (e.target && e.target.id === "dm-form" && e.detail && e.detail.successful) {
-            clearForm();
-        }
+        if (!(e.target && e.target.id === "dm-form")) return;
+        var s = e.detail && e.detail.xhr ? e.detail.xhr.status : 0;
+        if (s >= 200 && s < 300) clearForm();
     });
     // HTMX swap thành công trên #dm-box (gửi tin OK) → cuộn xuống cuối,
     // clear ô nhập + preview ảnh. Chỉ chạy khi swap THÀNH CÔNG nên gửi

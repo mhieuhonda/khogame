@@ -708,7 +708,7 @@ pub async fn edit_game_form(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    if game.user_id != user.id && !user.role.is_staff() {
+    if game.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
     }
     // 4 query độc lập (categories/links/screenshots/tags) chạy song song.
@@ -747,7 +747,7 @@ pub async fn update_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    if game.user_id != user.id && !user.role.is_staff() {
+    if game.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền chỉnh sửa".into()));
     }
     // Validate tất cả URL & length — dùng chung với create_game
@@ -783,7 +783,7 @@ pub async fn delete_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    if game.user_id != user.id && !user.role.is_staff() {
+    if game.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền xóa".into()));
     }
     GameRepo::delete(&state.db, game.id).await?;
@@ -1461,7 +1461,7 @@ pub async fn publish_game(
     let game = GameRepo::find_by_slug(&state.db, &slug)
         .await?
         .ok_or_else(|| AppError::NotFound("Game không tồn tại".into()))?;
-    if game.user_id != user.id && !user.role.is_staff() {
+    if game.user_id != user.id && !user.role.is_admin() {
         return Err(AppError::Forbidden("Bạn không có quyền".into()));
     }
     // v3.0.0 FIX (XP farm): chỉ fire hook XP/notification khi game MỚI

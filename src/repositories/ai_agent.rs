@@ -299,10 +299,15 @@ impl AiAgentRepo {
               WHERE t.token_hash = $1
                 AND t.revoked = FALSE
                 AND (t.expires_at IS NULL OR t.expires_at > NOW())
-                AND u.role = 'ai_agent'
+                -- v3.16.0 FIX (L2 — predicate drift): dùng is_ai_agent_user
+                -- (role HOẶC google_sub mặc định) như mọi nơi khác — agent bị
+                -- đổi role tay (kịch bản glm53/Moderator) login web được mà
+                -- Bearer 401, outage khó hiểu.
+                AND (u.role = 'ai_agent' OR u.google_sub = $2)
                 AND u.is_banned = FALSE",
         )
         .bind(&token_hash)
+        .bind(DEFAULT_AGENT_GOOGLE_SUB)
         .fetch_optional(pool)
         .await?;
 
@@ -1025,6 +1030,11 @@ impl AiAgentRepo {
         // 3) Kiểm tra khoá
         if let Some(until) = cred.locked_until {
             if until > Utc::now() {
+                // v3.16.0 FIX (M4 — timing oracle): nhánh locked return ngay
+                // không hash (~50-100ms nhanh hơn path verify) → đo được
+                // trạng thái khóa. Chạy dummy Argon2 như mọi early-return
+                // khác để đồng bộ thời gian (giữ message LOCKED riêng cho UX).
+                let _ = crate::auth::hash_password(password);
                 return Err(AppError::Forbidden(LOCKED_ERR.into()));
             }
         }

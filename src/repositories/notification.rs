@@ -1,5 +1,5 @@
 use crate::error::AppResult;
-use crate::models::notification::NotificationWithActor;
+use crate::models::notification::{NotificationWithActor, ToastItem};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -262,6 +262,80 @@ impl NotificationRepo {
         .execute(pool)
         .await?;
         Ok(())
+    }
+
+    /// v3.16.0 — Thông báo mở khóa huy hiệu (type riêng để toast realtime
+    /// lọc được — trước đây dùng chung 'system').
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_achievement(
+        pool: &PgPool,
+        user_id: Uuid,
+        title: &str,
+        content: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, type, title, content, link)
+              VALUES ($1, 'achievement'::notification_type, $2, $3, '/achievements')",
+        )
+        .bind(user_id)
+        .bind(title)
+        .bind(content)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// v3.16.0 — Thông báo lên cấp (type riêng để toast realtime lọc được).
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn create_level_up(
+        pool: &PgPool,
+        user_id: Uuid,
+        title: &str,
+        content: &str,
+        link: &str,
+    ) -> AppResult<()> {
+        sqlx::query(
+            r"INSERT INTO notifications (user_id, type, title, content, link)
+              VALUES ($1, 'level_up'::notification_type, $2, $3, $4)",
+        )
+        .bind(user_id)
+        .bind(title)
+        .bind(content)
+        .bind(link)
+        .execute(pool)
+        .await?;
+        Ok(())
+    }
+
+    /// v3.16.0 — Lấy + đánh dấu announced cho toast huy hiệu/lên cấp chưa
+    /// báo (1 CTE atomic: SELECT ids → UPDATE → RETURNING rows — không bao
+    /// giờ báo trùng, đa thiết bị/tab OK). Tối đa 5/lần poll.
+    /// # Errors
+    ///
+    /// Trả về lỗi khi thao tác thất bại (DB, I/O, validation).
+    pub async fn take_toasts(pool: &PgPool, user_id: Uuid) -> AppResult<Vec<ToastItem>> {
+        let rows = sqlx::query_as::<_, ToastItem>(
+            r"WITH q AS (
+                 SELECT id FROM notifications
+                 WHERE user_id = $1 AND announced = FALSE AND is_read = FALSE
+                   AND type IN ('achievement'::notification_type, 'level_up'::notification_type)
+                 ORDER BY created_at DESC LIMIT 5
+               ),
+               upd AS (
+                 UPDATE notifications SET announced = TRUE WHERE id IN (SELECT id FROM q)
+               )
+               SELECT n.id, n.type::text AS kind, n.title, n.content, n.link
+               FROM notifications n WHERE n.id IN (SELECT id FROM q)
+               ORDER BY n.created_at DESC",
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await?;
+        Ok(rows)
     }
 
     /// v2.2.0 — Batch mention tới nhiều user trong 1 query.

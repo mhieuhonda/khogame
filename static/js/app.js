@@ -1521,3 +1521,67 @@
   // Public cho debug + re-run thủ công.
   window.kgMarkdownEnhance = initMarkdownEnhancements;
 })();
+
+// v3.16.0 — Toast realtime huy hiệu/lên cấp: poll /notifications/toasts
+// 30s (chỉ khi #toast-root tồn tại = đã đăng nhập). Server đánh dấu
+// announced atomic nên không bao giờ báo trùng (đa tab OK).
+(function () {
+    "use strict";
+    var ICONS = { achievement: "🏆", level_up: "⭐" };
+    function showToast(t) {
+        var root = document.getElementById("toast-root");
+        if (!root) return;
+        var el = document.createElement("div");
+        el.className = "toast";
+        el.setAttribute("role", "status");
+        var icon = document.createElement("span");
+        icon.className = "toast-icon";
+        icon.textContent = ICONS[t.kind] || "🔔";
+        var body = document.createElement("div");
+        body.className = "toast-body";
+        var title = document.createElement("strong");
+        title.className = "toast-title";
+        title.textContent = t.title || "Thông báo mới";
+        body.appendChild(title);
+        if (t.content) {
+            var sub = document.createElement("div");
+            sub.className = "toast-sub muted";
+            sub.textContent = t.content.length > 120 ? t.content.slice(0, 120) + "…" : t.content;
+            body.appendChild(sub);
+        }
+        el.appendChild(icon);
+        el.appendChild(body);
+        var close = document.createElement("button");
+        close.className = "toast-close";
+        close.setAttribute("aria-label", "Đóng thông báo");
+        close.textContent = "×";
+        close.addEventListener("click", function () { el.remove(); });
+        el.appendChild(close);
+        if (t.link) {
+            el.style.cursor = "pointer";
+            el.addEventListener("click", function (ev) {
+                if (ev.target === close) return;
+                window.location.href = t.link;
+            });
+        }
+        root.appendChild(el);
+        while (root.children.length > 3) root.removeChild(root.firstChild);
+        setTimeout(function () { el.remove(); }, 10000);
+    }
+    function pollToasts() {
+        if (!document.getElementById("toast-root")) return;
+        fetch("/notifications/toasts", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .then(function (list) { (list || []).forEach(showToast); })
+            .catch(function () {});
+    }
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", function () {
+            setTimeout(pollToasts, 5000);
+            setInterval(pollToasts, 30000);
+        });
+    } else {
+        setTimeout(pollToasts, 5000);
+        setInterval(pollToasts, 30000);
+    }
+})();

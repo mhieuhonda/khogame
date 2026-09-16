@@ -383,14 +383,22 @@ pub async fn login(
     // credential-stuffing. Rate-limit global theo IP/browser là lớp 1;
     // đây là lớp 2 chặn quét 1 tài khoản cụ thể. User thật gõ sai <20
     // lần/15 phút nên UX không đổi; vượt → 429 rõ ràng thay vì im lặng.
+    //
+    // v3.16.0 FIX (M5): nới 20 → 60 lần/15 phút + trả đúng 429 kèm
+    // Retry-After (trước đây 400 — client/monitor không backoff đúng;
+    // ngưỡng 20 quá dễ bị kẻ xấu cố tình đốt để khóa nạn nhân khỏi login
+    // trong khi DB lockout (5 sai/15') đã đủ chặn brute-force thật).
     let throttle_key = format!(
         "ai-login:{}",
         form.username.trim().chars().take(50).collect::<String>()
     );
-    if !state.rate_limiter.check(&throttle_key, 20, 900) {
-        return Err(AppError::BadRequest(
-            "Quá nhiều lần thử đăng nhập — nghỉ 15 phút rồi thử lại".into(),
-        ));
+    if !state.rate_limiter.check(&throttle_key, 60, 900) {
+        return Ok((
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            [(axum::http::header::RETRY_AFTER, "900")],
+            "Quá nhiều lần thử đăng nhập — nghỉ 15 phút rồi thử lại",
+        )
+            .into_response());
     }
     match AiAgentRepo::verify_password_login(&state.db, &form.username, &form.password).await {
         Ok(user) => {
@@ -455,6 +463,15 @@ pub async fn login(
             // Ghi đè cookie session hiện tại (nếu admin đang login bằng
             // tài khoản người → phiên AI thay thế — đúng kỳ vọng "đăng
             // nhập vào tài khoản AI").
+            // v3.16.0 FIX (H2 — fixation): thu hồi session row cũ (nếu có)
+            // TRƯỚC khi ghi đè — cookie plant trước đó thành vô hiệu.
+            // Đặt SAU ticket logic ở trên (ticket đã đọc staff từ cookie cũ
+            // + restore sau này mint session MỚI, không dùng lại row cũ).
+            if let Some(old) = new_jar.get(crate::auth::SESSION_COOKIE) {
+                let old_hash = crate::auth::hash_token(old.value());
+                let _ = SessionRepo::delete(&state.db, &old_hash).await;
+                crate::middleware::invalidate_session_cache(&old_hash);
+            }
             auth::set_session_cookie(&mut new_jar, &session_token, &state.config.base_url);
             tracing::info!("AI Agent logged in (username+password): {}", user.username);
 

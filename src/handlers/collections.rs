@@ -112,6 +112,9 @@ pub async fn create(
         title,
         form.description.trim(),
         form.is_public.as_deref() == Some("1"),
+        // v3.16.0 FIX (MED-6): truyền quota level vào repo để lock + recount
+        // atomic — check `count` ở trên vẫn giữ để báo lỗi sớm/rõ.
+        i64::from(max_collections),
     )
     .await?;
     Ok(Redirect::to("/collections"))

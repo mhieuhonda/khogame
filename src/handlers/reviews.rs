@@ -125,13 +125,14 @@ pub async fn delete_review(
     let Some(slug) = slug else {
         return Err(AppError::NotFound("Review không tồn tại".into()));
     };
-    // Admin được xóa review của người khác (kiểm duyệt)
+    // Admin được xóa review của người khác (kiểm duyệt).
+    // v3.16.0 FIX (IDOR-7): lấy owner cho MỌI case để audit khi staff xóa hộ
+    // (trước đây chỉ query khi non-staff).
+    let owner: Option<uuid::Uuid> = sqlx::query_scalar("SELECT user_id FROM reviews WHERE id = $1")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?;
     if !user.role.is_staff() {
-        let owner: Option<uuid::Uuid> =
-            sqlx::query_scalar("SELECT user_id FROM reviews WHERE id = $1")
-                .bind(id)
-                .fetch_optional(&state.db)
-                .await?;
         match owner {
             Some(o) if o == user.id => {}
             _ => return Err(AppError::Forbidden("Không phải review của bạn".into())),
@@ -142,6 +143,17 @@ pub async fn delete_review(
     let deleted = ReviewRepo::delete(&state.db, id, user.id, user.role.is_staff()).await?;
     if !deleted {
         return Err(AppError::NotFound("Review không tồn tại".into()));
+    }
+    if user.role.is_staff() && owner.is_some_and(|o| o != user.id) {
+        crate::services::audit::audit(
+            &state,
+            user.id,
+            "review.mod_delete",
+            "review",
+            &id.to_string(),
+            &format!("{} xóa review của game {slug}", user.username),
+        )
+        .await;
     }
     Ok(Redirect::to(&format!("/games/{slug}#reviews")))
 }
