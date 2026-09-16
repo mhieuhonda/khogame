@@ -4007,8 +4007,16 @@ blockquote {
 
 .admin-two-col {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
+}
+
+/* v3.16.1 FIX (tràn dashboard "Game/Bình luận gần đây"): grid/flex item mặc
+   định min-width:auto nên tiêu đề/bình luận dài không dấu cách (URL, spam)
+   ép cột rộng hơn container. minmax(0,1fr) + min-width:0 cho phép co lại,
+   overflow-wrap bẻ chuỗi dài — giao diện giữ nguyên khi nội dung ngắn. */
+.admin-two-col > section {
+    min-width: 0;
 }
 
 /* Admin lists */
@@ -4036,6 +4044,9 @@ blockquote {
 
 .admin-game-row a {
     font-weight: 550;
+    /* v3.16.1 FIX (tràn): link co được trong flex row + bẻ chuỗi dài. */
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .game-meta {
