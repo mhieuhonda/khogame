@@ -43,9 +43,9 @@ pub struct AppConfig {
     /// Quota upload (MB/ngày/user, mặc định 50). v3.4.2 — chống disk-fill
     /// DoS: trước đây không có quota, 4 endpoint upload ghi ~1.2GB/phút.
     pub upload_daily_quota_mb: i64,
-    /// Có tin headers proxy (X-Forwarded-For / X-Real-IP — v3.9.0 KHÔNG còn
-    /// tin CF-Connecting-IP: site không sau Cloudflare, header này client
-    /// tự gắn được)
+    /// Có tin headers proxy (X-Forwarded-For / X-Real-IP / CF-Connecting-IP
+    /// — v3.17.0: CF-Connecting-IP chỉ tin khi TCP peer là Cloudflare edge
+    /// thật, xem `is_cloudflare_peer` trong middleware.rs)
     /// khi xác định IP client không? Mặc định BẬT vì prod chạy sau
     /// Traefik/Coolify. Tắt khi expose trực tiếp internet — nếu không
     /// attacker tự set X-Forwarded-For để giả IP, chia bucket rate-limit

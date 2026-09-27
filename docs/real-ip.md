@@ -47,6 +47,34 @@ Hệ quả trước v1.3.0:
 
 Xem test đầy đủ: `src/middleware.rs` → `mod client_ip_tests`.
 
+## 2b. v3.17.0 — Cloudflare: tin CF-Connecting-IP CÓ VERIFY peer (không cần cấu hình)
+
+Nếu bật Cloudflare proxy (orange cloud) trước VPS chính, IP thật của
+visitor đi xuyên qua toàn bộ chuỗi TCP stream (nginx stream, tunnel,
+Traefik đều forward nguyên HTTP headers — chỉ TCP source IP bị mất) và
+tới app trong header `CF-Connecting-IP` do Cloudflare edge ghi đè.
+
+App tin header này **khi và chỉ khi TCP peer trực tiếp của app là
+Cloudflare edge thật** (`is_cloudflare_peer` — khớp IP peer với dải
+edge công khai của Cloudflare, `CF_IPV4_RANGES`/`CF_IPV6_RANGES` trong
+`src/middleware.rs`):
+
+- Qua Cloudflare thật → peer là edge CF → lấy IP trong
+  `CF-Connecting-IP` = IP thật của visitor. Admin thấy đúng IP ở
+  `/admin/sessions`, rate-limit key theo IP thật (hết shared-bucket).
+- Attacker tự gắn `CF-Connecting-IP` giả nhưng đi đường khác (trực tiếp,
+  tunnel riêng) → peer không phải CF → header bị bỏ qua, rơi về
+  XFF/X-Real-IP/ConnectInfo như cũ. Không giả IP xoay bucket, không
+  poison audit IP (`signup_ip`, `last_login_ip`, `sessions.ip_address`).
+
+Mọi request đều để lại IP đã verify trong log: `docker logs <app> |
+grep ip_audit` (xem `ip_audit_log` trong `rate_limit`, `src/middleware.rs`).
+
+> Lưu ý: dải edge CF thay đổi theo thời gian — nếu Cloudflare công bố
+> range mới và app không nhận peer CF nữa (rơi về IP tunnel cho mọi user),
+> cập nhật `CF_IPV4_RANGES`/`CF_IPV6_RANGES` từ
+> https://www.cloudflare.com/ips-v4 và .../ips-v6 rồi deploy lại.
+
 ## 3. Bật IP thật — 2 thao tác bắt buộc trên hạ tầng
 
 IP client chỉ còn tồn tại ở **VPS chính** (nginx). Muốn nó tới được app
