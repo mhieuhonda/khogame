@@ -672,118 +672,6 @@ mod path_normalization_tests {
 /// - 2 proxy (CDN/Cloudflare → Traefik): lấy phần tử KẾ TRƯỚC cuối — lấy
 ///   cuối sẽ ra IP edge của CDN, mọi user cùng một IP (bug observed trên
 ///   prod: toàn bộ session hiện cùng IP proxy).
-/// Dải IPv4 edge của Cloudflare (https://www.cloudflare.com/ips-v4,
-/// snapshot 2026-09-27). Dùng để VERIFY `CF-Connecting-IP`: chỉ tin header
-/// này khi chuỗi X-Forwarded-For (do Traefik append ở hop cuối) cho thấy
-/// request đi qua Cloudflare thật. Attacker tự gắn header nhưng kết nối
-/// trực tiếp/tunnel riêng → XFF không chứa CF edge → header bị bỏ qua
-/// (chống giả IP lách rate-limit + poison audit IP — cùng mối đe dọa đã
-/// dẫn tới việc bỏ header này ở v3.9.0; giờ tin lại nhưng CÓ verify).
-const CF_IPV4_RANGES: &[(&str, u8)] = &[
-    ("173.245.48.0", 20),
-    ("103.21.244.0", 22),
-    ("103.22.200.0", 22),
-    ("103.31.4.0", 22),
-    ("141.101.64.0", 18),
-    ("108.162.192.0", 18),
-    ("190.93.240.0", 20),
-    ("188.114.96.0", 20),
-    ("197.234.240.0", 22),
-    ("198.41.128.0", 17),
-    ("162.158.0.0", 15),
-    ("104.16.0.0", 13),
-    ("104.24.0.0", 14),
-    ("172.64.0.0", 13),
-    ("131.0.72.0", 22),
-];
-
-/// Dải IPv6 edge của Cloudflare (https://www.cloudflare.com/ips-v6).
-const CF_IPV6_RANGES: &[(&str, u8)] = &[
-    ("2400:cb00::", 32),
-    ("2606:4700::", 32),
-    ("2803:f800::", 32),
-    ("2405:b500::", 32),
-    ("2405:8100::", 32),
-    ("2a06:98c0::", 29),
-    ("2c0f:f248::", 32),
-];
-
-/// Entry XFF ngoài cùng bên phải (do proxy gần app nhất — Traefik —
-/// append = IP mà Traefik thấy ở TCP peer của nó) có phải Cloudflare edge
-/// không? (verify trước khi tin `CF-Connecting-IP`). So khớp CIDR bằng
-/// std, không thêm dependency.
-///
-/// Vì sao không verify TCP peer trực tiếp của app: app đứng sau Traefik
-/// (docker network) nên peer của app luôn là IP docker nội bộ, không bao
-/// giờ là CF edge — verify peer sẽ không bao giờ pass. Traefik append IP
-/// peer của NÓ vào cuối XFF: qua Cloudflare thật → cuối XFF là IP edge CF;
-/// đi trực tiếp → cuối XFF là IP client/tunnel thật (không phải CF).
-/// Chuỗi XFF có đi qua Cloudflare thật không? Kiểm tra entry HỢP LỆ
-/// ngoài cùng bên phải: Traefik (proxy gần app nhất, được tin cậy) append
-/// IP peer của nó vào CUỐI XFF. Nếu entry đó là CF edge → hop trước
-/// Traefik là Cloudflare → `CF-Connecting-IP` (do CF edge ghi đè) đáng tin.
-/// Attacker tự gắn prefix giả ("1.2.3.4, ...") không ảnh hưởng: ta chỉ xét
-/// entry cuối (do Traefik ghi, attacker không kiểm soát).
-#[must_use]
-pub fn xff_via_cloudflare(xff: Option<&str>) -> bool {
-    let v = match xff {
-        Some(v) => v,
-        None => return false,
-    };
-    v.split(',')
-        .map(|p| p.trim())
-        .filter(|p| is_valid_ip_string(p))
-        .next_back()
-        .and_then(|ip| ip.parse::<std::net::IpAddr>().ok())
-        .map(|ip| is_cf_ip(&ip))
-        .unwrap_or(false)
-}
-
-/// IP có nằm trong dải edge Cloudflare không? (dùng chung cho verify XFF
-/// entry cuối và cho test trực tiếp từng IP).
-#[must_use]
-pub fn is_cf_ip(ip: &std::net::IpAddr) -> bool {
-    match ip {
-        std::net::IpAddr::V4(v4) => {
-            let ip = u32::from(*v4);
-            CF_IPV4_RANGES.iter().any(|(base, bits)| {
-                base.parse::<std::net::Ipv4Addr>()
-                    .map(u32::from)
-                    .map(|net| {
-                        let mask = if *bits >= 32 {
-                            u32::MAX
-                        } else {
-                            !(u32::MAX >> *bits)
-                        };
-                        (ip & mask) == (net & mask)
-                    })
-                    .unwrap_or(false)
-            })
-        }
-        std::net::IpAddr::V6(v6) => {
-            let ip = u128::from(*v6);
-            CF_IPV6_RANGES.iter().any(|(base, bits)| {
-                base.parse::<std::net::Ipv6Addr>()
-                    .map(u128::from)
-                    .map(|net| {
-                        let mask = if *bits >= 128 {
-                            u128::MAX
-                        } else {
-                            !(u128::MAX >> *bits)
-                        };
-                        (ip & mask) == (net & mask)
-                    })
-                    .unwrap_or(false)
-            })
-        }
-    }
-}
-
-#[must_use]
-pub fn is_cloudflare_peer(addr: &SocketAddr) -> bool {
-    is_cf_ip(&addr.ip())
-}
-
 pub fn client_ip_from_parts(
     headers: &axum::http::HeaderMap,
     connect_info: Option<&SocketAddr>,
@@ -792,28 +680,6 @@ pub fn client_ip_from_parts(
 ) -> String {
     let hops = hops.max(1) as usize;
     if trust_proxy {
-        // v3.17.0 — Tin CF-Connecting-IP CÓ VERIFY (site đã sau Cloudflare):
-        // Cloudflare luôn ghi đè header này bằng IP thật của client ở edge.
-        // Verify: entry XFF ngoài cùng bên phải (do Traefik — proxy gần app
-        // nhất, được tin cậy — append = IP mà Traefik thấy) phải là CF edge.
-        // Qua CF thật: XFF = "client, cf_edge" → cuối là CF → tin header.
-        // Attacker tự gắn CF-Connecting-IP nhưng đi trực tiếp/tunnel riêng:
-        // cuối XFF là IP client/tunnel (không phải CF) → bỏ qua, rơi xuống
-        // XFF/X-Real-IP như cũ. Prefix giả ("1.2.3.4, ...") không ảnh hưởng
-        // vì chỉ xét entry cuối do Traefik ghi (attacker không kiểm soát).
-        // (Không verify TCP peer trực tiếp của app: app sau Traefik/docker
-        // nên peer luôn là IP nội bộ — verify peer sẽ không bao giờ pass.)
-        if xff_via_cloudflare(headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())) {
-            if let Some(v) = headers
-                .get("cf-connecting-ip")
-                .and_then(|v| v.to_str().ok())
-            {
-                let ip = v.trim();
-                if is_valid_ip_string(ip) {
-                    return ip.to_string();
-                }
-            }
-        }
         // hops=1 mới tin X-Real-IP (CF-Connecting-IP đã bỏ — v3.9.0): header này chỉ
         // mang 1 giá trị do proxy gần nhất ghi (IP của peer của nó). Khi
         // có ≥2 hop, giá trị đó là IP của proxy trung gian chứ không phải
@@ -1444,35 +1310,7 @@ pub async fn rate_limit(
         }
         return Err(RateLimited(too_many.into()));
     }
-    // v3.17.0 — chụp method + UA TRƯỚC khi move request vào next.run để
-    // ip_audit_log cuối hàm còn dùng được (request đã move sau đó).
-    let audit_method = request.method().clone();
-    let audit_ua = request
-        .headers()
-        .get(axum::http::header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("-")
-        .chars()
-        .take(200)
-        .collect::<String>();
     let mut response = next.run(request).await;
-    // v3.17.0 — IP AUDIT LOG: mọi request (kể cả asset tĩnh/health) đều để
-    // lại IP đã verify + method + path + status + UA vào tracing JSON.
-    // Chủ máy xem log container là thấy ai vào (`docker logs ... | grep
-    // ip_audit`); admin xem IP user qua trang /admin/sessions (DB đã lưu
-    // ip_address từ cùng hàm client_ip_from_parts — giờ đúng IP thật sau
-    // Cloudflare nhờ CF-Connecting-IP verify peer).
-    // Log ở INFO để prod (RUST_LOG=khogame=info) vẫn ghi; asset tĩnh ồn
-    // nhưng cần cho điều tra quét (bot thường sờ /static trước).
-    tracing::info!(
-        target: "khogame::ip_audit",
-        ip = %ip,
-        method = %audit_method,
-        path = %path,
-        status = %response.status().as_u16(),
-        ua = %audit_ua,
-        "ip_audit"
-    );
     // Set anon id cookie cho browser chưa login (chỉ khi IP là proxy
     // private — xem comment bucket_identity bên trên). Cookie là UUID
     // ngẫu nhiên thuần chức năng (rate limit), không PII, HttpOnly +
@@ -2653,7 +2491,7 @@ mod verify_origin_tests {
 
 #[cfg(test)]
 mod client_ip_tests {
-    use super::{client_ip_from_parts, is_cloudflare_peer, is_private_ip, xff_via_cloudflare};
+    use super::{client_ip_from_parts, is_private_ip};
     use axum::http::HeaderMap;
     use std::net::SocketAddr;
 
@@ -2789,99 +2627,6 @@ mod client_ip_tests {
         assert!(!is_private_ip("2402:800:61f7::1"));
     }
 
-    #[test]
-    fn cloudflare_ranges_recognized() {
-        // Edge CF thật → verify pass (giữ is_cloudflare_peer cho tương
-        // thích + dùng trực tiếp khi app expose sau CF không qua Traefik).
-        assert!(is_cloudflare_peer(&addr("104.16.5.5")));
-        assert!(is_cloudflare_peer(&addr("172.64.10.20")));
-        assert!(is_cloudflare_peer(&addr("131.0.72.9")));
-        assert!(is_cloudflare_peer(&addr("2400:cb00::1")));
-        assert!(is_cloudflare_peer(&addr("2606:4700::1")));
-        // Peer thường / tunnel / docker → KHÔNG phải CF.
-        assert!(!is_cloudflare_peer(&addr("10.187.247.1")));
-        assert!(!is_cloudflare_peer(&addr("172.18.0.1")));
-        assert!(!is_cloudflare_peer(&addr("163.44.96.79")));
-        assert!(!is_cloudflare_peer(&addr("203.0.113.10")));
-        assert!(!is_cloudflare_peer(&addr("8.8.8.8")));
-    }
-
-    fn hm_cf(ip: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert("cf-connecting-ip", ip.parse().unwrap());
-        h
-    }
-
-    fn hm_cf_xff(cf_ip: &str, xff: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert("cf-connecting-ip", cf_ip.parse().unwrap());
-        h.insert("x-forwarded-for", xff.parse().unwrap());
-        h
-    }
-
-    #[test]
-    fn cf_header_trusted_only_via_cf_xff() {
-        // Qua Cloudflare thật: Traefik append edge CF vào cuối XFF →
-        // tin CF-Connecting-IP (IP thật của visitor).
-        let h = hm_cf_xff("203.0.113.99", "203.0.113.99, 104.16.5.5");
-        assert_eq!(
-            client_ip_from_parts(&h, Some(&addr("10.187.247.1")), true, 1),
-            "203.0.113.99"
-        );
-        // Attacker tự gắn CF-Connecting-IP nhưng đi trực tiếp (cuối XFF là
-        // IP thường/tunnel, không phải CF): header bị bỏ qua → rơi về XFF
-        // như cũ (hops=1 → lấy cuối = IP tunnel/client thật). KHÔNG poison
-        // audit IP, KHÔNG xoay bucket rate-limit.
-        let h = hm_cf_xff("9.9.9.9", "9.9.9.9");
-        assert_eq!(
-            client_ip_from_parts(&h, Some(&addr("10.187.247.1")), true, 1),
-            "9.9.9.9"
-        );
-        // Prefix giả + cuối XFF không phải CF → vẫn bỏ qua CF header.
-        let h = hm_cf_xff("1.1.1.1", "1.2.3.4, 203.0.113.10");
-        assert_eq!(
-            client_ip_from_parts(&h, Some(&addr("10.187.247.1")), true, 1),
-            "203.0.113.10"
-        );
-        // Thiếu XFF hẳn → không verify được → bỏ qua CF header.
-        let h = hm_cf("203.0.113.99");
-        assert_eq!(
-            client_ip_from_parts(&h, Some(&addr("10.187.247.1")), true, 1),
-            "10.187.247.1"
-        );
-    }
-
-    #[test]
-    fn xff_via_cloudflare_checks_last_entry() {
-        assert!(xff_via_cloudflare(Some("203.0.113.99, 104.16.5.5")));
-        assert!(xff_via_cloudflare(Some(
-            "1.2.3.4, 203.0.113.99, 172.64.10.20"
-        )));
-        assert!(xff_via_cloudflare(Some("104.16.5.5")));
-        assert!(!xff_via_cloudflare(Some("203.0.113.10")));
-        assert!(!xff_via_cloudflare(Some("1.2.3.4, 203.0.113.10")));
-        assert!(!xff_via_cloudflare(None));
-        assert!(!xff_via_cloudflare(Some("garbage")));
-        // IPv6 CF edge.
-        assert!(xff_via_cloudflare(Some("2001:db8::1, 2606:4700::1")));
-        assert!(!xff_via_cloudflare(Some("2001:db8::1")));
-    }
-
-    #[test]
-    fn cf_header_invalid_value_ignored() {
-        // Giá trị rác trong CF-Connecting-IP → bỏ qua, rơi xuống XFF/X-Real-IP.
-        let mut h = hm_cf("203.0.113.99");
-        h.insert("x-real-ip", "203.0.113.77".parse().unwrap());
-        // peer CF nhưng header rác: header hap -> invalid -> fallback X-Real-IP
-        let mut bad = HeaderMap::new();
-        bad.insert("cf-connecting-ip", "not-an-ip".parse().unwrap());
-        bad.insert("x-real-ip", "203.0.113.77".parse().unwrap());
-        assert_eq!(
-            client_ip_from_parts(&bad, Some(&addr("104.16.5.5")), true, 1),
-            "203.0.113.77"
-        );
-        let _ = h;
-    }
 }
 
 #[cfg(test)]
