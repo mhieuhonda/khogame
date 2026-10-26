@@ -159,7 +159,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — pin SHA (supply-chain)
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 — pin SHA (supply-chain)
         with:
           workspaces: ". -> target"
           cache-on-failure: true
@@ -210,7 +210,7 @@ jobs:
           components: clippy
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — pin SHA (supply-chain)
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 — pin SHA (supply-chain)
         with:
           workspaces: ". -> target"
           cache-on-failure: true
@@ -236,7 +236,7 @@ jobs:
           toolchain: "1.98.0"
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — pin SHA (supply-chain)
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 — pin SHA (supply-chain)
         with:
           workspaces: ". -> target"
           cache-on-failure: true
@@ -262,7 +262,7 @@ jobs:
           toolchain: "1.98.0"
 
       - name: Cache cargo registry + target
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2 — pin SHA (supply-chain)
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 — pin SHA (supply-chain)
         with:
           workspaces: ". -> target"
           cache-on-failure: true
@@ -287,7 +287,7 @@ jobs:
           ref: ${{ github.ref }}
 
       - name: Cài cargo-audit
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2 — pin SHA (supply-chain)
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2 — pin SHA (supply-chain)
         with:
           tool: cargo-audit
 
