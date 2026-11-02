@@ -15,7 +15,7 @@ ARG LICENSE="MIT"
 # ============================================================
 # Stage 1: builder
 # ============================================================
-FROM rust:1.98-slim AS builder
+FROM rust:1.99-slim AS builder
 WORKDIR /app
 
 # Build-time deps: pkg-config cần cho ring (rustls backend) build script.
